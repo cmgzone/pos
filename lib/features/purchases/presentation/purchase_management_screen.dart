@@ -1,0 +1,1258 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/services/shop_settings.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/unit_utils.dart';
+import '../../products/data/product_repository.dart';
+import '../data/purchase_repository.dart';
+
+class PurchaseManagementScreen extends StatefulWidget {
+  const PurchaseManagementScreen({super.key});
+
+  @override
+  State<PurchaseManagementScreen> createState() =>
+      _PurchaseManagementScreenState();
+}
+
+class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _suppliers = [];
+  List<Map<String, dynamic>> _purchases = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final suppliers = await PurchaseRepository.getSuppliers();
+    final purchases = await PurchaseRepository.getPurchases();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _suppliers = suppliers;
+      _purchases = purchases;
+      _isLoading = false;
+    });
+  }
+
+  Future<String?> _showAddSupplierDialog() async {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final addressController = TextEditingController();
+    final noteController = TextEditingController();
+    bool isSaving = false;
+
+    final createdId = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Create Supplier'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Supplier Name',
+                      prefixIcon: Icon(Icons.storefront_outlined),
+                    ),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'Phone',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: emailController,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: addressController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Address',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Note',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      setDialogState(() => isSaving = true);
+                      try {
+                        final supplierId =
+                            await PurchaseRepository.createSupplier(
+                              name: nameController.text,
+                              phone: phoneController.text,
+                              email: emailController.text,
+                              address: addressController.text,
+                              note: noteController.text,
+                            );
+                        if (context.mounted) {
+                          Navigator.pop(ctx, supplierId);
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$e'),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                        setDialogState(() => isSaving = false);
+                      }
+                    },
+              icon: isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check, size: 18),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+              label: const Text('Save Supplier'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    nameController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+    addressController.dispose();
+    noteController.dispose();
+
+    if (createdId != null) {
+      await _loadData();
+      if (!mounted) {
+        return createdId;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Supplier created'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+    return createdId;
+  }
+
+  Future<void> _showCreatePurchaseDialog() async {
+    final products = await ProductRepository.getAll();
+    if (!mounted) {
+      return;
+    }
+
+    if (_suppliers.isEmpty) {
+      final supplierId = await _showAddSupplierDialog();
+      if (supplierId == null || !mounted) {
+        return;
+      }
+    }
+
+    final invoiceController = TextEditingController();
+    final noteController = TextEditingController();
+    final lines = [_PurchaseLineDraft()];
+    String? selectedSupplierId = _suppliers.isNotEmpty
+        ? _suppliers.first['id'] as String?
+        : null;
+    bool isSaving = false;
+
+    final purchaseId = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final productsById = {
+            for (final product in products) product['id'] as String: product,
+          };
+          final isCompact = MediaQuery.of(context).size.width < 720;
+
+          double totalAmount() {
+            return lines.fold<double>(0.0, (sum, line) {
+              final qty = double.tryParse(line.quantityController.text) ?? 0.0;
+              final unitCost =
+                  double.tryParse(line.unitCostController.text) ?? 0.0;
+              return sum + (qty * unitCost);
+            });
+          }
+
+          return AlertDialog(
+            backgroundColor: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text('New Purchase Invoice'),
+            content: SizedBox(
+              width: 760,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    isCompact
+                        ? Column(
+                            children: [
+                              DropdownButtonFormField<String>(
+                                initialValue: selectedSupplierId,
+                                decoration: const InputDecoration(
+                                  labelText: 'Supplier',
+                                  prefixIcon: Icon(Icons.store_mall_directory),
+                                ),
+                                items: _suppliers
+                                    .map(
+                                      (supplier) => DropdownMenuItem(
+                                        value: supplier['id'] as String,
+                                        child: Text(supplier['name'] as String),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  setDialogState(
+                                    () => selectedSupplierId = value,
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: OutlinedButton.icon(
+                                  onPressed: isSaving
+                                      ? null
+                                      : () async {
+                                          final createdId =
+                                              await _showAddSupplierDialog();
+                                          if (!mounted || createdId == null) {
+                                            return;
+                                          }
+                                          setDialogState(
+                                            () =>
+                                                selectedSupplierId = createdId,
+                                          );
+                                        },
+                                  icon: const Icon(Icons.add, size: 18),
+                                  label: const Text('New Supplier'),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: selectedSupplierId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Supplier',
+                                    prefixIcon: Icon(
+                                      Icons.store_mall_directory,
+                                    ),
+                                  ),
+                                  items: _suppliers
+                                      .map(
+                                        (supplier) => DropdownMenuItem(
+                                          value: supplier['id'] as String,
+                                          child: Text(
+                                            supplier['name'] as String,
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setDialogState(
+                                      () => selectedSupplierId = value,
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              OutlinedButton.icon(
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        final createdId =
+                                            await _showAddSupplierDialog();
+                                        if (!mounted || createdId == null) {
+                                          return;
+                                        }
+                                        setDialogState(
+                                          () => selectedSupplierId = createdId,
+                                        );
+                                      },
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('New Supplier'),
+                              ),
+                            ],
+                          ),
+                    const SizedBox(height: 16),
+                    isCompact
+                        ? Column(
+                            children: [
+                              TextField(
+                                controller: invoiceController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Invoice Number',
+                                  prefixIcon: Icon(Icons.receipt_long_outlined),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceHighlight,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Text(
+                                  'Total: ${ShopSettings.currency}${totalAmount().toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.success,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: invoiceController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Invoice Number',
+                                    prefixIcon: Icon(
+                                      Icons.receipt_long_outlined,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceHighlight,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Text(
+                                    'Total: ${ShopSettings.currency}${totalAmount().toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.success,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: noteController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Invoice Note',
+                        prefixIcon: Icon(Icons.notes_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Products',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ...List.generate(lines.length, (index) {
+                      final line = lines[index];
+                      final selectedProduct = line.productId == null
+                          ? null
+                          : productsById[line.productId!];
+                      final purchaseUnit = selectedProduct == null
+                          ? UnitUtils.defaultUnit
+                          : UnitUtils.purchaseUnitForProduct(selectedProduct);
+                      final stockUnit = selectedProduct == null
+                          ? UnitUtils.defaultUnit
+                          : UnitUtils.stockUnitForProduct(selectedProduct);
+                      final unitLabel = UnitUtils.label(purchaseUnit);
+                      final qty =
+                          double.tryParse(line.quantityController.text) ?? 0.0;
+                      final unitCost =
+                          double.tryParse(line.unitCostController.text) ?? 0.0;
+                      final convertedQty = selectedProduct == null
+                          ? qty
+                          : (UnitUtils.convertQuantity(
+                                  qty,
+                                  purchaseUnit,
+                                  stockUnit,
+                                ) ??
+                                qty);
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHighlight,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: line.productId,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Product',
+                                      prefixIcon: Icon(
+                                        Icons.inventory_2_outlined,
+                                      ),
+                                    ),
+                                    items: products
+                                        .map(
+                                          (product) => DropdownMenuItem(
+                                            value: product['id'] as String,
+                                            child: Text(
+                                              product['name'] as String,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        line.productId = value;
+                                        if (value != null) {
+                                          final product = productsById[value]!;
+                                          if (line.unitCostController.text
+                                              .trim()
+                                              .isEmpty) {
+                                            line.unitCostController.text =
+                                                ((product['cost'] as num?) ?? 0)
+                                                    .toString();
+                                          }
+                                          line.quantityController.clear();
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                if (lines.length > 1)
+                                  IconButton(
+                                    onPressed: isSaving
+                                        ? null
+                                        : () {
+                                            setDialogState(() {
+                                              final removed = lines.removeAt(
+                                                index,
+                                              );
+                                              removed.dispose();
+                                            });
+                                          },
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      color: AppColors.error,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            isCompact
+                                ? Column(
+                                    children: [
+                                      TextField(
+                                        controller: line.quantityController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: InputDecoration(
+                                          labelText: 'Quantity ($unitLabel)',
+                                          prefixIcon: const Icon(
+                                            Icons.scale_outlined,
+                                          ),
+                                          helperText: purchaseUnit == stockUnit
+                                              ? null
+                                              : 'Stores as ${UnitUtils.formatQuantity(convertedQty)} ${UnitUtils.label(stockUnit)}',
+                                        ),
+                                        onChanged: (_) => setDialogState(() {}),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      TextField(
+                                        controller: line.unitCostController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Unit Cost',
+                                          prefixIcon: Icon(
+                                            Icons.payments_outlined,
+                                          ),
+                                        ),
+                                        onChanged: (_) => setDialogState(() {}),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: line.quantityController,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: InputDecoration(
+                                            labelText: 'Quantity ($unitLabel)',
+                                            prefixIcon: const Icon(
+                                              Icons.scale_outlined,
+                                            ),
+                                            helperText:
+                                                purchaseUnit == stockUnit
+                                                ? null
+                                                : 'Stores as ${UnitUtils.formatQuantity(convertedQty)} ${UnitUtils.label(stockUnit)}',
+                                          ),
+                                          onChanged: (_) =>
+                                              setDialogState(() {}),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: line.unitCostController,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Unit Cost',
+                                            prefixIcon: Icon(
+                                              Icons.payments_outlined,
+                                            ),
+                                          ),
+                                          onChanged: (_) =>
+                                              setDialogState(() {}),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                'Line Total: ${ShopSettings.currency}${(qty * unitCost).toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  color: AppColors.primaryLight,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    OutlinedButton.icon(
+                      onPressed: isSaving
+                          ? null
+                          : () {
+                              setDialogState(() {
+                                lines.add(_PurchaseLineDraft());
+                              });
+                            },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add Product Line'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        setDialogState(() => isSaving = true);
+                        try {
+                          if (selectedSupplierId == null ||
+                              selectedSupplierId!.isEmpty) {
+                            throw Exception('Select a supplier');
+                          }
+
+                          final selectedSupplier = _suppliers.firstWhere(
+                            (supplier) => supplier['id'] == selectedSupplierId,
+                          );
+
+                          final items = <Map<String, dynamic>>[];
+                          for (final line in lines) {
+                            if (line.productId == null) {
+                              continue;
+                            }
+
+                            final quantity = double.tryParse(
+                              line.quantityController.text.trim(),
+                            );
+                            final unitCost = double.tryParse(
+                              line.unitCostController.text.trim(),
+                            );
+                            final product = productsById[line.productId!];
+                            if (quantity == null ||
+                                quantity <= 0 ||
+                                unitCost == null) {
+                              throw Exception(
+                                'Each product line needs a valid quantity and unit cost',
+                              );
+                            }
+                            items.add({
+                              'product_id': line.productId,
+                              'quantity': quantity,
+                              'unit_cost': unitCost,
+                              'unit': product == null
+                                  ? UnitUtils.defaultUnit
+                                  : UnitUtils.purchaseUnitForProduct(product),
+                            });
+                          }
+
+                          final createdPurchaseId =
+                              await PurchaseRepository.createPurchase(
+                                supplierId: selectedSupplierId,
+                                supplierName:
+                                    selectedSupplier['name'] as String?,
+                                invoiceNumber: invoiceController.text,
+                                note: noteController.text,
+                                items: items,
+                              );
+                          if (context.mounted) {
+                            Navigator.pop(ctx, createdPurchaseId);
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('$e'),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          }
+                          setDialogState(() => isSaving = false);
+                        }
+                      },
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_circle_outline, size: 18),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
+                label: const Text('Save Purchase'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    invoiceController.dispose();
+    noteController.dispose();
+    for (final line in lines) {
+      line.dispose();
+    }
+
+    if (purchaseId != null) {
+      await _loadData();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Purchase saved and stock received'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showPurchaseDetails(String purchaseId) async {
+    final details = await PurchaseRepository.getPurchaseDetails(purchaseId);
+    if (details == null || !mounted) {
+      return;
+    }
+
+    final items = details['items'] as List<Map<String, dynamic>>? ?? [];
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          (details['invoice_number'] as String?)?.trim().isNotEmpty == true
+              ? 'Purchase ${details['invoice_number']}'
+              : 'Purchase Invoice',
+        ),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _detailRow(
+                  'Supplier',
+                  details['supplier_name'] as String? ?? 'Unknown supplier',
+                ),
+                _detailRow(
+                  'Date',
+                  _friendlyDate(details['created_at'] as String?),
+                ),
+                if ((details['note'] as String?)?.trim().isNotEmpty == true)
+                  _detailRow('Note', details['note'] as String),
+                const SizedBox(height: 14),
+                const Divider(),
+                ...items.map((item) {
+                  final quantity = (item['quantity_received'] as num? ?? 0)
+                      .toDouble();
+                  final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
+                  final unit =
+                      item['stock_unit'] as String? ??
+                      item['product_unit'] as String?;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item['product_name'] as String? ?? 'Item',
+                          ),
+                        ),
+                        Text(
+                          UnitUtils.formatWithUnit(quantity, unit),
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        Text(
+                          '${ShopSettings.currency}${(quantity * unitCost).toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                const Divider(),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Total: ${ShopSettings.currency}${((details['total_amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalSpend = _purchases.fold<double>(
+      0.0,
+      (sum, purchase) =>
+          sum + ((purchase['total_amount'] as num? ?? 0).toDouble()),
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        title: const Text('Purchases & Suppliers'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Purchases'),
+            Tab(text: 'Suppliers'),
+          ],
+        ),
+        actions: [
+          IconButton(
+            onPressed: _isLoading ? null : _loadData,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Column(
+        children: [
+          Container(
+            color: AppColors.surface,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              children: [
+                _PurchaseStatCard(
+                  icon: Icons.receipt_long_outlined,
+                  label: 'Invoices',
+                  value: '${_purchases.length}',
+                  color: AppColors.primary,
+                ),
+                _PurchaseStatCard(
+                  icon: Icons.store_mall_directory_outlined,
+                  label: 'Suppliers',
+                  value: '${_suppliers.length}',
+                  color: AppColors.secondary,
+                ),
+                _PurchaseStatCard(
+                  icon: Icons.payments_outlined,
+                  label: 'Total Spend',
+                  value:
+                      '${ShopSettings.currency}${totalSpend.toStringAsFixed(2)}',
+                  color: AppColors.success,
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : TabBarView(
+                    controller: _tabController,
+                    children: [_buildPurchasesTab(), _buildSuppliersTab()],
+                  ),
+          ),
+        ],
+      ),
+      floatingActionButton: AnimatedBuilder(
+        animation: _tabController,
+        builder: (context, _) {
+          final onPurchasesTab = _tabController.index == 0;
+          return FloatingActionButton.extended(
+            onPressed: () async {
+              if (onPurchasesTab) {
+                await _showCreatePurchaseDialog();
+              } else {
+                await _showAddSupplierDialog();
+              }
+            },
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            icon: Icon(
+              onPurchasesTab ? Icons.add_business : Icons.person_add_alt,
+            ),
+            label: Text(onPurchasesTab ? 'New Purchase' : 'Add Supplier'),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPurchasesTab() {
+    if (_purchases.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.receipt_long_outlined,
+        title: 'No purchase invoices yet',
+        subtitle: 'Record a supplier invoice to receive stock into inventory.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(24),
+      itemCount: _purchases.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final purchase = _purchases[index];
+        final invoiceNumber = (purchase['invoice_number'] as String?)?.trim();
+        return InkWell(
+          onTap: () => _showPurchaseDetails(purchase['id'] as String),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: AppColors.primaryLight,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        invoiceNumber?.isNotEmpty == true
+                            ? invoiceNumber!
+                            : 'Purchase Invoice',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        purchase['supplier_name'] as String? ??
+                            'Unknown supplier',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${purchase['item_lines']} product lines',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${ShopSettings.currency}${((purchase['total_amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _friendlyDate(purchase['created_at'] as String?),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSuppliersTab() {
+    if (_suppliers.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.store_mall_directory_outlined,
+        title: 'No suppliers yet',
+        subtitle: 'Add your first supplier so purchases are linked to history.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(24),
+      itemCount: _suppliers.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final supplier = _suppliers[index];
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      supplier['name'] as String? ?? 'Supplier',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${ShopSettings.currency}${((supplier['total_spend'] as num? ?? 0).toDouble()).toStringAsFixed(2)} spent',
+                      style: const TextStyle(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if ((supplier['phone'] as String?)?.trim().isNotEmpty == true)
+                Text(
+                  supplier['phone'] as String,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+              if ((supplier['email'] as String?)?.trim().isNotEmpty == true)
+                Text(
+                  supplier['email'] as String,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+              if ((supplier['address'] as String?)?.trim().isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    supplier['address'] as String,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              Text(
+                '${supplier['purchase_count']} purchase invoices',
+                style: const TextStyle(
+                  color: AppColors.primaryLight,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _friendlyDate(String? raw) {
+    final parsed = DateTime.tryParse(raw ?? '');
+    if (parsed == null) {
+      return raw ?? '';
+    }
+    return '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+  }
+}
+
+class _PurchaseLineDraft {
+  String? productId;
+  final TextEditingController quantityController = TextEditingController();
+  final TextEditingController unitCostController = TextEditingController();
+
+  void dispose() {
+    quantityController.dispose();
+    unitCostController.dispose();
+  }
+}
+
+class _PurchaseStatCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _PurchaseStatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 64,
+              color: AppColors.textSecondary.withValues(alpha: 0.35),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

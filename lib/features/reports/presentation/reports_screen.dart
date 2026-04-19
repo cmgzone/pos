@@ -1,0 +1,1884 @@
+import 'package:flutter/material.dart';
+import '../../../core/services/shop_settings.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../auth/data/user_repository.dart';
+import '../../app/app_shell.dart';
+import '../data/report_repository.dart';
+
+class ReportsScreen extends StatefulWidget {
+  const ReportsScreen({super.key});
+
+  @override
+  State<ReportsScreen> createState() => _ReportsScreenState();
+}
+
+class _ReportsScreenState extends State<ReportsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+  int _productDays = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 5, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 800;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        leading: isMobile
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        automaticallyImplyLeading: false,
+        title: const Text('Reports'),
+        bottom: TabBar(
+          controller: _tabs,
+          isScrollable: isMobile,
+          indicatorColor: AppColors.primary,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textSecondary,
+          tabs: const [
+            Tab(icon: Icon(Icons.badge_outlined), text: 'Cashier Summary'),
+            Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Top Products'),
+            Tab(icon: Icon(Icons.people_outline), text: 'Top Debtors'),
+            Tab(icon: Icon(Icons.schedule_outlined), text: 'Overdue Aging'),
+            Tab(icon: Icon(Icons.swap_vert_rounded), text: 'Stock Movement'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          const _DailyCashierSummaryTab(),
+          _TopProductsTab(
+            daysRange: _productDays,
+            onDaysChanged: (d) => setState(() => _productDays = d),
+          ),
+          const _TopDebtorsTab(),
+          const _OverdueAgingTab(),
+          const _StockMovementTab(),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 1 — Top / Worst Selling Products
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DailyCashierSummaryTab extends StatefulWidget {
+  const _DailyCashierSummaryTab();
+
+  @override
+  State<_DailyCashierSummaryTab> createState() =>
+      _DailyCashierSummaryTabState();
+}
+
+class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
+  static const _allEmployeesId = '__all_employees__';
+
+  DateTime _selectedDate = DateTime.now();
+  Map<String, dynamic> _summary = {};
+  List<Map<String, dynamic>> _cashiers = [];
+  List<Map<String, dynamic>> _employeeOptions = [];
+  String _selectedCashierId = _allEmployeesId;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String get _dateKey =>
+      '${_selectedDate.year.toString().padLeft(4, '0')}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+
+  bool get _isFilteredToEmployee => _selectedCashierId != _allEmployeesId;
+
+  int _roleRank(String? role) {
+    switch ((role ?? '').toUpperCase()) {
+      case 'ADMIN':
+        return 0;
+      case 'MANAGER':
+        return 1;
+      default:
+        return 2;
+    }
+  }
+
+  List<Map<String, dynamic>> _buildEmployeeOptions(
+    List<Map<String, dynamic>> staff,
+    List<Map<String, dynamic>> activeCashiers,
+  ) {
+    final byId = <String, Map<String, dynamic>>{};
+
+    for (final user in staff) {
+      final id = (user['id'] as String? ?? '').trim();
+      if (id.isEmpty) {
+        continue;
+      }
+      final rawName = (user['name'] as String?)?.trim();
+      final rawEmail = (user['email'] as String?)?.trim();
+      byId[id] = {
+        'cashier_id': id,
+        'cashier_name': rawName?.isNotEmpty == true
+            ? rawName
+            : rawEmail?.isNotEmpty == true
+            ? rawEmail
+            : id,
+        'cashier_role': user['role'] as String? ?? 'CASHIER',
+      };
+    }
+
+    for (final cashier in activeCashiers) {
+      final id = (cashier['cashier_id'] as String? ?? '').trim();
+      if (id.isEmpty) {
+        continue;
+      }
+      byId[id] ??= {
+        'cashier_id': id,
+        'cashier_name': cashier['cashier_name'] as String? ?? id,
+        'cashier_role': cashier['cashier_role'] as String? ?? 'CASHIER',
+      };
+    }
+
+    final options = byId.values.toList();
+    options.sort((a, b) {
+      final roleCompare = _roleRank(
+        a['cashier_role'] as String?,
+      ).compareTo(_roleRank(b['cashier_role'] as String?));
+      if (roleCompare != 0) {
+        return roleCompare;
+      }
+      final aName = (a['cashier_name'] as String? ?? '').toLowerCase();
+      final bName = (b['cashier_name'] as String? ?? '').toLowerCase();
+      return aName.compareTo(bName);
+    });
+    return options;
+  }
+
+  String get _selectedCashierName {
+    if (!_isFilteredToEmployee) {
+      return 'All employees';
+    }
+    for (final employee in _employeeOptions) {
+      if ((employee['cashier_id'] as String? ?? '') == _selectedCashierId) {
+        return employee['cashier_name'] as String? ?? 'Selected employee';
+      }
+    }
+    return 'Selected employee';
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final results = await Future.wait([
+      ReportRepository.getDailyCashierSummary(date: _dateKey),
+      UserRepository.getAll(),
+    ]);
+    final activeCashiers = List<Map<String, dynamic>>.from(results[0] as List);
+    final staff = List<Map<String, dynamic>>.from(results[1] as List);
+    final employeeOptions = _buildEmployeeOptions(staff, activeCashiers);
+    final nextSelectedCashierId =
+        _selectedCashierId == _allEmployeesId ||
+            employeeOptions.any(
+              (employee) =>
+                  (employee['cashier_id'] as String? ?? '') ==
+                  _selectedCashierId,
+            )
+        ? _selectedCashierId
+        : _allEmployeesId;
+    final summary = await ReportRepository.getDailySummary(
+      date: _dateKey,
+      cashierId: nextSelectedCashierId == _allEmployeesId
+          ? null
+          : nextSelectedCashierId,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _summary = summary;
+      _employeeOptions = employeeOptions;
+      _selectedCashierId = nextSelectedCashierId;
+      _cashiers = nextSelectedCashierId == _allEmployeesId
+          ? activeCashiers
+          : activeCashiers
+                .where(
+                  (cashier) =>
+                      (cashier['cashier_id'] as String? ?? '') ==
+                      nextSelectedCashierId,
+                )
+                .toList();
+      _loading = false;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    setState(() => _selectedDate = picked);
+    await _load();
+  }
+
+  String _displayDate(DateTime date) {
+    return '${date.month}/${date.day}/${date.year}';
+  }
+
+  String _displayMoney(dynamic value) {
+    final amount = (value as num? ?? 0).toDouble();
+    return '${ShopSettings.currency}${amount.toStringAsFixed(2)}';
+  }
+
+  String _displayTime(String? raw) {
+    final date = DateTime.tryParse(raw ?? '');
+    if (date == null) {
+      return '-';
+    }
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _roleLabel(String? raw) {
+    switch ((raw ?? '').toUpperCase()) {
+      case 'ADMIN':
+        return 'Admin';
+      case 'MANAGER':
+        return 'Manager';
+      default:
+        return 'Cashier';
+    }
+  }
+
+  bool _isOnline(String? lastSeenAt) {
+    if (lastSeenAt == null) {
+      return false;
+    }
+    final lastSeen = DateTime.tryParse(lastSeenAt);
+    if (lastSeen == null) {
+      return false;
+    }
+    // Consider online if seen in the last 5 minutes
+    return DateTime.now().difference(lastSeen).inMinutes < 5;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topProducts = List<Map<String, dynamic>>.from(
+      _summary['top_products'] as List? ?? const [],
+    );
+    final showEmptyState = !_isFilteredToEmployee && _cashiers.isEmpty;
+
+    return Column(
+      children: [
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _Chip(
+                label: _displayDate(_selectedDate),
+                selected: true,
+                onTap: _pickDate,
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: _pickDate,
+                icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                label: const Text('Choose Date'),
+              ),
+              SizedBox(
+                width: 240,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _selectedCashierId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Employee',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: _allEmployeesId,
+                      child: Text('All employees'),
+                    ),
+                    ..._employeeOptions.map((employee) {
+                      final name =
+                          employee['cashier_name'] as String? ?? 'Employee';
+                      final role = _roleLabel(
+                        employee['cashier_role'] as String?,
+                      );
+                      return DropdownMenuItem(
+                        value: employee['cashier_id'] as String? ?? '',
+                        child: Text('$name - $role'),
+                      );
+                    }),
+                  ],
+                  onChanged: (value) {
+                    if (value == null || value == _selectedCashierId) {
+                      return;
+                    }
+                    setState(() => _selectedCashierId = value);
+                    _load();
+                  },
+                ),
+              ),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : showEmptyState
+              ? _EmptyState(
+                  icon: Icons.badge_outlined,
+                  message: 'No employee activity for this date',
+                  subtitle: 'Try a different day or complete a sale first.',
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          _SummaryMetricCard(
+                            label: 'Revenue',
+                            value: _displayMoney(_summary['total_revenue']),
+                            color: AppColors.success,
+                            icon: Icons.attach_money,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Sales',
+                            value:
+                                '${(_summary['total_sales'] as num? ?? 0).toInt()}',
+                            color: AppColors.primary,
+                            icon: Icons.receipt_long_outlined,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Gross Profit',
+                            value: _displayMoney(_summary['gross_profit']),
+                            color: AppColors.primaryLight,
+                            icon: Icons.trending_up_rounded,
+                          ),
+                          _SummaryMetricCard(
+                            label: _isFilteredToEmployee
+                                ? 'Employee'
+                                : 'Employees',
+                            value: '${_cashiers.length}',
+                            color: AppColors.warning,
+                            icon: Icons.people_outline,
+                          ),
+                        ],
+                      ),
+                      if (topProducts.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          _isFilteredToEmployee
+                              ? 'Top products sold by $_selectedCashierName'
+                              : 'Top products for ${_displayDate(_selectedDate)}',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: topProducts.map((product) {
+                            final qty = (product['qty_sold'] as num? ?? 0)
+                                .toDouble();
+                            final unit =
+                                product['sale_unit'] as String? ?? 'pcs';
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    product['name'] as String? ?? 'Product',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} $unit sold',
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Text(
+                        _isFilteredToEmployee
+                            ? 'Sales for $_selectedCashierName'
+                            : 'Employee breakdown',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_cashiers.isEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Text(
+                            'No sales were recorded for $_selectedCashierName on ${_displayDate(_selectedDate)}.',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        )
+                      else
+                        ..._cashiers.map((cashier) {
+                          final refunds =
+                              (cashier['refunds_issued'] as num? ?? 0)
+                                  .toDouble();
+                          final refundCount =
+                              (cashier['refund_count'] as num? ?? 0).toInt();
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(
+                                          alpha: 0.12,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          ((cashier['cashier_name']
+                                                      as String?) ??
+                                                  '?')
+                                              .substring(0, 1)
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: AppColors.primary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  cashier['cashier_name']
+                                                          as String? ??
+                                                      'Unknown Cashier',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 15,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (_isOnline(
+                                                cashier['last_seen_at']
+                                                    as String?,
+                                              )) ...[
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                        color:
+                                                            AppColors.success,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                const Text(
+                                                  'Online',
+                                                  style: TextStyle(
+                                                    color: AppColors.success,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            _roleLabel(
+                                              cashier['cashier_role']
+                                                  as String?,
+                                            ),
+                                            style: const TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          _displayMoney(
+                                            cashier['total_revenue'],
+                                          ),
+                                          style: const TextStyle(
+                                            color: AppColors.success,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${(cashier['total_sales'] as num? ?? 0).toInt()} sales',
+                                          style: const TextStyle(
+                                            color: AppColors.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Cash',
+                                        value: _displayMoney(
+                                          cashier['cash_revenue'],
+                                        ),
+                                        color: AppColors.primaryLight,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Kopesha',
+                                        value: _displayMoney(
+                                          cashier['kopesha_revenue'],
+                                        ),
+                                        color: AppColors.warning,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Profit',
+                                        value: _displayMoney(
+                                          cashier['gross_profit'],
+                                        ),
+                                        color: AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 16,
+                                  runSpacing: 8,
+                                  children: [
+                                    Text(
+                                      'Shift: ${_displayTime(cashier['first_sale_at'] as String?)} - ${_displayTime(cashier['last_sale_at'] as String?)}',
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    if (refundCount > 0 || refunds > 0)
+                                      Text(
+                                        'Refunds: $refundCount (${_displayMoney(refunds)})',
+                                        style: const TextStyle(
+                                          color: AppColors.error,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TopProductsTab extends StatefulWidget {
+  final int daysRange;
+  final ValueChanged<int> onDaysChanged;
+
+  const _TopProductsTab({required this.daysRange, required this.onDaysChanged});
+
+  @override
+  State<_TopProductsTab> createState() => _TopProductsTabState();
+}
+
+class _TopProductsTabState extends State<_TopProductsTab> {
+  bool _showWorst = false;
+  List<Map<String, dynamic>> _products = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_TopProductsTab old) {
+    super.didUpdateWidget(old);
+    if (old.daysRange != widget.daysRange ||
+        old.daysRange != widget.daysRange) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    _products = await ReportRepository.getTopProducts(
+      daysRange: widget.daysRange,
+      ascending: _showWorst,
+    );
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Controls
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Row(
+            children: [
+              // Period chips
+              ...[7, 14, 30, 90].map(
+                (d) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _Chip(
+                    label: '${d}d',
+                    selected: widget.daysRange == d,
+                    onTap: () {
+                      widget.onDaysChanged(d);
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // Toggle best/worst
+              _Chip(
+                label: _showWorst ? 'Worst Sellers' : 'Best Sellers',
+                selected: true,
+                color: _showWorst ? AppColors.error : AppColors.success,
+                onTap: () {
+                  setState(() => _showWorst = !_showWorst);
+                  _load();
+                },
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _products.isEmpty
+              ? _EmptyState(
+                  icon: Icons.bar_chart_rounded,
+                  message: 'No sales data for this period',
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: _products.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final p = _products[index];
+                    final revenue = (p['total_revenue'] as num? ?? 0)
+                        .toDouble();
+                    final profit = (p['total_profit'] as num? ?? 0).toDouble();
+                    final qtySold = (p['total_qty_sold'] as num? ?? 0)
+                        .toDouble();
+                    final txns = (p['transaction_count'] as num? ?? 0).toInt();
+                    final rank = index + 1;
+
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          // Rank badge
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: rank <= 3
+                                  ? AppColors.primary.withValues(alpha: 0.15)
+                                  : AppColors.surfaceHighlight,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '#$rank',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: rank <= 3
+                                      ? AppColors.primary
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  p['name'] as String? ?? '',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${qtySold % 1 == 0 ? qtySold.toInt() : qtySold.toStringAsFixed(2)} ${p['sale_unit'] ?? 'pcs'} sold · $txns transactions',
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${ShopSettings.currency}${revenue.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primaryLight,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              Text(
+                                'Profit: ${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: profit >= 0
+                                      ? AppColors.success
+                                      : AppColors.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 2 — Top Debtors
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TopDebtorsTab extends StatefulWidget {
+  const _TopDebtorsTab();
+
+  @override
+  State<_TopDebtorsTab> createState() => _TopDebtorsTabState();
+}
+
+class _TopDebtorsTabState extends State<_TopDebtorsTab> {
+  List<Map<String, dynamic>> _debtors = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    _debtors = await ReportRepository.getTopDebtors();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    if (_debtors.isEmpty) {
+      return _EmptyState(
+        icon: Icons.people_outline,
+        message: 'No outstanding Kopesha balances',
+      );
+    }
+
+    final totalOutstanding = _debtors.fold<double>(
+      0,
+      (s, d) => s + ((d['balance'] as num? ?? 0).toDouble()),
+    );
+
+    return Column(
+      children: [
+        // Total banner
+        Container(
+          color: AppColors.warning.withValues(alpha: 0.1),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: AppColors.warning,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Total Outstanding',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      '${ShopSettings.currency}${totalOutstanding.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${_debtors.length} customers',
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(width: 8),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(20),
+            itemCount: _debtors.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final d = _debtors[index];
+              final balance = (d['balance'] as num? ?? 0).toDouble();
+              final openSales = (d['open_sales'] as num? ?? 0).toInt();
+              final share = totalOutstanding > 0
+                  ? (balance / totalOutstanding)
+                  : 0.0;
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              (d['name'] as String? ?? '?')
+                                  .substring(0, 1)
+                                  .toUpperCase(),
+                              style: const TextStyle(
+                                color: AppColors.warning,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                d['name'] as String? ?? 'Unknown',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if ((d['phone'] as String?)?.isNotEmpty == true)
+                                Text(
+                                  d['phone'] as String,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                color: AppColors.warning,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              '$openSales open ${openSales == 1 ? 'sale' : 'sales'}',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Share bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: share.clamp(0.0, 1.0),
+                        backgroundColor: AppColors.warning.withValues(
+                          alpha: 0.1,
+                        ),
+                        valueColor: const AlwaysStoppedAnimation(
+                          AppColors.warning,
+                        ),
+                        minHeight: 5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${(share * 100).toStringAsFixed(1)}% of total',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 3 — Overdue Aging
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OverdueAgingTab extends StatefulWidget {
+  const _OverdueAgingTab();
+
+  @override
+  State<_OverdueAgingTab> createState() => _OverdueAgingTabState();
+}
+
+class _OverdueAgingTabState extends State<_OverdueAgingTab> {
+  List<Map<String, dynamic>> _sales = [];
+  Map<String, dynamic> _summary = {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final results = await Future.wait([
+      ReportRepository.getOverdueAging(),
+      ReportRepository.getOverdueAgingSummary(),
+    ]);
+    if (mounted) {
+      setState(() {
+        _sales = results[0] as List<Map<String, dynamic>>;
+        _summary = results[1] as Map<String, dynamic>;
+        _loading = false;
+      });
+    }
+  }
+
+  Color _bucketColor(String bucket) => switch (bucket) {
+    '1_7' => AppColors.warning,
+    '8_30' => const Color(0xFFFF6B35),
+    '31_60' => AppColors.error,
+    'over_60' => const Color(0xFF8B0000),
+    _ => AppColors.success,
+  };
+
+  String _bucketLabel(String bucket) => switch (bucket) {
+    '1_7' => '1–7 days overdue',
+    '8_30' => '8–30 days overdue',
+    '31_60' => '31–60 days overdue',
+    'over_60' => '60+ days overdue',
+    _ => 'Not yet due',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    final total = (_summary['total_outstanding'] as num? ?? 0).toDouble();
+    final totalCount = (_summary['total_count'] as num? ?? 0).toInt();
+
+    if (totalCount == 0) {
+      return _EmptyState(
+        icon: Icons.check_circle_outline,
+        message: 'No outstanding Kopesha balances 🎉',
+        subtitle: "All credit sales are settled.",
+      );
+    }
+
+    // Build bucket summaries
+    final buckets = [
+      _AgingBucket(
+        label: 'Not Yet Due',
+        amount: (_summary['current_amount'] as num? ?? 0).toDouble(),
+        count: (_summary['current_count'] as num? ?? 0).toInt(),
+        color: AppColors.success,
+        bucket: 'current',
+      ),
+      _AgingBucket(
+        label: '1–7 Days',
+        amount: (_summary['d1_7_amount'] as num? ?? 0).toDouble(),
+        count: (_summary['d1_7_count'] as num? ?? 0).toInt(),
+        color: AppColors.warning,
+        bucket: '1_7',
+      ),
+      _AgingBucket(
+        label: '8–30 Days',
+        amount: (_summary['d8_30_amount'] as num? ?? 0).toDouble(),
+        count: (_summary['d8_30_count'] as num? ?? 0).toInt(),
+        color: const Color(0xFFFF6B35),
+        bucket: '8_30',
+      ),
+      _AgingBucket(
+        label: '31–60 Days',
+        amount: (_summary['d31_60_amount'] as num? ?? 0).toDouble(),
+        count: (_summary['d31_60_count'] as num? ?? 0).toInt(),
+        color: AppColors.error,
+        bucket: '31_60',
+      ),
+      _AgingBucket(
+        label: '60+ Days',
+        amount: (_summary['over60_amount'] as num? ?? 0).toDouble(),
+        count: (_summary['over60_count'] as num? ?? 0).toInt(),
+        color: const Color(0xFF8B0000),
+        bucket: 'over_60',
+      ),
+    ];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header total
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Total Outstanding Kopesha',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.warning,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '$totalCount open sales',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          onPressed: _load,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Bucket cards
+              ...buckets
+                  .where((b) => b.count > 0)
+                  .map(
+                    (b) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: b.color.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: b.color.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: b.color,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  b.label,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: b.color,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${b.count} ${b.count == 1 ? 'sale' : 'sales'}',
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Text(
+                                  '${ShopSettings.currency}${b.amount.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: b.color,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (total > 0) ...[
+                              const SizedBox(height: 10),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: (b.amount / total).clamp(0.0, 1.0),
+                                  backgroundColor: b.color.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  valueColor: AlwaysStoppedAnimation(b.color),
+                                  minHeight: 5,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+              const SizedBox(height: 8),
+              Text(
+                'Individual Sales',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+
+              // Individual sales list
+              ..._sales.map((s) {
+                final bucket = s['age_bucket'] as String? ?? 'current';
+                final bColor = _bucketColor(bucket);
+                final balance = (s['balance_due'] as num? ?? 0).toDouble();
+                final daysOverdue = (s['days_overdue'] as num? ?? 0).toInt();
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: bColor,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s['customer_name'] as String? ??
+                                    'Unknown Customer',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                bucket == 'current'
+                                    ? 'Due: ${s['due_date'] ?? 'N/A'}'
+                                    : _bucketLabel(bucket),
+                                style: TextStyle(
+                                  color: bColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: bColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (daysOverdue > 0)
+                              Text(
+                                '$daysOverdue days late',
+                                style: TextStyle(color: bColor, fontSize: 11),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 4 — Stock Movement
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StockMovementTab extends StatefulWidget {
+  const _StockMovementTab();
+
+  @override
+  State<_StockMovementTab> createState() => _StockMovementTabState();
+}
+
+class _StockMovementTabState extends State<_StockMovementTab> {
+  int _days = 30;
+  List<Map<String, dynamic>> _data = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    _data = await ReportRepository.getStockMovement(daysRange: _days);
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Period picker
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Row(
+            children: [
+              ...[7, 14, 30, 90].map(
+                (d) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _Chip(
+                    label: '${d}d',
+                    selected: _days == d,
+                    onTap: () {
+                      setState(() => _days = d);
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Legend
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          child: Row(
+            children: [
+              _LegendDot(color: AppColors.success, label: 'Stock In'),
+              const SizedBox(width: 16),
+              _LegendDot(color: AppColors.error, label: 'Stock Out (sold)'),
+              const SizedBox(width: 16),
+              _LegendDot(color: AppColors.warning, label: 'Low / Out of stock'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _data.isEmpty
+              ? _EmptyState(
+                  icon: Icons.swap_vert_rounded,
+                  message: 'No stock movement in this period',
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  itemCount: _data.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = _data[index];
+                    final qtyIn = (item['qty_in'] as num? ?? 0).toDouble();
+                    final qtyOut = (item['qty_out'] as num? ?? 0).toDouble();
+                    final current = (item['current_stock'] as num? ?? 0)
+                        .toDouble();
+                    final status = item['stock_status'] as String? ?? 'ok';
+                    final statusColor = status == 'out'
+                        ? AppColors.error
+                        : status == 'low'
+                        ? AppColors.warning
+                        : AppColors.success;
+                    final unit = item['stock_unit'] as String? ?? 'pcs';
+
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item['name'] as String? ?? '',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  status == 'out'
+                                      ? 'Out of stock'
+                                      : status == 'low'
+                                      ? 'Low stock'
+                                      : '$current $unit left',
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _MovementTile(
+                                label: 'In',
+                                value: qtyIn,
+                                unit: unit,
+                                color: AppColors.success,
+                                icon: Icons.add_circle_outline,
+                              ),
+                              const SizedBox(width: 16),
+                              _MovementTile(
+                                label: 'Out',
+                                value: qtyOut,
+                                unit: unit,
+                                color: AppColors.error,
+                                icon: Icons.remove_circle_outline,
+                              ),
+                              const SizedBox(width: 16),
+                              _MovementTile(
+                                label: 'Net',
+                                value: qtyIn - qtyOut,
+                                unit: unit,
+                                color: (qtyIn - qtyOut) >= 0
+                                    ? AppColors.primaryLight
+                                    : AppColors.error,
+                                icon: Icons.swap_vert_rounded,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AgingBucket {
+  final String label;
+  final double amount;
+  final int count;
+  final Color color;
+  final String bucket;
+
+  const _AgingBucket({
+    required this.label,
+    required this.amount,
+    required this.count,
+    required this.color,
+    required this.bucket,
+  });
+}
+
+class _Chip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color? color;
+
+  const _Chip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppColors.primary;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? c : AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: selected ? c : AppColors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryMetricCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+
+  const _SummaryMetricCard({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CashierStatTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _CashierStatTile({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+class _MovementTile extends StatelessWidget {
+  final String label;
+  final double value;
+  final String unit;
+  final Color color;
+  final IconData icon;
+
+  const _MovementTile({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final display = value % 1 == 0
+        ? value.toInt().toString()
+        : value.toStringAsFixed(2);
+
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 16),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 10,
+                    ),
+                  ),
+                  Text(
+                    '$display $unit',
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  final String? subtitle;
+
+  const _EmptyState({required this.icon, required this.message, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 64,
+            color: AppColors.textSecondary.withValues(alpha: 0.35),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 16,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

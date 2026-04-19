@@ -1,0 +1,31 @@
+const path = require('path');
+
+const { pool } = require('./db');
+const { runSqlFile } = require('./sqlStatements');
+
+async function main() {
+  const sqlPath = path.resolve(__dirname, '..', 'sql', 'init.sql');
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const statementCount = await runSqlFile(client, sqlPath);
+    await client.query('COMMIT');
+
+    console.log(
+      `Initialized Neon schema from ${path.basename(sqlPath)} with ${statementCount} statements.`,
+    );
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+main().catch((error) => {
+  console.error('Failed to initialize Neon database.');
+  console.error(error.message);
+  process.exitCode = 1;
+});

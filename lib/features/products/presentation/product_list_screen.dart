@@ -1,0 +1,964 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/unit_utils.dart';
+import '../../../core/utils/category_icon_utils.dart';
+import '../../purchases/presentation/purchase_management_screen.dart';
+import '../data/product_provider.dart';
+import '../data/product_repository.dart';
+import 'product_form_screen.dart';
+import 'product_batches_screen.dart';
+import 'category_management_screen.dart';
+import '../../app/app_shell.dart';
+
+class ProductListScreen extends ConsumerStatefulWidget {
+  const ProductListScreen({super.key});
+
+  @override
+  ConsumerState<ProductListScreen> createState() => _ProductListScreenState();
+}
+
+class _ProductListScreenState extends ConsumerState<ProductListScreen> {
+  String _searchQuery = '';
+  String? _selectedCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 800;
+    final categoriesAsync = ref.watch(categoriesProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        leading: isMobile
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        automaticallyImplyLeading: false,
+        title: const Text('Product Management'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.local_shipping_outlined),
+            tooltip: 'Purchases & Suppliers',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PurchaseManagementScreen(),
+                ),
+              );
+              _refreshProducts();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.category_outlined),
+            tooltip: 'Manage Categories',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const CategoryManagementScreen(),
+                ),
+              );
+              ref.invalidate(categoriesProvider);
+              ref.invalidate(filteredProductsProvider);
+            },
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProductFormScreen()),
+              );
+              if (result == true) _refreshProducts();
+            },
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add Product'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Search and filter bar
+          Container(
+            color: AppColors.surface,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    decoration: const InputDecoration(
+                      hintText: 'Search by name, SKU, or barcode...',
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: AppColors.textSecondary,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Category dropdown
+                categoriesAsync.when(
+                  data: (categories) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceHighlight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: _selectedCategory,
+                        hint: const Text(
+                          'All Categories',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        dropdownColor: AppColors.surface,
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('All Categories'),
+                          ),
+                          ...categories.map(
+                            (cat) => DropdownMenuItem(
+                              value: cat['id'] as String,
+                              child: Text(cat['name'] as String),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _selectedCategory = v),
+                      ),
+                    ),
+                  ),
+                  loading: () => const SizedBox(width: 150),
+                  error: (_, _) => const SizedBox(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Product table
+          Expanded(
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _getFilteredProducts(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final products = snapshot.data ?? [];
+                if (products.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.inventory_2_outlined,
+                          size: 64,
+                          color: AppColors.textSecondary.withValues(alpha: 0.4),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No products found',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ProductFormScreen(),
+                              ),
+                            );
+                            if (result == true) _refreshProducts();
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add your first product'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(24),
+                  itemCount: products.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final product = products[index];
+                    // Resolve category name for icon fallback
+                    final catId = product['category_id'] as String?;
+                    final catName = catId != null
+                        ? categoriesAsync.valueOrNull?.firstWhere(
+                                (c) => c['id'] == catId,
+                                orElse: () => {},
+                              )['name']
+                              as String?
+                        : null;
+                    return _ProductRow(
+                      product: product,
+                      categoryName: catName,
+                      onEdit: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ProductFormScreen(product: product),
+                          ),
+                        );
+                        if (result == true) _refreshProducts();
+                      },
+                      onAdjustStock: () => _showStockAdjustmentDialog(product),
+                      onViewBatches: () => _viewBatches(context, product),
+                      onDelete: () => _confirmDelete(product),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+
+          // Footer stats
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _getFilteredProducts(),
+              builder: (context, snapshot) {
+                final products = snapshot.data ?? [];
+                final lowStock = products.where((p) {
+                  final stock = (p['stock'] as num? ?? 0).toDouble();
+                  final lowThreshold = (p['low_stock'] as num? ?? 5).toDouble();
+                  return stock <= lowThreshold;
+                }).length;
+                final unitTypes = products
+                    .map((p) => UnitUtils.normalize(p['unit'] as String?))
+                    .toSet()
+                    .length;
+                return Row(
+                  children: [
+                    _StatChip(
+                      icon: Icons.inventory,
+                      label: '${products.length} Products',
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 16),
+                    _StatChip(
+                      icon: Icons.straighten,
+                      label: '$unitTypes Unit Types',
+                      color: AppColors.secondary,
+                    ),
+                    const SizedBox(width: 16),
+                    if (lowStock > 0)
+                      _StatChip(
+                        icon: Icons.warning_amber,
+                        label: '$lowStock Low Stock',
+                        color: AppColors.warning,
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getFilteredProducts() async {
+    if (_searchQuery.isNotEmpty) {
+      return ProductRepository.search(_searchQuery);
+    }
+    return ProductRepository.getAll(categoryId: _selectedCategory);
+  }
+
+  void _refreshProducts() {
+    ref.invalidate(filteredProductsProvider);
+    setState(() {});
+  }
+
+  void _showStockAdjustmentDialog(Map<String, dynamic> product) {
+    bool isTotalCostMode = false;
+    final purchaseUnit = UnitUtils.purchaseUnitForProduct(product);
+    final stockUnit = UnitUtils.stockUnitForProduct(product);
+    final purchaseUnitLabel = UnitUtils.label(purchaseUnit);
+    final stockUnitLabel = UnitUtils.label(stockUnit);
+    final allowsDecimal = UnitUtils.allowsDecimal(purchaseUnit);
+    final conversionFactor =
+        UnitUtils.conversionFactor(purchaseUnit, stockUnit) ?? 1.0;
+    final qtyController = TextEditingController();
+    final costController = TextEditingController(
+      text: (product['cost'] as num? ?? 0).toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text('Receive Stock: ${product['name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                purchaseUnit == stockUnit
+                    ? 'Log incoming stock in $purchaseUnitLabel so your inventory stays accurate.'
+                    : 'Receive stock in $purchaseUnitLabel and it will be stored as $stockUnitLabel automatically.',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: qtyController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(
+                    RegExp(allowsDecimal ? r'^\d*\.?\d{0,3}' : r'^\d*'),
+                  ),
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Quantity Received ($purchaseUnitLabel)',
+                  prefixIcon: const Icon(Icons.add_shopping_cart),
+                ),
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+              ),
+              if (purchaseUnit != stockUnit &&
+                  qtyController.text.trim().isNotEmpty &&
+                  double.tryParse(qtyController.text) != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Text(
+                      'Stored stock: ${UnitUtils.formatQuantity((double.tryParse(qtyController.text) ?? 0) * conversionFactor)} $stockUnitLabel',
+                      style: const TextStyle(
+                        color: AppColors.primaryLight,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              RadioGroup<bool>(
+                groupValue: isTotalCostMode,
+                onChanged: (val) {
+                  setState(() => isTotalCostMode = val!);
+                  costController.clear();
+                },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<bool>(
+                        title: Text(
+                          'Per $purchaseUnitLabel Cost',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        value: false,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<bool>(
+                        title: const Text(
+                          'Bulk Total Invoice',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        value: true,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextField(
+                controller: costController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: isTotalCostMode
+                      ? 'Total Invoice Cost for this stock'
+                      : 'Cost Per $purchaseUnitLabel',
+                  prefixIcon: const Icon(Icons.attach_money),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              if (isTotalCostMode &&
+                  qtyController.text.isNotEmpty &&
+                  costController.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.success.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      'Auto-Calculated Unit Cost: ${ShopSettings.currency}${((double.tryParse(costController.text) ?? 0) / ((double.tryParse(qtyController.text) ?? 1) == 0 ? 1 : (double.tryParse(qtyController.text) ?? 1))).toStringAsFixed(2)}/$purchaseUnitLabel',
+                      style: const TextStyle(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final addedQty = double.tryParse(qtyController.text);
+                final costInput = double.tryParse(costController.text);
+                if (addedQty != null && addedQty > 0 && costInput != null) {
+                  final finalUnitCost = isTotalCostMode
+                      ? (costInput / addedQty)
+                      : costInput;
+                  await ProductRepository.addStockBatch(
+                    productId: product['id'] as String,
+                    quantity: addedQty,
+                    unitCost: finalUnitCost,
+                    product: product,
+                    sourceUnit: purchaseUnit,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _refreshProducts();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          purchaseUnit == stockUnit
+                              ? 'Received ${UnitUtils.formatWithUnit(addedQty, purchaseUnit)} of ${product['name']}!'
+                              : 'Received ${UnitUtils.formatWithUnit(addedQty, purchaseUnit)} of ${product['name']} and stored it as ${UnitUtils.formatQuantity(addedQty * conversionFactor)} $stockUnitLabel.',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+              child: const Text('Save Stock'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _viewBatches(BuildContext context, Map<String, dynamic> product) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProductBatchesScreen(product: product)),
+    );
+  }
+
+  void _confirmDelete(Map<String, dynamic> product) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Product'),
+        content: Text(
+          'Are you sure you want to delete "${product['name']}"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ProductRepository.delete(product['id'] as String);
+              if (ctx.mounted) Navigator.pop(ctx);
+              _refreshProducts();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${product['name']} deleted'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductRow extends StatelessWidget {
+  final Map<String, dynamic> product;
+  final String? categoryName;
+  final VoidCallback onEdit;
+  final VoidCallback onAdjustStock;
+  final VoidCallback onViewBatches;
+  final VoidCallback onDelete;
+
+  const _ProductRow({
+    required this.product,
+    this.categoryName,
+    required this.onEdit,
+    required this.onAdjustStock,
+    required this.onViewBatches,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final stock = (product['stock'] as num? ?? 0).toDouble();
+    final lowStock = (product['low_stock'] as num? ?? 5).toDouble();
+    final saleUnit = UnitUtils.saleUnitForProduct(product);
+    final stockUnit = UnitUtils.stockUnitForProduct(product);
+    final isLow = stock <= lowStock && stock > 0;
+    final isOut = stock == 0;
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: isMobile
+          ? _buildMobileLayout(
+              context,
+              isOut,
+              isLow,
+              stock,
+              saleUnit,
+              stockUnit,
+            )
+          : Row(
+              children: [
+                // Image or Icon
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildProductImage(product['image_url'] as String?),
+                ),
+                const SizedBox(width: 16),
+
+                // Name + SKU
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product['name'] as String? ?? '',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'SKU: ${product['sku'] ?? 'N/A'} · Barcode: ${product['barcode'] ?? 'N/A'}',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        saleUnit == stockUnit
+                            ? 'Unit: ${UnitUtils.label(saleUnit)}'
+                            : 'Sell: ${UnitUtils.label(saleUnit)} • Stock: ${UnitUtils.label(stockUnit)}',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Price
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${ShopSettings.currency}${(product['price'] as num? ?? 0).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: AppColors.primaryLight,
+                        ),
+                      ),
+                      Text(
+                        UnitUtils.priceLabel(saleUnit),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (product['cost'] != null)
+                        Text(
+                          'Cost: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(stockUnit)}',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 24),
+
+                // Stock badge
+                Container(
+                  width: 120,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isOut
+                        ? AppColors.error.withValues(alpha: 0.12)
+                        : isLow
+                        ? AppColors.warning.withValues(alpha: 0.12)
+                        : AppColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    isOut
+                        ? 'Out of stock'
+                        : UnitUtils.formatWithUnit(stock, stockUnit),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isOut
+                          ? AppColors.error
+                          : isLow
+                          ? AppColors.warning
+                          : AppColors.success,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Actions
+                IconButton(
+                  icon: const Icon(
+                    Icons.history,
+                    size: 20,
+                    color: AppColors.primaryLight,
+                  ),
+                  tooltip: 'View Batches',
+                  onPressed: onViewBatches,
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.add_box_outlined,
+                    size: 20,
+                    color: AppColors.primary,
+                  ),
+                  tooltip: 'Receive Stock',
+                  onPressed: onAdjustStock,
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                  tooltip: 'Edit',
+                  onPressed: onEdit,
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: AppColors.error,
+                  ),
+                  tooltip: 'Delete',
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildMobileLayout(
+    BuildContext context,
+    bool isOut,
+    bool isLow,
+    double stock,
+    String saleUnit,
+    String stockUnit,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _buildProductImage(product['image_url'] as String?),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product['name'] as String? ?? '',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  Text(
+                    'SKU: ${product['sku'] ?? 'N/A'}',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    saleUnit == stockUnit
+                        ? 'Unit: ${UnitUtils.label(saleUnit)}'
+                        : 'Sell: ${UnitUtils.label(saleUnit)} • Stock: ${UnitUtils.label(stockUnit)}',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${ShopSettings.currency}${(product['price'] as num? ?? 0).toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primaryLight,
+                  ),
+                ),
+                Text(
+                  UnitUtils.priceLabel(saleUnit),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+                if (product['cost'] != null)
+                  Text(
+                    'C: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(stockUnit)}',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: isOut
+                    ? AppColors.error.withValues(alpha: 0.12)
+                    : isLow
+                    ? AppColors.warning.withValues(alpha: 0.12)
+                    : AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                isOut ? 'Out' : UnitUtils.formatWithUnit(stock, stockUnit),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isOut
+                      ? AppColors.error
+                      : isLow
+                      ? AppColors.warning
+                      : AppColors.success,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.history,
+                    size: 20,
+                    color: AppColors.primaryLight,
+                  ),
+                  onPressed: onViewBatches,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(8),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.add_box_outlined,
+                    size: 20,
+                    color: AppColors.primary,
+                  ),
+                  onPressed: onAdjustStock,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(8),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                  onPressed: onEdit,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(8),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: AppColors.error,
+                  ),
+                  onPressed: onDelete,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(8),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProductImage(String? imagePath) {
+    if (imagePath != null &&
+        imagePath.isNotEmpty &&
+        File(imagePath).existsSync()) {
+      return Image.file(
+        File(imagePath),
+        width: 48,
+        height: 48,
+        fit: BoxFit.cover,
+      );
+    }
+    return Icon(
+      CategoryIconUtils.iconFor(categoryName),
+      color: AppColors.primaryLight,
+      size: 22,
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -1,0 +1,775 @@
+import 'package:flutter/material.dart';
+import '../../../core/services/shop_settings.dart';
+import '../../../core/services/session_service.dart';
+import '../../../core/theme/app_colors.dart';
+import '../data/customer_repository.dart';
+import 'customer_account_screen.dart';
+import 'customer_kopesha_detail_screen.dart';
+import '../../sales/presentation/receipt_service.dart';
+
+class KopeshaScreen extends StatefulWidget {
+  const KopeshaScreen({super.key});
+
+  @override
+  State<KopeshaScreen> createState() => _KopeshaScreenState();
+}
+
+class _KopeshaScreenState extends State<KopeshaScreen> {
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _customers = [];
+  bool _isLoading = true;
+  String _filter = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _isLoading = true);
+    final rows = await CustomerRepository.getKopeshaCustomers(
+      query: _searchController.text,
+      filter: _filter,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _customers = rows;
+      _isLoading = false;
+    });
+  }
+
+  double _money(dynamic v) => (v as num?)?.toDouble() ?? 0;
+  int _count(dynamic v) => (v as num?)?.toInt() ?? 0;
+
+  DateTime? _date(String? raw) =>
+      raw == null || raw.isEmpty ? null : DateTime.tryParse(raw);
+
+  bool _isPastDue(String? raw) {
+    final d = _date(raw);
+    if (d == null) {
+      return false;
+    }
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    return d.isBefore(today);
+  }
+
+  String _shortDate(String? raw) {
+    final d = _date(raw);
+    if (d == null) {
+      return 'No due date';
+    }
+    return '${d.month}/${d.day}/${d.year}';
+  }
+
+  String _risk(Map<String, dynamic> c) {
+    final overdueCount = _count(c['overdue_count']);
+    final overdueAmount = _money(c['overdue_amount']);
+    final outstanding = _money(c['outstanding_balance']);
+    final oldest = _date(c['oldest_overdue_date'] as String?);
+    final overdueDays = oldest == null
+        ? 0
+        : DateTime.now().difference(oldest).inDays;
+    if (overdueCount >= 2 ||
+        overdueAmount >= 250 ||
+        overdueDays >= 7 ||
+        outstanding >= 750) {
+      return 'High Risk';
+    }
+    if (overdueCount >= 1 ||
+        _count(c['due_today_count']) > 0 ||
+        outstanding >= 250) {
+      return 'Watch';
+    }
+    return 'Healthy';
+  }
+
+  Color _riskColor(Map<String, dynamic> c) {
+    final label = _risk(c);
+    if (label == 'High Risk') {
+      return AppColors.error;
+    }
+    if (label == 'Watch') {
+      return AppColors.warning;
+    }
+    return AppColors.success;
+  }
+
+  Future<void> _recordPayment(Map<String, dynamic> customer) async {
+    final outstanding = _money(
+      customer['outstanding_balance'] ?? customer['balance'],
+    );
+    final amountController = TextEditingController(
+      text: outstanding.toStringAsFixed(2),
+    );
+    final noteController = TextEditingController();
+    bool saving = false;
+    String? paymentGroupId;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text('Record Payment: ${customer['name']}'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Outstanding: ${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: AppColors.warning,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _ChipButton(
+                      label: '25%',
+                      onTap: () => amountController.text = (outstanding * 0.25)
+                          .toStringAsFixed(2),
+                    ),
+                    _ChipButton(
+                      label: '50%',
+                      onTap: () => amountController.text = (outstanding * 0.50)
+                          .toStringAsFixed(2),
+                    ),
+                    _ChipButton(
+                      label: 'Full',
+                      onTap: () => amountController.text = outstanding
+                          .toStringAsFixed(2),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Amount received',
+                    prefixText: '${ShopSettings.currency} ',
+                    prefixStyle: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    prefixIcon: const Icon(Icons.payments_outlined),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: noteController,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    prefixIcon: Icon(Icons.notes_outlined),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final amount = double.tryParse(
+                        amountController.text.trim(),
+                      );
+                      if (amount == null || amount <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Enter a valid payment amount'),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                        return;
+                      }
+                      setDialogState(() => saving = true);
+                      try {
+                        paymentGroupId = await CustomerRepository.recordPayment(
+                          customerId: customer['id'] as String,
+                          amount: amount,
+                          userId: SessionService.currentUserId.isNotEmpty
+                              ? SessionService.currentUserId
+                              : 'admin',
+                          note: noteController.text,
+                        );
+                        if (context.mounted) Navigator.pop(ctx, true);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$e'),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                        setDialogState(() => saving = false);
+                      }
+                    },
+              icon: saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text('Save Payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    amountController.dispose();
+    noteController.dispose();
+
+    if (saved == true && mounted) {
+      await _load();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kopesha payment recorded'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      if (paymentGroupId != null) {
+        await _showRepaymentReceipt(paymentGroupId!);
+      }
+    }
+  }
+
+  Future<void> _showRepaymentReceipt(String paymentGroupId) async {
+    final receipt = await CustomerRepository.getPaymentGroupReceipt(
+      paymentGroupId,
+    );
+    if (receipt == null || !mounted) {
+      return;
+    }
+
+    final total = (receipt['total_amount'] as num? ?? 0).toDouble();
+    await ReceiptService.showReceiptPreview(
+      context,
+      saleId: paymentGroupId,
+      total: total,
+      subtotal: total,
+      tax: 0,
+      discount: 0,
+      paymentType: 'repayment',
+      items:
+          receipt['items'] as List<Map<String, dynamic>>? ??
+          <Map<String, dynamic>>[],
+      customerName: receipt['customer_name'] as String?,
+      amountTendered: total,
+      changeGiven: 0,
+      previewTitle: 'Repayment Receipt Preview',
+      documentTitle: 'Repayment Receipt',
+      fileNamePrefix: 'repayment_receipt',
+      recordLabel: 'Payment',
+      note: receipt['note'] as String?,
+      cashierName: receipt['cashier_name'] as String?,
+      documentDate: receipt['received_at'] as String?,
+      showTenderedBreakdown: true,
+    );
+  }
+
+  Future<void> _openCreateAccountScreen() async {
+    final created = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const CustomerAccountScreen()),
+    );
+
+    if (created == null || !mounted) {
+      return;
+    }
+
+    _searchController.clear();
+    _filter = 'all';
+    await _load();
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${created['name']} account created'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  Future<void> _openStatement(Map<String, dynamic> customer) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            CustomerKopeshaDetailScreen(customerId: customer['id'] as String),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    await _load();
+  }
+
+  Widget _stat(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterButton(String label, String value) {
+    final selected = _filter == value;
+    return InkWell(
+      onTap: () {
+        _filter = value;
+        _load();
+      },
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.16)
+              : AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? AppColors.primaryLight : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.primaryLight : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final outstanding = _customers.fold<double>(
+      0.0,
+      (sum, c) => sum + _money(c['outstanding_balance']),
+    );
+    final dueToday = _customers
+        .where((c) => _count(c['due_today_count']) > 0)
+        .length;
+    final overdue = _customers
+        .where((c) => _count(c['overdue_count']) > 0)
+        .length;
+    final risky = _customers.where((c) => _risk(c) == 'High Risk').length;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        title: const Text('Kopesha'),
+        actions: [
+          FilledButton.icon(
+            onPressed: _openCreateAccountScreen,
+            icon: const Icon(Icons.person_add_alt_1, size: 18),
+            label: const Text('Create Account'),
+          ),
+          const SizedBox(width: 8),
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: Column(
+        children: [
+          Container(
+            color: AppColors.surface,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  onChanged: (_) => _load(),
+                  decoration: InputDecoration(
+                    hintText: 'Search customer name, phone, or email...',
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              _load();
+                            },
+                            icon: const Icon(Icons.clear, size: 18),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _filterButton('All Open', 'all'),
+                    _filterButton('Due Today', 'due_today'),
+                    _filterButton('Overdue', 'overdue'),
+                    _filterButton('Risky', 'risky'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: [
+                    _stat(
+                      'Outstanding',
+                      '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
+                      AppColors.warning,
+                    ),
+                    _stat(
+                      'Due Today',
+                      '$dueToday customers',
+                      AppColors.primary,
+                    ),
+                    _stat('Overdue', '$overdue customers', AppColors.error),
+                    _stat('High Risk', '$risky customers', AppColors.error),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Risk flag: 2+ overdue sales, overdue amount above ${ShopSettings.currency}250, overdue for 7+ days, or balance above ${ShopSettings.currency}750.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.9),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _customers.isEmpty
+                ? Center(
+                    child: Text(
+                      'No customers match this Kopesha filter right now.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(24),
+                    itemCount: _customers.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final c = _customers[index];
+                      final risk = _risk(c);
+                      final riskColor = _riskColor(c);
+                      final overdueCount = _count(c['overdue_count']);
+                      final dueTodayCount = _count(c['due_today_count']);
+                      return Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: riskColor.withValues(alpha: 0.14),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Icon(
+                                    overdueCount > 0
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.person_outline_rounded,
+                                    color: riskColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        c['name'] as String? ?? 'Customer',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        [
+                                              c['phone'] as String?,
+                                              c['email'] as String?,
+                                            ]
+                                            .where(
+                                              (value) =>
+                                                  value != null &&
+                                                  value.isNotEmpty,
+                                            )
+                                            .join(' | ')
+                                            .ifEmpty('No contact details'),
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _RiskBadge(
+                                            label: risk,
+                                            color: riskColor,
+                                          ),
+                                          if (dueTodayCount > 0)
+                                            const _RiskBadge(
+                                              label: 'Due Today',
+                                              color: AppColors.primary,
+                                            ),
+                                          if (overdueCount > 0)
+                                            _RiskBadge(
+                                              label: '$overdueCount Overdue',
+                                              color: AppColors.error,
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.warning,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Next due: ${_shortDate(c['next_due_date'] as String?)}',
+                                      style: TextStyle(
+                                        color:
+                                            _isPastDue(
+                                              c['next_due_date'] as String?,
+                                            )
+                                            ? AppColors.error
+                                            : AppColors.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight:
+                                            _isPastDue(
+                                              c['next_due_date'] as String?,
+                                            )
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _Info(
+                                    label: 'Open Sales',
+                                    value: '${_count(c['open_credit_count'])}',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _Info(
+                                    label: 'Overdue Amount',
+                                    value:
+                                        '${ShopSettings.currency}${_money(c['overdue_amount']).toStringAsFixed(2)}',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _Info(
+                                    label: 'Due Today',
+                                    value:
+                                        '${ShopSettings.currency}${_money(c['due_today_amount']).toStringAsFixed(2)}',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _openStatement(c),
+                                    icon: const Icon(
+                                      Icons.visibility_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('View Statement'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _recordPayment(c),
+                                    icon: const Icon(
+                                      Icons.payments_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Record Payment'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Info extends StatelessWidget {
+  final String label;
+  final String value;
+  const _Info({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+        ),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
+}
+
+class _RiskBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _RiskBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _ChipButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _ChipButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+extension on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
+}
