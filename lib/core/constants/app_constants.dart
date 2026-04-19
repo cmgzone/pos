@@ -3,8 +3,8 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // App-managed API endpoints
-  static const String apiBaseUrl = 'http://localhost:3000/api';
-  static const String socketUrl = 'http://localhost:3000';
+  static const String apiBaseUrl = 'https://pos-e0hs.onrender.com/api';
+  static const String socketUrl = 'https://pos-e0hs.onrender.com';
   static const String licenseSigningSecret =
       'velora-pos-dev-license-secret-change-me';
 
