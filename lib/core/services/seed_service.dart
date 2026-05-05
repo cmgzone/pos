@@ -21,6 +21,9 @@ class SeedService {
     debugPrint('[Seed] Seeding demo product data...');
     final now = DateTime.now().toIso8601String();
 
+    // ── Payment Methods ──
+    await _seedPaymentMethods(now);
+
     // ── Categories ──
     final catElectronics = _uuid.v4();
     final catAccessories = _uuid.v4();
@@ -229,5 +232,77 @@ class SeedService {
     debugPrint(
       '[Seed] Demo data seeded: ${categories.length} categories, ${productData.length} products',
     );
+  }
+
+  static Future<void> _seedPaymentMethods(String now) async {
+    // Check if payment methods already exist
+    final existing = await DatabaseService.queryAll('payment_methods');
+    if (existing.isNotEmpty) return;
+
+    debugPrint('[Seed] Seeding default payment methods...');
+
+    final paymentMethods = [
+      {
+        'id': _uuid.v4(),
+        'name': 'Cash',
+        'is_cash_drawer': 1,
+        'is_credit': 0,
+        'is_active': 1,
+        'sort_order': 0,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      },
+      {
+        'id': _uuid.v4(),
+        'name': 'Kopesha',
+        'is_cash_drawer': 0,
+        'is_credit': 1,
+        'is_active': 1,
+        'sort_order': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      },
+      {
+        'id': _uuid.v4(),
+        'name': 'M-Pesa',
+        'is_cash_drawer': 0,
+        'is_credit': 0,
+        'is_active': 1,
+        'sort_order': 2,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      },
+      {
+        'id': _uuid.v4(),
+        'name': 'Card',
+        'is_cash_drawer': 0,
+        'is_credit': 0,
+        'is_active': 1,
+        'sort_order': 3,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      },
+      {
+        'id': _uuid.v4(),
+        'name': 'Bank Transfer',
+        'is_cash_drawer': 0,
+        'is_credit': 0,
+        'is_active': 1,
+        'sort_order': 4,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      },
+    ];
+
+    for (final method in paymentMethods) {
+      await DatabaseService.insert('payment_methods', method);
+    }
+
+    debugPrint('[Seed] Seeded ${paymentMethods.length} payment methods');
   }
 }

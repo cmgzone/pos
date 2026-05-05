@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../../products/data/product_repository.dart';
 import '../data/purchase_repository.dart';
 
@@ -596,6 +598,67 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                                     ],
                                   ),
                             const SizedBox(height: 10),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 2,
+                                ),
+                                leading: const Icon(Icons.event_outlined),
+                                title: const Text('Expiry Date'),
+                                subtitle: Text(
+                                  line.expiryDate == null
+                                      ? 'Optional for this batch'
+                                      : '${ExpiryUtils.format(line.expiryDate)} - ${ExpiryUtils.statusLabel(line.expiryDate)}',
+                                ),
+                                trailing: Wrap(
+                                  spacing: 4,
+                                  children: [
+                                    if (line.expiryDate != null)
+                                      IconButton(
+                                        tooltip: 'Clear expiry date',
+                                        onPressed: () => setDialogState(
+                                          () => line.expiryDate = null,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.close,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    IconButton(
+                                      tooltip: 'Pick expiry date',
+                                      onPressed: () async {
+                                        final picked = await showDatePicker(
+                                          context: ctx,
+                                          initialDate:
+                                              line.expiryDate ??
+                                              DateTime.now().add(
+                                                const Duration(days: 30),
+                                              ),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2100),
+                                        );
+                                        if (picked != null) {
+                                          setDialogState(
+                                            () => line.expiryDate = picked,
+                                          );
+                                        }
+                                      },
+                                      icon: const Icon(
+                                        Icons.calendar_month_outlined,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
                             Align(
                               alignment: Alignment.centerRight,
                               child: Text(
@@ -672,6 +735,9 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                               'unit': product == null
                                   ? UnitUtils.defaultUnit
                                   : UnitUtils.purchaseUnitForProduct(product),
+                              'expiry_date': ExpiryUtils.toStorageString(
+                                line.expiryDate,
+                              ),
                             });
                           }
 
@@ -785,24 +851,60 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                       item['product_unit'] as String?;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: Text(
-                            item['product_name'] as String? ?? 'Item',
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item['product_name'] as String? ?? 'Item',
+                              ),
+                            ),
+                            Text(
+                              UnitUtils.formatWithUnit(quantity, unit),
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: 20),
+                            Text(
+                              '${ShopSettings.currency}${(quantity * unitCost).toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if ((item['expiry_date'] as String?)
+                                ?.trim()
+                                .isNotEmpty ==
+                            true)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warning.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  'Expiry: ${ExpiryUtils.format(item['expiry_date'])}',
+                                  style: const TextStyle(
+                                    color: AppColors.warning,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                        Text(
-                          UnitUtils.formatWithUnit(quantity, unit),
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Text(
-                          '${ShopSettings.currency}${(quantity * unitCost).toStringAsFixed(2)}',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
                       ],
                     ),
                   );
@@ -870,12 +972,18 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         title: const Text('Purchases & Suppliers'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Purchases'),
-            Tab(text: 'Suppliers'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(kTextTabBarHeight),
+          child: TrainingAnchor(
+            id: 'purchases.tabs',
+            child: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Purchases'),
+                Tab(text: 'Suppliers'),
+              ],
+            ),
+          ),
         ),
         actions: [
           IconButton(
@@ -888,42 +996,48 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
       ),
       body: Column(
         children: [
-          Container(
-            color: AppColors.surface,
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 12,
-              children: [
-                _PurchaseStatCard(
-                  icon: Icons.receipt_long_outlined,
-                  label: 'Invoices',
-                  value: '${_purchases.length}',
-                  color: AppColors.primary,
-                ),
-                _PurchaseStatCard(
-                  icon: Icons.store_mall_directory_outlined,
-                  label: 'Suppliers',
-                  value: '${_suppliers.length}',
-                  color: AppColors.secondary,
-                ),
-                _PurchaseStatCard(
-                  icon: Icons.payments_outlined,
-                  label: 'Total Spend',
-                  value:
-                      '${ShopSettings.currency}${totalSpend.toStringAsFixed(2)}',
-                  color: AppColors.success,
-                ),
-              ],
+          TrainingAnchor(
+            id: 'purchases.stats',
+            child: Container(
+              color: AppColors.surface,
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 12,
+                children: [
+                  _PurchaseStatCard(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Invoices',
+                    value: '${_purchases.length}',
+                    color: AppColors.primary,
+                  ),
+                  _PurchaseStatCard(
+                    icon: Icons.store_mall_directory_outlined,
+                    label: 'Suppliers',
+                    value: '${_suppliers.length}',
+                    color: AppColors.secondary,
+                  ),
+                  _PurchaseStatCard(
+                    icon: Icons.payments_outlined,
+                    label: 'Total Spend',
+                    value:
+                        '${ShopSettings.currency}${totalSpend.toStringAsFixed(2)}',
+                    color: AppColors.success,
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : TabBarView(
-                    controller: _tabController,
-                    children: [_buildPurchasesTab(), _buildSuppliersTab()],
-                  ),
+            child: TrainingAnchor(
+              id: 'purchases.list',
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [_buildPurchasesTab(), _buildSuppliersTab()],
+                    ),
+            ),
           ),
         ],
       ),
@@ -931,20 +1045,23 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
         animation: _tabController,
         builder: (context, _) {
           final onPurchasesTab = _tabController.index == 0;
-          return FloatingActionButton.extended(
-            onPressed: () async {
-              if (onPurchasesTab) {
-                await _showCreatePurchaseDialog();
-              } else {
-                await _showAddSupplierDialog();
-              }
-            },
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            icon: Icon(
-              onPurchasesTab ? Icons.add_business : Icons.person_add_alt,
+          return TrainingAnchor(
+            id: 'purchases.new',
+            child: FloatingActionButton.extended(
+              onPressed: () async {
+                if (onPurchasesTab) {
+                  await _showCreatePurchaseDialog();
+                } else {
+                  await _showAddSupplierDialog();
+                }
+              },
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: Icon(
+                onPurchasesTab ? Icons.add_business : Icons.person_add_alt,
+              ),
+              label: Text(onPurchasesTab ? 'New Purchase' : 'Add Supplier'),
             ),
-            label: Text(onPurchasesTab ? 'New Purchase' : 'Add Supplier'),
           );
         },
       ),
@@ -1153,6 +1270,7 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
 
 class _PurchaseLineDraft {
   String? productId;
+  DateTime? expiryDate;
   final TextEditingController quantityController = TextEditingController();
   final TextEditingController unitCostController = TextEditingController();
 

@@ -6,6 +6,7 @@ class UnitUtils {
 
   static const List<String> supportedUnits = <String>[
     'pcs',
+    'job',
     'kg',
     'g',
     'litre',
@@ -116,6 +117,24 @@ class UnitUtils {
         purchaseUnitForProduct(product) != stockUnit;
   }
 
+  static bool tracksStock(Map<String, dynamic> product) {
+    final value = product['track_stock'];
+    if (value is bool) {
+      return value;
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized != '0' &&
+          normalized != 'false' &&
+          normalized != 'no' &&
+          normalized != 'off';
+    }
+    return true;
+  }
+
   static double? convertSaleQuantityToStock(
     Map<String, dynamic> product,
     num? saleQuantity,
@@ -134,6 +153,8 @@ class UnitUtils {
     switch (normalize(unit)) {
       case 'pcs':
         return 'pcs';
+      case 'job':
+        return 'job';
       case 'kg':
         return 'kg';
       case 'g':
@@ -176,6 +197,8 @@ class UnitUtils {
         return 0.5;
       case 'cm':
         return 10.0;
+      case 'job':
+        return 1.0;
       default:
         return 1.0;
     }

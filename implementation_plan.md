@@ -114,6 +114,15 @@ This roadmap tracks the remaining work to move the current app from a strong loc
   - Filter by overdue days
   - Filter by customer contact
   - Filter by category and stock state
+- [ ] Service payment simplification
+  - Keep service workflow minimal for cashier use
+  - Charge a completed service directly inside the POS service page
+  - Reuse the existing real POS payment and sale-save logic under the hood
+  - Avoid forcing cashier to leave the service page just to open the cart
+  - Keep service statuses simple: `booked`, `checked_in`, `in_progress`, `completed`, `paid`, with `cancelled` only as an exception state
+  - Remove `ready` from the normal forward flow if it adds confusion during live cashier use
+  - Prevent duplicate charging for the same service order
+  - Show a clear paid state immediately after successful payment
 - [x] Full analyzer cleanup
   - [x] Resolve remaining lints and warnings
   - [x] Work around local analyzer permission issue
@@ -123,3 +132,4 @@ This roadmap tracks the remaining work to move the current app from a strong loc
 - The app is already strong in local POS checkout, inventory, Kopesha credit, repayments, and dashboard basics.
 - We will implement the roadmap one milestone at a time and keep this file updated as each item ships.
 - The next active milestone is `Receipt printing improvements`, with `Mobile polish` and `Search and filtering upgrades` still open after cloud sync completion shipped.
+- The next service UX improvement is `Service payment simplification`, focused on letting the cashier charge directly inside the POS service page with the fewest steps possible.

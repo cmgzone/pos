@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Obsidian Premium Dark Theme
-  static const Color background = Color(0xFF0F0F13);
-  static const Color surface = Color(0xFF1C1C22);
-  static const Color surfaceHighlight = Color(0xFF282830);
+  // Velvet Night Premium Dark Theme
+  static const Color background = Color(0xFF09090E); // Deep space Night
+  static const Color surface = Color(0xFF14141E); // Elevated dark surface
+  static const Color surfaceHighlight = Color(0xFF1F1F2E);
 
-  static const Color primary = Color(0xFF6B4EE6); // Vibrant Purple
-  static const Color primaryLight = Color(0xFF8B73FF);
-  static const Color secondary = Color(0xFF00E5FF); // Cyber Teal
+  static const Color primary = Color(0xFFFF2A5F); // Vibrant Neon Pink
+  static const Color primaryLight = Color(0xFFFF7E67); // Coral Orange
+  static const Color secondary = Color(0xFF00FFC2); // Cyber Mint
 
-  static const Color textPrimary = Color(0xFFF2F2F7);
-  static const Color textSecondary = Color(0xFFA0A0AB);
+  static const Color textPrimary = Color(0xFFF9F9FB);
+  static const Color textSecondary = Color(0xFFA0A0B0);
 
-  static const Color error = Color(0xFFFF453A);
-  static const Color success = Color(0xFF32D74B);
+  static const Color error = Color(0xFFFF3B30);
+  static const Color success = Color(0xFF34C759);
   static const Color warning = Color(0xFFFF9F0A);
 
-  static const Color border = Color(0xFF2C2C35);
+  static const Color border = Color(0xFF282838);
 }

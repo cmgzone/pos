@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/customer_repository.dart';
 import 'customer_account_screen.dart';
 import 'customer_kopesha_detail_screen.dart';
@@ -416,10 +417,13 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
         backgroundColor: AppColors.surface,
         title: const Text('Kopesha'),
         actions: [
-          FilledButton.icon(
-            onPressed: _openCreateAccountScreen,
-            icon: const Icon(Icons.person_add_alt_1, size: 18),
-            label: const Text('Create Account'),
+          TrainingAnchor(
+            id: 'kopesha.createAccount',
+            child: FilledButton.icon(
+              onPressed: _openCreateAccountScreen,
+              icon: const Icon(Icons.person_add_alt_1, size: 18),
+              label: const Text('Create Account'),
+            ),
           ),
           const SizedBox(width: 8),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
@@ -428,266 +432,278 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
       ),
       body: Column(
         children: [
-          Container(
-            color: AppColors.surface,
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchController,
-                  onChanged: (_) => _load(),
-                  decoration: InputDecoration(
-                    hintText: 'Search customer name, phone, or email...',
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      color: AppColors.textSecondary,
+          TrainingAnchor(
+            id: 'kopesha.search',
+            child: Container(
+              color: AppColors.surface,
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (_) => _load(),
+                    decoration: InputDecoration(
+                      hintText: 'Search customer name, phone, or email...',
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: AppColors.textSecondary,
+                      ),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                _load();
+                              },
+                              icon: const Icon(Icons.clear, size: 18),
+                            ),
                     ),
-                    suffixIcon: _searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              _load();
-                            },
-                            icon: const Icon(Icons.clear, size: 18),
-                          ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _filterButton('All Open', 'all'),
-                    _filterButton('Due Today', 'due_today'),
-                    _filterButton('Overdue', 'overdue'),
-                    _filterButton('Risky', 'risky'),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    _stat(
-                      'Outstanding',
-                      '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
-                      AppColors.warning,
-                    ),
-                    _stat(
-                      'Due Today',
-                      '$dueToday customers',
-                      AppColors.primary,
-                    ),
-                    _stat('Overdue', '$overdue customers', AppColors.error),
-                    _stat('High Risk', '$risky customers', AppColors.error),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Risk flag: 2+ overdue sales, overdue amount above ${ShopSettings.currency}250, overdue for 7+ days, or balance above ${ShopSettings.currency}750.',
-                  style: TextStyle(
-                    color: AppColors.textSecondary.withValues(alpha: 0.9),
-                    fontSize: 12,
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _filterButton('All Open', 'all'),
+                      _filterButton('Due Today', 'due_today'),
+                      _filterButton('Overdue', 'overdue'),
+                      _filterButton('Risky', 'risky'),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  TrainingAnchor(
+                    id: 'kopesha.stats',
+                    child: Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        _stat(
+                          'Outstanding',
+                          '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
+                          AppColors.warning,
+                        ),
+                        _stat(
+                          'Due Today',
+                          '$dueToday customers',
+                          AppColors.primary,
+                        ),
+                        _stat('Overdue', '$overdue customers', AppColors.error),
+                        _stat('High Risk', '$risky customers', AppColors.error),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Risk flag: 2+ overdue sales, overdue amount above ${ShopSettings.currency}250, overdue for 7+ days, or balance above ${ShopSettings.currency}750.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary.withValues(alpha: 0.9),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _customers.isEmpty
-                ? Center(
-                    child: Text(
-                      'No customers match this Kopesha filter right now.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary.withValues(alpha: 0.9),
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(24),
-                    itemCount: _customers.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final c = _customers[index];
-                      final risk = _risk(c);
-                      final riskColor = _riskColor(c);
-                      final overdueCount = _count(c['overdue_count']);
-                      final dueTodayCount = _count(c['due_today_count']);
-                      return Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: AppColors.border),
+            child: TrainingAnchor(
+              id: 'kopesha.list',
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _customers.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No customers match this Kopesha filter right now.',
+                        style: TextStyle(
+                          color: AppColors.textSecondary.withValues(
+                            alpha: 0.9,
+                          ),
                         ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    color: riskColor.withValues(alpha: 0.14),
-                                    borderRadius: BorderRadius.circular(16),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(24),
+                      itemCount: _customers.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final c = _customers[index];
+                        final risk = _risk(c);
+                        final riskColor = _riskColor(c);
+                        final overdueCount = _count(c['overdue_count']);
+                        final dueTodayCount = _count(c['due_today_count']);
+                        return Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      color: riskColor.withValues(alpha: 0.14),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Icon(
+                                      overdueCount > 0
+                                          ? Icons.warning_amber_rounded
+                                          : Icons.person_outline_rounded,
+                                      color: riskColor,
+                                    ),
                                   ),
-                                  child: Icon(
-                                    overdueCount > 0
-                                        ? Icons.warning_amber_rounded
-                                        : Icons.person_outline_rounded,
-                                    color: riskColor,
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          c['name'] as String? ?? 'Customer',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          [
+                                                c['phone'] as String?,
+                                                c['email'] as String?,
+                                              ]
+                                              .where(
+                                                (value) =>
+                                                    value != null &&
+                                                    value.isNotEmpty,
+                                              )
+                                              .join(' | ')
+                                              .ifEmpty('No contact details'),
+                                          style: const TextStyle(
+                                            color: AppColors.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            _RiskBadge(
+                                              label: risk,
+                                              color: riskColor,
+                                            ),
+                                            if (dueTodayCount > 0)
+                                              const _RiskBadge(
+                                                label: 'Due Today',
+                                                color: AppColors.primary,
+                                              ),
+                                            if (overdueCount > 0)
+                                              _RiskBadge(
+                                                label: '$overdueCount Overdue',
+                                                color: AppColors.error,
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        c['name'] as String? ?? 'Customer',
+                                        '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
                                         style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.warning,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        [
-                                              c['phone'] as String?,
-                                              c['email'] as String?,
-                                            ]
-                                            .where(
-                                              (value) =>
-                                                  value != null &&
-                                                  value.isNotEmpty,
-                                            )
-                                            .join(' | ')
-                                            .ifEmpty('No contact details'),
-                                        style: const TextStyle(
-                                          color: AppColors.textSecondary,
+                                        'Next due: ${_shortDate(c['next_due_date'] as String?)}',
+                                        style: TextStyle(
+                                          color:
+                                              _isPastDue(
+                                                c['next_due_date'] as String?,
+                                              )
+                                              ? AppColors.error
+                                              : AppColors.textSecondary,
                                           fontSize: 12,
+                                          fontWeight:
+                                              _isPastDue(
+                                                c['next_due_date'] as String?,
+                                              )
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
                                         ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          _RiskBadge(
-                                            label: risk,
-                                            color: riskColor,
-                                          ),
-                                          if (dueTodayCount > 0)
-                                            const _RiskBadge(
-                                              label: 'Due Today',
-                                              color: AppColors.primary,
-                                            ),
-                                          if (overdueCount > 0)
-                                            _RiskBadge(
-                                              label: '$overdueCount Overdue',
-                                              color: AppColors.error,
-                                            ),
-                                        ],
                                       ),
                                     ],
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.warning,
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _Info(
+                                      label: 'Open Sales',
+                                      value:
+                                          '${_count(c['open_credit_count'])}',
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: _Info(
+                                      label: 'Overdue Amount',
+                                      value:
+                                          '${ShopSettings.currency}${_money(c['overdue_amount']).toStringAsFixed(2)}',
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: _Info(
+                                      label: 'Due Today',
+                                      value:
+                                          '${ShopSettings.currency}${_money(c['due_today_amount']).toStringAsFixed(2)}',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _openStatement(c),
+                                      icon: const Icon(
+                                        Icons.visibility_outlined,
+                                        size: 18,
                                       ),
+                                      label: const Text('View Statement'),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Next due: ${_shortDate(c['next_due_date'] as String?)}',
-                                      style: TextStyle(
-                                        color:
-                                            _isPastDue(
-                                              c['next_due_date'] as String?,
-                                            )
-                                            ? AppColors.error
-                                            : AppColors.textSecondary,
-                                        fontSize: 12,
-                                        fontWeight:
-                                            _isPastDue(
-                                              c['next_due_date'] as String?,
-                                            )
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => _recordPayment(c),
+                                      icon: const Icon(
+                                        Icons.payments_rounded,
+                                        size: 18,
                                       ),
+                                      label: const Text('Record Payment'),
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _Info(
-                                    label: 'Open Sales',
-                                    value: '${_count(c['open_credit_count'])}',
                                   ),
-                                ),
-                                Expanded(
-                                  child: _Info(
-                                    label: 'Overdue Amount',
-                                    value:
-                                        '${ShopSettings.currency}${_money(c['overdue_amount']).toStringAsFixed(2)}',
-                                  ),
-                                ),
-                                Expanded(
-                                  child: _Info(
-                                    label: 'Due Today',
-                                    value:
-                                        '${ShopSettings.currency}${_money(c['due_today_amount']).toStringAsFixed(2)}',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _openStatement(c),
-                                    icon: const Icon(
-                                      Icons.visibility_outlined,
-                                      size: 18,
-                                    ),
-                                    label: const Text('View Statement'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _recordPayment(c),
-                                    icon: const Icon(
-                                      Icons.payments_rounded,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Record Payment'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ),
         ],
       ),

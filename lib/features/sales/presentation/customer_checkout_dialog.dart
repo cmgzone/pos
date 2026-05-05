@@ -1,10 +1,14 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
+import '../../settings/data/payment_method_provider.dart';
 
-class CustomerCheckoutDialog extends StatefulWidget {
+class CustomerCheckoutDialog extends ConsumerStatefulWidget {
   final double total;
 
   const CustomerCheckoutDialog({super.key, required this.total});
@@ -20,10 +24,10 @@ class CustomerCheckoutDialog extends StatefulWidget {
   }
 
   @override
-  State<CustomerCheckoutDialog> createState() => _CustomerCheckoutDialogState();
+  ConsumerState<CustomerCheckoutDialog> createState() => _CustomerCheckoutDialogState();
 }
 
-class _CustomerCheckoutDialogState extends State<CustomerCheckoutDialog> {
+class _CustomerCheckoutDialogState extends ConsumerState<CustomerCheckoutDialog> {
   final _searchController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -35,6 +39,7 @@ class _CustomerCheckoutDialogState extends State<CustomerCheckoutDialog> {
   bool _showCreateForm = false;
   bool _isCreating = false;
   DateTime _selectedDueDate = DateTime.now().add(const Duration(days: 14));
+  Map<String, dynamic>? _selectedPaymentMethod;
 
   @override
   void initState() {
@@ -181,11 +186,16 @@ class _CustomerCheckoutDialogState extends State<CustomerCheckoutDialog> {
     final currentBalance =
         (_selectedCustomer?['balance'] as num?)?.toDouble() ?? 0;
     final projectedBalance = currentBalance + widget.total;
-    final dialogHeight = MediaQuery.of(context).size.height * 0.72;
+    final viewportHeight = MediaQuery.of(context).size.height;
+    final contentHeight = math.max(
+      320,
+      math.min(520, viewportHeight - 240),
+    ).toDouble();
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       contentPadding: const EdgeInsets.all(24),
       actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -224,213 +234,287 @@ class _CustomerCheckoutDialogState extends State<CustomerCheckoutDialog> {
       ),
       content: SizedBox(
         width: 560,
-        height: dialogHeight > 560 ? 560 : dialogHeight,
+        height: contentHeight,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.22),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.payments_outlined,
-                    color: AppColors.primaryLight,
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Sale Total',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 12,
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.22),
                         ),
                       ),
-                      Text(
-                        '${ShopSettings.currency}${widget.total.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.payments_outlined,
+                            color: AppColors.primaryLight,
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Sale Total',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                '${ShopSettings.currency}${widget.total.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Payment Method',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 10),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final methodsAsync = ref.watch(
+                          activePaymentMethodsProvider,
+                        );
+                        return methodsAsync.when(
+                          data: (methods) {
+                            if (methods.isEmpty) {
+                              return const Text(
+                                'No active payment methods.',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
+                              );
+                            }
+                            if (_selectedPaymentMethod == null &&
+                                methods.isNotEmpty) {
+                              // Keep a real default selection once methods load.
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) {
+                                  setState(() {
+                                    _selectedPaymentMethod = methods.first;
+                                  });
+                                }
+                              });
+                            }
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: methods.map((m) {
+                                final isSelected =
+                                    _selectedPaymentMethod?['id'] == m['id'];
+                                return _DueDateChip(
+                                  label: m['name'],
+                                  selected: isSelected,
+                                  onTap: () => setState(
+                                    () => _selectedPaymentMethod = m,
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          },
+                          loading: () => const CircularProgressIndicator(),
+                          error: (e, st) =>
+                              Text('Error loading payment methods: $e'),
+                        );
+                      },
+                    ),
+                    if (_selectedPaymentMethod?['name']?.toLowerCase() ==
+                        'kopesha') ...[
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Kopesha Due Date',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _DueDateChip(
+                            label: '7 Days',
+                            selected: _matchesPreset(7),
+                            onTap: () => _setDueInDays(7),
+                          ),
+                          _DueDateChip(
+                            label: '14 Days',
+                            selected: _matchesPreset(14),
+                            onTap: () => _setDueInDays(14),
+                          ),
+                          _DueDateChip(
+                            label: '30 Days',
+                            selected: _matchesPreset(30),
+                            onTap: () => _setDueInDays(30),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _pickCustomDueDate,
+                            icon: const Icon(Icons.event_outlined, size: 18),
+                            label: Text(_dueDateLabel(_selectedDueDate)),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Kopesha Due Date',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _DueDateChip(
-                  label: '7 Days',
-                  selected: _matchesPreset(7),
-                  onTap: () => _setDueInDays(7),
-                ),
-                _DueDateChip(
-                  label: '14 Days',
-                  selected: _matchesPreset(14),
-                  onTap: () => _setDueInDays(14),
-                ),
-                _DueDateChip(
-                  label: '30 Days',
-                  selected: _matchesPreset(30),
-                  onTap: () => _setDueInDays(30),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _pickCustomDueDate,
-                  icon: const Icon(Icons.event_outlined, size: 18),
-                  label: Text(_dueDateLabel(_selectedDueDate)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              controller: _searchController,
-              onChanged: _loadCustomers,
-              decoration: InputDecoration(
-                hintText: 'Search customer by name, phone, or email',
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: AppColors.textSecondary,
-                ),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadCustomers();
-                        },
-                      ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                const Text(
-                  'Choose Customer',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: _openCreateAccountScreen,
-                  icon: const Icon(Icons.person_add_alt_1, size: 18),
-                  label: const Text('Add Customer'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (_showCreateForm) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  children: [
+                    const SizedBox(height: 18),
                     TextField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Customer Name *',
-                        prefixIcon: Icon(Icons.person_outline),
+                      controller: _searchController,
+                      onChanged: _loadCustomers,
+                      decoration: InputDecoration(
+                        hintText: 'Search customer by name, phone, or email',
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: AppColors.textSecondary,
+                        ),
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _loadCustomers();
+                                },
+                              ),
                       ),
                     ),
                     const SizedBox(height: 14),
                     Row(
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _phoneController,
-                            decoration: const InputDecoration(
-                              labelText: 'Phone',
-                              prefixIcon: Icon(Icons.phone_outlined),
-                            ),
+                        const Expanded(
+                          child: Text(
+                            'Choose Customer (Optional unless Kopesha)',
+                            style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: TextField(
-                            controller: _emailController,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email_outlined),
-                            ),
-                          ),
+                        TextButton.icon(
+                          onPressed: _openCreateAccountScreen,
+                          icon: const Icon(Icons.person_add_alt_1, size: 18),
+                          label: const Text('Add Customer'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _isCreating ? null : _createCustomer,
-                        icon: _isCreating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                    const SizedBox(height: 10),
+                    if (_showCreateForm) ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHighlight,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _nameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Customer Name *',
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _phoneController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Phone',
+                                      prefixIcon: Icon(
+                                        Icons.phone_outlined,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              )
-                            : const Icon(Icons.person_add_alt_1, size: 18),
-                        label: const Text('Create Customer'),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _emailController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Email',
+                                      prefixIcon: Icon(Icons.email_outlined),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: _isCreating ? null : _createCustomer,
+                                icon: _isCreating
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.person_add_alt_1,
+                                        size: 18,
+                                      ),
+                                label: const Text('Create Customer'),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (_selectedCustomer != null)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.warning.withValues(alpha: 0.24),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Selected: ${_selectedCustomer!['name']}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Balance after this sale: ${ShopSettings.currency}${projectedBalance.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                color: AppColors.warning,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-            ],
-            if (_selectedCustomer != null)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.warning.withValues(alpha: 0.24),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Selected: ${_selectedCustomer!['name']}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Balance after this sale: ${ShopSettings.currency}${projectedBalance.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            ),
+            const SizedBox(height: 12),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -600,14 +684,35 @@ class _CustomerCheckoutDialogState extends State<CustomerCheckoutDialog> {
           child: const Text('Cancel'),
         ),
         ElevatedButton.icon(
-          onPressed: _selectedCustomer == null
-              ? null
-              : () => Navigator.pop(context, {
-                  'customer': _selectedCustomer,
-                  'dueDate': _dueDateStorage(_selectedDueDate),
-                }),
-          icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
-          label: const Text('Use For Kopesha'),
+          onPressed: () {
+            final isKopesha =
+                _selectedPaymentMethod?['name']?.toLowerCase() == 'kopesha';
+            if (isKopesha && _selectedCustomer == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Customer is required for Kopesha'),
+                  backgroundColor: AppColors.warning,
+                ),
+              );
+              return;
+            }
+            if (_selectedPaymentMethod == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select a payment method'),
+                  backgroundColor: AppColors.warning,
+                ),
+              );
+              return;
+            }
+            Navigator.pop(context, {
+              'customer': _selectedCustomer,
+              'dueDate': _dueDateStorage(_selectedDueDate),
+              'paymentMethod': _selectedPaymentMethod,
+            });
+          },
+          icon: const Icon(Icons.check_circle_outline, size: 18),
+          label: const Text('Complete Checkout'),
         ),
       ],
     );

@@ -11,6 +11,9 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
 });
 
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
+final posProductTypeFilterProvider = StateProvider<ProductTypeFilter>(
+  (ref) => ProductTypeFilter.all,
+);
 
 // ──────────── Product Providers ────────────
 
@@ -32,16 +35,20 @@ final filteredProductsProvider = FutureProvider<List<Map<String, dynamic>>>((
 ) async {
   final search = ref.watch(productSearchProvider);
   final categoryId = ref.watch(selectedCategoryProvider);
+  final typeFilter = ref.watch(posProductTypeFilterProvider);
 
   if (search.isNotEmpty) {
-    return ProductRepository.search(search);
+    return ProductRepository.searchForPos(
+      search,
+      categoryId: categoryId,
+      typeFilter: typeFilter,
+    );
   }
 
-  if (categoryId != null) {
-    return ProductRepository.getAll(categoryId: categoryId);
-  }
-
-  return ProductRepository.getAll();
+  return ProductRepository.getAll(
+    categoryId: categoryId,
+    typeFilter: typeFilter,
+  );
 });
 
 final lowStockProductsProvider = FutureProvider<List<Map<String, dynamic>>>((

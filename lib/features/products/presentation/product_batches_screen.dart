@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 
 class ProductBatchesScreen extends StatefulWidget {
@@ -33,7 +34,14 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
       FROM stock_batches sb
       LEFT JOIN purchase_invoices p ON p.id = sb.purchase_id
       WHERE sb.product_id = ?
-      ORDER BY sb.received_at DESC
+      ORDER BY
+        CASE WHEN sb.quantity_remaining > 0 THEN 0 ELSE 1 END,
+        CASE
+          WHEN sb.expiry_date IS NULL OR TRIM(sb.expiry_date) = '' THEN 1
+          ELSE 0
+        END,
+        date(sb.expiry_date) ASC,
+        sb.received_at DESC
       ''',
       [widget.product['id']],
     );
@@ -72,6 +80,13 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
         final unit = UnitUtils.stockUnitForProduct(widget.product);
         final isActive = (b['quantity_remaining'] as num? ?? 0).toDouble() > 0;
         final unitCost = (b['unit_cost'] as num).toDouble();
+        final expiryStatus = ExpiryUtils.statusFor(b['expiry_date']);
+        final expiryColor = switch (expiryStatus) {
+          ExpiryStatus.expired => AppColors.error,
+          ExpiryStatus.expiringSoon => AppColors.warning,
+          ExpiryStatus.ok => AppColors.success,
+          ExpiryStatus.unknown => AppColors.textSecondary,
+        };
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -101,23 +116,60 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      isActive ? 'Active Batch' : 'Finished Batch',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isActive
-                            ? AppColors.primaryLight
-                            : AppColors.textSecondary,
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          isActive ? 'Active Batch' : 'Finished Batch',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isActive
+                                ? AppColors.primaryLight
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                        if ((b['expiry_date'] as String?)?.trim().isNotEmpty ==
+                            true)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: expiryColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              ExpiryUtils.statusLabel(b['expiry_date']),
+                              style: TextStyle(
+                                color: expiryColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Received: ${_formatDate(b['received_at'] as String)}',
+                      'Received: ${_formatDate(b['received_at'])}',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    if ((b['expiry_date'] as String?)?.trim().isNotEmpty ==
+                        true)
+                      Text(
+                        'Expiry: ${ExpiryUtils.format(b['expiry_date'])}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: expiryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     if ((b['supplier_name'] as String?)?.trim().isNotEmpty ==
                         true)
                       Text(
@@ -138,7 +190,7 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
                       ),
                     if (!isActive && b['finished_at'] != null)
                       Text(
-                        'Finished: ${_formatDate(b['finished_at'] as String)}',
+                        'Finished: ${_formatDate(b['finished_at'])}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
@@ -171,12 +223,11 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
     );
   }
 
-  String _formatDate(String dateStr) {
-    try {
-      final dt = DateTime.parse(dateStr);
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return dateStr;
+  String _formatDate(Object? value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? '');
+    if (parsed == null) {
+      return value?.toString() ?? '';
     }
+    return '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
   }
 }

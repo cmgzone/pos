@@ -15,6 +15,11 @@ import 'package:pos_app/core/services/sync_settings_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
 import 'package:pos_app/features/auth/data/user_repository.dart';
 import 'package:pos_app/features/auth/presentation/login_screen.dart';
+import 'package:pos_app/features/services/data/service_repository.dart';
+import 'package:pos_app/features/training/application/training_controller.dart';
+import 'package:pos_app/features/training/presentation/training_hub_screen.dart';
+import 'package:pos_app/features/training/widgets/training_anchor.dart';
+import 'package:pos_app/features/settings/presentation/payment_methods_section.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -34,6 +39,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _taxController;
   late TextEditingController _currencyController;
   late TextEditingController _footerController;
+  late TextEditingController _baysController;
   bool _autoSyncEnabled = true;
 
   bool _saving = false;
@@ -69,6 +75,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ..addListener(_markChanged);
     _footerController = TextEditingController(text: ShopSettings.receiptFooter)
       ..addListener(_markChanged);
+    _baysController = TextEditingController(
+      text: ShopSettings.carwashBaysCount.toString(),
+    )..addListener(_markChanged);
     _autoSyncEnabled = SyncSettingsService.autoSyncEnabled;
 
     _loadBackups();
@@ -92,6 +101,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _taxController.dispose();
     _currencyController.dispose();
     _footerController.dispose();
+    _baysController.dispose();
     super.dispose();
   }
 
@@ -107,6 +117,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       await ShopSettings.setCurrency(_currencyController.text.trim());
       await ShopSettings.setReceiptFooter(_footerController.text.trim());
+      await ShopSettings.setCarwashBaysCount(
+        int.tryParse(_baysController.text) ?? 4,
+      );
       await SyncSettingsService.setAutoSyncEnabled(_autoSyncEnabled);
       await ref
           .read(syncControllerProvider.notifier)
@@ -175,6 +188,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final passwordController = TextEditingController();
     String role = RolePermissions.cashier;
     bool saving = false;
+    bool showPassword = false;
 
     final created = await showDialog<bool>(
       context: context,
@@ -209,10 +223,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showPassword,
+                  decoration: InputDecoration(
                     labelText: 'Temporary password',
-                    prefixIcon: Icon(Icons.lock_outline),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      tooltip: showPassword ? 'Hide password' : 'Show password',
+                      icon: Icon(
+                        showPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () =>
+                          setDialogState(() => showPassword = !showPassword),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -308,9 +332,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _updateTeamRole(String userId, String role) async {
     try {
       await UserRepository.updateRole(userId: userId, role: role);
-      if (userId == SessionService.currentUserId) {
-        await SessionService.updateRole(role);
-      }
       await _loadTeamMembers();
       if (!mounted) {
         return;
@@ -331,11 +352,398 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _showTeamAccessDialog(Map<String, dynamic> user) async {
+    final userId = user['id'] as String? ?? '';
+    final role = RolePermissions.normalizeRole(user['role'] as String?);
+    if (userId.isEmpty) {
+      return;
+    }
+
+    if (role == RolePermissions.admin) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Admin Access'),
+          content: const Text(
+            'Admin accounts always keep full feature access, full service visibility, and both POS modes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final services = await ServiceRepository.getServices();
+    if (!mounted) {
+      return;
+    }
+
+    final initialFeatures = UserAccessProfile.resolveFeatureAccess(
+      role: role,
+      rawFeatureAccessJson: user['feature_access_json'] as String?,
+    );
+    final selectedFeatures = initialFeatures
+        .where(UserAccessProfile.configurableFeatures.contains)
+        .toSet();
+    final initialAllowedServiceIds = UserAccessProfile.resolveAllowedServiceIds(
+      role: role,
+      rawAllowedServiceIdsJson: user['allowed_service_ids_json'] as String?,
+    );
+    final selectedServiceIds = initialAllowedServiceIds.toSet();
+    var allowAllServices = initialAllowedServiceIds.isEmpty;
+    var posMode = UserAccessProfile.resolvePosMode(
+      role: role,
+      rawPosMode: user['pos_mode'] as String?,
+    );
+    var serviceOrderScope = UserAccessProfile.resolveServiceOrderScope(
+      role: role,
+      rawScope: user['service_order_scope'] as String?,
+    );
+    var saving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text('Access for ${user['name'] as String? ?? 'Staff'}'),
+          content: SizedBox(
+            width: 720,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          RolePermissions.label(role),
+                          style: const TextStyle(
+                            color: AppColors.primaryLight,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHighlight,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Text(
+                          'Settings stays available for password and sign out',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Feature Access',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: UserAccessProfile.configurableFeatures
+                        .map(
+                          (featureKey) => FilterChip(
+                            label: Text(
+                              UserAccessProfile.featureLabel(featureKey),
+                            ),
+                            selected: selectedFeatures.contains(featureKey),
+                            onSelected: (selected) {
+                              setDialogState(() {
+                                if (selected) {
+                                  selectedFeatures.add(featureKey);
+                                } else {
+                                  selectedFeatures.remove(featureKey);
+                                }
+                              });
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'POS Mode',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: UserAccessProfile.posModeProducts,
+                        icon: Icon(Icons.inventory_2_outlined),
+                        label: Text('Products Only'),
+                      ),
+                      ButtonSegment(
+                        value: UserAccessProfile.posModeBoth,
+                        icon: Icon(Icons.view_week_outlined),
+                        label: Text('Both'),
+                      ),
+                      ButtonSegment(
+                        value: UserAccessProfile.posModeServices,
+                        icon: Icon(Icons.design_services_outlined),
+                        label: Text('Services Only'),
+                      ),
+                    ],
+                    selected: {posMode},
+                    onSelectionChanged: (selection) {
+                      setDialogState(() => posMode = selection.first);
+                    },
+                    showSelectedIcon: false,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'This controls what appears inside the POS screen for this account.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Service Order Visibility',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: UserAccessProfile.serviceOrderScopeAllVisibleServices,
+                        icon: Icon(Icons.visibility_outlined),
+                        label: Text('All Allowed'),
+                      ),
+                      ButtonSegment(
+                        value: UserAccessProfile.serviceOrderScopeAssignedOnly,
+                        icon: Icon(Icons.person_pin_outlined),
+                        label: Text('Assigned Only'),
+                      ),
+                    ],
+                    selected: {serviceOrderScope},
+                    onSelectionChanged: (selection) {
+                      setDialogState(
+                        () => serviceOrderScope = selection.first,
+                      );
+                    },
+                    showSelectedIcon: false,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Controls which service orders this staff member can see in the Services tab.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: allowAllServices,
+                    title: const Text(
+                      'Allow all services',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text(
+                      'Turn this off to choose specific services this staff member can see.',
+                    ),
+                    onChanged: (value) {
+                      setDialogState(() => allowAllServices = value);
+                    },
+                  ),
+                  if (!allowAllServices) ...[
+                    const SizedBox(height: 8),
+                    if (services.isEmpty)
+                      const Text(
+                        'No services created yet.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: services.map((service) {
+                          final serviceId = service['id'] as String? ?? '';
+                          final serviceName =
+                              service['name'] as String? ?? 'Service';
+                          return FilterChip(
+                            label: Text(serviceName),
+                            selected: selectedServiceIds.contains(serviceId),
+                            onSelected: (selected) {
+                              setDialogState(() {
+                                if (selected) {
+                                  selectedServiceIds.add(serviceId);
+                                } else {
+                                  selectedServiceIds.remove(serviceId);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!allowAllServices &&
+                          services.isNotEmpty &&
+                          selectedServiceIds.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Choose at least one service or enable all services.',
+                            ),
+                            backgroundColor: AppColors.warning,
+                          ),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => saving = true);
+                      try {
+                        await UserRepository.updateAccess(
+                          userId: userId,
+                          featureAccess: selectedFeatures.toList(),
+                          allowedServiceIds: allowAllServices
+                              ? const []
+                              : selectedServiceIds.toList(),
+                          posMode: posMode,
+                          serviceOrderScope: serviceOrderScope,
+                        );
+                        if (context.mounted) {
+                          Navigator.pop(ctx, true);
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$e'),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                        setDialogState(() => saving = false);
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Save Access'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true) {
+      await _loadTeamMembers();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Staff access updated'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  String _buildStaffAccessSummary(Map<String, dynamic> user) {
+    final role = RolePermissions.normalizeRole(user['role'] as String?);
+    if (role == RolePermissions.admin) {
+      return 'Full access • POS: Both • Services: All';
+    }
+    final features = UserAccessProfile.resolveFeatureAccess(
+      role: role,
+      rawFeatureAccessJson: user['feature_access_json'] as String?,
+    );
+    final services = UserAccessProfile.resolveAllowedServiceIds(
+      role: role,
+      rawAllowedServiceIdsJson: user['allowed_service_ids_json'] as String?,
+    );
+    final posMode = UserAccessProfile.resolvePosMode(
+      role: role,
+      rawPosMode: user['pos_mode'] as String?,
+    );
+    final featureCount = features
+        .where((feature) => feature != UserAccessProfile.featureSettings)
+        .length;
+    final serviceSummary = services.isEmpty
+        ? 'All services'
+        : '${services.length} services';
+    return '$featureCount features • POS: ${_labelForPosMode(posMode)} • $serviceSummary';
+  }
+
+  String _labelForPosMode(String posMode) {
+    switch (posMode) {
+      case UserAccessProfile.posModeProducts:
+        return 'Products only';
+      case UserAccessProfile.posModeServices:
+        return 'Services only';
+      default:
+        return 'Both';
+    }
+  }
+
   Future<void> _showChangePasswordDialog() async {
     final currentController = TextEditingController();
     final newController = TextEditingController();
     final confirmController = TextEditingController();
     bool saving = false;
+    bool showCurrentPassword = false;
+    bool showNewPassword = false;
+    bool showConfirmPassword = false;
 
     await showDialog<void>(
       context: context,
@@ -353,28 +761,67 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 TextField(
                   controller: currentController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showCurrentPassword,
+                  decoration: InputDecoration(
                     labelText: 'Current password',
-                    prefixIcon: Icon(Icons.lock_clock_outlined),
+                    prefixIcon: const Icon(Icons.lock_clock_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: showCurrentPassword
+                          ? 'Hide password'
+                          : 'Show password',
+                      icon: Icon(
+                        showCurrentPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () => setDialogState(
+                        () => showCurrentPassword = !showCurrentPassword,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: newController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showNewPassword,
+                  decoration: InputDecoration(
                     labelText: 'New password',
-                    prefixIcon: Icon(Icons.lock_outline),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      tooltip: showNewPassword
+                          ? 'Hide password'
+                          : 'Show password',
+                      icon: Icon(
+                        showNewPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () => setDialogState(
+                        () => showNewPassword = !showNewPassword,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: confirmController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showConfirmPassword,
+                  decoration: InputDecoration(
                     labelText: 'Confirm new password',
-                    prefixIcon: Icon(Icons.verified_user_outlined),
+                    prefixIcon: const Icon(Icons.verified_user_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: showConfirmPassword
+                          ? 'Hide password'
+                          : 'Show password',
+                      icon: Icon(
+                        showConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () => setDialogState(
+                        () => showConfirmPassword = !showConfirmPassword,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -999,6 +1446,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final syncState = ref.watch(syncControllerProvider);
+    final training = ref.watch(trainingControllerProvider);
+    final progressPercent = (training.completionRatio * 100).round();
 
     return Scaffold(
       appBar: AppBar(
@@ -1032,6 +1481,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildSectionHeader(Icons.school_outlined, 'Training & Help'),
+                const SizedBox(height: 4),
+                const Text(
+                  'Replay guided tours for the live POS, inventory, customers, reports, and settings experience.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TrainingAnchor(
+                  id: 'settings.training',
+                  child: _buildCard([
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _buildTrainingMetric(
+                          'Modules',
+                          '${training.completedModuleCount}/${training.availableModuleCount}',
+                          AppColors.success,
+                        ),
+                        _buildTrainingMetric(
+                          'Progress',
+                          '$progressPercent%',
+                          AppColors.primary,
+                        ),
+                        _buildTrainingMetric(
+                          'User',
+                          SessionService.currentUserName,
+                          AppColors.warning,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Training progress is saved separately for each signed-in staff member.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const TrainingHubScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.play_circle_outline, size: 18),
+                          label: const Text('Open Training Hub'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: training.availableModuleCount == 0
+                              ? null
+                              : () => ref
+                                    .read(trainingControllerProvider)
+                                    .startFullTour(),
+                          icon: const Icon(Icons.route_outlined, size: 18),
+                          label: const Text('Start Full Tour'),
+                        ),
+                      ],
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 32),
                 _buildSectionHeader(
                   Icons.admin_panel_settings_outlined,
                   'My Account',
@@ -1045,7 +1563,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildAccountCard(),
+                TrainingAnchor(
+                  id: 'settings.account',
+                  child: _buildAccountCard(),
+                ),
                 if (_canManageUsers) ...[
                   const SizedBox(height: 32),
                   _buildSectionHeader(Icons.groups_outlined, 'Team Access'),
@@ -1058,7 +1579,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildTeamCard(),
+                  TrainingAnchor(id: 'settings.team', child: _buildTeamCard()),
                 ],
                 if (!_canManageOperationalSettings) ...[
                   const SizedBox(height: 32),
@@ -1175,6 +1696,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ]),
                   const SizedBox(height: 32),
+                  _buildSectionHeader(
+                    Icons.garage_outlined,
+                    'Operational Settings',
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCard([
+                    _buildField(
+                      'Number of Car Wash Bays',
+                      'e.g. 4',
+                      _baysController,
+                      Icons.local_car_wash_outlined,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      keyboardType: TextInputType.number,
+                    ),
+                  ]),
+                  const SizedBox(height: 32),
+                  _buildSectionHeader(Icons.payment_outlined, 'Payment Methods'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Define custom payment options available during checkout.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const PaymentMethodsSection(),
+                  const SizedBox(height: 32),
                   _buildSectionHeader(Icons.cloud_sync_outlined, 'Cloud Sync'),
                   const SizedBox(height: 4),
                   const Text(
@@ -1185,7 +1734,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildSyncCard(syncState),
+                  TrainingAnchor(
+                    id: 'settings.sync',
+                    child: _buildSyncCard(syncState),
+                  ),
                   const SizedBox(height: 32),
                   _buildSectionHeader(
                     Icons.backup_outlined,
@@ -1200,7 +1752,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildBackupCard(),
+                  TrainingAnchor(
+                    id: 'settings.backup',
+                    child: _buildBackupCard(),
+                  ),
                   const SizedBox(height: 32),
                   _buildSectionHeader(
                     Icons.preview_outlined,
@@ -1339,47 +1894,65 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.border),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user['name'] as String? ?? 'User',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          user['email'] as String? ?? '',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                  Text(
+                    user['name'] as String? ?? 'User',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    user['email'] as String? ?? '',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: 170,
-                    child: DropdownButtonFormField<String>(
-                      initialValue: selectedRole,
-                      decoration: const InputDecoration(labelText: 'Role'),
-                      items: RolePermissions.allRoles
-                          .map(
-                            (role) => DropdownMenuItem(
-                              value: role,
-                              child: Text(RolePermissions.label(role)),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null && value != selectedRole) {
-                          _updateTeamRole(userId, value);
-                        }
-                      },
+                  const SizedBox(height: 6),
+                  Text(
+                    _buildStaffAccessSummary(user),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: 180,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedRole,
+                          decoration: const InputDecoration(labelText: 'Role'),
+                          items: RolePermissions.allRoles
+                              .map(
+                                (role) => DropdownMenuItem(
+                                  value: role,
+                                  child: Text(RolePermissions.label(role)),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null && value != selectedRole) {
+                              _updateTeamRole(userId, value);
+                            }
+                          },
+                        ),
+                      ),
+                      Tooltip(
+                        message: selectedRole == RolePermissions.admin
+                            ? 'Admins always keep full access'
+                            : 'Edit feature, service, and POS access',
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showTeamAccessDialog(user),
+                          icon: const Icon(Icons.tune, size: 18),
+                          label: const Text('Access'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1582,6 +2155,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               color: Colors.black45,
               fontStyle: FontStyle.italic,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrainingMetric(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
           ),
         ],
       ),

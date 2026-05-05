@@ -1,16 +1,42 @@
-# pos_app
+# Velora POS
 
-A new Flutter project.
+Velora POS is a Flutter point-of-sale app with:
 
-## Getting Started
+- local-first SQLite storage for offline use
+- a Node.js sync/auth backend
+- Neon Postgres for cloud data
 
-This project is a starting point for a Flutter application.
+## Project Structure
 
-A few resources to get you started if this is your first Flutter project:
+- `lib/`: Flutter POS app
+- `backend/`: Express API backed by Neon
+- `admin-web/`: separate web admin frontend
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Neon Migration Notes
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+This project already uses Neon for the backend database. The important
+production setup is:
+
+1. Deploy the backend API somewhere reachable from the app
+2. Point that backend at Neon with `NEON_DATABASE_URL`
+3. Build the Flutter app with your API URL and matching license secret
+
+Neon does not replace the Express API in this repo. It replaces the hosted
+Postgres database behind that API.
+
+## Run The Backend
+
+See [backend/README.md](backend/README.md).
+
+## Run The Flutter App
+
+Example:
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=https://your-api-host.example.com/api \
+  --dart-define=LICENSE_SIGNING_SECRET=replace-with-the-same-secret
+```
+
+If you do not pass `API_BASE_URL`, the app falls back to the current default
+host baked into the build.

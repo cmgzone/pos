@@ -1,12 +1,39 @@
 class AppConstants {
-  static const String appName = 'Velora POS';
+  static const String appName = 'Devis POS';
   static const String appVersion = '1.0.0';
+  static const String _defaultApiBaseUrl = 'https://pos-e0hs.onrender.com/api';
+  static const String _defaultSocketUrl = 'https://pos-e0hs.onrender.com';
+  static const String _defaultLicenseSigningSecret =
+      'velora-pos-dev-license-secret-change-me';
 
   // App-managed API endpoints
-  static const String apiBaseUrl = 'https://pos-e0hs.onrender.com/api';
-  static const String socketUrl = 'https://pos-e0hs.onrender.com';
-  static const String licenseSigningSecret =
-      'velora-pos-dev-license-secret-change-me';
+  static String get apiBaseUrl => const String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _defaultApiBaseUrl,
+  );
+
+  static String get socketUrl {
+    const explicit = String.fromEnvironment('SOCKET_URL', defaultValue: '');
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+
+    final apiUrl = apiBaseUrl;
+    if (apiUrl.endsWith('/api')) {
+      return apiUrl.substring(0, apiUrl.length - 4);
+    }
+    final uri = Uri.tryParse(apiUrl);
+    if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      return '${uri.scheme}://${uri.host}$port';
+    }
+    return _defaultSocketUrl;
+  }
+
+  static String get licenseSigningSecret => const String.fromEnvironment(
+    'LICENSE_SIGNING_SECRET',
+    defaultValue: _defaultLicenseSigningSecret,
+  );
 
   // Shared Preferences Keys
   static const String keyToken = 'auth_token';

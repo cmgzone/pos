@@ -3,6 +3,8 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/data/user_repository.dart';
 import '../../app/app_shell.dart';
+import '../../shifts/data/shift_repository.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/report_repository.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -45,33 +47,45 @@ class _ReportsScreenState extends State<ReportsScreen>
             : null,
         automaticallyImplyLeading: false,
         title: const Text('Reports'),
-        bottom: TabBar(
-          controller: _tabs,
-          isScrollable: isMobile,
-          indicatorColor: AppColors.primary,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textSecondary,
-          tabs: const [
-            Tab(icon: Icon(Icons.badge_outlined), text: 'Cashier Summary'),
-            Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Top Products'),
-            Tab(icon: Icon(Icons.people_outline), text: 'Top Debtors'),
-            Tab(icon: Icon(Icons.schedule_outlined), text: 'Overdue Aging'),
-            Tab(icon: Icon(Icons.swap_vert_rounded), text: 'Stock Movement'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(isMobile ? 72 : 48),
+          child: TrainingAnchor(
+            id: 'reports.tabs',
+            child: TabBar(
+              controller: _tabs,
+              isScrollable: isMobile,
+              indicatorColor: AppColors.primary,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.textSecondary,
+              tabs: const [
+                Tab(icon: Icon(Icons.badge_outlined), text: 'Cashier Summary'),
+                Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Top Products'),
+                Tab(icon: Icon(Icons.people_outline), text: 'Top Debtors'),
+                Tab(icon: Icon(Icons.schedule_outlined), text: 'Overdue Aging'),
+                Tab(
+                  icon: Icon(Icons.swap_vert_rounded),
+                  text: 'Stock Movement',
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          const _DailyCashierSummaryTab(),
-          _TopProductsTab(
-            daysRange: _productDays,
-            onDaysChanged: (d) => setState(() => _productDays = d),
-          ),
-          const _TopDebtorsTab(),
-          const _OverdueAgingTab(),
-          const _StockMovementTab(),
-        ],
+      body: TrainingAnchor(
+        id: 'reports.body',
+        child: TabBarView(
+          controller: _tabs,
+          children: [
+            const _DailyCashierSummaryTab(),
+            _TopProductsTab(
+              daysRange: _productDays,
+              onDaysChanged: (d) => setState(() => _productDays = d),
+            ),
+            const _TopDebtorsTab(),
+            const _OverdueAgingTab(),
+            const _StockMovementTab(),
+          ],
+        ),
       ),
     );
   }
@@ -94,7 +108,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
 
   DateTime _selectedDate = DateTime.now();
   Map<String, dynamic> _summary = {};
+  Map<String, dynamic> _closedShiftSummary = {};
   List<Map<String, dynamic>> _cashiers = [];
+  List<Map<String, dynamic>> _closedShifts = [];
   List<Map<String, dynamic>> _employeeOptions = [];
   String _selectedCashierId = _allEmployeesId;
   bool _loading = true;
@@ -208,11 +224,26 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
           ? null
           : nextSelectedCashierId,
     );
+    final closedShiftSummary = await ShiftRepository.getClosedShiftSummary(
+      date: _dateKey,
+      userId: nextSelectedCashierId == _allEmployeesId
+          ? null
+          : nextSelectedCashierId,
+    );
+    final closedShifts = await ShiftRepository.getClosedShifts(
+      date: _dateKey,
+      userId: nextSelectedCashierId == _allEmployeesId
+          ? null
+          : nextSelectedCashierId,
+      limit: 20,
+    );
     if (!mounted) {
       return;
     }
     setState(() {
       _summary = summary;
+      _closedShiftSummary = closedShiftSummary;
+      _closedShifts = closedShifts;
       _employeeOptions = employeeOptions;
       _selectedCashierId = nextSelectedCashierId;
       _cashiers = nextSelectedCashierId == _allEmployeesId
@@ -259,6 +290,28 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
     return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
+  Color _differenceColor(num? difference) {
+    final value = (difference ?? 0).toDouble();
+    if (value < -0.009) {
+      return AppColors.error;
+    }
+    if (value > 0.009) {
+      return AppColors.warning;
+    }
+    return AppColors.success;
+  }
+
+  String _differenceLabel(num? difference) {
+    final value = (difference ?? 0).toDouble();
+    if (value < -0.009) {
+      return 'Short';
+    }
+    if (value > 0.009) {
+      return 'Over';
+    }
+    return 'Balanced';
+  }
+
   String _roleLabel(String? raw) {
     switch ((raw ?? '').toUpperCase()) {
       case 'ADMIN':
@@ -287,7 +340,11 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
     final topProducts = List<Map<String, dynamic>>.from(
       _summary['top_products'] as List? ?? const [],
     );
-    final showEmptyState = !_isFilteredToEmployee && _cashiers.isEmpty;
+    final topServices = List<Map<String, dynamic>>.from(
+      _summary['top_services'] as List? ?? const [],
+    );
+    final showEmptyState =
+        !_isFilteredToEmployee && _cashiers.isEmpty && _closedShifts.isEmpty;
 
     return Column(
       children: [
@@ -389,12 +446,53 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             icon: Icons.trending_up_rounded,
                           ),
                           _SummaryMetricCard(
+                            label: 'Product Sales',
+                            value: _displayMoney(_summary['product_revenue']),
+                            color: AppColors.primary,
+                            icon: Icons.inventory_2_outlined,
+                            subtitle:
+                                '${(_summary['product_sales'] as num? ?? 0).toInt()} sales',
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Service Sales',
+                            value: _displayMoney(_summary['service_revenue']),
+                            color: AppColors.secondary,
+                            icon: Icons.design_services_rounded,
+                            subtitle:
+                                '${(_summary['service_sales'] as num? ?? 0).toInt()} sales',
+                          ),
+                          _SummaryMetricCard(
                             label: _isFilteredToEmployee
                                 ? 'Employee'
                                 : 'Employees',
                             value: '${_cashiers.length}',
                             color: AppColors.warning,
                             icon: Icons.people_outline,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Closed Shifts',
+                            value:
+                                '${(_closedShiftSummary['closed_shift_count'] as num? ?? 0).toInt()}',
+                            color: AppColors.primary,
+                            icon: Icons.lock_clock_outlined,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Counted Cash',
+                            value: _displayMoney(
+                              _closedShiftSummary['counted_cash_total'],
+                            ),
+                            color: AppColors.success,
+                            icon: Icons.point_of_sale_outlined,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Over / Short',
+                            value: _displayMoney(
+                              _closedShiftSummary['net_difference'],
+                            ),
+                            color: _differenceColor(
+                              _closedShiftSummary['net_difference'] as num?,
+                            ),
+                            icon: Icons.balance_outlined,
                           ),
                         ],
                       ),
@@ -446,6 +544,202 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           }).toList(),
                         ),
                       ],
+                      if (topServices.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          _isFilteredToEmployee
+                              ? 'Top services sold by $_selectedCashierName'
+                              : 'Top services for ${_displayDate(_selectedDate)}',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: topServices.map((service) {
+                            final qty = (service['qty_sold'] as num? ?? 0)
+                                .toDouble();
+                            final revenue = (service['revenue'] as num? ?? 0)
+                                .toDouble();
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    service['name'] as String? ?? 'Service',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} sold - ${_displayMoney(revenue)}',
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Text(
+                        _isFilteredToEmployee
+                            ? 'Shift reconciliation for $_selectedCashierName'
+                            : 'Closed shift reconciliation',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_closedShifts.isEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Text(
+                            _isFilteredToEmployee
+                                ? 'No closed shifts were recorded for $_selectedCashierName on ${_displayDate(_selectedDate)}.'
+                                : 'No closed shifts were recorded on ${_displayDate(_selectedDate)}.',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        )
+                      else
+                        ..._closedShifts.map((shift) {
+                          final difference =
+                              (shift['difference'] as num?)?.toDouble() ?? 0;
+                          final tone = _differenceColor(difference);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: tone.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(
+                                        difference.abs() < 0.009
+                                            ? Icons.check_circle_outline
+                                            : difference > 0
+                                            ? Icons.arrow_upward_rounded
+                                            : Icons.arrow_downward_rounded,
+                                        color: tone,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            shift['cashier_name'] as String? ??
+                                                'Cashier',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Closed ${_displayTime(shift['closed_at'] as String?)} • Expected ${_displayMoney(shift['expected_cash'])}',
+                                            style: const TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          _displayMoney(
+                                            shift['closing_cash_counted'],
+                                          ),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${_differenceLabel(difference)} ${_displayMoney(difference.abs())}',
+                                          style: TextStyle(
+                                            color: tone,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Cash Sales',
+                                        value: _displayMoney(
+                                          shift['cash_sales_total'],
+                                        ),
+                                        color: AppColors.primaryLight,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Cash In',
+                                        value: _displayMoney(
+                                          shift['cash_in_total'],
+                                        ),
+                                        color: AppColors.success,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Cash Out',
+                                        value: _displayMoney(
+                                          shift['cash_out_total'],
+                                        ),
+                                        color: AppColors.warning,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
                       const SizedBox(height: 24),
                       Text(
                         _isFilteredToEmployee
@@ -631,6 +925,39 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           cashier['gross_profit'],
                                         ),
                                         color: AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Products',
+                                        value: _displayMoney(
+                                          cashier['product_revenue'],
+                                        ),
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Services',
+                                        value: _displayMoney(
+                                          cashier['service_revenue'],
+                                        ),
+                                        color: AppColors.secondary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _CashierStatTile(
+                                        label: 'Service Sales',
+                                        value:
+                                            '${(cashier['service_sales'] as num? ?? 0).toInt()}',
+                                        color: AppColors.secondary,
                                       ),
                                     ),
                                   ],
@@ -1649,12 +1976,14 @@ class _SummaryMetricCard extends StatelessWidget {
   final String value;
   final Color color;
   final IconData icon;
+  final String? subtitle;
 
   const _SummaryMetricCard({
     required this.label,
     required this.value,
     required this.color,
     required this.icon,
+    this.subtitle,
   });
 
   @override
@@ -1699,6 +2028,16 @@ class _SummaryMetricCard extends StatelessWidget {
                     fontSize: 16,
                   ),
                 ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

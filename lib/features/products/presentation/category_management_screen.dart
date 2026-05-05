@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/category_icon_utils.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/category_repository.dart';
 
 class CategoryManagementScreen extends StatefulWidget {
@@ -34,142 +35,148 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
         backgroundColor: AppColors.surface,
         title: const Text('Category Management'),
         actions: [
-          FilledButton.icon(
-            onPressed: () => _showCategoryDialog(null),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Category'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          TrainingAnchor(
+            id: 'categories.add',
+            child: FilledButton.icon(
+              onPressed: () => _showCategoryDialog(null),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Category'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
           ),
           const SizedBox(width: 16),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _categories.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.category_outlined,
-                    size: 64,
-                    color: AppColors.textSecondary.withValues(alpha: 0.4),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No categories yet',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 16,
+      body: TrainingAnchor(
+        id: 'categories.list',
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _categories.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.category_outlined,
+                      size: 64,
+                      color: AppColors.textSecondary.withValues(alpha: 0.4),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: () => _showCategoryDialog(null),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Create your first category'),
-                  ),
-                ],
-              ),
-            )
-          : Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(24),
-                  itemCount: _categories.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final category = _categories[index];
-                    final colorHex = category['color'] as String?;
-                    final color = colorHex != null
-                        ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
-                        : AppColors.primary;
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No categories yet',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () => _showCategoryDialog(null),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create your first category'),
+                    ),
+                  ],
+                ),
+              )
+            : Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(24),
+                    itemCount: _categories.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final category = _categories[index];
+                      final colorHex = category['color'] as String?;
+                      final color = colorHex != null
+                          ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
+                          : AppColors.primary;
 
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              CategoryIconUtils.iconFor(
-                                category['name'] as String?,
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              color: color,
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  category['name'] as String,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                  ),
+                              child: Icon(
+                                CategoryIconUtils.iconFor(
+                                  category['name'] as String?,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'ID: ${(category['id'] as String).substring(0, 8)}...',
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Color indicator
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white24,
-                                width: 2,
+                                color: color,
+                                size: 22,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit_outlined,
-                              size: 20,
-                              color: AppColors.textSecondary,
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    category['name'] as String,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'ID: ${(category['id'] as String).substring(0, 8)}...',
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            onPressed: () => _showCategoryDialog(category),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              size: 20,
-                              color: AppColors.error,
+                            // Color indicator
+                            Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white24,
+                                  width: 2,
+                                ),
+                              ),
                             ),
-                            onPressed: () => _confirmDelete(category),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                            const SizedBox(width: 16),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit_outlined,
+                                size: 20,
+                                color: AppColors.textSecondary,
+                              ),
+                              onPressed: () => _showCategoryDialog(category),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: AppColors.error,
+                              ),
+                              onPressed: () => _confirmDelete(category),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
@@ -314,9 +321,30 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
           ),
           FilledButton(
             onPressed: () async {
-              await CategoryRepository.delete(category['id'] as String);
-              if (ctx.mounted) Navigator.pop(ctx);
-              _loadCategories();
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                await CategoryRepository.delete(category['id'] as String);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  await _loadCategories();
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('Category deleted'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                }
+              } catch (error) {
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Could not delete category: $error'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              }
             },
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Delete'),

@@ -8,10 +8,13 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../sales/presentation/barcode_scanner.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/product_provider.dart';
 import '../data/product_repository.dart';
+import 'product_variants_screen.dart';
 
 class ProductFormScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? product;
@@ -33,6 +36,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _priceController;
   late final TextEditingController _costController;
+  late final TextEditingController _brandController;
   late final TextEditingController _skuController;
   late final TextEditingController _barcodeController;
   late final TextEditingController _stockController;
@@ -43,9 +47,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late String _selectedStockUnit;
   late String _selectedPurchaseUnit;
   String? _imagePath;
+  DateTime? _initialExpiryDate;
   bool _useUnitConversion = false;
   bool _isLoading = false;
   bool _isTotalCostMode = false;
+  bool _trackStock = true;
+  bool _hasVariants = false;
 
   bool get _isEditing => widget.product != null;
 
@@ -61,6 +68,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       text: p != null && p['cost'] != null ? (p['cost'] as num).toString() : '',
     );
     _skuController = TextEditingController(text: p?['sku'] as String? ?? '');
+    _brandController = TextEditingController(
+      text: p?['brand'] as String? ?? '',
+    );
     _barcodeController = TextEditingController(
       text: p?['barcode'] as String? ?? '',
     );
@@ -79,6 +89,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _selectedStockUnit = UnitUtils.stockUnitForProduct(p ?? const {});
     _selectedPurchaseUnit = UnitUtils.purchaseUnitForProduct(p ?? const {});
     _useUnitConversion = p != null ? UnitUtils.usesConversion(p) : false;
+    _trackStock = p != null ? UnitUtils.tracksStock(p) : true;
+    _hasVariants = ((p?['has_variants'] as num?) ?? 0) == 1;
     _imagePath = p?['image_url'] as String?;
   }
 
@@ -87,6 +99,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _nameController.dispose();
     _priceController.dispose();
     _costController.dispose();
+    _brandController.dispose();
     _skuController.dispose();
     _barcodeController.dispose();
     _stockController.dispose();
@@ -165,6 +178,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         'purchase_to_stock_factor': purchaseToStockFactor,
         'category_id': _selectedCategoryId,
         'image_url': _imagePath,
+        'brand': _brandController.text.trim().isNotEmpty
+            ? _brandController.text.trim()
+            : null,
+        'track_stock': _trackStock ? 1 : 0,
+        'has_variants': _hasVariants ? 1 : 0,
       };
 
       if (_isEditing) {
@@ -189,6 +207,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           purchaseToStockFactor: purchaseToStockFactor,
           categoryId: _selectedCategoryId,
           imageUrl: _imagePath,
+          brand: payload['brand'] as String?,
+          initialExpiryDate: ExpiryUtils.toStorageString(_initialExpiryDate),
+          trackStock: _trackStock,
+          hasVariants: _hasVariants,
         );
       }
 
@@ -259,7 +281,26 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     });
   }
 
+  Future<void> _openVariantManager() async {
+    if (!_isEditing || !_hasVariants) {
+      return;
+    }
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ProductVariantsScreen(product: widget.product!),
+      ),
+    );
+    if (changed == true) {
+      ref.invalidate(filteredProductsProvider);
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    }
+  }
+
   Widget _buildImagePicker() {
+    final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
+
     return Column(
       children: [
         if (_imagePath != null &&
@@ -297,39 +338,76 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickImage(ImageSource.gallery),
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Gallery'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: AppColors.border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+        if (isCompactLayout)
+          Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Gallery'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickImage(ImageSource.camera),
-                icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: const Text('Camera'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: AppColors.border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                  label: const Text('Camera'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Gallery'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                  label: const Text('Camera'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -360,6 +438,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Widget _buildUnitConfigurationCard() {
+    final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
+
     return _FormCard(
       children: [
         Text(
@@ -367,22 +447,26 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
         ),
         const SizedBox(height: 16),
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(
-              value: false,
-              icon: Icon(Icons.looks_one_outlined),
-              label: Text('Simple Unit'),
-            ),
-            ButtonSegment(
-              value: true,
-              icon: Icon(Icons.swap_horiz_rounded),
-              label: Text('Unit Conversion'),
-            ),
-          ],
-          selected: {_useUnitConversion},
-          onSelectionChanged: (selection) => _toggleConversion(selection.first),
-          showSelectedIcon: false,
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.looks_one_outlined),
+                label: Text('Simple Unit'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.swap_horiz_rounded),
+                label: Text('Unit Conversion'),
+              ),
+            ],
+            selected: {_useUnitConversion},
+            onSelectionChanged: (selection) =>
+                _toggleConversion(selection.first),
+            showSelectedIcon: false,
+          ),
         ),
         const SizedBox(height: 16),
         Wrap(
@@ -398,11 +482,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         ),
         const SizedBox(height: 20),
         if (_useUnitConversion) ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _buildUnitSelector(
+          if (isCompactLayout)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildUnitSelector(
                   label: 'Stock Unit',
                   value: _selectedStockUnit,
                   options: UnitUtils.relatedUnits(_selectedStockUnit),
@@ -420,10 +504,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     });
                   },
                 ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _buildUnitSelector(
+                const SizedBox(height: 20),
+                _buildUnitSelector(
                   label: 'Selling Unit',
                   value: _selectedUnit,
                   options: _saleUnitOptions,
@@ -432,9 +514,46 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     setState(() => _selectedUnit = value);
                   },
                 ),
-              ),
-            ],
-          ),
+              ],
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _buildUnitSelector(
+                    label: 'Stock Unit',
+                    value: _selectedStockUnit,
+                    options: UnitUtils.relatedUnits(_selectedStockUnit),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      final familyUnits = UnitUtils.relatedUnits(value);
+                      setState(() {
+                        _selectedStockUnit = value;
+                        if (!familyUnits.contains(_selectedUnit)) {
+                          _selectedUnit = value;
+                        }
+                        if (!familyUnits.contains(_selectedPurchaseUnit)) {
+                          _selectedPurchaseUnit = value;
+                        }
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: _buildUnitSelector(
+                    label: 'Selling Unit',
+                    value: _selectedUnit,
+                    options: _saleUnitOptions,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _selectedUnit = value);
+                    },
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 20),
           _buildUnitSelector(
             label: 'Purchase Unit',
@@ -479,11 +598,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                _useUnitConversion
+                !_trackStock
+                    ? 'This product sells in $_saleUnitLabel without stock limits.'
+                    : _useUnitConversion
                     ? 'Stock is stored in $_stockUnitLabel. Price is entered per $_saleUnitLabel. Purchases are received in $_purchaseUnitLabel.'
                     : 'This product uses $_saleUnitLabel for selling, stocking, and purchases.',
               ),
-              if (_useUnitConversion) ...[
+              if (_trackStock && _useUnitConversion) ...[
                 const SizedBox(height: 8),
                 Text(
                   '1 $_saleUnitLabel = ${UnitUtils.formatQuantity(_saleToStockFactor)} $_stockUnitLabel',
@@ -492,13 +613,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   '1 $_purchaseUnitLabel = ${UnitUtils.formatQuantity(_purchaseToStockFactor)} $_stockUnitLabel',
                 ),
               ],
-              if (_stockValue != null) ...[
+              if (_trackStock && _stockValue != null) ...[
                 const SizedBox(height: 8),
                 Text(
                   'Current stock will be saved as ${UnitUtils.formatWithUnit(_stockValue, _effectiveStockUnit)}.',
                 ),
               ],
-              if (_lowStockValue != null) ...[
+              if (_trackStock && _lowStockValue != null) ...[
                 const SizedBox(height: 4),
                 Text(
                   'Low-stock alert will trigger at ${UnitUtils.formatWithUnit(_lowStockValue, _effectiveStockUnit)}.',
@@ -514,26 +635,30 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoriesProvider);
+    final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         title: Text(_isEditing ? 'Edit Product' : 'New Product'),
         actions: [
-          FilledButton.icon(
-            onPressed: _isLoading ? null : _save,
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Icon(_isEditing ? Icons.save : Icons.add, size: 18),
-            label: Text(_isEditing ? 'Save Changes' : 'Create Product'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          TrainingAnchor(
+            id: 'productForm.save',
+            child: FilledButton.icon(
+              onPressed: _isLoading ? null : _save,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(_isEditing ? Icons.save : Icons.add, size: 18),
+              label: Text(_isEditing ? 'Save Changes' : 'Create Product'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
           ),
           const SizedBox(width: 16),
         ],
@@ -553,113 +678,177 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     icon: Icons.info_outline,
                   ),
                   const SizedBox(height: 16),
-                  _FormCard(
-                    children: [
-                      _LabeledField(
-                        label: 'Product Name *',
-                        child: TextFormField(
-                          controller: _nameController,
-                          validator: (v) => v == null || v.trim().isEmpty
-                              ? 'Name is required'
-                              : null,
-                          decoration: const InputDecoration(
-                            hintText: 'e.g. Wireless Mouse',
+                  TrainingAnchor(
+                    id: 'productForm.identity',
+                    child: _FormCard(
+                      children: [
+                        _LabeledField(
+                          label: 'Product Name *',
+                          child: TextFormField(
+                            controller: _nameController,
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Name is required'
+                                : null,
+                            decoration: const InputDecoration(
+                              hintText: 'e.g. Wireless Mouse',
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _LabeledField(
-                              label: 'SKU',
-                              child: TextFormField(
-                                controller: _skuController,
-                                decoration: const InputDecoration(
-                                  hintText: 'e.g. ELC-001',
-                                ),
-                              ),
+                        const SizedBox(height: 20),
+                        _LabeledField(
+                          label: 'Brand',
+                          child: TextFormField(
+                            controller: _brandController,
+                            decoration: const InputDecoration(
+                              hintText: 'e.g. Logitech, Samsung',
                             ),
                           ),
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: _LabeledField(
-                              label: 'Barcode',
-                              child: TextFormField(
-                                controller: _barcodeController,
-                                decoration: InputDecoration(
-                                  hintText: 'e.g. 1000000001',
-                                  suffixIcon:
-                                      (Platform.isAndroid || Platform.isIOS)
-                                      ? IconButton(
-                                          icon: const Icon(
-                                            Icons.qr_code_scanner,
-                                            color: AppColors.primary,
-                                          ),
-                                          tooltip: 'Scan barcode',
-                                          onPressed: () async {
-                                            final barcode =
-                                                await Navigator.of(
-                                                  context,
-                                                ).push<String>(
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        const BarcodeScannerScreen(),
-                                                  ),
-                                                );
-                                            if (barcode != null &&
-                                                barcode.isNotEmpty) {
-                                              _barcodeController.text = barcode;
-                                            }
-                                          },
-                                        )
-                                      : null,
+                        ),
+                        const SizedBox(height: 20),
+                        if (isCompactLayout)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _LabeledField(
+                                label: 'SKU',
+                                child: TextFormField(
+                                  controller: _skuController,
+                                  decoration: const InputDecoration(
+                                    hintText: 'e.g. ELC-001',
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _LabeledField(
-                              label: 'Category',
-                              child: categoriesAsync.when(
-                                data: (categories) =>
-                                    DropdownButtonFormField<String?>(
-                                      initialValue: _selectedCategoryId,
-                                      dropdownColor: AppColors.surface,
-                                      decoration: const InputDecoration(),
-                                      items: [
-                                        const DropdownMenuItem(
-                                          value: null,
-                                          child: Text('No category'),
-                                        ),
-                                        ...categories.map(
-                                          (cat) => DropdownMenuItem(
-                                            value: cat['id'] as String,
-                                            child: Text(cat['name'] as String),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: (v) => setState(
-                                        () => _selectedCategoryId = v,
-                                      ),
+                              const SizedBox(height: 20),
+                              _LabeledField(
+                                label: 'Barcode',
+                                child: TextFormField(
+                                  controller: _barcodeController,
+                                  decoration: InputDecoration(
+                                    hintText: 'e.g. 1000000001',
+                                    suffixIcon:
+                                        (Platform.isAndroid || Platform.isIOS)
+                                        ? IconButton(
+                                            icon: const Icon(
+                                              Icons.qr_code_scanner,
+                                              color: AppColors.primary,
+                                            ),
+                                            tooltip: 'Scan barcode',
+                                            onPressed: () async {
+                                              final barcode =
+                                                  await Navigator.of(
+                                                    context,
+                                                  ).push<String>(
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          const BarcodeScannerScreen(),
+                                                    ),
+                                                  );
+                                              if (barcode != null &&
+                                                  barcode.isNotEmpty) {
+                                                _barcodeController.text =
+                                                    barcode;
+                                              }
+                                            },
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _LabeledField(
+                                  label: 'SKU',
+                                  child: TextFormField(
+                                    controller: _skuController,
+                                    decoration: const InputDecoration(
+                                      hintText: 'e.g. ELC-001',
                                     ),
-                                loading: () => const LinearProgressIndicator(),
-                                error: (_, _) =>
-                                    const Text('Error loading categories'),
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: _LabeledField(
+                                  label: 'Barcode',
+                                  child: TextFormField(
+                                    controller: _barcodeController,
+                                    decoration: InputDecoration(
+                                      hintText: 'e.g. 1000000001',
+                                      suffixIcon:
+                                          (Platform.isAndroid || Platform.isIOS)
+                                          ? IconButton(
+                                              icon: const Icon(
+                                                Icons.qr_code_scanner,
+                                                color: AppColors.primary,
+                                              ),
+                                              tooltip: 'Scan barcode',
+                                              onPressed: () async {
+                                                final barcode =
+                                                    await Navigator.of(
+                                                      context,
+                                                    ).push<String>(
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            const BarcodeScannerScreen(),
+                                                      ),
+                                                    );
+                                                if (barcode != null &&
+                                                    barcode.isNotEmpty) {
+                                                  _barcodeController.text =
+                                                      barcode;
+                                                }
+                                              },
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.only(top: 28),
-                              child: Text(
+                        const SizedBox(height: 20),
+                        if (isCompactLayout)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _LabeledField(
+                                label: 'Category',
+                                child: categoriesAsync.when(
+                                  data: (categories) =>
+                                      DropdownButtonFormField<String?>(
+                                        initialValue: _selectedCategoryId,
+                                        dropdownColor: AppColors.surface,
+                                        decoration: const InputDecoration(),
+                                        items: [
+                                          const DropdownMenuItem(
+                                            value: null,
+                                            child: Text('No category'),
+                                          ),
+                                          ...categories.map(
+                                            (cat) => DropdownMenuItem(
+                                              value: cat['id'] as String,
+                                              child: Text(
+                                                cat['name'] as String,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        onChanged: (v) => setState(
+                                          () => _selectedCategoryId = v,
+                                        ),
+                                      ),
+                                  loading: () =>
+                                      const LinearProgressIndicator(),
+                                  error: (_, _) =>
+                                      const Text('Error loading categories'),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
                                 _useUnitConversion
                                     ? 'Selling in $_saleUnitLabel, stocking in $_stockUnitLabel'
                                     : 'Using $_saleUnitLabel',
@@ -668,11 +857,130 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                   fontSize: 13,
                                 ),
                               ),
+                            ],
+                          )
+                        else
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _LabeledField(
+                                  label: 'Category',
+                                  child: categoriesAsync.when(
+                                    data: (categories) =>
+                                        DropdownButtonFormField<String?>(
+                                          initialValue: _selectedCategoryId,
+                                          dropdownColor: AppColors.surface,
+                                          decoration: const InputDecoration(),
+                                          items: [
+                                            const DropdownMenuItem(
+                                              value: null,
+                                              child: Text('No category'),
+                                            ),
+                                            ...categories.map(
+                                              (cat) => DropdownMenuItem(
+                                                value: cat['id'] as String,
+                                                child: Text(
+                                                  cat['name'] as String,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                          onChanged: (v) => setState(
+                                            () => _selectedCategoryId = v,
+                                          ),
+                                        ),
+                                    loading: () =>
+                                        const LinearProgressIndicator(),
+                                    error: (_, _) =>
+                                        const Text('Error loading categories'),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 28),
+                                  child: Text(
+                                    _useUnitConversion
+                                        ? 'Selling in $_saleUnitLabel, stocking in $_stockUnitLabel'
+                                        : 'Using $_saleUnitLabel',
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (!_isEditing) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceHighlight,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 4,
+                              ),
+                              leading: const Icon(
+                                Icons.event_available_outlined,
+                              ),
+                              title: const Text('Initial Batch Expiry Date'),
+                              subtitle: Text(
+                                _initialExpiryDate == null
+                                    ? 'Optional. Applied only to the opening stock batch.'
+                                    : '${ExpiryUtils.format(_initialExpiryDate)} - ${ExpiryUtils.statusLabel(_initialExpiryDate)}',
+                              ),
+                              trailing: Wrap(
+                                spacing: 4,
+                                children: [
+                                  if (_initialExpiryDate != null)
+                                    IconButton(
+                                      tooltip: 'Clear expiry date',
+                                      onPressed: () => setState(
+                                        () => _initialExpiryDate = null,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  IconButton(
+                                    tooltip: 'Pick expiry date',
+                                    onPressed: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate:
+                                            _initialExpiryDate ??
+                                            DateTime.now().add(
+                                              const Duration(days: 30),
+                                            ),
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2100),
+                                      );
+                                      if (picked != null) {
+                                        setState(
+                                          () => _initialExpiryDate = picked,
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(
+                                      Icons.calendar_month_outlined,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 32),
                   _SectionHeader(
@@ -680,7 +988,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     icon: Icons.straighten_outlined,
                   ),
                   const SizedBox(height: 16),
-                  _buildUnitConfigurationCard(),
+                  TrainingAnchor(
+                    id: 'productForm.units',
+                    child: _buildUnitConfigurationCard(),
+                  ),
                   const SizedBox(height: 32),
                   _SectionHeader(
                     title: 'Product Image',
@@ -691,97 +1002,132 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   const SizedBox(height: 32),
                   _SectionHeader(title: 'Pricing', icon: Icons.attach_money),
                   const SizedBox(height: 16),
-                  _FormCard(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _LabeledField(
-                              label: 'Selling Price per $_saleUnitLabel *',
-                              child: TextFormField(
-                                controller: _priceController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(
-                                    RegExp(r'^\d*\.?\d{0,2}'),
-                                  ),
-                                ],
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) {
-                                    return 'Price is required';
-                                  }
-                                  if (double.tryParse(v) == null) {
-                                    return 'Invalid price';
-                                  }
-                                  return null;
-                                },
-                                decoration: InputDecoration(
-                                  hintText: '0.00',
-                                  prefixText: '${ShopSettings.currency} ',
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      'Cost Type ($_saleUnitLabel): ',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
+                  TrainingAnchor(
+                    id: 'productForm.pricing',
+                    child: _FormCard(
+                      children: [
+                        if (isCompactLayout)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _LabeledField(
+                                label: 'Selling Price per $_saleUnitLabel *',
+                                child: TextFormField(
+                                  controller: _priceController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: SegmentedButton<bool>(
-                                        segments: const [
-                                          ButtonSegment(
-                                            value: false,
-                                            label: Text(
-                                              'Per Unit',
-                                              style: TextStyle(fontSize: 11),
-                                            ),
-                                          ),
-                                          ButtonSegment(
-                                            value: true,
-                                            label: Text(
-                                              'Bulk Invoice',
-                                              style: TextStyle(fontSize: 11),
-                                            ),
-                                          ),
-                                        ],
-                                        selected: {_isTotalCostMode},
-                                        onSelectionChanged: (val) {
-                                          setState(
-                                            () => _isTotalCostMode = val.first,
-                                          );
-                                        },
-                                        style: SegmentedButton.styleFrom(
-                                          visualDensity: VisualDensity.compact,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                          ),
-                                        ),
-                                        showSelectedIcon: false,
-                                      ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d*\.?\d{0,2}'),
                                     ),
                                   ],
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return 'Price is required';
+                                    }
+                                    if (double.tryParse(v) == null) {
+                                      return 'Invalid price';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: InputDecoration(
+                                    hintText: '0.00',
+                                    prefixText: '${ShopSettings.currency} ',
+                                  ),
                                 ),
-                                const SizedBox(height: 12),
-                                _LabeledField(
-                                  label: _isTotalCostMode
-                                      ? 'Bulk Total Invoice Cost *'
-                                      : 'Cost per $_saleUnitLabel *',
+                              ),
+                              const SizedBox(height: 20),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Cost Type ($_saleUnitLabel):',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: SegmentedButton<bool>(
+                                      segments: const [
+                                        ButtonSegment(
+                                          value: false,
+                                          label: Text(
+                                            'Per Unit',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                        ButtonSegment(
+                                          value: true,
+                                          label: Text(
+                                            'Bulk Invoice',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                      ],
+                                      selected: {_isTotalCostMode},
+                                      onSelectionChanged: (val) {
+                                        setState(
+                                          () => _isTotalCostMode = val.first,
+                                        );
+                                      },
+                                      style: SegmentedButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                        ),
+                                      ),
+                                      showSelectedIcon: false,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _LabeledField(
+                                    label: _isTotalCostMode
+                                        ? 'Bulk Total Invoice Cost (optional)'
+                                        : 'Cost per $_saleUnitLabel (optional)',
+                                    child: TextFormField(
+                                      controller: _costController,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d*\.?\d{0,2}'),
+                                        ),
+                                      ],
+                                      validator: (v) {
+                                        if (v == null || v.trim().isEmpty) {
+                                          return null;
+                                        }
+                                        if (double.tryParse(v) == null) {
+                                          return 'Invalid cost';
+                                        }
+                                        return null;
+                                      },
+                                      decoration: InputDecoration(
+                                        hintText: '0.00',
+                                        prefixText: '${ShopSettings.currency} ',
+                                      ),
+                                      onChanged: (_) => setState(() {}),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          )
+                        else
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _LabeledField(
+                                  label: 'Selling Price per $_saleUnitLabel *',
                                   child: TextFormField(
-                                    controller: _costController,
+                                    controller: _priceController,
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
@@ -793,10 +1139,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                     ],
                                     validator: (v) {
                                       if (v == null || v.isEmpty) {
-                                        return 'Cost is required for P&L';
+                                        return 'Price is required';
                                       }
                                       if (double.tryParse(v) == null) {
-                                        return 'Invalid cost';
+                                        return 'Invalid price';
                                       }
                                       return null;
                                     },
@@ -804,69 +1150,157 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                       hintText: '0.00',
                                       prefixText: '${ShopSettings.currency} ',
                                     ),
-                                    onChanged: (_) => setState(() {}),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_priceController.text.isNotEmpty &&
-                          _costController.text.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Builder(
-                            builder: (context) {
-                              final price =
-                                  double.tryParse(_priceController.text) ?? 0;
-                              final rawCost =
-                                  double.tryParse(_costController.text) ?? 0;
-                              final stock =
-                                  double.tryParse(_stockController.text) ?? 1;
-                              final cost = _isTotalCostMode
-                                  ? (stock > 0 ? (rawCost / stock) : rawCost)
-                                  : rawCost;
-                              final margin = price > 0
-                                  ? ((price - cost) / price * 100)
-                                  : 0;
-                              return Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.success.withValues(
-                                    alpha: 0.08,
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(
-                                      Icons.trending_up,
-                                      size: 16,
-                                      color: AppColors.success,
-                                    ),
-                                    const SizedBox(width: 8),
                                     Text(
-                                      'Margin: ${margin.toStringAsFixed(1)}%',
+                                      'Cost Type ($_saleUnitLabel):',
                                       style: const TextStyle(
-                                        color: AppColors.success,
                                         fontWeight: FontWeight.w600,
+                                        fontSize: 13,
                                       ),
                                     ),
-                                    const SizedBox(width: 16),
-                                    Text(
-                                      'Profit: ${ShopSettings.currency}${(price - cost).toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        color: AppColors.success,
+                                    const SizedBox(height: 8),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: SegmentedButton<bool>(
+                                          segments: const [
+                                            ButtonSegment(
+                                              value: false,
+                                              label: Text(
+                                                'Per Unit',
+                                                style: TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                            ButtonSegment(
+                                              value: true,
+                                              label: Text(
+                                                'Bulk Invoice',
+                                                style: TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                          ],
+                                          selected: {_isTotalCostMode},
+                                          onSelectionChanged: (val) {
+                                            setState(
+                                              () =>
+                                                  _isTotalCostMode = val.first,
+                                            );
+                                          },
+                                          style: SegmentedButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                            ),
+                                          ),
+                                          showSelectedIcon: false,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _LabeledField(
+                                      label: _isTotalCostMode
+                                          ? 'Bulk Total Invoice Cost (optional)'
+                                          : 'Cost per $_saleUnitLabel (optional)',
+                                      child: TextFormField(
+                                        controller: _costController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'^\d*\.?\d{0,2}'),
+                                          ),
+                                        ],
+                                        validator: (v) {
+                                          if (v == null || v.trim().isEmpty) {
+                                            return null;
+                                          }
+                                          if (double.tryParse(v) == null) {
+                                            return 'Invalid cost';
+                                          }
+                                          return null;
+                                        },
+                                        decoration: InputDecoration(
+                                          hintText: '0.00',
+                                          prefixText:
+                                              '${ShopSettings.currency} ',
+                                        ),
+                                        onChanged: (_) => setState(() {}),
                                       ),
                                     ),
                                   ],
                                 ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
-                        ),
-                    ],
+                        if (_priceController.text.isNotEmpty &&
+                            _costController.text.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Builder(
+                              builder: (context) {
+                                final price =
+                                    double.tryParse(_priceController.text) ?? 0;
+                                final rawCost =
+                                    double.tryParse(_costController.text) ?? 0;
+                                final stock =
+                                    double.tryParse(_stockController.text) ?? 1;
+                                final cost = _isTotalCostMode
+                                    ? (stock > 0 ? (rawCost / stock) : rawCost)
+                                    : rawCost;
+                                final margin = price > 0
+                                    ? ((price - cost) / price * 100)
+                                    : 0;
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.success.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Wrap(
+                                    spacing: 16,
+                                    runSpacing: 8,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.trending_up,
+                                        size: 16,
+                                        color: AppColors.success,
+                                      ),
+                                      Text(
+                                        'Margin: ${margin.toStringAsFixed(1)}%',
+                                        style: const TextStyle(
+                                          color: AppColors.success,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Profit: ${ShopSettings.currency}${(price - cost).toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          color: AppColors.success,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 32),
                   _SectionHeader(
@@ -874,65 +1308,237 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     icon: Icons.warehouse_outlined,
                   ),
                   const SizedBox(height: 16),
+                  TrainingAnchor(
+                    id: 'productForm.inventory',
+                    child: _FormCard(
+                      children: [
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          value: _trackStock,
+                          title: const Text('Track stock for this product'),
+                          subtitle: Text(
+                            _trackStock
+                                ? 'Use stock limits for packaged inventory and items you count.'
+                                : 'Sell without stock limits. Good for cooked food, services, and custom charges.',
+                          ),
+                          onChanged: _isLoading
+                              ? null
+                              : (value) => setState(() => _trackStock = value),
+                        ),
+                        const SizedBox(height: 16),
+                        if (_hasVariants) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.18,
+                                ),
+                              ),
+                            ),
+                            child: Text(
+                              !_trackStock
+                                  ? 'Variants can still be used for choices, but stock will not block sales while tracking is off.'
+                                  : _isEditing
+                                  ? 'Parent stock stays synced from the variants you manage below. Use this screen for product defaults, then add real stock on each variant.'
+                                  : 'Save the product first, then add real stock on each variant from the variant manager.',
+                              style: const TextStyle(
+                                color: AppColors.primaryLight,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                        if (!_trackStock)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceHighlight,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: const Text(
+                              'Stock fields are ignored for this product. It will stay sellable even when stock is zero.',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          )
+                        else if (isCompactLayout)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _LabeledField(
+                                label: 'Current Stock ($_stockUnitLabel)',
+                                child: TextFormField(
+                                  controller: _stockController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  inputFormatters: [_quantityFormatter],
+                                  decoration: InputDecoration(
+                                    hintText: _stockAllowsDecimal
+                                        ? '0.000'
+                                        : '0',
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) {
+                                      return null;
+                                    }
+                                    if (double.tryParse(v) == null) {
+                                      return 'Invalid stock';
+                                    }
+                                    return null;
+                                  },
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              _LabeledField(
+                                label: 'Low Stock Alert ($_stockUnitLabel)',
+                                child: TextFormField(
+                                  controller: _lowStockController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  inputFormatters: [_quantityFormatter],
+                                  decoration: InputDecoration(
+                                    hintText: _stockAllowsDecimal
+                                        ? '5.000'
+                                        : '5',
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return 'Alert level is required';
+                                    }
+                                    if (double.tryParse(v) == null) {
+                                      return 'Invalid alert level';
+                                    }
+                                    return null;
+                                  },
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _LabeledField(
+                                  label: 'Current Stock ($_stockUnitLabel)',
+                                  child: TextFormField(
+                                    controller: _stockController,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    inputFormatters: [_quantityFormatter],
+                                    decoration: InputDecoration(
+                                      hintText: _stockAllowsDecimal
+                                          ? '0.000'
+                                          : '0',
+                                    ),
+                                    validator: (v) {
+                                      if (v == null || v.trim().isEmpty) {
+                                        return null;
+                                      }
+                                      if (double.tryParse(v) == null) {
+                                        return 'Invalid stock';
+                                      }
+                                      return null;
+                                    },
+                                    onChanged: (_) => setState(() {}),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: _LabeledField(
+                                  label: 'Low Stock Alert ($_stockUnitLabel)',
+                                  child: TextFormField(
+                                    controller: _lowStockController,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    inputFormatters: [_quantityFormatter],
+                                    decoration: InputDecoration(
+                                      hintText: _stockAllowsDecimal
+                                          ? '5.000'
+                                          : '5',
+                                    ),
+                                    validator: (v) {
+                                      if (v == null || v.isEmpty) {
+                                        return 'Alert level is required';
+                                      }
+                                      if (double.tryParse(v) == null) {
+                                        return 'Invalid alert level';
+                                      }
+                                      return null;
+                                    },
+                                    onChanged: (_) => setState(() {}),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  _SectionHeader(title: 'Variants', icon: Icons.tune_outlined),
+                  const SizedBox(height: 16),
                   _FormCard(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _LabeledField(
-                              label: 'Current Stock ($_stockUnitLabel)',
-                              child: TextFormField(
-                                controller: _stockController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [_quantityFormatter],
-                                decoration: InputDecoration(
-                                  hintText: _stockAllowsDecimal ? '0.000' : '0',
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) {
-                                    return 'Stock is required';
-                                  }
-                                  if (double.tryParse(v) == null) {
-                                    return 'Invalid stock';
-                                  }
-                                  return null;
-                                },
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: _LabeledField(
-                              label: 'Low Stock Alert ($_stockUnitLabel)',
-                              child: TextFormField(
-                                controller: _lowStockController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [_quantityFormatter],
-                                decoration: InputDecoration(
-                                  hintText: _stockAllowsDecimal ? '5.000' : '5',
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) {
-                                    return 'Alert level is required';
-                                  }
-                                  if (double.tryParse(v) == null) {
-                                    return 'Invalid alert level';
-                                  }
-                                  return null;
-                                },
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ),
-                        ],
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        value: _hasVariants,
+                        title: const Text('This product has variants'),
+                        subtitle: Text(
+                          _hasVariants
+                              ? 'Sell this item by real choices like size, color, or pack type.'
+                              : 'Keep this as one direct sellable product.',
+                        ),
+                        onChanged: _isLoading
+                            ? null
+                            : (value) => setState(() => _hasVariants = value),
                       ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _hasVariants
+                            ? _isEditing
+                                  ? 'Save your product changes, then open the variant manager to add, edit, delete, and stock each variant.'
+                                  : 'Create the product first, then reopen it to add and stock its variants.'
+                            : 'Simple products keep price and stock directly on the main product record.',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (_hasVariants) ...[
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _isEditing ? _openVariantManager : null,
+                          icon: const Icon(Icons.tune_outlined, size: 18),
+                          label: Text(
+                            _isEditing
+                                ? 'Manage Variants'
+                                : 'Save Product First',
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 40),
@@ -958,12 +1564,15 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Icon(icon, size: 20, color: AppColors.primaryLight),
         const SizedBox(width: 10),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+        Flexible(
+          child: Text(
+            title,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
           ),
         ),
       ],

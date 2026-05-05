@@ -6,18 +6,27 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 const DEFAULT_LICENSE_SIGNING_SECRET =
   'velora-pos-dev-license-secret-change-me';
 
-function requireEnv(name) {
-  const value = process.env[name];
-  if (!value || !value.trim()) {
-    throw new Error(`Missing required environment variable: ${name}`);
+function requireAnyEnv(names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim()) {
+      return value.trim();
+    }
   }
-  return value.trim();
+
+  throw new Error(
+    `Missing required environment variable. Set one of: ${names.join(', ')}`,
+  );
 }
 
 const config = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
-  neonDatabaseUrl: requireEnv('NEON_DATABASE_URL'),
+  neonDatabaseUrl: requireAnyEnv([
+    'NEON_DATABASE_URL',
+    'DATABASE_URL',
+    'POSTGRES_URL',
+  ]),
   subscriptionTrialDays: Number(process.env.SUBSCRIPTION_TRIAL_DAYS || 30),
   subscriptionGraceDays: Number(process.env.SUBSCRIPTION_GRACE_DAYS || 5),
   licenseSigningSecret:

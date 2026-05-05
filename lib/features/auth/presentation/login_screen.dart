@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/cloud_auth_service.dart';
 import '../../../core/services/database_service.dart';
-import '../../../core/services/license_service.dart';
+import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/seed_service.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -27,13 +28,22 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   String _loadingStatus = '';
   bool _cloudLoginSucceeded = false;
-  /// The businessId returned by the cloud login for this sign-in attempt.
+  bool _showPassword = false;
   String _loginBusinessId = '';
+  String _loginBusinessName = '';
+  CloudAuthResponse? _cloudAuthResponse;
+  String _cloudPasswordForLocalLogin = '';
 
   Future<void> _login() async {
     setState(() {
       _isLoading = true;
       _error = null;
+      _loadingStatus = '';
+      _cloudLoginSucceeded = false;
+      _loginBusinessId = '';
+      _loginBusinessName = '';
+      _cloudAuthResponse = null;
+      _cloudPasswordForLocalLogin = '';
     });
 
     try {
@@ -67,13 +77,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Fallback to local auth if online didn't succeed
       signedInUser ??= await _tryLocalLogin(email: email, password: password);
-
-      await SessionService.signIn(signedInUser);
+      var authenticatedUser = signedInUser;
 
       // If we logged in via cloud on a new device, detect a business switch
       // and pull all fresh data.
       if (_cloudLoginSucceeded && backendUrl.isNotEmpty) {
-        final storedBusinessId = SyncSettingsService.localBusinessId;
         final incomingBusinessId = _loginBusinessId;
         // Wipe whenever the incoming business differs from what is stored
         // locally — including when storedBusinessId is empty (legacy install
@@ -81,18 +89,32 @@ class _LoginScreenState extends State<LoginScreen> {
         // already-empty DB is harmless: it just recreates the blank schema.
         final businessChanged =
             incomingBusinessId.isNotEmpty &&
-            storedBusinessId != incomingBusinessId;
+            SyncSettingsService.localBusinessId != incomingBusinessId;
 
         if (businessChanged) {
-          // A different business is logging in: wipe local data first so the
-          // new business cannot see the previous business's products/sales.
           if (mounted) {
-            setState(() => _loadingStatus = 'Switching business — clearing local data...');
+            setState(
+              () => _loadingStatus =
+                  'Switching business — clearing local data...',
+            );
           }
-          await SyncSettingsService.resetSyncProgress();
-          await LicenseService.clearBinding();
-          await DatabaseService.wipeAndReinitialize();
+          await LocalBusinessResetService.clearForBusinessSwitch();
         }
+
+        final cloudResponse = _cloudAuthResponse;
+        if (cloudResponse != null) {
+          await CloudAuthService.persistCloudResponse(cloudResponse);
+
+          if (businessChanged) {
+            authenticatedUser = await _upsertCloudUser(
+              cloudUser: cloudResponse.user,
+              email: email,
+              passwordForLocalLogin: _cloudPasswordForLocalLogin,
+            );
+          }
+        }
+
+        await SessionService.signIn(authenticatedUser);
 
         if (mounted) {
           setState(() => _loadingStatus = 'Syncing business data...');
@@ -100,24 +122,22 @@ class _LoginScreenState extends State<LoginScreen> {
         try {
           await SyncService.syncNow();
           // Record which business now owns this local DB.
-          if (incomingBusinessId.isNotEmpty) {
-            await SyncSettingsService.setLocalBusinessId(incomingBusinessId);
-          }
+          await _persistCurrentBusinessContext(incomingBusinessId);
           // Seed demo data if this is a fresh device with no products.
           await SeedService.seedIfEmpty();
         } catch (_) {
           // Sync failure shouldn't block login — data will sync later.
           // Still record the business so future logins don't wipe unnecessarily.
-          if (incomingBusinessId.isNotEmpty) {
-            await SyncSettingsService.setLocalBusinessId(incomingBusinessId);
-          }
+          await _persistCurrentBusinessContext(incomingBusinessId);
         }
+      } else {
+        await SessionService.signIn(authenticatedUser);
       }
 
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const AppShell()),
+          MaterialPageRoute(builder: (_) => AppShell(key: AppShell.shellKey)),
           (route) => false,
         );
       }
@@ -166,61 +186,25 @@ class _LoginScreenState extends State<LoginScreen> {
       deviceId: deviceId,
     );
 
-    // Persist cloud data locally
-    await CloudAuthService.persistCloudResponse(response);
+    _cloudAuthResponse = response;
+    _cloudPasswordForLocalLogin = hashedPassword;
 
-    // Capture the businessId so the caller can detect a business switch.
-    final incomingBusinessId =
-        ((response.business['id'] as String?) ?? '').trim();
+    final incomingBusinessId = ((response.business['id'] as String?) ?? '')
+        .trim();
     if (incomingBusinessId.isNotEmpty) {
       _loginBusinessId = incomingBusinessId;
     }
-
-    final cloudUser = response.user;
-    final userId = (cloudUser['id'] as String?) ?? '';
-    final now = DateTime.now().toIso8601String();
-
-    if (userId.isNotEmpty) {
-      // Upsert user locally
-      final existingLocal = await DatabaseService.rawQuery(
-        'SELECT id FROM users WHERE id = ? LIMIT 1',
-        [userId],
-      );
-
-      if (existingLocal.isEmpty) {
-        await DatabaseService.db.insert('users', {
-          'id': userId,
-          'name': (cloudUser['name'] as String?) ?? '',
-          'email': (cloudUser['email'] as String?) ?? email,
-          'phone': (cloudUser['phone'] as String?) ?? '',
-          'password': hashedPassword,
-          'role': (cloudUser['role'] as String?) ?? 'CASHIER',
-          'created_at': (cloudUser['created_at'] as String?) ?? now,
-          'updated_at': (cloudUser['updated_at'] as String?) ?? now,
-          'cloud_verified_at': now,
-          'sync_status': 'synced',
-        });
-      } else {
-        await DatabaseService.db.update(
-          'users',
-          {
-            'name': (cloudUser['name'] as String?) ?? '',
-            'email': (cloudUser['email'] as String?) ?? email,
-            'phone': (cloudUser['phone'] as String?) ?? '',
-            'role': (cloudUser['role'] as String?) ?? 'CASHIER',
-            'updated_at': now,
-            'cloud_verified_at': now,
-            'sync_status': 'synced',
-          },
-          where: 'id = ?',
-          whereArgs: [userId],
-        );
-      }
-
-      return await DatabaseService.queryById('users', userId) ?? cloudUser;
+    final incomingBusinessName = ((response.business['name'] as String?) ?? '')
+        .trim();
+    if (incomingBusinessName.isNotEmpty) {
+      _loginBusinessName = incomingBusinessName;
     }
 
-    return cloudUser;
+    return _upsertCloudUser(
+      cloudUser: response.user,
+      email: email,
+      passwordForLocalLogin: hashedPassword,
+    );
   }
 
   /// Attempt to authenticate against the local SQLite database.
@@ -228,10 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required String email,
     required String password,
   }) async {
-    final user = await AuthService.signIn(
-      email: email,
-      password: password,
-    );
+    final user = await AuthService.signIn(email: email, password: password);
 
     // Check if this user has been cloud-verified before
     final cloudVerifiedAt = user['cloud_verified_at'] as String?;
@@ -248,6 +229,81 @@ class _LoginScreenState extends State<LoginScreen> {
     return password; // The cloud login endpoint will handle comparison
   }
 
+  Future<Map<String, dynamic>> _upsertCloudUser({
+    required Map<String, dynamic> cloudUser,
+    required String email,
+    required String passwordForLocalLogin,
+  }) async {
+    final userId = (cloudUser['id'] as String?) ?? '';
+    final now = DateTime.now().toIso8601String();
+
+    if (userId.isEmpty) {
+      return cloudUser;
+    }
+
+    final existingLocal = await DatabaseService.rawQuery(
+      'SELECT id FROM users WHERE id = ? LIMIT 1',
+      [userId],
+    );
+
+    if (existingLocal.isEmpty) {
+      await DatabaseService.db.insert('users', {
+        'id': userId,
+        'name': (cloudUser['name'] as String?) ?? '',
+        'email': (cloudUser['email'] as String?) ?? email,
+        'phone': (cloudUser['phone'] as String?) ?? '',
+        'password': passwordForLocalLogin,
+        'role': (cloudUser['role'] as String?) ?? 'CASHIER',
+        'feature_access_json': cloudUser['feature_access_json'] as String?,
+        'allowed_service_ids_json':
+            cloudUser['allowed_service_ids_json'] as String?,
+        'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
+        'service_order_scope':
+            (cloudUser['service_order_scope'] as String?) ??
+            'all_visible_services',
+        'created_at': (cloudUser['created_at'] as String?) ?? now,
+        'updated_at': (cloudUser['updated_at'] as String?) ?? now,
+        'cloud_verified_at': now,
+        'sync_status': 'synced',
+      });
+    } else {
+      await DatabaseService.db.update(
+        'users',
+        {
+          'name': (cloudUser['name'] as String?) ?? '',
+          'email': (cloudUser['email'] as String?) ?? email,
+          'phone': (cloudUser['phone'] as String?) ?? '',
+          'password': passwordForLocalLogin,
+          'role': (cloudUser['role'] as String?) ?? 'CASHIER',
+          'feature_access_json': cloudUser['feature_access_json'] as String?,
+          'allowed_service_ids_json':
+              cloudUser['allowed_service_ids_json'] as String?,
+          'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
+          'service_order_scope':
+              (cloudUser['service_order_scope'] as String?) ??
+              'all_visible_services',
+          'updated_at': now,
+          'cloud_verified_at': now,
+          'sync_status': 'synced',
+        },
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+    }
+
+    return await DatabaseService.queryById('users', userId) ?? cloudUser;
+  }
+
+  Future<void> _persistCurrentBusinessContext(String businessId) async {
+    if (businessId.isNotEmpty) {
+      await SyncSettingsService.setLocalBusinessId(businessId);
+    }
+    if (_loginBusinessName.isNotEmpty) {
+      await ShopSettings.init();
+      await ShopSettings.setShopName(_loginBusinessName);
+    }
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -257,215 +313,280 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 440),
-            margin: const EdgeInsets.all(24),
-            padding: const EdgeInsets.all(40),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.border),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  blurRadius: 40,
-                  offset: const Offset(0, 16),
-                ),
-              ],
+    final form = SingleChildScrollView(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 440),
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(40),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              blurRadius: 40,
+              offset: const Offset(0, 16),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Logo
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryLight],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Icon(
-                    Icons.point_of_sale_rounded,
-                    size: 36,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Text(
-                  'Welcome Back',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Sign in to Velora POS',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 36),
-
-                // Error message
-                if (_error != null)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 20),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Logo
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                'assets/images/logo.png',
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
-                      color: AppColors.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.error.withValues(alpha: 0.3),
+                      gradient: LinearGradient(
+                        colors: [AppColors.primary, AppColors.secondary],
                       ),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
+                    child: const Icon(
+                      Icons.point_of_sale_rounded,
+                      size: 36,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'Welcome Back',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Sign in to Devis POS',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 36),
+
+            // Error message
+            if (_error != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: AppColors.error,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(
                           color: AppColors.error,
-                          size: 18,
+                          fontSize: 13,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: AppColors.error,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Email
-                const Text(
-                  'Email',
-                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter your email',
-                    prefixIcon: Icon(
-                      Icons.email_outlined,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Password
-                const Text(
-                  'Password',
-                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter your password',
-                    prefixIcon: Icon(
-                      Icons.lock_outline,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  onSubmitted: (_) => _login(),
-                ),
-                const SizedBox(height: 32),
-
-                // Sign In button
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _login,
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Sign In'),
-                ),
-                if (_isLoading && _loadingStatus.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      _loadingStatus,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
                       ),
-                      textAlign: TextAlign.center,
                     ),
-                  ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: _isLoading
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  const SignUpScreen(initialRole: 'ADMIN'),
-                            ),
-                          );
-                        },
-                  child: const Text('Create account'),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Need a staff login? Ask an admin to add it from Settings > Team Access.',
-                  style: TextStyle(
+              ),
+
+            // Email
+            const Text(
+              'Email',
+              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                hintText: 'Enter your email',
+                prefixIcon: _GradientIcon(Icons.email_outlined),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Password
+            const Text(
+              'Password',
+              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _passwordController,
+              obscureText: !_showPassword,
+              decoration: InputDecoration(
+                hintText: 'Enter your password',
+                prefixIcon: const _GradientIcon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  tooltip: _showPassword ? 'Hide password' : 'Show password',
+                  icon: Icon(
+                    _showPassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                  onPressed: () =>
+                      setState(() => _showPassword = !_showPassword),
+                ),
+              ),
+              onSubmitted: (_) => _login(),
+            ),
+            const SizedBox(height: 32),
+
+            // Sign In button
+            ElevatedButton(
+              onPressed: _isLoading ? null : _login,
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Sign In'),
+            ),
+            if (_isLoading && _loadingStatus.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  _loadingStatus,
+                  style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 16),
-
-                // Cloud sync info
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceHighlight,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.cloud_done_outlined,
-                        size: 16,
-                        color: AppColors.textSecondary,
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Sign in with your cloud account. Works offline after first login.',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 12,
-                          ),
+              ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const SignUpScreen(initialRole: 'ADMIN'),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                      );
+                    },
+              child: const Text('Create account'),
             ),
-          ),
+            const SizedBox(height: 8),
+            const Text(
+              'Need a staff login? Ask an admin to add it from Settings > Team Access.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+
+            // Cloud sync info
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHighlight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                children: [
+                  _GradientIcon(Icons.cloud_done_outlined, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Sign in with your cloud account. Works offline after first login.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
+    );
+
+    return Scaffold(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage('assets/images/pos_users.png'),
+                        fit: BoxFit.cover,
+                        colorFilter: ColorFilter.mode(
+                          Colors.black26,
+                          BlendMode.darken,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(flex: 4, child: Center(child: form)),
+              ],
+            );
+          } else {
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  'assets/images/pos_users.png',
+                  fit: BoxFit.cover,
+                  color: Colors.black54,
+                  colorBlendMode: BlendMode.darken,
+                ),
+                Center(child: form),
+              ],
+            );
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _GradientIcon extends StatelessWidget {
+  final IconData icon;
+  final double size;
+
+  const _GradientIcon(this.icon, {this.size = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (bounds) => const LinearGradient(
+        colors: [AppColors.secondary, AppColors.primaryLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(bounds),
+      child: Icon(icon, size: size, color: Colors.white),
     );
   }
 }

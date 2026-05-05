@@ -4,6 +4,7 @@ const SERVER_SYNC_STATUS = 'synced';
 
 const NULLABLE_TIMESTAMP_COLUMNS = new Set([
   'deleted_at',
+  'closed_at',
   'finished_at',
   'refunded_at',
 ]);

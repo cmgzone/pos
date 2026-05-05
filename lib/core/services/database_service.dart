@@ -1,14 +1,16 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 7;
+  static const int _databaseVersion = 15;
 
   static Database? _database;
   static String? _databasePath;
+  static String? _databasePathOverride;
 
   static Database get db {
     final database = _database;
@@ -33,23 +35,17 @@ class DatabaseService {
 
     _configureDatabaseFactory();
 
-    final databasesDirectory = await getDatabasesPath();
-    await Directory(databasesDirectory).create(recursive: true);
-    _databasePath =
-        '$databasesDirectory${Platform.pathSeparator}$_databaseName';
+    _databasePath = _databasePathOverride ?? await _resolveDatabasePath();
+    await File(_databasePath!).parent.create(recursive: true);
 
     _database = await openDatabase(
       _databasePath!,
       version: _databaseVersion,
       onConfigure: _onConfigure,
       onCreate: (database, version) async {
-        await _createTables(database);
-        await _createIndexes(database);
         await _runMigrations(database);
       },
       onUpgrade: (database, oldVersion, newVersion) async {
-        await _createTables(database);
-        await _createIndexes(database);
         await _runMigrations(database);
       },
       onOpen: (database) async {
@@ -83,6 +79,13 @@ class DatabaseService {
       _databasePath = null;
     }
     await initialize();
+  }
+
+  @visibleForTesting
+  static Future<void> overrideDatabasePathForTesting(String? path) async {
+    await close();
+    _databasePathOverride = path;
+    _databasePath = null;
   }
 
   static Future<List<Map<String, dynamic>>> queryAll(
@@ -180,6 +183,19 @@ class DatabaseService {
     }
   }
 
+  static Future<String> _resolveDatabasePath() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final appSupportDirectory = await getApplicationSupportDirectory();
+      final databaseDirectory = Directory(
+        '${appSupportDirectory.path}${Platform.pathSeparator}Velora POS',
+      );
+      return '${databaseDirectory.path}${Platform.pathSeparator}$_databaseName';
+    }
+
+    final databasesDirectory = await getDatabasesPath();
+    return '$databasesDirectory${Platform.pathSeparator}$_databaseName';
+  }
+
   static Future<void> _onConfigure(Database database) async {
     await database.execute('PRAGMA foreign_keys = ON');
     try {
@@ -219,7 +235,10 @@ class DatabaseService {
         sku TEXT,
         barcode TEXT,
         image_url TEXT,
+        brand TEXT,
         category_id TEXT,
+        track_stock INTEGER NOT NULL DEFAULT 1,
+        has_variants INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -236,6 +255,10 @@ class DatabaseService {
         phone TEXT,
         password TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'CASHIER',
+        feature_access_json TEXT,
+        allowed_service_ids_json TEXT,
+        pos_mode TEXT NOT NULL DEFAULT 'both',
+        service_order_scope TEXT NOT NULL DEFAULT 'all_visible_services',
         last_seen_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -259,13 +282,40 @@ class DatabaseService {
     ''');
 
     await database.execute('''
+      CREATE TABLE IF NOT EXISTS shifts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        cashier_name TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        opening_cash REAL NOT NULL DEFAULT 0,
+        closing_cash_counted REAL NOT NULL DEFAULT 0,
+        expected_cash REAL NOT NULL DEFAULT 0,
+        cash_sales_total REAL NOT NULL DEFAULT 0,
+        cash_refunds_total REAL NOT NULL DEFAULT 0,
+        cash_in_total REAL NOT NULL DEFAULT 0,
+        cash_out_total REAL NOT NULL DEFAULT 0,
+        difference REAL NOT NULL DEFAULT 0,
+        note TEXT,
+        opened_at TEXT NOT NULL,
+        closed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
       CREATE TABLE IF NOT EXISTS sales (
         id TEXT PRIMARY KEY,
         total_amount REAL NOT NULL DEFAULT 0,
         tax REAL NOT NULL DEFAULT 0,
         discount REAL NOT NULL DEFAULT 0,
         payment_type TEXT NOT NULL,
+        is_cash_drawer INTEGER NOT NULL DEFAULT 0,
         user_id TEXT,
+        shift_id TEXT,
         customer_id TEXT,
         customer_name TEXT,
         due_date TEXT,
@@ -282,6 +332,7 @@ class DatabaseService {
         deleted_at TEXT,
         sync_status TEXT NOT NULL DEFAULT 'pending',
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL,
         FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
         FOREIGN KEY (refund_sale_id) REFERENCES sales(id) ON DELETE SET NULL,
         FOREIGN KEY (refund_for_sale_id) REFERENCES sales(id) ON DELETE SET NULL
@@ -297,12 +348,72 @@ class DatabaseService {
         unit TEXT NOT NULL DEFAULT 'pcs',
         sale_id TEXT NOT NULL,
         product_id TEXT NOT NULL,
+        variant_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
         sync_status TEXT NOT NULL DEFAULT 'pending',
         FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
-        FOREIGN KEY (product_id) REFERENCES products(id)
+        FOREIGN KEY (product_id) REFERENCES products(id),
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS cash_movements (
+        id TEXT PRIMARY KEY,
+        shift_id TEXT NOT NULL,
+        user_id TEXT,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS held_sales (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        discount REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        item_count INTEGER NOT NULL DEFAULT 0,
+        user_id TEXT,
+        cashier_name TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS held_sale_items (
+        id TEXT PRIMARY KEY,
+        held_sale_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit_price REAL NOT NULL DEFAULT 0,
+        cost REAL NOT NULL DEFAULT 0,
+        max_stock REAL NOT NULL DEFAULT 0,
+        stock_on_hand REAL NOT NULL DEFAULT 0,
+        sale_to_stock_factor REAL NOT NULL DEFAULT 1,
+        line_type TEXT NOT NULL DEFAULT 'product',
+        service_order_id TEXT,
+        service_id TEXT,
+        variant_id TEXT,
+        variant_name TEXT,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        stock_unit TEXT NOT NULL DEFAULT 'pcs',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (held_sale_id) REFERENCES held_sales(id) ON DELETE CASCADE
       )
     ''');
 
@@ -346,6 +457,7 @@ class DatabaseService {
         unit_cost REAL NOT NULL DEFAULT 0,
         purchase_id TEXT,
         supplier_id TEXT,
+        expiry_date TEXT,
         received_at TEXT NOT NULL,
         finished_at TEXT,
         created_at TEXT NOT NULL,
@@ -406,78 +518,508 @@ class DatabaseService {
         FOREIGN KEY (category_id) REFERENCES expense_categories(id) ON DELETE SET NULL
       )
     ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS services (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT,
+        description TEXT,
+        base_price REAL NOT NULL DEFAULT 0,
+        duration_minutes INTEGER,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS service_fields (
+        id TEXT PRIMARY KEY,
+        service_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        field_type TEXT NOT NULL,
+        options_json TEXT,
+        price_map_json TEXT,
+        is_required INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS service_orders (
+        id TEXT PRIMARY KEY,
+        service_id TEXT NOT NULL,
+        service_name TEXT NOT NULL,
+        customer_id TEXT,
+        customer_name TEXT,
+        entry_mode TEXT NOT NULL DEFAULT 'walk_in',
+        scheduled_at TEXT,
+        checked_in_at TEXT,
+        status TEXT NOT NULL DEFAULT 'booked',
+        assigned_staff TEXT,
+        assigned_staff_user_id TEXT,
+        bay_number TEXT,
+        price REAL NOT NULL DEFAULT 0,
+        note TEXT,
+        sale_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (service_id) REFERENCES services(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+        FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS service_field_values (
+        id TEXT PRIMARY KEY,
+        service_order_id TEXT NOT NULL,
+        field_id TEXT,
+        field_label TEXT NOT NULL,
+        field_type TEXT NOT NULL,
+        value_text TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (service_order_id) REFERENCES service_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (field_id) REFERENCES service_fields(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS service_sale_items (
+        id TEXT PRIMARY KEY,
+        sale_id TEXT NOT NULL,
+        service_order_id TEXT,
+        service_id TEXT,
+        service_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit_price REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_order_id) REFERENCES service_orders(id) ON DELETE SET NULL,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS product_variants (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price REAL NOT NULL DEFAULT 0,
+        cost REAL,
+        sku TEXT,
+        barcode TEXT,
+        stock REAL NOT NULL DEFAULT 0,
+        low_stock REAL NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS payment_methods (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_cash_drawer INTEGER NOT NULL DEFAULT 0,
+        is_credit INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
   }
 
   static Future<void> _createIndexes(DatabaseExecutor database) async {
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'products',
+      indexName: 'idx_products_category_id',
+      columns: ['category_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'products',
+      indexName: 'idx_products_name',
+      columns: ['name'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'products',
+      indexName: 'idx_products_barcode',
+      columns: ['barcode'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'shifts',
+      indexName: 'idx_shifts_user_id',
+      columns: ['user_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'shifts',
+      indexName: 'idx_shifts_status',
+      columns: ['status'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sales_user_id ON sales(user_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'shifts',
+      indexName: 'idx_shifts_opened_at',
+      columns: ['opened_at'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sales_refund_sale_id ON sales(refund_sale_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_created_at',
+      columns: ['created_at'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sales_refund_for_sale_id ON sales(refund_for_sale_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_customer_id',
+      columns: ['customer_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_user_id',
+      columns: ['user_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_shift_id',
+      columns: ['shift_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_stock_batches_product_id ON stock_batches(product_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_refund_sale_id',
+      columns: ['refund_sale_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_stock_batches_purchase_id ON stock_batches(purchase_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_refund_for_sale_id',
+      columns: ['refund_for_sale_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_stock_batches_received_at ON stock_batches(received_at)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sale_items',
+      indexName: 'idx_sale_items_sale_id',
+      columns: ['sale_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_credit_payments_customer_id ON credit_payments(customer_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sale_items',
+      indexName: 'idx_sale_items_product_id',
+      columns: ['product_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_credit_payments_group_id ON credit_payments(payment_group_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'cash_movements',
+      indexName: 'idx_cash_movements_shift_id',
+      columns: ['shift_id'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_purchase_invoices_supplier_id ON purchase_invoices(supplier_id)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'cash_movements',
+      indexName: 'idx_cash_movements_created_at',
+      columns: ['created_at'],
     );
-    await database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_expenses_incurred_on ON expenses(incurred_on)',
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'held_sales',
+      indexName: 'idx_held_sales_updated_at',
+      columns: ['updated_at'],
     );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'held_sale_items',
+      indexName: 'idx_held_sale_items_hold_id',
+      columns: ['held_sale_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stock_batches',
+      indexName: 'idx_stock_batches_product_id',
+      columns: ['product_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stock_batches',
+      indexName: 'idx_stock_batches_purchase_id',
+      columns: ['purchase_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stock_batches',
+      indexName: 'idx_stock_batches_received_at',
+      columns: ['received_at'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stock_batches',
+      indexName: 'idx_stock_batches_expiry_date',
+      columns: ['expiry_date'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'credit_payments',
+      indexName: 'idx_credit_payments_customer_id',
+      columns: ['customer_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'credit_payments',
+      indexName: 'idx_credit_payments_group_id',
+      columns: ['payment_group_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'purchase_invoices',
+      indexName: 'idx_purchase_invoices_supplier_id',
+      columns: ['supplier_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'expenses',
+      indexName: 'idx_expenses_incurred_on',
+      columns: ['incurred_on'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'users',
+      indexName: 'idx_users_email_unique',
+      columns: ['email'],
+      unique: true,
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'services',
+      indexName: 'idx_services_name',
+      columns: ['name'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'service_fields',
+      indexName: 'idx_service_fields_service_id',
+      columns: ['service_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'service_orders',
+      indexName: 'idx_service_orders_service_id',
+      columns: ['service_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'service_orders',
+      indexName: 'idx_service_orders_status',
+      columns: ['status'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'service_orders',
+      indexName: 'idx_service_orders_scheduled_at',
+      columns: ['scheduled_at'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'service_field_values',
+      indexName: 'idx_service_field_values_order_id',
+      columns: ['service_order_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'service_sale_items',
+      indexName: 'idx_service_sale_items_sale_id',
+      columns: ['sale_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_variants',
+      indexName: 'idx_product_variants_product_id',
+      columns: ['product_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_variants',
+      indexName: 'idx_product_variants_barcode',
+      columns: ['barcode'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sale_items',
+      indexName: 'idx_sale_items_variant_id',
+      columns: ['variant_id'],
+    );
+  }
+
+  static Future<void> _createIndexIfColumnsExist(
+    DatabaseExecutor database, {
+    required String table,
+    required String indexName,
+    required List<String> columns,
+    bool unique = false,
+  }) async {
+    final availableColumns = await _getColumnNames(database, table);
+    if (!columns.every(availableColumns.contains)) {
+      return;
+    }
+
+    final uniqueSql = unique ? 'UNIQUE ' : '';
+    final columnSql = columns.join(', ');
     await database.execute(
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)',
+      'CREATE ${uniqueSql}INDEX IF NOT EXISTS $indexName ON $table($columnSql)',
     );
   }
 
   static Future<void> _runMigrations(DatabaseExecutor database) async {
     await _createTables(database);
-    await _createIndexes(database);
     await _ensureProductUnitConversionSchema(database);
     await _ensureUserProfileSchema(database);
     await _ensureSalesPaymentSchema(database);
+    await _ensureSalesCashDrawerSchema(database);
     await _ensureSalesRefundSchema(database);
     await _ensurePurchaseSchema(database);
     await _ensureCreditPaymentSchema(database);
     await _ensureExpenseSchema(database);
+    await _ensureShiftSchema(database);
     await _ensureSyncMetadataSchema(database);
+    await _ensureSaleItemsSchema(database);
+    await _ensureServicesSchema(database);
+    await _ensureCarWashSchema(database);
+    await _promoteLegacyServiceSyncStatuses(database);
     await _ensureCloudAuthSchema(database);
     await _ensureUserLastSeenSchema(database);
+    await _ensureUserAccessSchema(database);
+    await _ensureProductVariantsSchema(database);
+    await _ensureBrandColumn(database);
+    await _ensurePaymentMethodsSchema(database);
+    // Indexes must be created last because some of them target columns that
+    // are added by the schema repair helpers above on older local databases.
+    await _createIndexes(database);
+  }
+
+  /// Ensures variant tables and columns exist on databases created before
+  /// version 12. Safe to run on fresh databases (CREATE IF NOT EXISTS).
+  static Future<void> _ensureProductVariantsSchema(
+    DatabaseExecutor database,
+  ) async {
+    // product_variants table is created by _createTables; make sure it exists
+    // on databases that were opened before version 12.
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS product_variants (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price REAL NOT NULL DEFAULT 0,
+        cost REAL,
+        sku TEXT,
+        barcode TEXT,
+        stock REAL NOT NULL DEFAULT 0,
+        low_stock REAL NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      )
+    ''');
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'has_variants',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sale_items',
+      column: 'variant_id',
+      definition: 'TEXT',
+    );
+  }
+
+  /// Adds the brand column to products if it doesn't exist (v13+).
+  static Future<void> _ensureBrandColumn(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'brand',
+      definition: 'TEXT',
+    );
+  }
+
+  /// Ensures that columns added to sale_items after initial release exist.
+  /// Without these, any P&L query referencing si.unit_cost throws a silent
+  /// exception and the screen falls back to showing all-zero profit.
+  static Future<void> _ensureSaleItemsSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'sale_items',
+      column: 'unit_cost',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sale_items',
+      column: 'unit',
+      definition: "TEXT NOT NULL DEFAULT 'pcs'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'line_type',
+      definition: "TEXT NOT NULL DEFAULT 'product'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'service_order_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'service_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'variant_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'variant_name',
+      definition: 'TEXT',
+    );
   }
 
   static Future<void> _ensureProductUnitConversionSchema(
@@ -549,6 +1091,12 @@ class DatabaseService {
       column: 'category_id',
       definition: 'TEXT',
     );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'track_stock',
+      definition: 'INTEGER NOT NULL DEFAULT 1',
+    );
   }
 
   static Future<void> _ensureUserProfileSchema(
@@ -609,6 +1157,17 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureSalesCashDrawerSchema(
+    DatabaseExecutor database,
+  ) async {
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'is_cash_drawer',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
   static Future<void> _ensureSalesRefundSchema(
     DatabaseExecutor database,
   ) async {
@@ -655,6 +1214,12 @@ class DatabaseService {
       database,
       table: 'stock_batches',
       column: 'finished_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_batches',
+      column: 'expiry_date',
       definition: 'TEXT',
     );
     await _ensureColumn(
@@ -757,6 +1322,15 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureShiftSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'shift_id',
+      definition: 'TEXT',
+    );
+  }
+
   static Future<void> _ensureSyncMetadataSchema(
     DatabaseExecutor database,
   ) async {
@@ -765,14 +1339,21 @@ class DatabaseService {
       'products',
       'users',
       'customers',
+      'shifts',
       'sales',
       'sale_items',
+      'cash_movements',
       'suppliers',
       'purchase_invoices',
       'stock_batches',
       'credit_payments',
       'expense_categories',
       'expenses',
+      'services',
+      'service_fields',
+      'service_orders',
+      'service_field_values',
+      'service_sale_items',
     ]) {
       await _ensureColumn(
         database,
@@ -792,6 +1373,212 @@ class DatabaseService {
         column: 'deleted_at',
         definition: 'TEXT',
       );
+    }
+  }
+
+  static Future<void> _ensureServicesSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'services',
+      column: 'category',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'services',
+      column: 'description',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'services',
+      column: 'base_price',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'services',
+      column: 'duration_minutes',
+      definition: 'INTEGER',
+    );
+    await _ensureColumn(
+      database,
+      table: 'services',
+      column: 'is_active',
+      definition: 'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_fields',
+      column: 'options_json',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_fields',
+      column: 'is_required',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_fields',
+      column: 'sort_order',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'customer_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'customer_name',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'entry_mode',
+      definition: "TEXT NOT NULL DEFAULT 'walk_in'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'scheduled_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'checked_in_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'status',
+      definition: "TEXT NOT NULL DEFAULT 'booked'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'assigned_staff',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'assigned_staff_user_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'price',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'note',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'sale_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_field_values',
+      column: 'field_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_field_values',
+      column: 'field_label',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_field_values',
+      column: 'field_type',
+      definition: "TEXT NOT NULL DEFAULT 'text'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_field_values',
+      column: 'value_text',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_sale_items',
+      column: 'service_order_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_sale_items',
+      column: 'service_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_sale_items',
+      column: 'service_name',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_sale_items',
+      column: 'quantity',
+      definition: 'REAL NOT NULL DEFAULT 1',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_sale_items',
+      column: 'unit_price',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+  }
+
+  static Future<void> _ensureCarWashSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'service_orders',
+      column: 'bay_number',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'service_fields',
+      column: 'price_map_json',
+      definition: 'TEXT',
+    );
+  }
+
+  static Future<void> _promoteLegacyServiceSyncStatuses(
+    DatabaseExecutor database,
+  ) async {
+    for (final table in const [
+      'services',
+      'service_fields',
+      'service_orders',
+      'service_field_values',
+      'service_sale_items',
+    ]) {
+      try {
+        await database.rawUpdate(
+          "UPDATE $table SET sync_status = 'pending' WHERE sync_status = 'local_only'",
+        );
+      } catch (_) {
+        // Ignore until the table exists on the local device schema.
+      }
     }
   }
 
@@ -819,9 +1606,7 @@ class DatabaseService {
         .toSet();
   }
 
-  static Future<void> _ensureCloudAuthSchema(
-    DatabaseExecutor database,
-  ) async {
+  static Future<void> _ensureCloudAuthSchema(DatabaseExecutor database) async {
     await _ensureColumn(
       database,
       table: 'users',
@@ -838,6 +1623,45 @@ class DatabaseService {
       table: 'users',
       column: 'last_seen_at',
       definition: 'TEXT',
+    );
+  }
+
+  static Future<void> _ensureUserAccessSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'users',
+      column: 'feature_access_json',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'users',
+      column: 'allowed_service_ids_json',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'users',
+      column: 'pos_mode',
+      definition: "TEXT NOT NULL DEFAULT 'both'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'users',
+      column: 'service_order_scope',
+      definition: "TEXT NOT NULL DEFAULT 'all_visible_services'",
+    );
+  }
+
+  /// Ensures payment_methods table has is_credit column for credit/kopesha payments.
+  static Future<void> _ensurePaymentMethodsSchema(
+    DatabaseExecutor database,
+  ) async {
+    await _ensureColumn(
+      database,
+      table: 'payment_methods',
+      column: 'is_credit',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
     );
   }
 }

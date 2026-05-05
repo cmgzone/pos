@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/products/data/product_provider.dart';
+import '../../features/services/data/service_provider.dart';
 import 'connectivity_service.dart';
 import 'database_service.dart';
 import 'license_service.dart';
@@ -367,6 +368,10 @@ class SyncController extends Notifier<SyncState> {
     ref.invalidate(categoriesProvider);
     ref.invalidate(filteredProductsProvider);
     ref.invalidate(lowStockProductsProvider);
+    ref.invalidate(servicesProvider);
+    ref.invalidate(activeServicesProvider);
+    ref.invalidate(serviceOrdersProvider);
+    ref.invalidate(serviceStatsProvider);
   }
 
   Future<void> _refreshSessionFromDatabase() async {
@@ -382,6 +387,12 @@ class SyncController extends Notifier<SyncState> {
 
     await SessionService.updateName(user['name'] as String? ?? '');
     await SessionService.updateRole(user['role'] as String? ?? '');
+    await SessionService.updateAccess(
+      featureAccessJson: user['feature_access_json'] as String?,
+      allowedServiceIdsJson: user['allowed_service_ids_json'] as String?,
+      posMode: user['pos_mode'] as String?,
+      serviceOrderScope: user['service_order_scope'] as String?,
+    );
   }
 
   String _buildSuccessMessage(SyncRunSummary summary) {

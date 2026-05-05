@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/database_service.dart';
+import '../../../core/utils/expiry_utils.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/utils/unit_utils.dart';
 
@@ -159,6 +160,9 @@ class PurchaseRepository {
         'unit_cost': convertedUnitCost,
         'unit': unit,
         'stock_unit': stockUnit,
+        'expiry_date': ExpiryUtils.toStorageString(
+          ExpiryUtils.parse(item['expiry_date']),
+        ),
       });
       totalAmount += quantity * unitCost;
     }
@@ -188,6 +192,7 @@ class PurchaseRepository {
           'unit_cost': item['unit_cost'],
           'purchase_id': purchaseId,
           'supplier_id': supplierId,
+          'expiry_date': item['expiry_date'],
           'received_at': now,
           'created_at': now,
           'updated_at': now,

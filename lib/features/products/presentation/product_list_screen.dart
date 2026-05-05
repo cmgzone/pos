@@ -4,14 +4,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
+import '../../../widgets/empty_state_widget.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../../purchases/presentation/purchase_management_screen.dart';
 import '../data/product_provider.dart';
 import '../data/product_repository.dart';
 import 'product_form_screen.dart';
 import 'product_batches_screen.dart';
 import 'category_management_screen.dart';
+import 'product_variants_screen.dart';
 import '../../app/app_shell.dart';
 
 class ProductListScreen extends ConsumerStatefulWidget {
@@ -71,17 +75,20 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             },
           ),
           const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProductFormScreen()),
-              );
-              if (result == true) _refreshProducts();
-            },
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Product'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          TrainingAnchor(
+            id: 'products.add',
+            child: FilledButton.icon(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProductFormScreen()),
+                );
+                if (result == true) _refreshProducts();
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Product'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
           ),
           const SizedBox(width: 16),
         ],
@@ -89,191 +96,209 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       body: Column(
         children: [
           // Search and filter bar
-          Container(
-            color: AppColors.surface,
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    decoration: const InputDecoration(
-                      hintText: 'Search by name, SKU, or barcode...',
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: AppColors.textSecondary,
-                      ),
-                      contentPadding: EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Category dropdown
-                categoriesAsync.when(
-                  data: (categories) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceHighlight,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        value: _selectedCategory,
-                        hint: const Text(
-                          'All Categories',
-                          style: TextStyle(fontSize: 14),
+          TrainingAnchor(
+            id: 'products.search',
+            child: Container(
+              color: AppColors.surface,
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      decoration: const InputDecoration(
+                        hintText: 'Search by name, SKU, or barcode...',
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: AppColors.textSecondary,
                         ),
-                        dropdownColor: AppColors.surface,
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('All Categories'),
-                          ),
-                          ...categories.map(
-                            (cat) => DropdownMenuItem(
-                              value: cat['id'] as String,
-                              child: Text(cat['name'] as String),
-                            ),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _selectedCategory = v),
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
-                  loading: () => const SizedBox(width: 150),
-                  error: (_, _) => const SizedBox(),
-                ),
-              ],
+                  const SizedBox(width: 16),
+                  // Category dropdown
+                  categoriesAsync.when(
+                    data: (categories) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceHighlight,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedCategory,
+                          hint: const Text(
+                            'All Categories',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          dropdownColor: AppColors.surface,
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('All Categories'),
+                            ),
+                            ...categories.map(
+                              (cat) => DropdownMenuItem(
+                                value: cat['id'] as String,
+                                child: Text(cat['name'] as String),
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedCategory = v),
+                        ),
+                      ),
+                    ),
+                    loading: () => const SizedBox(width: 150),
+                    error: (_, _) => const SizedBox(),
+                  ),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),
 
           // Product table
           Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _getFilteredProducts(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final products = snapshot.data ?? [];
-                if (products.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.inventory_2_outlined,
-                          size: 64,
-                          color: AppColors.textSecondary.withValues(alpha: 0.4),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No products found',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 16,
+            child: TrainingAnchor(
+              id: 'products.list',
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _getFilteredProducts(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return ListView.separated(
+                      padding: const EdgeInsets.all(24),
+                      itemCount: 8,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (_, _) => Container(
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHighlight.withValues(
+                            alpha: 0.3,
                           ),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        const SizedBox(height: 8),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const ProductFormScreen(),
-                              ),
-                            );
-                            if (result == true) _refreshProducts();
-                          },
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add your first product'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(24),
-                  itemCount: products.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final product = products[index];
-                    // Resolve category name for icon fallback
-                    final catId = product['category_id'] as String?;
-                    final catName = catId != null
-                        ? categoriesAsync.valueOrNull?.firstWhere(
-                                (c) => c['id'] == catId,
-                                orElse: () => {},
-                              )['name']
-                              as String?
-                        : null;
-                    return _ProductRow(
-                      product: product,
-                      categoryName: catName,
-                      onEdit: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ProductFormScreen(product: product),
-                          ),
-                        );
-                        if (result == true) _refreshProducts();
-                      },
-                      onAdjustStock: () => _showStockAdjustmentDialog(product),
-                      onViewBatches: () => _viewBatches(context, product),
-                      onDelete: () => _confirmDelete(product),
+                      ),
                     );
-                  },
-                );
-              },
+                  }
+                  final products = snapshot.data ?? [];
+                  if (products.isEmpty) {
+                    return EmptyStateWidget(
+                      icon: Icons.inventory_2_outlined,
+                      title: _searchQuery.isEmpty
+                          ? 'No products yet'
+                          : 'No results found',
+                      subtitle: _searchQuery.isEmpty
+                          ? 'Add your first product to start managing inventory.'
+                          : 'Try searching with different keywords or clear the filter.',
+                      actionLabel: _searchQuery.isEmpty
+                          ? 'Add Your First Product'
+                          : null,
+                      onAction: _searchQuery.isEmpty
+                          ? () async {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const ProductFormScreen(),
+                                ),
+                              );
+                              if (result == true) _refreshProducts();
+                            }
+                          : null,
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(24),
+                    itemCount: products.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      // Resolve category name for icon fallback
+                      final catId = product['category_id'] as String?;
+                      final catName = catId != null
+                          ? categoriesAsync.valueOrNull?.firstWhere(
+                                  (c) => c['id'] == catId,
+                                  orElse: () => {},
+                                )['name']
+                                as String?
+                          : null;
+                      return _ProductRow(
+                        product: product,
+                        categoryName: catName,
+                        onEdit: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ProductFormScreen(product: product),
+                            ),
+                          );
+                          if (result == true) _refreshProducts();
+                        },
+                        onAdjustStock: () =>
+                            _showStockAdjustmentDialog(product),
+                        onViewBatches: () => _viewBatches(context, product),
+                        onDelete: () => _confirmDelete(product),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ),
 
           // Footer stats
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _getFilteredProducts(),
-              builder: (context, snapshot) {
-                final products = snapshot.data ?? [];
-                final lowStock = products.where((p) {
-                  final stock = (p['stock'] as num? ?? 0).toDouble();
-                  final lowThreshold = (p['low_stock'] as num? ?? 5).toDouble();
-                  return stock <= lowThreshold;
-                }).length;
-                final unitTypes = products
-                    .map((p) => UnitUtils.normalize(p['unit'] as String?))
-                    .toSet()
-                    .length;
-                return Row(
-                  children: [
-                    _StatChip(
-                      icon: Icons.inventory,
-                      label: '${products.length} Products',
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 16),
-                    _StatChip(
-                      icon: Icons.straighten,
-                      label: '$unitTypes Unit Types',
-                      color: AppColors.secondary,
-                    ),
-                    const SizedBox(width: 16),
-                    if (lowStock > 0)
+          TrainingAnchor(
+            id: 'products.stats',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _getFilteredProducts(),
+                builder: (context, snapshot) {
+                  final products = snapshot.data ?? [];
+                  final lowStock = products.where((p) {
+                    if (!UnitUtils.tracksStock(p)) {
+                      return false;
+                    }
+                    final stock = (p['stock'] as num? ?? 0).toDouble();
+                    final lowThreshold = (p['low_stock'] as num? ?? 5)
+                        .toDouble();
+                    return stock <= lowThreshold;
+                  }).length;
+                  final unitTypes = products
+                      .map((p) => UnitUtils.normalize(p['unit'] as String?))
+                      .toSet()
+                      .length;
+                  return Wrap(
+                    spacing: 16,
+                    runSpacing: 12,
+                    children: [
                       _StatChip(
-                        icon: Icons.warning_amber,
-                        label: '$lowStock Low Stock',
-                        color: AppColors.warning,
+                        icon: Icons.inventory,
+                        label: '${products.length} Products',
+                        color: AppColors.primary,
                       ),
-                  ],
-                );
-              },
+                      _StatChip(
+                        icon: Icons.straighten,
+                        label: '$unitTypes Unit Types',
+                        color: AppColors.secondary,
+                      ),
+                      if (lowStock > 0)
+                        _StatChip(
+                          icon: Icons.warning_amber,
+                          label: '$lowStock Low Stock',
+                          color: AppColors.warning,
+                        ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -294,7 +319,27 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   }
 
   void _showStockAdjustmentDialog(Map<String, dynamic> product) {
+    if (!UnitUtils.tracksStock(product)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${product['name']} does not track stock. Turn on stock tracking in Edit Product to receive inventory.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    final hasVariants = ((product['has_variants'] as num?) ?? 0) == 1;
+    if (hasVariants) {
+      _openVariantManager(product);
+      return;
+    }
+
     bool isTotalCostMode = false;
+    DateTime? expiryDate;
     final purchaseUnit = UnitUtils.purchaseUnitForProduct(product);
     final stockUnit = UnitUtils.stockUnitForProduct(product);
     final purchaseUnitLabel = UnitUtils.label(purchaseUnit);
@@ -451,6 +496,61 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                   ),
                 ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHighlight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 4,
+                  ),
+                  leading: const Icon(Icons.event_outlined),
+                  title: const Text('Expiry Date'),
+                  subtitle: Text(
+                    expiryDate == null
+                        ? 'Optional for this stock batch'
+                        : '${ExpiryUtils.format(expiryDate)} - ${ExpiryUtils.statusLabel(expiryDate)}',
+                  ),
+                  trailing: Wrap(
+                    spacing: 4,
+                    children: [
+                      if (expiryDate != null)
+                        IconButton(
+                          tooltip: 'Clear expiry date',
+                          onPressed: () => setState(() => expiryDate = null),
+                          icon: const Icon(
+                            Icons.close,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      IconButton(
+                        tooltip: 'Pick expiry date',
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            initialDate:
+                                expiryDate ??
+                                DateTime.now().add(const Duration(days: 30)),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() => expiryDate = picked);
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.calendar_month_outlined,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           actions: [
@@ -472,6 +572,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     unitCost: finalUnitCost,
                     product: product,
                     sourceUnit: purchaseUnit,
+                    expiryDate: ExpiryUtils.toStorageString(expiryDate),
                   );
                   if (ctx.mounted) Navigator.pop(ctx);
                   _refreshProducts();
@@ -500,10 +601,39 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   }
 
   void _viewBatches(BuildContext context, Map<String, dynamic> product) {
+    if (!UnitUtils.tracksStock(product)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${product['name']} does not track stock batches.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    final hasVariants = ((product['has_variants'] as num?) ?? 0) == 1;
+    if (hasVariants) {
+      _openVariantManager(product);
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ProductBatchesScreen(product: product)),
     );
+  }
+
+  Future<void> _openVariantManager(Map<String, dynamic> product) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProductVariantsScreen(product: product),
+      ),
+    );
+    if (changed == true) {
+      _refreshProducts();
+    }
   }
 
   void _confirmDelete(Map<String, dynamic> product) {
@@ -567,16 +697,25 @@ class _ProductRow extends StatelessWidget {
     final lowStock = (product['low_stock'] as num? ?? 5).toDouble();
     final saleUnit = UnitUtils.saleUnitForProduct(product);
     final stockUnit = UnitUtils.stockUnitForProduct(product);
-    final isLow = stock <= lowStock && stock > 0;
-    final isOut = stock == 0;
+    final hasVariants = ((product['has_variants'] as num?) ?? 0) == 1;
+    final tracksStock = UnitUtils.tracksStock(product);
+    final isLow = tracksStock && stock <= lowStock && stock > 0;
+    final isOut = tracksStock && stock == 0;
     final isMobile = MediaQuery.of(context).size.width < 600;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: isMobile
           ? _buildMobileLayout(
@@ -586,6 +725,8 @@ class _ProductRow extends StatelessWidget {
               stock,
               saleUnit,
               stockUnit,
+              hasVariants,
+              tracksStock,
             )
           : Row(
               children: [
@@ -608,6 +749,20 @@ class _ProductRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (product['brand'] != null &&
+                          (product['brand'] as String).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            (product['brand'] as String).toUpperCase(),
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
                       Text(
                         product['name'] as String? ?? '',
                         style: const TextStyle(
@@ -625,9 +780,13 @@ class _ProductRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        saleUnit == stockUnit
+                        hasVariants
+                            ? 'Variants enabled - Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}'
+                            : !tracksStock
+                            ? 'No stock tracking'
+                            : saleUnit == stockUnit
                             ? 'Unit: ${UnitUtils.label(saleUnit)}'
-                            : 'Sell: ${UnitUtils.label(saleUnit)} • Stock: ${UnitUtils.label(stockUnit)}',
+                            : 'Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}',
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 12,
@@ -659,7 +818,7 @@ class _ProductRow extends StatelessWidget {
                       ),
                       if (product['cost'] != null)
                         Text(
-                          'Cost: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(stockUnit)}',
+                          'Cost: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(saleUnit)}',
                           style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 11,
@@ -680,13 +839,17 @@ class _ProductRow extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isOut
                         ? AppColors.error.withValues(alpha: 0.12)
+                        : !tracksStock
+                        ? AppColors.primary.withValues(alpha: 0.10)
                         : isLow
                         ? AppColors.warning.withValues(alpha: 0.12)
                         : AppColors.success.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    isOut
+                    !tracksStock
+                        ? 'No stock limit'
+                        : isOut
                         ? 'Out of stock'
                         : UnitUtils.formatWithUnit(stock, stockUnit),
                     textAlign: TextAlign.center,
@@ -695,6 +858,8 @@ class _ProductRow extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: isOut
                           ? AppColors.error
+                          : !tracksStock
+                          ? AppColors.primary
                           : isLow
                           ? AppColors.warning
                           : AppColors.success,
@@ -710,8 +875,8 @@ class _ProductRow extends StatelessWidget {
                     size: 20,
                     color: AppColors.primaryLight,
                   ),
-                  tooltip: 'View Batches',
-                  onPressed: onViewBatches,
+                  tooltip: hasVariants ? 'Manage Variants' : 'View Batches',
+                  onPressed: tracksStock ? onViewBatches : null,
                 ),
                 IconButton(
                   icon: const Icon(
@@ -719,8 +884,10 @@ class _ProductRow extends StatelessWidget {
                     size: 20,
                     color: AppColors.primary,
                   ),
-                  tooltip: 'Receive Stock',
-                  onPressed: onAdjustStock,
+                  tooltip: hasVariants
+                      ? 'Adjust Variant Stock'
+                      : 'Receive Stock',
+                  onPressed: tracksStock ? onAdjustStock : null,
                 ),
                 IconButton(
                   icon: const Icon(
@@ -752,6 +919,8 @@ class _ProductRow extends StatelessWidget {
     double stock,
     String saleUnit,
     String stockUnit,
+    bool hasVariants,
+    bool tracksStock,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,9 +958,13 @@ class _ProductRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    saleUnit == stockUnit
+                    hasVariants
+                        ? 'Variants enabled - Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}'
+                        : !tracksStock
+                        ? 'No stock tracking'
+                        : saleUnit == stockUnit
                         ? 'Unit: ${UnitUtils.label(saleUnit)}'
-                        : 'Sell: ${UnitUtils.label(saleUnit)} • Stock: ${UnitUtils.label(stockUnit)}',
+                        : 'Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}',
                     style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12,
@@ -820,7 +993,7 @@ class _ProductRow extends StatelessWidget {
                 ),
                 if (product['cost'] != null)
                   Text(
-                    'C: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(stockUnit)}',
+                    'C: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(saleUnit)}',
                     style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 11,
@@ -839,18 +1012,26 @@ class _ProductRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isOut
                     ? AppColors.error.withValues(alpha: 0.12)
+                    : !tracksStock
+                    ? AppColors.primary.withValues(alpha: 0.10)
                     : isLow
                     ? AppColors.warning.withValues(alpha: 0.12)
                     : AppColors.success.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                isOut ? 'Out' : UnitUtils.formatWithUnit(stock, stockUnit),
+                !tracksStock
+                    ? 'No stock limit'
+                    : isOut
+                    ? 'Out'
+                    : UnitUtils.formatWithUnit(stock, stockUnit),
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: isOut
                       ? AppColors.error
+                      : !tracksStock
+                      ? AppColors.primary
                       : isLow
                       ? AppColors.warning
                       : AppColors.success,
@@ -866,6 +1047,7 @@ class _ProductRow extends StatelessWidget {
                     color: AppColors.primaryLight,
                   ),
                   onPressed: onViewBatches,
+                  tooltip: tracksStock ? null : 'Stock tracking is off',
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(8),
                 ),
@@ -876,6 +1058,7 @@ class _ProductRow extends StatelessWidget {
                     color: AppColors.primary,
                   ),
                   onPressed: onAdjustStock,
+                  tooltip: tracksStock ? null : 'Stock tracking is off',
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(8),
                 ),
@@ -946,6 +1129,7 @@ class _StatChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 8),

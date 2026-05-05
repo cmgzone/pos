@@ -9,12 +9,22 @@ class CategoryRepository {
 
   /// Get all categories
   static Future<List<Map<String, dynamic>>> getAll() async {
-    return DatabaseService.queryAll(_table, orderBy: 'name ASC');
+    return DatabaseService.queryAll(
+      _table,
+      where: 'deleted_at IS NULL',
+      orderBy: 'name ASC',
+    );
   }
 
   /// Get a single category by ID
   static Future<Map<String, dynamic>?> getById(String id) async {
-    return DatabaseService.queryById(_table, id);
+    final rows = await DatabaseService.queryAll(
+      _table,
+      where: 'id = ? AND deleted_at IS NULL',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
   }
 
   /// Create a new category
@@ -41,6 +51,20 @@ class CategoryRepository {
   /// Delete a category
   static Future<void> delete(String id) async {
     await LicenseService.ensureWriteAccess(action: 'delete categories');
-    await DatabaseService.delete(_table, id);
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.db.transaction((txn) async {
+      await txn.update(
+        'products',
+        {'category_id': null, 'updated_at': now, 'sync_status': 'pending'},
+        where: 'category_id = ? AND deleted_at IS NULL',
+        whereArgs: [id],
+      );
+      await txn.update(
+        _table,
+        {'deleted_at': now, 'updated_at': now, 'sync_status': 'pending'},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 }

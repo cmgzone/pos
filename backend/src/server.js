@@ -185,10 +185,12 @@ app.post('/api/auth/register', async (req, res, next) => {
       await client.query(
         `INSERT INTO users (
            id, business_id, name, email, phone, password, role,
+           feature_access_json, allowed_service_ids_json, pos_mode, service_order_scope,
            last_seen_at, created_at, updated_at, sync_status,
            server_revision
          ) VALUES (
            $1, $2, $3, $4, $5, $6, 'ADMIN',
+           NULL, NULL, 'both', 'all_visible_services',
            $7, $7, $7, 'synced',
            nextval('sync_revision_seq')
          )`,
@@ -231,6 +233,10 @@ app.post('/api/auth/register', async (req, res, next) => {
           email: ownerEmail.toLowerCase(),
           phone,
           role: 'ADMIN',
+          feature_access_json: null,
+          allowed_service_ids_json: null,
+          pos_mode: 'both',
+          service_order_scope: 'all_visible_services',
           created_at: now.toISOString(),
           updated_at: now.toISOString(),
         },
@@ -363,6 +369,10 @@ app.post('/api/auth/login', async (req, res, next) => {
           email: user.email,
           phone: user.phone,
           role: user.role,
+          feature_access_json: user.feature_access_json,
+          allowed_service_ids_json: user.allowed_service_ids_json,
+          pos_mode: user.pos_mode,
+          service_order_scope: user.service_order_scope,
           created_at: toIsoString(user.created_at),
           updated_at: toIsoString(user.updated_at),
         },
@@ -478,12 +488,21 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
            s.payment_type,
            s.total_amount,
            s.created_at,
-           COALESCE((
-             SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
-             FROM sale_items si
-             WHERE si.sale_id = s.id
-               AND si.business_id = s.business_id
-           ), 0) - s.discount AS sale_profit
+           (
+             COALESCE((
+               SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+               FROM sale_items si
+               WHERE si.sale_id = s.id
+                 AND si.business_id = s.business_id
+             ), 0)
+             + COALESCE((
+               SELECT SUM(ssi.quantity * ssi.unit_price)
+               FROM service_sale_items ssi
+               WHERE ssi.sale_id = s.id
+                 AND ssi.business_id = s.business_id
+             ), 0)
+             - s.discount
+           ) AS sale_profit
          FROM sales s
          WHERE ${whereClauses.join(' AND ')}
        ) base

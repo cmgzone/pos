@@ -4,7 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/session_service.dart';
 import '../../core/services/shop_settings.dart';
 import '../../core/services/sync_controller.dart';
+import '../../core/services/license_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../training/application/training_controller.dart';
+import '../training/presentation/training_hub_screen.dart';
+import '../training/widgets/training_anchor.dart';
 import '../customers/presentation/kopesha_screen.dart';
 import '../products/presentation/category_management_screen.dart';
 import '../products/presentation/product_list_screen.dart';
@@ -13,26 +17,44 @@ import '../reports/presentation/profit_loss_screen.dart';
 import '../reports/presentation/reports_screen.dart';
 import '../sales/presentation/pos_screen.dart';
 import '../sales/presentation/sales_history_screen.dart';
+import '../services/presentation/service_management_screen.dart';
 import '../settings/presentation/settings_screen.dart';
+import '../shifts/presentation/shift_management_screen.dart';
 import 'dashboard_screen.dart';
+import '../../widgets/beautiful_icon.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   static final GlobalKey<ScaffoldState> scaffoldKey =
       GlobalKey<ScaffoldState>();
+  static final GlobalKey<AppShellState> shellKey = GlobalKey<AppShellState>();
+
+  static void selectIndex(int index) {
+    shellKey.currentState?._selectIndex(index);
+  }
 
   @override
-  ConsumerState<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
+  String _trainingPromptUserId = '';
 
   final _destinations = const [
     _NavDestination(
+      index: 5,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.space_dashboard_outlined,
+        selectedIcon: Icons.space_dashboard_rounded,
+        label: 'Dashboard',
+      ),
+    ),
+    _NavDestination(
       index: 0,
-      section: _NavSection.core,
+      section: _NavSection.main,
       item: _NavItem(
         icon: Icons.shopping_cart_checkout_outlined,
         selectedIcon: Icons.shopping_cart_checkout_rounded,
@@ -40,8 +62,26 @@ class _AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 4,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.receipt_long_outlined,
+        selectedIcon: Icons.receipt_long_rounded,
+        label: 'Sales',
+      ),
+    ),
+    _NavDestination(
+      index: 10,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.timer_outlined,
+        selectedIcon: Icons.timer_rounded,
+        label: 'Shifts',
+      ),
+    ),
+    _NavDestination(
       index: 1,
-      section: _NavSection.core,
+      section: _NavSection.inventory,
       item: _NavItem(
         icon: Icons.inventory_2_outlined,
         selectedIcon: Icons.inventory_2_rounded,
@@ -50,7 +90,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     ),
     _NavDestination(
       index: 2,
-      section: _NavSection.more,
+      section: _NavSection.inventory,
       item: _NavItem(
         icon: Icons.category_outlined,
         selectedIcon: Icons.category_rounded,
@@ -59,7 +99,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     ),
     _NavDestination(
       index: 3,
-      section: _NavSection.more,
+      section: _NavSection.inventory,
       item: _NavItem(
         icon: Icons.local_shipping_outlined,
         selectedIcon: Icons.local_shipping_rounded,
@@ -67,44 +107,17 @@ class _AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
-      index: 4,
-      section: _NavSection.core,
+      index: 11,
+      section: _NavSection.inventory,
       item: _NavItem(
-        icon: Icons.receipt_long_outlined,
-        selectedIcon: Icons.receipt_long_rounded,
-        label: 'Sales',
-      ),
-    ),
-    _NavDestination(
-      index: 5,
-      section: _NavSection.core,
-      item: _NavItem(
-        icon: Icons.space_dashboard_outlined,
-        selectedIcon: Icons.space_dashboard_rounded,
-        label: 'Dashboard',
-      ),
-    ),
-    _NavDestination(
-      index: 6,
-      section: _NavSection.more,
-      item: _NavItem(
-        icon: Icons.account_balance_wallet_outlined,
-        selectedIcon: Icons.account_balance_wallet_rounded,
-        label: 'Kopesha',
-      ),
-    ),
-    _NavDestination(
-      index: 7,
-      section: _NavSection.more,
-      item: _NavItem(
-        icon: Icons.insert_chart_outlined,
-        selectedIcon: Icons.insert_chart_rounded,
-        label: 'P&L',
+        icon: Icons.design_services_outlined,
+        selectedIcon: Icons.design_services_rounded,
+        label: 'Services',
       ),
     ),
     _NavDestination(
       index: 8,
-      section: _NavSection.more,
+      section: _NavSection.reports,
       item: _NavItem(
         icon: Icons.analytics_outlined,
         selectedIcon: Icons.analytics_rounded,
@@ -112,8 +125,26 @@ class _AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 7,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.insert_chart_outlined,
+        selectedIcon: Icons.insert_chart_rounded,
+        label: 'P&L',
+      ),
+    ),
+    _NavDestination(
+      index: 6,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.account_balance_wallet_outlined,
+        selectedIcon: Icons.account_balance_wallet_rounded,
+        label: 'Kopesha',
+      ),
+    ),
+    _NavDestination(
       index: 9,
-      section: _NavSection.more,
+      section: _NavSection.system,
       item: _NavItem(
         icon: Icons.settings_outlined,
         selectedIcon: Icons.settings_rounded,
@@ -124,8 +155,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   static const _mobileBottomDefaults = [0, 1, 4, 5];
 
-  List<int> get _allowedIndices =>
-      RolePermissions.navigationIndicesForRole(SessionService.currentUserRole);
+  List<int> get _allowedIndices => SessionService.currentNavigationIndices;
 
   int get _currentIndex => _allowedIndices.contains(_selectedIndex)
       ? _selectedIndex
@@ -145,24 +175,95 @@ class _AppShellState extends ConsumerState<AppShell> {
     return _destinations.where((d) => indices.contains(d.index)).toList();
   }
 
-  List<_NavDestination> get _drawerCoreDestinations => _destinations
-      .where(
-        (destination) =>
-            destination.section == _NavSection.core &&
-            !_mobileBottomDestinations.any(
-              (item) => item.index == destination.index,
-            ) &&
-            _allowedIndices.contains(destination.index),
-      )
-      .toList();
+  List<_NavDestination> _getDestinationsBySection(_NavSection section) =>
+      _allowedDestinations.where((d) => d.section == section).toList();
 
-  List<_NavDestination> get _drawerMoreDestinations => _destinations
-      .where(
-        (destination) =>
-            destination.section == _NavSection.more &&
-            _allowedIndices.contains(destination.index),
-      )
-      .toList();
+  String _sectionLabel(_NavSection section) {
+    switch (section) {
+      case _NavSection.main:
+        return 'SHOP OPERATIONS';
+      case _NavSection.inventory:
+        return 'STOCK & SERVICES';
+      case _NavSection.reports:
+        return 'REPORTS & ANALYTICS';
+      case _NavSection.system:
+        return 'ADMINISTRATION';
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowTrainingPrompt();
+    });
+  }
+
+  void _selectIndex(int index) {
+    if (!_allowedIndices.contains(index) || _selectedIndex == index) {
+      return;
+    }
+    setState(() => _selectedIndex = index);
+  }
+
+  Future<void> _maybeShowTrainingPrompt() async {
+    final training = ref.read(trainingControllerProvider);
+    await training.ensureLoadedForCurrentUser();
+    if (!mounted) {
+      return;
+    }
+
+    final userId = SessionService.currentUserId.trim();
+    if (_trainingPromptUserId == userId || !training.shouldShowPrompt) {
+      return;
+    }
+    _trainingPromptUserId = userId;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Start App Training'),
+        content: const Text(
+          'Walk through the real POS app with animated guidance, page switching, and progress saved for this user.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'later'),
+            child: const Text('Later'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, 'hub'),
+            child: const Text('Browse Modules'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'tour'),
+            child: const Text('Start Full Tour'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    if (action == 'tour') {
+      training.startFullTour();
+      return;
+    }
+
+    if (action == 'hub') {
+      training.dismissPrompt();
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const TrainingHubScreen()),
+      );
+      return;
+    }
+
+    training.dismissPrompt();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -180,79 +281,112 @@ class _AppShellState extends ConsumerState<AppShell> {
       body: Row(
         children: [
           if (isWide)
-            NavigationRail(
-              backgroundColor: AppColors.surface,
-              selectedIndex: _allowedDestinations.indexWhere(
-                (d) => d.index == currentIndex,
-              ),
-              onDestinationSelected: (i) => setState(
-                () => _selectedIndex = _allowedDestinations[i].index,
-              ),
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryLight],
+            SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height,
+                ),
+                child: IntrinsicHeight(
+                  child: TrainingAnchor(
+                    id: 'shell.navigation',
+                    child: NavigationRail(
+                      backgroundColor: AppColors.surface,
+                      indicatorColor: Colors.transparent,
+                      selectedIndex: _allowedDestinations.indexWhere(
+                        (d) => d.index == currentIndex,
+                      ),
+                      onDestinationSelected: (i) =>
+                          _selectIndex(_allowedDestinations[i].index),
+                      labelType: NavigationRailLabelType.all,
+                      leading: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Image.asset(
+                            'assets/images/logo.png',
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      AppColors.primary,
+                                      AppColors.primaryLight,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(
+                                  Icons.point_of_sale_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      destinations: _allowedDestinations
+                          .map(
+                            (destination) => NavigationRailDestination(
+                              icon: BeautifulIcon(
+                                destination.item.icon,
+                                color: AppColors.textSecondary,
+                              ),
+                              selectedIcon: BeautifulIcon(
+                                destination.item.selectedIcon,
+                                color: AppColors.primary,
+                                withBackground: true,
+                              ),
+                              label: Text(destination.item.label),
+                            ),
+                          )
+                          .toList(),
                     ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.point_of_sale_rounded,
-                    color: Colors.white,
-                    size: 24,
                   ),
                 ),
               ),
-              destinations: _allowedDestinations
-                  .map(
-                    (destination) => NavigationRailDestination(
-                      icon: Icon(
-                        destination.item.icon,
-                        color: AppColors.textSecondary,
-                      ),
-                      selectedIcon: Icon(
-                        destination.item.selectedIcon,
-                        color: AppColors.primary,
-                      ),
-                      label: Text(destination.item.label),
-                    ),
-                  )
-                  .toList(),
             ),
           if (isWide) const VerticalDivider(width: 1, color: AppColors.border),
           Expanded(child: _buildScreen(currentIndex)),
         ],
       ),
       bottomNavigationBar: !isWide
-          ? NavigationBar(
-              backgroundColor: AppColors.surface,
-              selectedIndex: mobileSelectedIndex >= 0 ? mobileSelectedIndex : 0,
-              onDestinationSelected: (i) => setState(
-                () => _selectedIndex = mobileBottomDestinations[i].index,
-              ),
-              destinations: mobileBottomDestinations
-                  .map(
-                    (destination) => NavigationDestination(
-                      icon: Icon(destination.item.icon),
-                      selectedIcon: Icon(
-                        destination.item.selectedIcon,
-                        color: AppColors.primary,
+          ? TrainingAnchor(
+              id: 'shell.navigation',
+              child: NavigationBar(
+                backgroundColor: AppColors.surface,
+                indicatorColor: Colors.transparent,
+                selectedIndex: mobileSelectedIndex >= 0
+                    ? mobileSelectedIndex
+                    : 0,
+                onDestinationSelected: (i) =>
+                    _selectIndex(mobileBottomDestinations[i].index),
+                destinations: mobileBottomDestinations
+                    .map(
+                      (destination) => NavigationDestination(
+                        icon: BeautifulIcon(destination.item.icon),
+                        selectedIcon: BeautifulIcon(
+                          destination.item.selectedIcon,
+                          color: AppColors.primary,
+                          withBackground: true,
+                        ),
+                        label: destination.item.label,
                       ),
-                      label: destination.item.label,
-                    ),
-                  )
-                  .toList(),
+                    )
+                    .toList(),
+              ),
             )
           : null,
     );
   }
 
   Widget _buildDrawer(BuildContext context, int currentIndex) {
-    final mobileBottomDestinations = _mobileBottomDestinations;
+    final syncState = ref.watch(syncControllerProvider);
 
     return Drawer(
       backgroundColor: AppColors.surface,
@@ -272,17 +406,28 @@ class _AppShellState extends ConsumerState<AppShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.point_of_sale_rounded,
-                      color: Colors.white,
-                      size: 24,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.point_of_sale_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -302,76 +447,84 @@ class _AppShellState extends ConsumerState<AppShell> {
                       fontSize: 13,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _buildDrawerBadge(
+                        icon: Icons.verified,
+                        label:
+                            syncState.licenseSnapshot.accessStatus ==
+                                LicenseAccessStatus.active
+                            ? 'Active'
+                            : 'License',
+                        color:
+                            syncState.licenseSnapshot.accessStatus ==
+                                LicenseAccessStatus.active
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildDrawerBadge(
+                        icon: syncState.indicator == SyncIndicatorState.synced
+                            ? Icons.cloud_done
+                            : Icons.cloud_sync,
+                        label: syncState.indicator == SyncIndicatorState.synced
+                            ? 'Synced'
+                            : 'Syncing',
+                        color: syncState.indicator == SyncIndicatorState.synced
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            ...mobileBottomDestinations.map(
-              (destination) => _DrawerItem(
-                icon: destination.item.icon,
-                selectedIcon: destination.item.selectedIcon,
-                label: destination.item.label,
-                isSelected: currentIndex == destination.index,
-                onTap: () {
-                  setState(() => _selectedIndex = destination.index);
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-            if (_drawerCoreDestinations.isNotEmpty ||
-                _drawerMoreDestinations.isNotEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: Divider(color: AppColors.border),
-              ),
-            if (_drawerCoreDestinations.isNotEmpty)
-              ..._drawerCoreDestinations.map(
-                (destination) => _DrawerItem(
-                  icon: destination.item.icon,
-                  selectedIcon: destination.item.selectedIcon,
-                  label: destination.item.label,
-                  isSelected: currentIndex == destination.index,
-                  onTap: () {
-                    setState(() => _selectedIndex = destination.index);
-                    Navigator.pop(context);
-                  },
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final section in _NavSection.values)
+                      ...(() {
+                        final items = _getDestinationsBySection(section);
+                        if (items.isEmpty) return <Widget>[];
+                        return [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                            child: Text(
+                              _sectionLabel(section),
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ),
+                          ...items.map(
+                            (destination) => _DrawerItem(
+                              icon: destination.item.icon,
+                              selectedIcon: destination.item.selectedIcon,
+                              label: destination.item.label,
+                              isSelected: currentIndex == destination.index,
+                              onTap: () {
+                                setState(() => _selectedIndex = destination.index);
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ),
+                        ];
+                      })(),
+                    const SizedBox(height: 20),
+                  ],
                 ),
               ),
-            if (_drawerMoreDestinations.isNotEmpty)
-              const Padding(
-                padding: EdgeInsets.only(left: 24, top: 8, bottom: 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'REPORTS & MORE',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-              ),
-            ..._drawerMoreDestinations.map(
-              (destination) => _DrawerItem(
-                icon: destination.item.icon,
-                selectedIcon: destination.item.selectedIcon,
-                label: destination.index == 7
-                    ? 'Profit & Loss'
-                    : destination.item.label,
-                isSelected: currentIndex == destination.index,
-                onTap: () {
-                  setState(() => _selectedIndex = destination.index);
-                  Navigator.pop(context);
-                },
-              ),
             ),
-            const Spacer(),
             Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Velora POS v1.0.0',
+                'Devis POS v1.0.0',
                 style: TextStyle(
                   color: AppColors.textSecondary.withValues(alpha: 0.5),
                   fontSize: 12,
@@ -406,13 +559,47 @@ class _AppShellState extends ConsumerState<AppShell> {
         return const ReportsScreen();
       case 9:
         return const SettingsScreen();
+      case 10:
+        return const ShiftManagementScreen();
+      case 11:
+        return const ServiceManagementScreen();
       default:
         return const PosScreen();
     }
   }
+
+  Widget _buildDrawerBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-enum _NavSection { core, more }
+enum _NavSection { main, inventory, reports, system }
 
 class _NavDestination {
   final int index;
@@ -457,7 +644,7 @@ class _DrawerItem extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                Icon(
+                BeautifulIcon(
                   isSelected ? selectedIcon : icon,
                   color: isSelected
                       ? AppColors.primary

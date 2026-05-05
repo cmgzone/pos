@@ -8,6 +8,7 @@ class ShopSettings {
   static const _keyTaxRate = 'tax_rate';
   static const _keyCurrency = 'currency';
   static const _keyReceiptFooter = 'receipt_footer';
+  static const _keyCarwashBays = 'carwash_bays_count';
 
   static SharedPreferences? _prefs;
 
@@ -24,6 +25,8 @@ class ShopSettings {
   static String get currency => _prefs?.getString(_keyCurrency) ?? '\$';
   static String get receiptFooter =>
       _prefs?.getString(_keyReceiptFooter) ?? 'Thank you for your purchase!';
+  static int get carwashBaysCount =>
+      _prefs?.getInt(_keyCarwashBays) ?? 4;
 
   // Setters
   static Future<void> setShopName(String value) =>
@@ -40,6 +43,19 @@ class ShopSettings {
       _prefs!.setString(_keyCurrency, value);
   static Future<void> setReceiptFooter(String value) =>
       _prefs!.setString(_keyReceiptFooter, value);
+  static Future<void> setCarwashBaysCount(int value) =>
+      _prefs!.setInt(_keyCarwashBays, value);
+
+  static Future<void> resetForBusinessSwitch() async {
+    await init();
+    await _prefs!.remove(_keyShopName);
+    await _prefs!.remove(_keyShopAddress);
+    await _prefs!.remove(_keyShopPhone);
+    await _prefs!.remove(_keyShopEmail);
+    await _prefs!.remove(_keyTaxRate);
+    await _prefs!.remove(_keyCurrency);
+    await _prefs!.remove(_keyReceiptFooter);
+  }
 
   /// Check if shop has been set up
   static bool get isConfigured =>

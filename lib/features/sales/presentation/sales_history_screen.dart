@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../shifts/data/shift_provider.dart';
+import '../../shifts/data/shift_preferences_service.dart';
+import '../../shifts/data/shift_repository.dart';
+import '../../shifts/presentation/shift_auto_open_dialog.dart';
+import '../../settings/data/payment_method_repository.dart';
+import '../../services/data/service_provider.dart';
+import '../../services/data/service_repository.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/sale_repository.dart';
 import 'receipt_service.dart';
 
@@ -17,6 +26,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   List<Map<String, dynamic>> _sales = [];
   bool _isLoading = true;
   String _selectedFilter = 'today';
+  String _selectedSaleType = 'all';
+  DateTime? _selectedDate;
 
   bool get _isCashierView =>
       RolePermissions.normalizeRole(SessionService.currentUserRole) ==
@@ -55,6 +66,38 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           59,
         ).toIso8601String();
         break;
+      case 'yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        startDate = DateTime(
+          yesterday.year,
+          yesterday.month,
+          yesterday.day,
+        ).toIso8601String();
+        endDate = DateTime(
+          yesterday.year,
+          yesterday.month,
+          yesterday.day,
+          23,
+          59,
+          59,
+        ).toIso8601String();
+        break;
+      case 'date':
+        final selected = _selectedDate ?? now;
+        startDate = DateTime(
+          selected.year,
+          selected.month,
+          selected.day,
+        ).toIso8601String();
+        endDate = DateTime(
+          selected.year,
+          selected.month,
+          selected.day,
+          23,
+          59,
+          59,
+        ).toIso8601String();
+        break;
       case 'week':
         startDate = now.subtract(const Duration(days: 7)).toIso8601String();
         endDate = now.toIso8601String();
@@ -85,188 +128,776 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         refunded + 0.009 < total;
   }
 
+  bool _canDeleteSale(Map<String, dynamic> sale) {
+    final paymentType = (sale['payment_type'] as String? ?? 'cash')
+        .toLowerCase();
+    return RolePermissions.canRefundSales(SessionService.currentUserRole) &&
+        !paymentType.startsWith('refund');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final totalRevenue = _sales.fold<double>(
+    final visibleSales = _filteredSales;
+    final totalRevenue = visibleSales.fold<double>(
       0.0,
       (sum, s) => sum + (s['total_amount'] as num? ?? 0).toDouble(),
     );
-    final totalTax = _sales.fold<double>(
+    final totalTax = visibleSales.fold<double>(
       0.0,
       (sum, s) => sum + (s['tax'] as num? ?? 0).toDouble(),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: Text(_isCashierView ? 'My Sales History' : 'Sales History'),
-      ),
-      body: Column(
-        children: [
-          // Stats bar
-          Container(
-            color: AppColors.surface,
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _StatCard(
-                  icon: Icons.receipt_long,
-                  label: 'Total Sales',
-                  value: '${_sales.length}',
-                  color: AppColors.primary,
-                ),
-                _StatCard(
-                  icon: Icons.attach_money,
-                  label: 'Revenue',
-                  value:
-                      '${ShopSettings.currency}${totalRevenue.toStringAsFixed(2)}',
-                  color: AppColors.success,
-                ),
-                _StatCard(
-                  icon: Icons.account_balance,
-                  label: 'Tax Collected',
-                  value:
-                      '${ShopSettings.currency}${totalTax.toStringAsFixed(2)}',
-                  color: AppColors.warning,
-                ),
-
-                // Filter chips
-                Container(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Wrap(
-                    children: [
-                      _FilterChip(
-                        label: 'Today',
-                        isSelected: _selectedFilter == 'today',
-                        onTap: () {
-                          _selectedFilter = 'today';
-                          _loadSales();
-                        },
-                      ),
-                      _FilterChip(
-                        label: 'Week',
-                        isSelected: _selectedFilter == 'week',
-                        onTap: () {
-                          _selectedFilter = 'week';
-                          _loadSales();
-                        },
-                      ),
-                      _FilterChip(
-                        label: 'Month',
-                        isSelected: _selectedFilter == 'month',
-                        onTap: () {
-                          _selectedFilter = 'month';
-                          _loadSales();
-                        },
-                      ),
-                      _FilterChip(
-                        label: 'All',
-                        isSelected: _selectedFilter == 'all',
-                        onTap: () {
-                          _selectedFilter = 'all';
-                          _loadSales();
-                        },
-                      ),
-                    ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 720;
+        return Scaffold(
+          appBar: AppBar(
+            backgroundColor: AppColors.surface,
+            title: Text(_isCashierView ? 'My Sales' : 'Sales'),
+            actions: [
+              IconButton(
+                onPressed: _loadSales,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+              ),
+              if (!_isCashierView && !isMobile)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilledButton.icon(
+                    onPressed: _showRecordBookSaleDialog,
+                    icon: const Icon(Icons.post_add_outlined, size: 18),
+                    label: const Text('Record Sale'),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
-          if (_isCashierView)
-            Container(
-              width: double.infinity,
-              color: AppColors.surface,
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.lock_outline,
-                      color: AppColors.primary,
-                      size: 18,
-                    ),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Showing only your own sales activity.',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+          floatingActionButton: !_isCashierView && isMobile
+              ? FloatingActionButton.extended(
+                  onPressed: _showRecordBookSaleDialog,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  icon: const Icon(Icons.post_add_outlined),
+                  label: const Text('Record'),
+                )
+              : null,
+          body: Column(
+            children: [
+              TrainingAnchor(
+                id: 'sales.filters',
+                child: _SalesHeader(
+                  isMobile: isMobile,
+                  totalSales: visibleSales.length,
+                  totalRevenue: totalRevenue,
+                  totalTax: totalTax,
+                  selectedFilter: _selectedFilter,
+                  selectedDate: _selectedDate,
+                  onFilterSelected: _selectFilter,
+                  selectedSaleType: _selectedSaleType,
+                  onSaleTypeSelected: _selectSaleType,
+                  isCashierView: _isCashierView,
                 ),
               ),
-            ),
-          const Divider(height: 1),
-
-          // Sales list
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _sales.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.receipt_long_outlined,
-                          size: 64,
-                          color: AppColors.textSecondary.withValues(alpha: 0.4),
+              const Divider(height: 1),
+              Expanded(
+                child: TrainingAnchor(
+                  id: 'sales.list',
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : visibleSales.isEmpty
+                      ? _EmptySalesState(isCashierView: _isCashierView)
+                      : ListView.separated(
+                          padding: EdgeInsets.fromLTRB(
+                            isMobile ? 14 : 24,
+                            isMobile ? 14 : 24,
+                            isMobile ? 14 : 24,
+                            isMobile ? 92 : 24,
+                          ),
+                          itemCount: visibleSales.length,
+                          separatorBuilder: (_, _) =>
+                              SizedBox(height: isMobile ? 10 : 8),
+                          itemBuilder: (context, index) {
+                            final sale = visibleSales[index];
+                            return _SaleRow(
+                              sale: sale,
+                              onTap: () => _showSaleDetails(sale),
+                            );
+                          },
                         ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No sales found',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  List<Map<String, dynamic>> get _filteredSales {
+    if (_selectedSaleType == 'all') {
+      return _sales;
+    }
+    return _sales.where((sale) {
+      final serviceCount = (sale['service_line_count'] as num? ?? 0).toInt();
+      final productCount = (sale['product_line_count'] as num? ?? 0).toInt();
+      return switch (_selectedSaleType) {
+        'service' => serviceCount > 0 && productCount == 0,
+        'product' => productCount > 0 && serviceCount == 0,
+        'mixed' => productCount > 0 && serviceCount > 0,
+        _ => true,
+      };
+    }).toList();
+  }
+
+  Future<void> _selectFilter(String filter) async {
+    if (filter == 'date') {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _selectedDate ?? DateTime.now(),
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now(),
+      );
+      if (picked == null || !mounted) {
+        return;
+      }
+      setState(() {
+        _selectedFilter = 'date';
+        _selectedDate = DateTime(picked.year, picked.month, picked.day);
+      });
+      await _loadSales();
+      return;
+    }
+    if (_selectedFilter == filter) {
+      return;
+    }
+    setState(() => _selectedFilter = filter);
+    await _loadSales();
+  }
+
+  void _selectSaleType(String saleType) {
+    if (_selectedSaleType == saleType) {
+      return;
+    }
+    setState(() => _selectedSaleType = saleType);
+  }
+
+  Future<void> _showRecordBookSaleDialog() async {
+    final methods = (await PaymentMethodRepository.getAll(
+      activeOnly: true,
+    )).where((method) => method['is_credit'] != 1).toList();
+    final services = await ServiceRepository.getServices(activeOnly: true);
+    if (!mounted) {
+      return;
+    }
+    if (methods.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add an active non-credit payment method first.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    final totalController = TextEditingController();
+    final taxController = TextEditingController(text: '0');
+    final quantityController = TextEditingController(text: '1');
+    final priceController = TextEditingController();
+    final customerNameController = TextEditingController();
+    final assignedStaffController = TextEditingController();
+    final bayController = TextEditingController();
+    final noteController = TextEditingController();
+    DateTime saleDate = DateTime.now();
+    Map<String, dynamic> selectedMethod = methods.first;
+    Map<String, dynamic>? selectedService = services.isEmpty
+        ? null
+        : services.first;
+    var recordMode = services.isEmpty ? 'manual' : 'service';
+    bool isSaving = false;
+    var savedCount = 0;
+    var currentFields = selectedService == null
+        ? <Map<String, dynamic>>[]
+        : await ServiceRepository.getFieldsForService(
+            selectedService['id'] as String,
+          );
+    if (!mounted) {
+      return;
+    }
+    final fieldControllers = <String, TextEditingController>{};
+
+    void resetFieldControllers(List<Map<String, dynamic>> fields) {
+      for (final controller in fieldControllers.values) {
+        controller.dispose();
+      }
+      fieldControllers.clear();
+      for (final field in fields) {
+        fieldControllers[field['id'] as String] = TextEditingController();
+      }
+    }
+
+    resetFieldControllers(currentFields);
+
+    void syncPriceFromService() {
+      final service = selectedService;
+      if (service == null) {
+        return;
+      }
+      priceController.text = (service['base_price'] as num? ?? 0)
+          .toStringAsFixed(2);
+    }
+
+    syncPriceFromService();
+
+    Future<void> saveManualRecord({
+      required BuildContext dialogContext,
+      required StateSetter setDialogState,
+      required bool keepOpen,
+    }) async {
+      final messenger = ScaffoldMessenger.of(dialogContext);
+      final quantity = double.tryParse(quantityController.text.trim()) ?? 0;
+      final price = double.tryParse(priceController.text.trim()) ?? 0;
+      final total = recordMode == 'service'
+          ? quantity * price
+          : (double.tryParse(totalController.text.trim()) ?? 0);
+      final tax = double.tryParse(taxController.text.trim()) ?? 0;
+      if (recordMode == 'service' && selectedService == null) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Choose a service to record.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        return;
+      }
+      if (recordMode == 'service' && (quantity <= 0 || price <= 0)) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Enter service quantity and price greater than 0.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        return;
+      }
+      if (recordMode == 'service') {
+        final missingField = _firstMissingManualServiceField(
+          currentFields,
+          fieldControllers,
+        );
+        if (missingField != null) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('${missingField['label']} is required.'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+          return;
+        }
+      }
+      if (total <= 0) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Enter a sale total greater than 0.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        return;
+      }
+      if (tax < 0 || tax > total) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Tax must be between 0 and total.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        return;
+      }
+
+      setDialogState(() => isSaving = true);
+      try {
+        final service = selectedService;
+        String? serviceOrderId;
+        if (recordMode == 'service' && service != null) {
+          serviceOrderId = await ServiceRepository.createOrder(
+            serviceId: service['id'] as String,
+            serviceName: service['name'] as String? ?? 'Service',
+            customerName: customerNameController.text,
+            entryMode: 'walk_in',
+            checkedInAt: saleDate.toIso8601String(),
+            status: 'completed',
+            assignedStaff: assignedStaffController.text,
+            bayNumber: bayController.text,
+            price: total,
+            note: noteController.text,
+            fieldValues: _buildManualServiceFieldValues(
+              currentFields,
+              fieldControllers,
+            ),
+          );
+        }
+        await SaleRepository.createSale(
+          totalAmount: total,
+          tax: tax,
+          discount: 0,
+          paymentType: selectedMethod['name'] as String? ?? 'Payment',
+          isCashDrawer: (selectedMethod['is_cash_drawer'] as num? ?? 0) == 1,
+          userId: SessionService.currentUserId.isNotEmpty
+              ? SessionService.currentUserId
+              : 'admin',
+          items: recordMode == 'service' && service != null
+              ? [
+                  {
+                    'line_type': 'service',
+                    'service_order_id': serviceOrderId,
+                    'service_id': service['id'],
+                    'product_name': service['name'] as String? ?? 'Service',
+                    'quantity': quantity,
+                    'unit_price': price,
+                  },
+                ]
+              : const [],
+          amountTendered: total,
+          changeGiven: 0,
+          createdAt: saleDate,
+        );
+        if (!dialogContext.mounted) {
+          return;
+        }
+        final container = ProviderScope.containerOf(
+          dialogContext,
+          listen: false,
+        );
+        container.invalidate(serviceOrdersProvider);
+        container.invalidate(serviceTodayOrdersProvider);
+        container.invalidate(serviceStatsProvider);
+        container.invalidate(serviceSalesByDateProvider);
+        savedCount += 1;
+
+        if (!keepOpen) {
+          Navigator.pop(dialogContext, true);
+          return;
+        }
+
+        setDialogState(() {
+          isSaving = false;
+          totalController.clear();
+          taxController.text = '0';
+          quantityController.text = '1';
+          customerNameController.clear();
+          assignedStaffController.clear();
+          bayController.clear();
+          noteController.clear();
+          for (final controller in fieldControllers.values) {
+            controller.clear();
+          }
+          if (recordMode == 'service') {
+            syncPriceFromService();
+          }
+        });
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Sale saved. Add the next record.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } catch (error) {
+        setDialogState(() => isSaving = false);
+        if (dialogContext.mounted) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Could not record sale: $error'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    }
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Add Manual Sale'),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (services.isNotEmpty) ...[
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 'service',
+                          icon: Icon(Icons.design_services_outlined),
+                          label: Text('Service'),
+                        ),
+                        ButtonSegment(
+                          value: 'manual',
+                          icon: Icon(Icons.edit_note_outlined),
+                          label: Text('Total'),
+                        ),
+                      ],
+                      selected: {recordMode},
+                      onSelectionChanged: isSaving
+                          ? null
+                          : (selection) {
+                              setDialogState(() {
+                                recordMode = selection.first;
+                                if (recordMode == 'service') {
+                                  syncPriceFromService();
+                                }
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: saleDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked == null) {
+                        return;
+                      }
+                      setDialogState(() {
+                        saleDate = DateTime(
+                          picked.year,
+                          picked.month,
+                          picked.day,
+                          saleDate.hour,
+                          saleDate.minute,
+                        );
+                      });
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Sale Date',
+                        prefixIcon: Icon(Icons.calendar_month_outlined),
+                      ),
+                      child: Text(
+                        '${saleDate.month}/${saleDate.day}/${saleDate.year}',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (recordMode == 'service' && services.isNotEmpty) ...[
+                    if (savedCount > 0) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.success.withValues(alpha: 0.22),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _isCashierView
-                              ? 'Your completed sales will appear here.'
-                              : 'Complete a sale from the POS screen',
+                        child: Text(
+                          '$savedCount record${savedCount == 1 ? '' : 's'} saved',
                           style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 13,
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedService?['id'] as String?,
+                      decoration: const InputDecoration(
+                        labelText: 'Service',
+                        prefixIcon: Icon(Icons.design_services_outlined),
+                      ),
+                      items: services
+                          .map(
+                            (service) => DropdownMenuItem(
+                              value: service['id'] as String,
+                              child: Text(
+                                service['name'] as String? ?? 'Service',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              if (value == null) {
+                                return;
+                              }
+                              final service = services.firstWhere(
+                                (service) => service['id'] == value,
+                                orElse: () => services.first,
+                              );
+                              setDialogState(() {
+                                selectedService = service;
+                                syncPriceFromService();
+                              });
+                              ServiceRepository.getFieldsForService(value).then(
+                                (fields) {
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  setDialogState(() {
+                                    currentFields = fields;
+                                    resetFieldControllers(fields);
+                                  });
+                                },
+                              );
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    _ManualSaleResponsiveRow(
+                      children: [
+                        TextField(
+                          controller: quantityController,
+                          enabled: !isSaving,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Quantity',
+                            prefixIcon: Icon(Icons.format_list_numbered),
+                          ),
+                        ),
+                        TextField(
+                          controller: priceController,
+                          enabled: !isSaving,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Price',
+                            prefixIcon: Icon(Icons.attach_money),
                           ),
                         ),
                       ],
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(24),
-                    itemCount: _sales.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final sale = _sales[index];
-                      return _SaleRow(
-                        sale: sale,
-                        onTap: () => _showSaleDetails(sale),
-                      );
+                    const SizedBox(height: 12),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Sale Total',
+                        prefixIcon: Icon(Icons.summarize_outlined),
+                      ),
+                      child: Text(
+                        '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.assignment_outlined),
+                      title: const Text('Service Details'),
+                      subtitle: const Text('Customer, staff, bay, notes'),
+                      children: [
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: customerNameController,
+                          enabled: !isSaving,
+                          decoration: const InputDecoration(
+                            labelText: 'Customer Name',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _ManualSaleResponsiveRow(
+                          children: [
+                            TextField(
+                              controller: assignedStaffController,
+                              enabled: !isSaving,
+                              decoration: const InputDecoration(
+                                labelText: 'Assigned Staff',
+                                prefixIcon: Icon(Icons.people_alt_outlined),
+                              ),
+                            ),
+                            TextField(
+                              controller: bayController,
+                              enabled: !isSaving,
+                              decoration: const InputDecoration(
+                                labelText: 'Bay / Room',
+                                prefixIcon: Icon(
+                                  Icons.room_preferences_outlined,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: noteController,
+                          enabled: !isSaving,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Note',
+                            prefixIcon: Icon(Icons.notes_outlined),
+                          ),
+                        ),
+                        if (currentFields.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Custom Fields',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          ...currentFields.map((field) {
+                            final fieldId = field['id'] as String;
+                            return _ManualServiceFieldInput(
+                              field: field,
+                              controller: fieldControllers[fieldId]!,
+                              enabled: !isSaving,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  fieldControllers[fieldId]!.text = value ?? '';
+                                  final priceMap =
+                                      field['price_map']
+                                          as Map<String, double>?;
+                                  final mapped = priceMap?[value];
+                                  if (mapped != null && mapped > 0) {
+                                    priceController.text = mapped
+                                        .toStringAsFixed(2);
+                                  }
+                                });
+                              },
+                            );
+                          }),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedMethod['id'] as String,
+                    decoration: const InputDecoration(
+                      labelText: 'Payment Method',
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                    items: methods
+                        .map(
+                          (method) => DropdownMenuItem(
+                            value: method['id'] as String,
+                            child: Text(method['name'] as String? ?? 'Payment'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setDialogState(() {
+                        selectedMethod = methods.firstWhere(
+                          (method) => method['id'] == value,
+                          orElse: () => methods.first,
+                        );
+                      });
                     },
                   ),
+                  const SizedBox(height: 12),
+                  if (recordMode == 'manual') ...[
+                    TextField(
+                      controller: totalController,
+                      enabled: !isSaving,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Total Amount',
+                        prefixIcon: Icon(Icons.attach_money),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(
+                    controller: taxController,
+                    enabled: !isSaving,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Tax Included',
+                      prefixIcon: Icon(Icons.account_balance_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            OutlinedButton.icon(
+              onPressed: isSaving
+                  ? null
+                  : () => saveManualRecord(
+                      dialogContext: ctx,
+                      setDialogState: setDialogState,
+                      keepOpen: true,
+                    ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Save & Add Another'),
+            ),
+            FilledButton(
+              onPressed: isSaving
+                  ? null
+                  : () => saveManualRecord(
+                      dialogContext: ctx,
+                      setDialogState: setDialogState,
+                      keepOpen: false,
+                    ),
+              child: isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Save Sale'),
+            ),
+          ],
+        ),
       ),
     );
+
+    totalController.dispose();
+    taxController.dispose();
+    quantityController.dispose();
+    priceController.dispose();
+    customerNameController.dispose();
+    assignedStaffController.dispose();
+    bayController.dispose();
+    noteController.dispose();
+    for (final controller in fieldControllers.values) {
+      controller.dispose();
+    }
+
+    if (saved == true || savedCount > 0) {
+      await _loadSales();
+    }
   }
 
   void _showSaleDetails(Map<String, dynamic> sale) async {
@@ -371,6 +1002,18 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
                     children: [
+                      Icon(
+                        (item['line_type'] as String? ?? 'product') == 'service'
+                            ? Icons.design_services_rounded
+                            : Icons.inventory_2_outlined,
+                        color:
+                            (item['line_type'] as String? ?? 'product') ==
+                                'service'
+                            ? AppColors.secondary
+                            : AppColors.textSecondary,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           item['product_name'] as String? ?? 'Unknown',
@@ -479,6 +1122,17 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                 style: TextStyle(color: AppColors.error),
               ),
             ),
+          if (_canDeleteSale(sale))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _deleteSaleWithConfirmation(sale);
+              },
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: AppColors.error),
+              ),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
@@ -516,6 +1170,63 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     );
   }
 
+  Future<void> _deleteSaleWithConfirmation(Map<String, dynamic> sale) async {
+    final saleId = sale['id'] as String;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Sale?'),
+        content: Text(
+          'Delete sale #${saleId.substring(0, 8)} from sales history and reports? Use Return instead when you need stock restored.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await SaleRepository.deleteSale(saleId);
+      if (!mounted) {
+        return;
+      }
+      await _loadSales();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sale deleted'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not delete sale: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   Future<void> _showRefundDialog(Map<String, dynamic> sale) async {
     final refundableItems = await SaleRepository.getRefundableItems(
       sale['id'] as String,
@@ -536,7 +1247,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     final noteController = TextEditingController();
     final quantityControllers = <String, TextEditingController>{
       for (final item in refundableItems)
-        item['product_id'] as String: TextEditingController(),
+        item['refund_key'] as String: TextEditingController(),
     };
     bool isSaving = false;
 
@@ -560,7 +1271,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Returned stock will be restored automatically.',
+                  'Product stock will be restored automatically where applicable.',
                   style: const TextStyle(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 16),
@@ -573,7 +1284,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     itemBuilder: (context, index) {
                       final item = refundableItems[index];
                       final controller =
-                          quantityControllers[item['product_id']]!;
+                          quantityControllers[item['refund_key']]!;
                       final refundableQuantity =
                           (item['refundable_quantity'] as num? ?? 0).toDouble();
                       final unit = item['unit'] as String?;
@@ -700,7 +1411,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                         final selectedItems = <Map<String, dynamic>>[];
                         for (final item in refundableItems) {
                           final controller =
-                              quantityControllers[item['product_id']]!;
+                              quantityControllers[item['refund_key']]!;
                           final quantity = double.tryParse(
                             controller.text.trim(),
                           );
@@ -708,15 +1419,90 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                             continue;
                           }
                           selectedItems.add({
-                            'product_id': item['product_id'],
+                            'refund_key': item['refund_key'],
                             'quantity': quantity,
                           });
                         }
 
                         if (selectedItems.isEmpty) {
-                          throw Exception(
-                            'Choose at least one product to return',
-                          );
+                          throw Exception('Choose at least one item to return');
+                        }
+
+                        final originalPaymentType =
+                            (sale['payment_type'] as String? ?? 'cash')
+                                .toLowerCase();
+                        final requiresOpenShift = originalPaymentType == 'cash';
+                        Map<String, dynamic>? shift;
+                        var openedShiftForRefund = false;
+                        if (requiresOpenShift) {
+                          final userId = currentShiftActorId();
+                          final access =
+                              await ShiftRepository.resolveCurrentShift(
+                                userId: userId,
+                              );
+                          if (access.autoClosedShift != null &&
+                              context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Your previous-day shift was auto-closed before this cash refund.',
+                                ),
+                                backgroundColor: AppColors.warning,
+                              ),
+                            );
+                          }
+                          shift = access.currentShift;
+                          if (shift == null &&
+                              ShiftRepository.roleRequiresManagedShift(
+                                SessionService.currentUserRole,
+                              )) {
+                            if (!context.mounted) {
+                              setDialogState(() => isSaving = false);
+                              return;
+                            }
+                            final suggestedOpeningCash =
+                                await ShiftPreferencesService.getLastOpeningCash(
+                                  userId,
+                                );
+                            if (!context.mounted) {
+                              setDialogState(() => isSaving = false);
+                              return;
+                            }
+                            final opening = await showShiftAutoOpenDialog(
+                              context,
+                              transactionLabel: 'cash refund',
+                              suggestedOpeningCash: suggestedOpeningCash,
+                            );
+                            if (!context.mounted || opening == null) {
+                              setDialogState(() => isSaving = false);
+                              return;
+                            }
+                            shift = await ShiftRepository.openShift(
+                              userId: userId,
+                              cashierName: ShiftRepository.normalizeActorName(
+                                SessionService.currentUserName,
+                              ),
+                              openingCash: opening.openingCash,
+                              note:
+                                  opening.note ??
+                                  'Auto-opened on first cash transaction.',
+                            );
+                            await ShiftPreferencesService.saveLastOpeningCash(
+                              userId,
+                              opening.openingCash,
+                            );
+                            openedShiftForRefund = true;
+                          }
+                          if (openedShiftForRefund && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'A new shift was auto-opened for this cash refund.',
+                                ),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                          }
                         }
 
                         final refundId = await SaleRepository.refundSale(
@@ -724,6 +1510,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                           userId: SessionService.currentUserId.isNotEmpty
                               ? SessionService.currentUserId
                               : 'admin',
+                          shiftId: shift?['id'] as String?,
                           note: noteController.text,
                           items: selectedItems,
                         );
@@ -857,6 +1644,585 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   }
 }
 
+Map<String, dynamic>? _firstMissingManualServiceField(
+  List<Map<String, dynamic>> fields,
+  Map<String, TextEditingController> controllers,
+) {
+  for (final field in fields) {
+    final isRequired = (field['is_required'] as num? ?? 0) == 1;
+    final controller = controllers[field['id'] as String];
+    if (isRequired && (controller?.text.trim().isEmpty ?? true)) {
+      return field;
+    }
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> _buildManualServiceFieldValues(
+  List<Map<String, dynamic>> fields,
+  Map<String, TextEditingController> controllers,
+) {
+  return fields
+      .map(
+        (field) => {
+          'field_id': field['id'],
+          'field_label': field['label'],
+          'field_type': field['field_type'],
+          'value_text': controllers[field['id'] as String]?.text ?? '',
+        },
+      )
+      .toList();
+}
+
+class _ManualSaleResponsiveRow extends StatelessWidget {
+  final List<Widget> children;
+
+  const _ManualSaleResponsiveRow({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 420) {
+          return Column(
+            children: [
+              for (var index = 0; index < children.length; index++) ...[
+                children[index],
+                if (index != children.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            for (var index = 0; index < children.length; index++) ...[
+              Expanded(child: children[index]),
+              if (index != children.length - 1) const SizedBox(width: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ManualServiceFieldInput extends StatelessWidget {
+  final Map<String, dynamic> field;
+  final TextEditingController controller;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  const _ManualServiceFieldInput({
+    required this.field,
+    required this.controller,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final type = field['field_type'] as String? ?? 'text';
+    final label = field['label'] as String? ?? 'Detail';
+    final isRequired = (field['is_required'] as num? ?? 0) == 1;
+    final decoratedLabel = isRequired ? '$label *' : label;
+
+    if (type == 'select') {
+      final options = (field['options'] as List<dynamic>? ?? [])
+          .map((item) => item.toString())
+          .toList();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: DropdownButtonFormField<String>(
+          initialValue: controller.text.isEmpty ? null : controller.text,
+          decoration: InputDecoration(labelText: decoratedLabel),
+          items: options
+              .map(
+                (option) =>
+                    DropdownMenuItem(value: option, child: Text(option)),
+              )
+              .toList(),
+          onChanged: enabled ? onChanged : null,
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        keyboardType: type == 'number'
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: decoratedLabel,
+          hintText: type == 'date' ? 'YYYY-MM-DD HH:MM' : null,
+        ),
+      ),
+    );
+  }
+}
+
+class _SalesHeader extends StatelessWidget {
+  final bool isMobile;
+  final int totalSales;
+  final double totalRevenue;
+  final double totalTax;
+  final String selectedFilter;
+  final DateTime? selectedDate;
+  final ValueChanged<String> onFilterSelected;
+  final String selectedSaleType;
+  final ValueChanged<String> onSaleTypeSelected;
+  final bool isCashierView;
+
+  const _SalesHeader({
+    required this.isMobile,
+    required this.totalSales,
+    required this.totalRevenue,
+    required this.totalTax,
+    required this.selectedFilter,
+    required this.selectedDate,
+    required this.onFilterSelected,
+    required this.selectedSaleType,
+    required this.onSaleTypeSelected,
+    required this.isCashierView,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = EdgeInsets.fromLTRB(
+      isMobile ? 14 : 24,
+      isMobile ? 10 : 0,
+      isMobile ? 14 : 24,
+      isMobile ? 14 : 16,
+    );
+
+    return Container(
+      width: double.infinity,
+      color: AppColors.surface,
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isMobile) ...[
+            Text(
+              selectedFilter == 'today'
+                  ? 'Today'
+                  : selectedFilter == 'yesterday'
+                  ? 'Yesterday'
+                  : selectedFilter == 'date' && selectedDate != null
+                  ? '${selectedDate!.month}/${selectedDate!.day}/${selectedDate!.year}'
+                  : selectedFilter == 'week'
+                  ? 'Last 7 days'
+                  : selectedFilter == 'month'
+                  ? 'This month'
+                  : 'All sales',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${ShopSettings.currency}${totalRevenue.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (isMobile)
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniSalesMetric(
+                    label: 'Sales',
+                    value: '$totalSales',
+                    icon: Icons.receipt_long,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _MiniSalesMetric(
+                    label: 'Tax',
+                    value:
+                        '${ShopSettings.currency}${totalTax.toStringAsFixed(2)}',
+                    icon: Icons.account_balance_outlined,
+                    color: AppColors.warning,
+                  ),
+                ),
+              ],
+            )
+          else
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _StatCard(
+                  icon: Icons.receipt_long,
+                  label: 'Total Sales',
+                  value: '$totalSales',
+                  color: AppColors.primary,
+                ),
+                _StatCard(
+                  icon: Icons.attach_money,
+                  label: 'Revenue',
+                  value:
+                      '${ShopSettings.currency}${totalRevenue.toStringAsFixed(2)}',
+                  color: AppColors.success,
+                ),
+                _StatCard(
+                  icon: Icons.account_balance,
+                  label: 'Tax Collected',
+                  value:
+                      '${ShopSettings.currency}${totalTax.toStringAsFixed(2)}',
+                  color: AppColors.warning,
+                ),
+              ],
+            ),
+          const SizedBox(height: 14),
+          _SalesFilterBar(
+            selectedFilter: selectedFilter,
+            onSelected: onFilterSelected,
+            isMobile: isMobile,
+          ),
+          const SizedBox(height: 10),
+          _SaleTypeFilterBar(
+            selectedType: selectedSaleType,
+            onSelected: onSaleTypeSelected,
+            isMobile: isMobile,
+          ),
+          if (isCashierView) ...[
+            const SizedBox(height: 12),
+            const _CashierNotice(),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SalesFilterBar extends StatelessWidget {
+  final String selectedFilter;
+  final ValueChanged<String> onSelected;
+  final bool isMobile;
+
+  const _SalesFilterBar({
+    required this.selectedFilter,
+    required this.onSelected,
+    required this.isMobile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final filters = const [
+      ('today', 'Today'),
+      ('yesterday', 'Yesterday'),
+      ('date', 'Pick Date'),
+      ('week', 'Week'),
+      ('month', 'Month'),
+      ('all', 'All'),
+    ];
+
+    if (isMobile) {
+      return SizedBox(
+        height: 42,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: filters.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final filter = filters[index];
+            return SizedBox(
+              width: filter.$1 == 'yesterday' || filter.$1 == 'date' ? 104 : 74,
+              child: _CompactFilterButton(
+                label: filter.$2,
+                isSelected: selectedFilter == filter.$1,
+                onTap: () => onSelected(filter.$1),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return Wrap(
+      children: [
+        for (final filter in filters)
+          _FilterChip(
+            label: filter.$2,
+            isSelected: selectedFilter == filter.$1,
+            onTap: () => onSelected(filter.$1),
+          ),
+      ],
+    );
+  }
+}
+
+class _CompactFilterButton extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _CompactFilterButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isSelected ? AppColors.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SaleTypeFilterBar extends StatelessWidget {
+  final String selectedType;
+  final ValueChanged<String> onSelected;
+  final bool isMobile;
+
+  const _SaleTypeFilterBar({
+    required this.selectedType,
+    required this.onSelected,
+    required this.isMobile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final filters = const [
+      ('all', 'All Types', Icons.list_alt_outlined),
+      ('product', 'Products', Icons.inventory_2_outlined),
+      ('service', 'Services', Icons.design_services_outlined),
+      ('mixed', 'Mixed', Icons.merge_type_outlined),
+    ];
+
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: filters.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final filter = filters[index];
+          final selected = selectedType == filter.$1;
+          return _SaleTypeChip(
+            label: filter.$2,
+            icon: filter.$3,
+            isSelected: selected,
+            onTap: () => onSelected(filter.$1),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SaleTypeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SaleTypeChip({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isSelected ? AppColors.secondary : AppColors.surfaceHighlight,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected
+                    ? AppColors.background
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected
+                      ? AppColors.background
+                      : AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniSalesMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _MiniSalesMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CashierNotice extends StatelessWidget {
+  const _CashierNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.lock_outline, color: AppColors.primary, size: 18),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Showing only your own sales activity.',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptySalesState extends StatelessWidget {
+  final bool isCashierView;
+
+  const _EmptySalesState({required this.isCashierView});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 64,
+              color: AppColors.textSecondary.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No sales found',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isCashierView
+                  ? 'Your completed sales will appear here.'
+                  : 'Complete a sale from POS or record an old sale.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SaleRow extends StatelessWidget {
   final Map<String, dynamic> sale;
   final VoidCallback onTap;
@@ -904,11 +2270,245 @@ class _SaleRow extends StatelessWidget {
     final paymentType = (sale['payment_type'] as String? ?? 'cash')
         .toLowerCase();
     final isRefund = paymentType.startsWith('refund');
+    final serviceLineCount = (sale['service_line_count'] as num? ?? 0).toInt();
+    final productLineCount = (sale['product_line_count'] as num? ?? 0).toInt();
+    final isServiceSale = serviceLineCount > 0 && productLineCount == 0;
+    final isMixedSale = serviceLineCount > 0 && productLineCount > 0;
+    final serviceNames = (sale['service_names'] as String?)?.trim() ?? '';
+    final saleTypeLabel = isServiceSale
+        ? 'Service sale'
+        : isMixedSale
+        ? 'Products + services'
+        : 'Product sale';
     final hasRefund = (sale['refund_sale_id'] as String?)?.isNotEmpty == true;
     final refundState = _refundStateLabel(sale);
     final dateStr = dt != null
         ? '${dt.month}/${dt.day}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
         : '';
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return _MobileSaleRowCard(
+            sale: sale,
+            onTap: onTap,
+            paymentType: paymentType,
+            isRefund: isRefund,
+            isServiceSale: isServiceSale,
+            saleTypeLabel: saleTypeLabel,
+            serviceNames: serviceNames,
+            dateStr: dateStr,
+            refundState: hasRefund
+                ? (refundState.isEmpty ? 'Refunded' : refundState)
+                : '',
+            badgeColor: _badgeColor(paymentType),
+            badgeLabel: _badgeLabel(paymentType),
+          );
+        }
+
+        return Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color:
+                          (isRefund
+                                  ? AppColors.error
+                                  : isServiceSale
+                                  ? AppColors.secondary
+                                  : AppColors.success)
+                              .withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isRefund
+                          ? Icons.assignment_return
+                          : isServiceSale
+                          ? Icons.design_services_rounded
+                          : Icons.receipt_long,
+                      color: isRefund
+                          ? AppColors.error
+                          : isServiceSale
+                          ? AppColors.secondary
+                          : AppColors.success,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Sale #${(sale['id'] as String).substring(0, 8)}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          serviceNames.isNotEmpty
+                              ? '$saleTypeLabel - $serviceNames'
+                              : saleTypeLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isServiceSale
+                                ? AppColors.secondary
+                                : AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          dateStr,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                        if ((sale['customer_name'] as String?)?.isNotEmpty ==
+                            true) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            sale['customer_name'] as String,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        if (hasRefund) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            refundState.isEmpty ? 'Refunded' : refundState,
+                            style: const TextStyle(
+                              color: AppColors.error,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _badgeColor(paymentType).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _badgeLabel(paymentType),
+                      style: TextStyle(
+                        color: _badgeColor(paymentType),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${ShopSettings.currency}${(sale['total_amount'] as num? ?? 0).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isRefund ? AppColors.error : AppColors.success,
+                        ),
+                      ),
+                      Text(
+                        'Profit: ${ShopSettings.currency}${(sale['profit'] as num? ?? 0).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: (sale['profit'] as num? ?? 0) >= 0
+                              ? AppColors.success.withValues(alpha: 0.8)
+                              : AppColors.error,
+                        ),
+                      ),
+                      if ((sale['balance_due'] as num? ?? 0) > 0)
+                        Text(
+                          'Due: ${ShopSettings.currency}${(sale['balance_due'] as num).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.warning,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MobileSaleRowCard extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  final VoidCallback onTap;
+  final String paymentType;
+  final bool isRefund;
+  final bool isServiceSale;
+  final String saleTypeLabel;
+  final String serviceNames;
+  final String dateStr;
+  final String refundState;
+  final Color badgeColor;
+  final String badgeLabel;
+
+  const _MobileSaleRowCard({
+    required this.sale,
+    required this.onTap,
+    required this.paymentType,
+    required this.isRefund,
+    required this.isServiceSale,
+    required this.saleTypeLabel,
+    required this.serviceNames,
+    required this.dateStr,
+    required this.refundState,
+    required this.badgeColor,
+    required this.badgeLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (sale['total_amount'] as num? ?? 0).toDouble();
+    final profit = (sale['profit'] as num? ?? 0).toDouble();
+    final balanceDue = (sale['balance_due'] as num? ?? 0).toDouble();
+    final customerName = (sale['customer_name'] as String?)?.trim() ?? '';
+    final typeColor = isRefund
+        ? AppColors.error
+        : isServiceSale
+        ? AppColors.secondary
+        : AppColors.success;
 
     return Material(
       color: AppColors.surface,
@@ -917,126 +2517,185 @@ class _SaleRow extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppColors.border),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: (isRefund ? AppColors.error : AppColors.success)
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  isRefund ? Icons.assignment_return : Icons.receipt_long,
-                  color: isRefund ? AppColors.error : AppColors.success,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Sale #${(sale['id'] as String).substring(0, 8)}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      dateStr,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    if ((sale['customer_name'] as String?)?.isNotEmpty ==
-                        true) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        sale['customer_name'] as String,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    if (hasRefund) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        refundState.isEmpty ? 'Refunded' : refundState,
-                        style: const TextStyle(
-                          color: AppColors.error,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: _badgeColor(paymentType).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _badgeLabel(paymentType),
-                  style: TextStyle(
-                    color: _badgeColor(paymentType),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 24),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${ShopSettings.currency}${(sale['total_amount'] as num? ?? 0).toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isRefund ? AppColors.error : AppColors.success,
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: typeColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isRefund
+                          ? Icons.assignment_return
+                          : isServiceSale
+                          ? Icons.design_services_rounded
+                          : Icons.receipt_long,
+                      color: typeColor,
+                      size: 21,
                     ),
                   ),
-                  Text(
-                    'Profit: ${ShopSettings.currency}${(sale['profit'] as num? ?? 0).toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: (sale['profit'] as num? ?? 0) >= 0
-                          ? AppColors.success.withValues(alpha: 0.8)
-                          : AppColors.error,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          serviceNames.isNotEmpty
+                              ? serviceNames
+                              : 'Sale #${(sale['id'] as String).substring(0, 8)}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          saleTypeLabel,
+                          style: TextStyle(
+                            color: typeColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  if ((sale['balance_due'] as num? ?? 0) > 0)
-                    Text(
-                      'Due: ${ShopSettings.currency}${(sale['balance_due'] as num).toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.warning,
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: isRefund ? AppColors.error : AppColors.success,
+                        ),
                       ),
+                      const SizedBox(height: 5),
+                      _SaleBadge(label: badgeLabel, color: badgeColor),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _SaleInfoChip(
+                    icon: Icons.schedule_outlined,
+                    label: dateStr.isEmpty ? 'No date' : dateStr,
+                  ),
+                  _SaleInfoChip(
+                    icon: Icons.trending_up,
+                    label:
+                        'Profit ${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                    color: profit >= 0 ? AppColors.success : AppColors.error,
+                  ),
+                  if (balanceDue > 0)
+                    _SaleInfoChip(
+                      icon: Icons.warning_amber_outlined,
+                      label:
+                          'Due ${ShopSettings.currency}${balanceDue.toStringAsFixed(2)}',
+                      color: AppColors.warning,
+                    ),
+                  if (customerName.isNotEmpty)
+                    _SaleInfoChip(
+                      icon: Icons.person_outline,
+                      label: customerName,
+                    ),
+                  if (refundState.isNotEmpty)
+                    _SaleInfoChip(
+                      icon: Icons.assignment_return_outlined,
+                      label: refundState,
+                      color: AppColors.error,
                     ),
                 ],
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SaleBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _SaleBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _SaleInfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  const _SaleInfoChip({required this.icon, required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = color ?? AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: foreground),
+          const SizedBox(width: 5),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

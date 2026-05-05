@@ -61,12 +61,20 @@ class SyncService {
     'customers',
     'suppliers',
     'products',
+    'product_variants',
     'purchase_invoices',
+    'shifts',
     'stock_batches',
     'sales',
     'sale_items',
+    'cash_movements',
     'credit_payments',
     'expenses',
+    'services',
+    'service_fields',
+    'service_orders',
+    'service_field_values',
+    'service_sale_items',
   ];
 
   static const List<String> _pullTableOrder = [
@@ -76,12 +84,20 @@ class SyncService {
     'customers',
     'suppliers',
     'products',
+    'product_variants',
     'purchase_invoices',
+    'shifts',
     'sales',
     'stock_batches',
     'sale_items',
+    'cash_movements',
     'credit_payments',
     'expenses',
+    'services',
+    'service_fields',
+    'service_orders',
+    'service_field_values',
+    'service_sale_items',
   ];
 
   static Future<LocalSyncSnapshot> getLocalSnapshot() async {
@@ -424,7 +440,11 @@ class SyncService {
       // Before inserting, check for unique-key conflicts on non-PK columns
       // (e.g., users.email). If a local row already holds this unique value
       // under a different id, update it in-place to keep FK references intact.
-      final conflictRow = await _findUniqueConflict(txn, table, normalizedRemote);
+      final conflictRow = await _findUniqueConflict(
+        txn,
+        table,
+        normalizedRemote,
+      );
       if (conflictRow != null) {
         final updatePayload = Map<String, dynamic>.from(normalizedRemote)
           ..remove('id');

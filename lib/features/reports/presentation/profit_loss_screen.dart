@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/expense_repository.dart';
 
 class ProfitLossScreen extends StatefulWidget {
@@ -352,10 +353,13 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
               tooltip: 'Add Category',
               onPressed: _showAddCategoryDialog,
             ),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'Add Expense',
-              onPressed: _showAddExpenseDialog,
+            TrainingAnchor(
+              id: 'pl.addExpense',
+              child: IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: 'Add Expense',
+                onPressed: _showAddExpenseDialog,
+              ),
             ),
           ] else ...[
             IconButton(
@@ -363,11 +367,16 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
               tooltip: 'Add Category',
               onPressed: _showAddCategoryDialog,
             ),
-            FilledButton.icon(
-              onPressed: _showAddExpenseDialog,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Expense'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            TrainingAnchor(
+              id: 'pl.addExpense',
+              child: FilledButton.icon(
+                onPressed: _showAddExpenseDialog,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add Expense'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
           ],
@@ -385,72 +394,81 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          const Text(
-                            'Period:',
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                          _PeriodChip(
-                            label: '7 Days',
-                            selected: _daysRange == 7,
-                            onTap: () {
-                              _daysRange = 7;
-                              _loadData();
-                            },
-                          ),
-                          _PeriodChip(
-                            label: '14 Days',
-                            selected: _daysRange == 14,
-                            onTap: () {
-                              _daysRange = 14;
-                              _loadData();
-                            },
-                          ),
-                          _PeriodChip(
-                            label: '30 Days',
-                            selected: _daysRange == 30,
-                            onTap: () {
-                              _daysRange = 30;
-                              _loadData();
-                            },
-                          ),
-                          _PeriodChip(
-                            label: '90 Days',
-                            selected: _daysRange == 90,
-                            onTap: () {
-                              _daysRange = 90;
-                              _loadData();
-                            },
-                          ),
-                        ],
+                      TrainingAnchor(
+                        id: 'pl.filters',
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            const Text(
+                              'Period:',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                            _PeriodChip(
+                              label: '7 Days',
+                              selected: _daysRange == 7,
+                              onTap: () {
+                                _daysRange = 7;
+                                _loadData();
+                              },
+                            ),
+                            _PeriodChip(
+                              label: '14 Days',
+                              selected: _daysRange == 14,
+                              onTap: () {
+                                _daysRange = 14;
+                                _loadData();
+                              },
+                            ),
+                            _PeriodChip(
+                              label: '30 Days',
+                              selected: _daysRange == 30,
+                              onTap: () {
+                                _daysRange = 30;
+                                _loadData();
+                              },
+                            ),
+                            _PeriodChip(
+                              label: '90 Days',
+                              selected: _daysRange == 90,
+                              onTap: () {
+                                _daysRange = 90;
+                                _loadData();
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
-                      if (isMobile)
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                mainAxisExtent: 116,
+                      TrainingAnchor(
+                        id: 'pl.summary',
+                        child: isMobile
+                            ? GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: 12,
+                                      mainAxisSpacing: 12,
+                                      mainAxisExtent: 116,
+                                    ),
+                                itemCount: summaryCards.length,
+                                itemBuilder: (context, index) =>
+                                    summaryCards[index],
+                              )
+                            : Wrap(
+                                spacing: 16,
+                                runSpacing: 16,
+                                children: summaryCards
+                                    .map(
+                                      (card) =>
+                                          SizedBox(width: 190, child: card),
+                                    )
+                                    .toList(),
                               ),
-                          itemCount: summaryCards.length,
-                          itemBuilder: (context, index) => summaryCards[index],
-                        )
-                      else
-                        Wrap(
-                          spacing: 16,
-                          runSpacing: 16,
-                          children: summaryCards
-                              .map((card) => SizedBox(width: 190, child: card))
-                              .toList(),
-                        ),
+                      ),
                       const SizedBox(height: 20),
                       _SectionCard(
                         title: 'Snapshot',
@@ -619,60 +637,64 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                               ),
                       ),
                       const SizedBox(height: 20),
-                      _SectionCard(
-                        title: 'Recent Expenses',
-                        icon: Icons.receipt_long_outlined,
-                        child: _recentExpenses.isEmpty
-                            ? const Text(
-                                'No expenses recorded yet',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
+                      TrainingAnchor(
+                        id: 'pl.expenses',
+                        child: _SectionCard(
+                          title: 'Recent Expenses',
+                          icon: Icons.receipt_long_outlined,
+                          child: _recentExpenses.isEmpty
+                              ? const Text(
+                                  'No expenses recorded yet',
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                )
+                              : Column(
+                                  children: _recentExpenses.map((expense) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  expense['title'] as String? ??
+                                                      'Expense',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${expense['category_name'] ?? 'Uncategorized'} - ${_formatDate(expense['incurred_on'] as String? ?? '')}',
+                                                  style: const TextStyle(
+                                                    color:
+                                                        AppColors
+                                                            .textSecondary,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Text(
+                                            '${ShopSettings.currency}${((expense['amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              color: AppColors.error,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
-                              )
-                            : Column(
-                                children: _recentExpenses.map((expense) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                expense['title'] as String? ??
-                                                    'Expense',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                '${expense['category_name'] ?? 'Uncategorized'} - ${_formatDate(expense['incurred_on'] as String? ?? '')}',
-                                                style: const TextStyle(
-                                                  color:
-                                                      AppColors.textSecondary,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Text(
-                                          '${ShopSettings.currency}${((expense['amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                            color: AppColors.error,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
+                        ),
                       ),
                     ],
                   ),

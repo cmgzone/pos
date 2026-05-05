@@ -99,5 +99,53 @@ void main() {
       expect(item.cost, 1.0);
       expect(item.usesConversion, isFalse);
     });
+
+    test('restores held items back into the cart', () {
+      final notifier = container.read(cartProvider.notifier);
+
+      notifier.restoreHeldItems([
+        {
+          'product_id': 'prod-4',
+          'product_name': 'Rice',
+          'unit_price': 3.5,
+          'cost': 2.0,
+          'max_stock': 20.0,
+          'stock_on_hand': 20.0,
+          'sale_to_stock_factor': 1.0,
+          'quantity': 4.0,
+          'unit': 'pcs',
+          'stock_unit': 'pcs',
+        },
+      ]);
+
+      final cart = container.read(cartProvider);
+      expect(cart, hasLength(1));
+      expect(cart.single.productId, 'prod-4');
+      expect(cart.single.productName, 'Rice');
+      expect(cart.single.quantity, 4.0);
+      expect(cart.single.maxStock, 20.0);
+      expect(cart.single.toHeldItem(), containsPair('product_name', 'Rice'));
+      expect(cart.single.toHeldItem(), containsPair('quantity', 4.0));
+    });
+
+    test('adds service items without stock constraints', () {
+      final notifier = container.read(cartProvider.notifier);
+
+      final added = notifier.addService(
+        serviceOrderId: 'order-1',
+        serviceId: 'service-1',
+        serviceName: 'Car Wash',
+        price: 15.0,
+      );
+
+      expect(added, isTrue);
+
+      final cart = container.read(cartProvider);
+      expect(cart, hasLength(1));
+      expect(cart.single.isService, isTrue);
+      expect(cart.single.unit, 'job');
+      expect(cart.single.toSaleItem(), containsPair('line_type', 'service'));
+      expect(notifier.incrementQuantity(cart.single.productId), isFalse);
+    });
   });
 }

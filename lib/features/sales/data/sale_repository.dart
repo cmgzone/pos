@@ -9,11 +9,36 @@ const _uuid = Uuid();
 class SaleRepository {
   static const _salesTable = 'sales';
   static const _itemsTable = 'sale_items';
+  static const _serviceItemsTable = 'service_sale_items';
 
   static double _money(num? value) => (value ?? 0).toDouble();
 
   static double _roundMoney(double value) {
     return double.parse(value.toStringAsFixed(2));
+  }
+
+  static String _serviceRefundKey({
+    required String? serviceOrderId,
+    required String? serviceId,
+    required String? serviceName,
+  }) {
+    final orderId = serviceOrderId?.trim() ?? '';
+    if (orderId.isNotEmpty) {
+      return 'service_order:$orderId';
+    }
+
+    final templateId = serviceId?.trim() ?? '';
+    final label = serviceName?.trim() ?? '';
+    return 'service:$templateId:$label';
+  }
+
+  static String _productRefundKey({
+    required String? productId,
+    required String? variantId,
+  }) {
+    final product = productId?.trim() ?? '';
+    final variant = variantId?.trim() ?? '';
+    return 'product:$product:$variant';
   }
 
   /// Create a complete sale with items (transactional)
@@ -22,61 +47,101 @@ class SaleRepository {
     required double tax,
     required double discount,
     required String paymentType,
+    bool isCashDrawer = false,
     required String userId,
+    String? shiftId,
     required List<Map<String, dynamic>> items,
     double? amountTendered,
     double? changeGiven,
     String? customerId,
     String? customerName,
     String? dueDate,
+    DateTime? createdAt,
   }) async {
     await LicenseService.ensureWriteAccess(action: 'complete sales');
-    if (paymentType == 'kopesha' &&
-        (customerId == null || customerName == null)) {
+    final isKopesha = paymentType.toLowerCase() == 'kopesha';
+    if (isKopesha && (customerId == null || customerName == null)) {
       throw Exception('Kopesha sales require a customer');
     }
-    if (paymentType == 'kopesha' && (dueDate == null || dueDate.isEmpty)) {
+    if (isKopesha && (dueDate == null || dueDate.isEmpty)) {
       throw Exception('Kopesha sales require a due date');
     }
 
     final saleId = _uuid.v4();
     final now = DateTime.now().toIso8601String();
-    final amountPaid = paymentType == 'kopesha' ? 0.0 : totalAmount;
-    final balanceDue = paymentType == 'kopesha' ? totalAmount : 0.0;
-    final normalizedAmountTendered = paymentType == 'cash'
+    final saleTimestamp = (createdAt ?? DateTime.now()).toIso8601String();
+    final amountPaid = isKopesha ? 0.0 : totalAmount;
+    final balanceDue = isKopesha ? totalAmount : 0.0;
+    final normalizedAmountTendered = isCashDrawer
         ? _roundMoney(amountTendered ?? totalAmount)
         : 0.0;
-    final normalizedChangeGiven = paymentType == 'cash'
+    final normalizedChangeGiven = isCashDrawer
         ? _roundMoney(changeGiven ?? (normalizedAmountTendered - totalAmount))
         : 0.0;
 
-    if (paymentType == 'cash' &&
-        normalizedAmountTendered + 0.001 < totalAmount) {
+    if (isCashDrawer && normalizedAmountTendered + 0.001 < totalAmount) {
       throw Exception('Cash received must be at least the sale total');
     }
 
-    // Fetch stock batches dynamically
+    final productItems = items
+        .where(
+          (item) => (item['line_type'] as String? ?? 'product') != 'service',
+        )
+        .toList();
+    final serviceItems = items
+        .where((item) => (item['line_type'] as String? ?? '') == 'service')
+        .toList();
+
+    // Fetch stock batches dynamically (variant items skip FIFO — they track
+    // stock directly on product_variants).
     final requiredBatches = <String, List<Map<String, dynamic>>>{};
-    for (final item in items) {
+    final tracksStockByProduct = <String, bool>{};
+    for (final item in productItems) {
       final pid = item['product_id'] as String;
+      final variantId = item['variant_id'] as String?;
+      final qty = (item['quantity'] as num).toDouble();
+      final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
+          .toDouble();
+      final stockQty = qty * saleToStockFactor;
       final product = await DatabaseService.queryById('products', pid);
-      if (product == null) {
-        throw Exception('Product not found');
+      if (product == null) throw Exception('Product not found');
+      final tracksStock = UnitUtils.tracksStock(product);
+      tracksStockByProduct[pid] = tracksStock;
+
+      if (!tracksStock) {
+        continue;
       }
+
+      if (variantId != null) {
+        // Variant: validate stock directly, no FIFO batch lookup.
+        final variant = await DatabaseService.queryById(
+          'product_variants',
+          variantId,
+        );
+        if (variant == null) throw Exception('Product variant not found');
+        final variantStock = (variant['stock'] as num? ?? 0).toDouble();
+        if (variantStock < stockQty - 0.001) {
+          throw Exception('Not enough stock for variant "${variant['name']}"');
+        }
+        continue;
+      }
+
       final batches = await DatabaseService.rawQuery(
         '''
-        SELECT * FROM stock_batches 
-        WHERE product_id = ? AND quantity_remaining > 0 
-        ORDER BY received_at ASC
-      ''',
+        SELECT * FROM stock_batches
+        WHERE product_id = ? AND quantity_remaining > 0
+        ORDER BY
+          CASE WHEN expiry_date IS NULL OR TRIM(expiry_date) = '' THEN 1 ELSE 0 END ASC,
+          date(expiry_date) ASC,
+          received_at ASC
+        ''',
         [pid],
       );
 
       final mutableBatches = List<Map<String, dynamic>>.from(batches);
       final batchStock = mutableBatches.fold<double>(
         0.0,
-        (sum, batch) =>
-            sum + ((batch['quantity_remaining'] as num? ?? 0).toDouble()),
+        (sum, b) => sum + ((b['quantity_remaining'] as num? ?? 0).toDouble()),
       );
       final aggregateStock = (product['stock'] as num? ?? 0).toDouble();
       final unbatchedStock = aggregateStock - batchStock;
@@ -91,7 +156,6 @@ class SaleRepository {
           'is_fallback': 1,
         });
       }
-
       requiredBatches[pid] = mutableBatches;
     }
 
@@ -103,7 +167,9 @@ class SaleRepository {
       'tax': tax,
       'discount': discount,
       'payment_type': paymentType,
+      'is_cash_drawer': isCashDrawer ? 1 : 0,
       'user_id': userId,
+      'shift_id': shiftId,
       'customer_id': customerId,
       'customer_name': customerName,
       'due_date': dueDate,
@@ -111,7 +177,7 @@ class SaleRepository {
       'amount_tendered': normalizedAmountTendered,
       'change_given': normalizedChangeGiven < 0 ? 0.0 : normalizedChangeGiven,
       'balance_due': balanceDue,
-      'created_at': now,
+      'created_at': saleTimestamp,
       'updated_at': now,
       'sync_status': 'pending',
     });
@@ -123,28 +189,75 @@ class SaleRepository {
       );
     }
 
-    for (final item in items) {
+    for (final item in productItems) {
       final pid = item['product_id'] as String;
+      final variantId = item['variant_id'] as String?;
       final qty = (item['quantity'] as num).toDouble();
       final unit = item['unit'] as String? ?? 'pcs';
       final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
           .toDouble();
       final stockQty = qty * saleToStockFactor;
+      final tracksStock = tracksStockByProduct[pid] ?? true;
+
+      if (variantId != null) {
+        // ── Variant path: direct deduction, no FIFO ──────────────────────────
+        final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
+        batch.insert(_itemsTable, {
+          'id': _uuid.v4(),
+          'quantity': qty,
+          'unit_price': item['unit_price'],
+          'unit_cost': unitCost,
+          'unit': unit,
+          'sale_id': saleId,
+          'product_id': pid,
+          'variant_id': variantId,
+          'created_at': saleTimestamp,
+          'updated_at': now,
+          'sync_status': 'pending',
+        });
+        if (!tracksStock) {
+          continue;
+        }
+        batch.rawUpdate(
+          'UPDATE product_variants SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
+          [stockQty, now, 'pending', variantId],
+        );
+        batch.rawUpdate(
+          'UPDATE products SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
+          [stockQty, now, 'pending', pid],
+        );
+        continue;
+      }
+
+      // ── Non-variant: FIFO batch deduction ────────────────────────────────
+      if (!tracksStock) {
+        batch.insert(_itemsTable, {
+          'id': _uuid.v4(),
+          'quantity': qty,
+          'unit_price': item['unit_price'],
+          'unit_cost': (item['unit_cost'] as num? ?? 0).toDouble(),
+          'unit': unit,
+          'sale_id': saleId,
+          'product_id': pid,
+          'created_at': saleTimestamp,
+          'updated_at': now,
+          'sync_status': 'pending',
+        });
+        continue;
+      }
+
       double remainingToFulfill = stockQty;
       double totalCostAccumulated = 0;
-
       final batches = requiredBatches[pid] ?? [];
 
       for (final b in batches) {
         if (remainingToFulfill <= 0) break;
-
         final availableInBatch = (b['quantity_remaining'] as num).toDouble();
         final bId = b['id'] as String;
         final bCost = (b['unit_cost'] as num).toDouble();
         final isFallback = (b['is_fallback'] as num? ?? 0) == 1;
 
         if (availableInBatch <= remainingToFulfill) {
-          // Exhaust the batch completely
           totalCostAccumulated += availableInBatch * bCost;
           remainingToFulfill -= availableInBatch;
           if (!isFallback) {
@@ -154,7 +267,6 @@ class SaleRepository {
             );
           }
         } else {
-          // Take partial from batch
           totalCostAccumulated += remainingToFulfill * bCost;
           if (!isFallback) {
             batch.rawUpdate(
@@ -171,7 +283,6 @@ class SaleRepository {
       }
 
       final avgUnitCost = qty > 0 ? (totalCostAccumulated / qty) : 0.0;
-
       batch.insert(_itemsTable, {
         'id': _uuid.v4(),
         'quantity': qty,
@@ -180,16 +291,41 @@ class SaleRepository {
         'unit': unit,
         'sale_id': saleId,
         'product_id': pid,
-        'created_at': now,
+        'created_at': saleTimestamp,
         'updated_at': now,
         'sync_status': 'pending',
       });
-
-      // Decrement aggregate global stock
       batch.rawUpdate(
         'UPDATE products SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
         [stockQty, now, 'pending', pid],
       );
+    }
+
+    for (final item in serviceItems) {
+      batch.insert(_serviceItemsTable, {
+        'id': _uuid.v4(),
+        'sale_id': saleId,
+        'service_order_id': item['service_order_id'],
+        'service_id': item['service_id'],
+        'service_name': item['product_name'] ?? 'Service',
+        'quantity': (item['quantity'] as num?)?.toDouble() ?? 1.0,
+        'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0.0,
+        'created_at': saleTimestamp,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+
+      final orderId = item['service_order_id'] as String?;
+      if (orderId != null && orderId.isNotEmpty) {
+        batch.rawUpdate(
+          '''
+          UPDATE service_orders
+          SET sale_id = ?, status = ?, updated_at = ?, sync_status = ?
+          WHERE id = ?
+          ''',
+          [saleId, 'paid', now, 'pending', orderId],
+        );
+      }
     }
 
     await batch.commit(noResult: true);
@@ -218,6 +354,7 @@ class SaleRepository {
       clauses.add('s.user_id = ?');
       whereArgs.add(normalizedCashierId);
     }
+    clauses.add('s.deleted_at IS NULL');
     final where = clauses.isEmpty ? '' : 'WHERE ${clauses.join(' AND ')}';
 
     return DatabaseService.rawQuery('''
@@ -232,9 +369,20 @@ class SaleRepository {
           END
         ) as cashier_name,
         COALESCE(u.role, 'CASHIER') as cashier_role,
-        COALESCE((SELECT SUM(si.quantity * (si.unit_price - si.unit_cost)) FROM $_itemsTable si WHERE si.sale_id = s.id), 0) - s.discount as profit,
+        (
+          COALESCE((SELECT SUM(si.quantity * (si.unit_price - si.unit_cost)) FROM $_itemsTable si WHERE si.sale_id = s.id), 0)
+          + COALESCE((SELECT SUM(ssi.quantity * ssi.unit_price) FROM $_serviceItemsTable ssi WHERE ssi.sale_id = s.id), 0)
+          - s.discount
+        ) as profit,
         COALESCE((SELECT SUM(ABS(r.total_amount)) FROM $_salesTable r WHERE r.refund_for_sale_id = s.id), 0) as refunded_amount,
-        COALESCE((SELECT COUNT(*) FROM $_salesTable r WHERE r.refund_for_sale_id = s.id), 0) as refund_count
+        COALESCE((SELECT COUNT(*) FROM $_salesTable r WHERE r.refund_for_sale_id = s.id), 0) as refund_count,
+        COALESCE((SELECT COUNT(*) FROM $_itemsTable si WHERE si.sale_id = s.id), 0) as product_line_count,
+        COALESCE((SELECT COUNT(*) FROM $_serviceItemsTable ssi WHERE ssi.sale_id = s.id), 0) as service_line_count,
+        (
+          SELECT GROUP_CONCAT(ssi.service_name, ', ')
+          FROM $_serviceItemsTable ssi
+          WHERE ssi.sale_id = s.id
+        ) as service_names
       FROM $_salesTable s
       LEFT JOIN users u ON u.id = s.user_id
       $where
@@ -259,7 +407,7 @@ class SaleRepository {
         COALESCE(u.role, 'CASHIER') as cashier_role
       FROM $_salesTable s
       LEFT JOIN users u ON u.id = s.user_id
-      WHERE s.id = ?
+      WHERE s.id = ? AND s.deleted_at IS NULL
       ''',
       [saleId],
     );
@@ -269,14 +417,105 @@ class SaleRepository {
     final sale = sales.first;
 
     final items = await DatabaseService.rawQuery(
-      '''SELECT si.*, p.name as product_name, p.barcode 
-         FROM $_itemsTable si 
-         JOIN products p ON si.product_id = p.id 
-         WHERE si.sale_id = ?''',
-      [saleId],
+      '''
+      SELECT
+        si.id,
+        si.quantity,
+        si.unit_price,
+        si.unit_cost,
+        si.unit,
+        si.sale_id,
+        si.product_id,
+        si.variant_id,
+        NULL as service_order_id,
+        NULL as service_id,
+        CASE WHEN si.variant_id IS NOT NULL
+          THEN p.name || ' – ' || COALESCE(pv.name, '')
+          ELSE p.name
+        END as product_name,
+        COALESCE(pv.barcode, p.barcode) as barcode,
+        'product' as line_type
+      FROM $_itemsTable si
+      JOIN products p ON si.product_id = p.id
+      LEFT JOIN product_variants pv ON pv.id = si.variant_id
+      WHERE si.sale_id = ?
+      UNION ALL
+      SELECT
+        ssi.id,
+        ssi.quantity,
+        ssi.unit_price,
+        0 as unit_cost,
+        'job' as unit,
+        ssi.sale_id,
+        NULL as product_id,
+        NULL as variant_id,
+        ssi.service_order_id,
+        ssi.service_id,
+        ssi.service_name as product_name,
+        NULL as barcode,
+        'service' as line_type
+      FROM $_serviceItemsTable ssi
+      WHERE ssi.sale_id = ?
+      ''',
+      [saleId, saleId],
     );
 
     return {...sale, 'items': items};
+  }
+
+  static Future<void> deleteSale(String saleId) async {
+    await LicenseService.ensureWriteAccess(action: 'delete sales');
+    final sale = await getSaleWithItems(saleId);
+    if (sale == null) {
+      throw Exception('Sale not found');
+    }
+    final now = DateTime.now().toIso8601String();
+    final customerId = sale['customer_id'] as String?;
+    final balanceDue = (sale['balance_due'] as num? ?? 0).toDouble();
+
+    await DatabaseService.db.transaction((txn) async {
+      await txn.update(
+        _salesTable,
+        {'deleted_at': now, 'updated_at': now, 'sync_status': 'pending'},
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+      await txn.update(
+        _itemsTable,
+        {'deleted_at': now, 'updated_at': now, 'sync_status': 'pending'},
+        where: 'sale_id = ? AND deleted_at IS NULL',
+        whereArgs: [saleId],
+      );
+      await txn.update(
+        _serviceItemsTable,
+        {'deleted_at': now, 'updated_at': now, 'sync_status': 'pending'},
+        where: 'sale_id = ? AND deleted_at IS NULL',
+        whereArgs: [saleId],
+      );
+      await txn.update(
+        'service_orders',
+        {
+          'sale_id': null,
+          'status': 'completed',
+          'updated_at': now,
+          'sync_status': 'pending',
+        },
+        where: 'sale_id = ? AND deleted_at IS NULL',
+        whereArgs: [saleId],
+      );
+      if (customerId != null && customerId.isNotEmpty && balanceDue > 0) {
+        await txn.rawUpdate(
+          '''
+          UPDATE customers
+          SET balance = CASE WHEN balance - ? < 0 THEN 0 ELSE balance - ? END,
+              updated_at = ?,
+              sync_status = ?
+          WHERE id = ?
+          ''',
+          [balanceDue, balanceDue, now, 'pending', customerId],
+        );
+      }
+    });
   }
 
   static Future<List<Map<String, dynamic>>> getRefundableItems(
@@ -294,30 +533,81 @@ class SaleRepository {
       '''
       SELECT
         si.product_id,
+        si.variant_id,
         COALESCE(SUM(-si.quantity), 0) as refunded_quantity
       FROM $_salesTable r
       JOIN $_itemsTable si ON si.sale_id = r.id
       WHERE r.refund_for_sale_id = ?
-      GROUP BY si.product_id
+      GROUP BY si.product_id, si.variant_id
+      ''',
+      [saleId],
+    );
+    final refundedServiceRows = await DatabaseService.rawQuery(
+      '''
+      SELECT
+        ssi.service_order_id,
+        ssi.service_id,
+        ssi.service_name,
+        COALESCE(SUM(-ssi.quantity), 0) as refunded_quantity
+      FROM $_salesTable r
+      JOIN $_serviceItemsTable ssi ON ssi.sale_id = r.id
+      WHERE r.refund_for_sale_id = ?
+      GROUP BY ssi.service_order_id, ssi.service_id, ssi.service_name
       ''',
       [saleId],
     );
 
     final refundedByProduct = <String, double>{};
     for (final row in refundedRows) {
-      refundedByProduct[row['product_id'] as String] = _money(
+      refundedByProduct[_productRefundKey(
+        productId: row['product_id'] as String?,
+        variantId: row['variant_id'] as String?,
+      )] = _money(
+        row['refunded_quantity'] as num?,
+      );
+    }
+    final refundedByService = <String, double>{};
+    for (final row in refundedServiceRows) {
+      refundedByService[_serviceRefundKey(
+        serviceOrderId: row['service_order_id'] as String?,
+        serviceId: row['service_id'] as String?,
+        serviceName: row['service_name'] as String?,
+      )] = _money(
         row['refunded_quantity'] as num?,
       );
     }
 
     return items
         .map((item) {
+          final lineType = item['line_type'] as String? ?? 'product';
           final soldQuantity = _money(item['quantity'] as num?).abs();
-          final refundedQuantity = refundedByProduct[item['product_id']] ?? 0.0;
+          final refundedQuantity = lineType == 'service'
+              ? (refundedByService[_serviceRefundKey(
+                      serviceOrderId: item['service_order_id'] as String?,
+                      serviceId: item['service_id'] as String?,
+                      serviceName: item['product_name'] as String?,
+                    )] ??
+                    0.0)
+              : (refundedByProduct[_productRefundKey(
+                      productId: item['product_id'] as String?,
+                      variantId: item['variant_id'] as String?,
+                    )] ??
+                    0.0);
           final refundableQuantity = soldQuantity - refundedQuantity;
+          final refundKey = lineType == 'service'
+              ? _serviceRefundKey(
+                  serviceOrderId: item['service_order_id'] as String?,
+                  serviceId: item['service_id'] as String?,
+                  serviceName: item['product_name'] as String?,
+                )
+              : _productRefundKey(
+                  productId: item['product_id'] as String?,
+                  variantId: item['variant_id'] as String?,
+                );
 
           return {
             ...item,
+            'refund_key': refundKey,
             'sold_quantity': soldQuantity,
             'refunded_quantity': refundedQuantity,
             'refundable_quantity': refundableQuantity < 0.001
@@ -332,6 +622,7 @@ class SaleRepository {
   static Future<String> refundSale({
     required String saleId,
     required String userId,
+    String? shiftId,
     String? note,
     List<Map<String, dynamic>>? items,
   }) async {
@@ -365,23 +656,33 @@ class SaleRepository {
       throw Exception('Choose at least one item to return');
     }
 
-    final refundableByProduct = <String, Map<String, dynamic>>{
-      for (final item in refundableItems) item['product_id'] as String: item,
+    final refundableByKey = <String, Map<String, dynamic>>{
+      for (final item in refundableItems) item['refund_key'] as String: item,
     };
 
     final selectedItems = <Map<String, dynamic>>[];
     final productsById = <String, Map<String, dynamic>>{};
     for (final item in requestedItems) {
-      final productId = item['product_id'] as String?;
-      if (productId == null || !refundableByProduct.containsKey(productId)) {
+      final refundKey =
+          item['refund_key'] as String? ??
+          ((item['product_id'] as String?) != null
+              ? _productRefundKey(
+                  productId: item['product_id'] as String?,
+                  variantId: item['variant_id'] as String?,
+                )
+              : null);
+      if (refundKey == null || !refundableByKey.containsKey(refundKey)) {
         throw Exception('A selected refund item is not refundable');
       }
 
-      productsById[productId] ??=
-          await DatabaseService.queryById('products', productId) ??
-          <String, dynamic>{'unit': item['unit']};
-
-      final source = refundableByProduct[productId]!;
+      final source = refundableByKey[refundKey]!;
+      final lineType = source['line_type'] as String? ?? 'product';
+      final productId = source['product_id'] as String?;
+      if (lineType == 'product' && productId != null) {
+        productsById[productId] ??=
+            await DatabaseService.queryById('products', productId) ??
+            <String, dynamic>{'unit': item['unit']};
+      }
       final quantity = _money(item['quantity'] as num?);
       final refundableQuantity = _money(source['refundable_quantity'] as num?);
 
@@ -394,7 +695,11 @@ class SaleRepository {
         );
       }
 
-      selectedItems.add({...source, 'quantity': quantity});
+      selectedItems.add({
+        ...source,
+        'quantity': quantity,
+        'refund_key': refundKey,
+      });
     }
 
     if (selectedItems.isEmpty) {
@@ -427,9 +732,8 @@ class SaleRepository {
     final refundTotal = _roundMoney(
       selectedSubtotal + refundTax - refundDiscount,
     );
-    final refundPaymentType = paymentType == 'kopesha'
-        ? 'refund_kopesha'
-        : 'refund_cash';
+    final isCashDrawer = (original['is_cash_drawer'] as num? ?? 0) == 1;
+    final refundPaymentType = 'refund_$paymentType';
 
     await DatabaseService.db.transaction((txn) async {
       await txn.insert(_salesTable, {
@@ -438,7 +742,9 @@ class SaleRepository {
         'tax': -refundTax,
         'discount': -refundDiscount,
         'payment_type': refundPaymentType,
+        'is_cash_drawer': isCashDrawer ? 1 : 0,
         'user_id': userId,
+        'shift_id': shiftId,
         'customer_id': original['customer_id'],
         'customer_name': original['customer_name'],
         'refund_for_sale_id': saleId,
@@ -495,9 +801,28 @@ class SaleRepository {
       for (final item in selectedItems) {
         final quantity = (item['quantity'] as num? ?? 0).toDouble();
         final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
+        final lineType = item['line_type'] as String? ?? 'product';
+
+        if (lineType == 'service') {
+          await txn.insert(_serviceItemsTable, {
+            'id': _uuid.v4(),
+            'sale_id': refundId,
+            'service_order_id': item['service_order_id'],
+            'service_id': item['service_id'],
+            'service_name': item['product_name'] ?? 'Service',
+            'quantity': -quantity,
+            'unit_price': item['unit_price'],
+            'created_at': now,
+            'updated_at': now,
+            'sync_status': 'pending',
+          });
+          continue;
+        }
+
+        final productId = item['product_id'] as String;
+        final variantId = item['variant_id'] as String?;
         final product =
-            productsById[item['product_id'] as String] ??
-            <String, dynamic>{'unit': item['unit']};
+            productsById[productId] ?? <String, dynamic>{'unit': item['unit']};
         final saleUnit = item['unit'] as String? ?? 'pcs';
         final stockUnit = UnitUtils.stockUnitForProduct(product);
         final stockQuantity =
@@ -514,32 +839,44 @@ class SaleRepository {
           'unit_cost': unitCost,
           'unit': item['unit'] ?? 'pcs',
           'sale_id': refundId,
-          'product_id': item['product_id'],
+          'product_id': productId,
+          'variant_id': variantId,
           'created_at': now,
           'updated_at': now,
           'sync_status': 'pending',
         });
 
-        await txn.rawUpdate(
-          '''
-          UPDATE products
-          SET stock = stock + ?, updated_at = ?, sync_status = ?
-          WHERE id = ?
-          ''',
-          [stockQuantity, now, 'pending', item['product_id']],
-        );
+        if (!UnitUtils.tracksStock(product)) {
+          continue;
+        }
 
-        await txn.insert('stock_batches', {
-          'id': _uuid.v4(),
-          'product_id': item['product_id'],
-          'quantity_received': stockQuantity,
-          'quantity_remaining': stockQuantity,
-          'unit_cost': stockUnitCost,
-          'received_at': now,
-          'created_at': now,
-          'updated_at': now,
-          'sync_status': 'pending',
-        });
+        if (variantId != null) {
+          // Restore variant stock directly.
+          await txn.rawUpdate(
+            'UPDATE product_variants SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
+            [stockQuantity, now, 'pending', variantId],
+          );
+          await txn.rawUpdate(
+            'UPDATE products SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
+            [stockQuantity, now, 'pending', productId],
+          );
+        } else {
+          await txn.rawUpdate(
+            'UPDATE products SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
+            [stockQuantity, now, 'pending', productId],
+          );
+          await txn.insert('stock_batches', {
+            'id': _uuid.v4(),
+            'product_id': productId,
+            'quantity_received': stockQuantity,
+            'quantity_remaining': stockQuantity,
+            'unit_cost': stockUnitCost,
+            'received_at': now,
+            'created_at': now,
+            'updated_at': now,
+            'sync_status': 'pending',
+          });
+        }
       }
     });
 
@@ -552,8 +889,11 @@ class SaleRepository {
   }) async {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final normalizedCashierId = cashierId?.trim();
-    final profitWhere = <String>['s2.created_at LIKE ?'];
-    final totalWhere = <String>['created_at LIKE ?'];
+    final profitWhere = <String>[
+      's2.created_at LIKE ?',
+      's2.deleted_at IS NULL',
+    ];
+    final totalWhere = <String>['created_at LIKE ?', 'deleted_at IS NULL'];
     final args = <dynamic>['$today%'];
 
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
@@ -567,21 +907,39 @@ class SaleRepository {
       args.add(normalizedCashierId);
     }
 
-    final results = await DatabaseService.rawQuery('''
+    final salesWhere = totalWhere.join(' AND ');
+    final results = await DatabaseService.rawQuery(
+      '''
       SELECT 
         COUNT(*) as total_sales,
         COALESCE(SUM(total_amount), 0) as total_revenue,
         COALESCE(SUM(tax), 0) as total_tax,
         COALESCE(SUM(discount), 0) as total_discount,
-        COALESCE((
-          SELECT SUM(si.quantity * (si.unit_price - si.unit_cost)) 
-          FROM $_itemsTable si 
-          JOIN $_salesTable s2 ON si.sale_id = s2.id 
-          WHERE ${profitWhere.join(' AND ')}
-        ), 0) - COALESCE(SUM(discount), 0) as total_profit
+        (
+          COALESCE((
+            SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+            FROM $_itemsTable si
+            JOIN $_salesTable s2 ON si.sale_id = s2.id
+            WHERE ${profitWhere.join(' AND ')}
+          ), 0)
+          + COALESCE((
+            SELECT SUM(ssi.quantity * ssi.unit_price)
+            FROM $_serviceItemsTable ssi
+            JOIN $_salesTable s3 ON ssi.sale_id = s3.id
+            WHERE ${normalizedCashierId != null && normalizedCashierId.isNotEmpty ? "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND s3.user_id = ?" : "s3.created_at LIKE ? AND s3.deleted_at IS NULL"}
+          ), 0)
+          - COALESCE(SUM(discount), 0)
+        ) as total_profit
       FROM $_salesTable 
-      WHERE ${totalWhere.join(' AND ')}
-    ''', args);
+      WHERE $salesWhere
+    ''',
+      [
+        ...args,
+        '$today%',
+        if (normalizedCashierId != null && normalizedCashierId.isNotEmpty)
+          normalizedCashierId,
+      ],
+    );
 
     return results.isNotEmpty
         ? results.first

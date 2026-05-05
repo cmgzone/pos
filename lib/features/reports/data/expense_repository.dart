@@ -87,15 +87,42 @@ class ExpenseRepository {
       WITH daily_sales AS (
         SELECT
           DATE(s.created_at) as day_key,
-          COUNT(DISTINCT s.id) as sale_count,
-          COALESCE(SUM(si.quantity * si.unit_price), 0) as revenue,
-          COALESCE(SUM(si.quantity * si.unit_cost), 0) as total_cost,
-          COALESCE(SUM(si.quantity * si.unit_price), 0) - COALESCE(SUM(si.quantity * si.unit_cost), 0) as gross_profit,
+          COUNT(*) as sale_count,
+          COALESCE(SUM(
+            COALESCE((
+              SELECT SUM(si.quantity * si.unit_price)
+              FROM sale_items si
+              WHERE si.sale_id = s.id
+            ), 0)
+            + COALESCE((
+              SELECT SUM(ssi.quantity * ssi.unit_price)
+              FROM service_sale_items ssi
+              WHERE ssi.sale_id = s.id
+            ), 0)
+          ), 0) as revenue,
+          COALESCE(SUM((
+            SELECT COALESCE(SUM(si.quantity * si.unit_cost), 0)
+            FROM sale_items si
+            WHERE si.sale_id = s.id
+          )), 0) as total_cost,
+          COALESCE(SUM(
+            COALESCE((
+              SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+              FROM sale_items si
+              WHERE si.sale_id = s.id
+            ), 0)
+            + COALESCE((
+              SELECT SUM(ssi.quantity * ssi.unit_price)
+              FROM service_sale_items ssi
+              WHERE ssi.sale_id = s.id
+            ), 0)
+          ), 0) as gross_profit,
           COALESCE(SUM(s.tax), 0) as tax,
           COALESCE(SUM(s.discount), 0) as discount
         FROM sales s
-        JOIN sale_items si ON si.sale_id = s.id
         WHERE s.created_at >= datetime('now', '-$daysRange days')
+          AND s.deleted_at IS NULL
+          AND s.refund_for_sale_id IS NULL
         GROUP BY DATE(s.created_at)
       ),
       daily_expenses AS (
@@ -134,15 +161,42 @@ class ExpenseRepository {
     final rows = await DatabaseService.rawQuery('''
       WITH sales_totals AS (
         SELECT
-          COALESCE(SUM(si.quantity * si.unit_price), 0) as total_revenue,
-          COALESCE(SUM(si.quantity * si.unit_cost), 0) as total_cost,
-          COALESCE(SUM(si.quantity * si.unit_price), 0) - COALESCE(SUM(si.quantity * si.unit_cost), 0) as gross_profit,
-          COUNT(DISTINCT s.id) as total_sales,
+          COALESCE(SUM(
+            COALESCE((
+              SELECT SUM(si.quantity * si.unit_price)
+              FROM sale_items si
+              WHERE si.sale_id = s.id
+            ), 0)
+            + COALESCE((
+              SELECT SUM(ssi.quantity * ssi.unit_price)
+              FROM service_sale_items ssi
+              WHERE ssi.sale_id = s.id
+            ), 0)
+          ), 0) as total_revenue,
+          COALESCE(SUM((
+            SELECT COALESCE(SUM(si.quantity * si.unit_cost), 0)
+            FROM sale_items si
+            WHERE si.sale_id = s.id
+          )), 0) as total_cost,
+          COALESCE(SUM(
+            COALESCE((
+              SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+              FROM sale_items si
+              WHERE si.sale_id = s.id
+            ), 0)
+            + COALESCE((
+              SELECT SUM(ssi.quantity * ssi.unit_price)
+              FROM service_sale_items ssi
+              WHERE ssi.sale_id = s.id
+            ), 0)
+          ), 0) as gross_profit,
+          COUNT(*) as total_sales,
           COALESCE(SUM(s.tax), 0) as total_tax,
           COALESCE(SUM(s.discount), 0) as total_discount
         FROM sales s
-        JOIN sale_items si ON si.sale_id = s.id
         WHERE s.created_at >= datetime('now', '-$daysRange days')
+          AND s.deleted_at IS NULL
+          AND s.refund_for_sale_id IS NULL
       ),
       expense_totals AS (
         SELECT

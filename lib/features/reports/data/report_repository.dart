@@ -32,6 +32,7 @@ class ReportRepository {
         AND s.payment_type = 'kopesha'
         AND s.balance_due > 0
         AND s.refund_sale_id IS NULL
+        AND s.deleted_at IS NULL
       WHERE c.balance > 0
       GROUP BY c.id
       ORDER BY c.balance DESC
@@ -64,6 +65,7 @@ class ReportRepository {
       WHERE s.payment_type = 'kopesha'
         AND s.balance_due > 0
         AND s.refund_sale_id IS NULL
+        AND s.deleted_at IS NULL
       ORDER BY s.due_date ASC
     ''');
   }
@@ -95,6 +97,7 @@ class ReportRepository {
       WHERE s.payment_type = 'kopesha'
         AND s.balance_due > 0
         AND s.refund_sale_id IS NULL
+        AND s.deleted_at IS NULL
     ''');
     return rows.isNotEmpty ? Map<String, dynamic>.from(rows.first) : {};
   }
@@ -118,16 +121,17 @@ class ReportRepository {
         p.unit,
         p.sale_unit,
         p.stock_unit,
-        COALESCE(SUM(si.quantity), 0) as total_qty_sold,
-        COALESCE(SUM(si.quantity * si.unit_price), 0) as total_revenue,
-        COALESCE(SUM(si.quantity * si.unit_cost), 0) as total_cost,
-        COALESCE(SUM(si.quantity * si.unit_price) - SUM(si.quantity * si.unit_cost), 0) as total_profit,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity ELSE 0 END), 0) as total_qty_sold,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity * si.unit_price ELSE 0 END), 0) as total_revenue,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity * si.unit_cost ELSE 0 END), 0) as total_cost,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity * (si.unit_price - si.unit_cost) ELSE 0 END), 0) as total_profit,
         COUNT(DISTINCT s.id) as transaction_count
       FROM products p
       LEFT JOIN sale_items si ON si.product_id = p.id
       LEFT JOIN sales s ON s.id = si.sale_id
         AND s.created_at >= datetime('now', '-$daysRange days')
         AND s.refund_sale_id IS NULL
+        AND s.deleted_at IS NULL
       GROUP BY p.id
       ORDER BY total_qty_sold $order, total_revenue $order
       LIMIT $limit
@@ -171,6 +175,7 @@ class ReportRepository {
         JOIN sales s ON s.id = si.sale_id
         WHERE s.created_at >= datetime('now', '-$daysRange days')
           AND s.refund_sale_id IS NULL
+          AND s.deleted_at IS NULL
         GROUP BY si.product_id
       ) sold ON sold.product_id = p.id
       WHERE COALESCE(received.qty_in, 0) > 0 OR COALESCE(sold.qty_out, 0) > 0
@@ -191,6 +196,7 @@ class ReportRepository {
     final summaryWhere = <String>[
       'DATE(s.created_at) = ?',
       's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
     ];
     final summaryArgs = <dynamic>[d];
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
@@ -207,7 +213,11 @@ class ReportRepository {
         SUM(CASE WHEN s.payment_type = 'cash' THEN s.total_amount ELSE 0 END) as cash_revenue,
         SUM(CASE WHEN s.payment_type = 'kopesha' THEN s.total_amount ELSE 0 END) as kopesha_revenue,
         COUNT(CASE WHEN s.payment_type = 'cash' THEN 1 END) as cash_count,
-        COUNT(CASE WHEN s.payment_type = 'kopesha' THEN 1 END) as kopesha_count
+        COUNT(CASE WHEN s.payment_type = 'kopesha' THEN 1 END) as kopesha_count,
+        COALESCE(SUM((SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) FROM sale_items si WHERE si.sale_id = s.id)), 0) as product_revenue,
+        COALESCE(SUM((SELECT COALESCE(SUM(ssi.quantity * ssi.unit_price), 0) FROM service_sale_items ssi WHERE ssi.sale_id = s.id)), 0) as service_revenue,
+        COUNT(CASE WHEN EXISTS (SELECT 1 FROM sale_items si WHERE si.sale_id = s.id) THEN 1 END) as product_sales,
+        COUNT(CASE WHEN EXISTS (SELECT 1 FROM service_sale_items ssi WHERE ssi.sale_id = s.id) THEN 1 END) as service_sales
       FROM sales s
       WHERE ${summaryWhere.join(' AND ')}
     ''', summaryArgs);
@@ -219,6 +229,7 @@ class ReportRepository {
     final profitWhere = <String>[
       'DATE(s.created_at) = ?',
       's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
     ];
     final profitArgs = <dynamic>[d];
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
@@ -228,10 +239,24 @@ class ReportRepository {
 
     final profitRows = await DatabaseService.rawQuery('''
       SELECT
-        COALESCE(SUM(si.quantity * (si.unit_price - si.unit_cost)), 0) as gross_profit,
-        COALESCE(SUM(si.quantity * si.unit_cost), 0) as total_cost
-      FROM sale_items si
-      JOIN sales s ON s.id = si.sale_id
+        COALESCE(SUM(
+          COALESCE((
+            SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+            FROM sale_items si
+            WHERE si.sale_id = s.id
+          ), 0)
+          + COALESCE((
+            SELECT SUM(ssi.quantity * ssi.unit_price)
+            FROM service_sale_items ssi
+            WHERE ssi.sale_id = s.id
+          ), 0)
+        ), 0) as gross_profit,
+        COALESCE(SUM((
+          SELECT COALESCE(SUM(si.quantity * si.unit_cost), 0)
+          FROM sale_items si
+          WHERE si.sale_id = s.id
+        )), 0) as total_cost
+      FROM sales s
       WHERE ${profitWhere.join(' AND ')}
     ''', profitArgs);
     if (profitRows.isNotEmpty) {
@@ -242,6 +267,7 @@ class ReportRepository {
     final topProductsWhere = <String>[
       'DATE(s.created_at) = ?',
       's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
     ];
     final topProductsArgs = <dynamic>[d];
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
@@ -265,6 +291,31 @@ class ReportRepository {
     ''', topProductsArgs);
     summary['top_products'] = topProducts;
 
+    final topServicesWhere = <String>[
+      'DATE(s.created_at) = ?',
+      's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
+    ];
+    final topServicesArgs = <dynamic>[d];
+    if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
+      topServicesWhere.add('s.user_id = ?');
+      topServicesArgs.add(normalizedCashierId);
+    }
+
+    final topServices = await DatabaseService.rawQuery('''
+      SELECT
+        ssi.service_name as name,
+        SUM(ssi.quantity) as qty_sold,
+        SUM(ssi.quantity * ssi.unit_price) as revenue
+      FROM service_sale_items ssi
+      JOIN sales s ON s.id = ssi.sale_id
+      WHERE ${topServicesWhere.join(' AND ')}
+      GROUP BY ssi.service_id, ssi.service_name
+      ORDER BY revenue DESC, qty_sold DESC
+      LIMIT 5
+    ''', topServicesArgs);
+    summary['top_services'] = topServices;
+
     return summary;
   }
 
@@ -282,7 +333,10 @@ class ReportRepository {
       return remoteRows;
     }
 
-    final baseWhere = <String>['DATE(s.created_at) = ?'];
+    final baseWhere = <String>[
+      'DATE(s.created_at) = ?',
+      's.deleted_at IS NULL',
+    ];
     final args = <dynamic>[d];
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       baseWhere.add('s.user_id = ?');
@@ -305,6 +359,10 @@ class ReportRepository {
         COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.total_amount ELSE 0 END), 0) as total_revenue,
         COALESCE(SUM(CASE WHEN base.payment_type = 'cash' THEN base.total_amount ELSE 0 END), 0) as cash_revenue,
         COALESCE(SUM(CASE WHEN base.payment_type = 'kopesha' THEN base.total_amount ELSE 0 END), 0) as kopesha_revenue,
+        COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.product_line_revenue ELSE 0 END), 0) as product_revenue,
+        COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.service_line_revenue ELSE 0 END), 0) as service_revenue,
+        COUNT(CASE WHEN base.has_product_items = 1 AND base.payment_type NOT LIKE 'refund%' THEN 1 END) as product_sales,
+        COUNT(CASE WHEN base.has_service_items = 1 AND base.payment_type NOT LIKE 'refund%' THEN 1 END) as service_sales,
         COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.sale_profit ELSE 0 END), 0) as gross_profit,
         COALESCE(SUM(CASE WHEN base.payment_type LIKE 'refund%' THEN ABS(base.total_amount) ELSE 0 END), 0) as refunds_issued,
         COUNT(CASE WHEN base.payment_type LIKE 'refund%' THEN 1 END) as refund_count,
@@ -316,11 +374,23 @@ class ReportRepository {
           s.payment_type,
           s.total_amount,
           s.created_at,
-          COALESCE((
-            SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
-            FROM sale_items si
-            WHERE si.sale_id = s.id
-          ), 0) - s.discount as sale_profit
+          CASE WHEN EXISTS (SELECT 1 FROM sale_items si WHERE si.sale_id = s.id) THEN 1 ELSE 0 END as has_product_items,
+          CASE WHEN EXISTS (SELECT 1 FROM service_sale_items ssi WHERE ssi.sale_id = s.id) THEN 1 ELSE 0 END as has_service_items,
+          COALESCE((SELECT SUM(si.quantity * si.unit_price) FROM sale_items si WHERE si.sale_id = s.id), 0) as product_line_revenue,
+          COALESCE((SELECT SUM(ssi.quantity * ssi.unit_price) FROM service_sale_items ssi WHERE ssi.sale_id = s.id), 0) as service_line_revenue,
+          (
+            COALESCE((
+              SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+              FROM sale_items si
+              WHERE si.sale_id = s.id
+            ), 0)
+            + COALESCE((
+              SELECT SUM(ssi.quantity * ssi.unit_price)
+              FROM service_sale_items ssi
+              WHERE ssi.sale_id = s.id
+            ), 0)
+            - s.discount
+          ) as sale_profit
         FROM sales s
         WHERE ${baseWhere.join(' AND ')}
       ) base
