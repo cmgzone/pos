@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 
@@ -7,26 +8,37 @@ const _uuid = Uuid();
 class CustomerRepository {
   static const _table = 'customers';
 
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
   static Future<List<Map<String, dynamic>>> search(String query) async {
     final trimmed = query.trim();
 
     if (trimmed.isEmpty) {
-      return DatabaseService.rawQuery(
-        'SELECT * FROM $_table ORDER BY balance DESC, name COLLATE NOCASE ASC',
-      );
+      return DatabaseService.rawQuery('''
+        SELECT *
+        FROM $_table
+        WHERE deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+        ORDER BY balance DESC, name COLLATE NOCASE ASC
+        ''', _currentBranchArgs);
     }
 
     final pattern = '%$trimmed%';
     return DatabaseService.rawQuery(
       '''
       SELECT * FROM $_table
-      WHERE name LIKE ? OR phone LIKE ? OR email LIKE ?
+      WHERE deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+        AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)
       ORDER BY
         CASE WHEN name LIKE ? THEN 0 ELSE 1 END,
         balance DESC,
         name COLLATE NOCASE ASC
       ''',
-      [pattern, pattern, pattern, pattern],
+      [..._currentBranchArgs, pattern, pattern, pattern, pattern],
     );
   }
 
@@ -76,17 +88,27 @@ class CustomerRepository {
         MIN(CASE WHEN s.balance_due > 0 AND s.due_date IS NOT NULL AND date(s.due_date) < date('now', 'localtime') THEN s.due_date END) as oldest_overdue_date
       FROM customers c
       LEFT JOIN sales s ON s.customer_id = c.id
-      WHERE c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?
+        AND s.deleted_at IS NULL
+        AND COALESCE(s.branch_id, ?) = ?
+      WHERE c.deleted_at IS NULL
+        AND COALESCE(c.branch_id, ?) = ?
+        AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
       GROUP BY c.id
       HAVING ${havingClauses.join(' AND ')}
       ORDER BY overdue_count DESC, overdue_amount DESC, outstanding_balance DESC, c.name COLLATE NOCASE ASC
       ''',
-      [pattern, pattern, pattern],
+      [..._currentBranchArgs, ..._currentBranchArgs, pattern, pattern, pattern],
     );
   }
 
   static Future<Map<String, dynamic>?> getById(String id) async {
-    return DatabaseService.queryById(_table, id);
+    final rows = await DatabaseService.queryAll(
+      _table,
+      where: 'id = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [id, ..._currentBranchArgs],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
   }
 
   static Future<Map<String, dynamic>?> getKopeshaStatement(
@@ -107,13 +129,16 @@ class CustomerRepository {
         discount,
         tax
       FROM sales
-      WHERE customer_id = ? AND balance_due > 0
+      WHERE customer_id = ?
+        AND balance_due > 0
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         created_at ASC
       ''',
-      [customerId],
+      [customerId, ..._currentBranchArgs],
     );
 
     final paymentHistory = await DatabaseService.rawQuery(
@@ -135,9 +160,11 @@ class CustomerRepository {
       LEFT JOIN sales s ON s.id = cp.sale_id
       LEFT JOIN users u ON u.id = cp.user_id
       WHERE cp.customer_id = ?
+        AND cp.deleted_at IS NULL
+        AND COALESCE(cp.branch_id, ?) = ?
       ORDER BY cp.received_at DESC
       ''',
-      [customerId],
+      [customerId, ..._currentBranchArgs],
     );
 
     final summaryList = await getKopeshaCustomers(query: '', filter: 'all');
@@ -201,13 +228,16 @@ class CustomerRepository {
         '''
         SELECT id, balance_due
         FROM sales
-        WHERE customer_id = ? AND balance_due > 0
+        WHERE customer_id = ?
+          AND balance_due > 0
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
         ORDER BY
           CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
           due_date ASC,
           created_at ASC
         ''',
-        [customerId],
+        [customerId, ..._currentBranchArgs],
       );
 
       if (openCredits.isEmpty) {
@@ -244,6 +274,7 @@ class CustomerRepository {
             updated_at = ?,
             sync_status = ?
           WHERE id = ?
+            AND COALESCE(branch_id, ?) = ?
           ''',
           [
             appliedAmount,
@@ -252,11 +283,14 @@ class CustomerRepository {
             now,
             'pending',
             sale['id'],
+            DatabaseService.defaultBranchId,
+            DatabaseService.currentBranchId,
           ],
         );
 
         await txn.insert('credit_payments', {
           'id': _uuid.v4(),
+          'branch_id': DatabaseService.currentBranchId,
           'payment_group_id': paymentGroupId,
           'customer_id': customerId,
           'sale_id': sale['id'],
@@ -284,11 +318,25 @@ class CustomerRepository {
           updated_at = ?,
           sync_status = ?
         WHERE id = ?
+          AND COALESCE(branch_id, ?) = ?
         ''',
-        [appliedTotal, appliedTotal, now, 'pending', customerId],
+        [
+          appliedTotal,
+          appliedTotal,
+          now,
+          'pending',
+          customerId,
+          DatabaseService.defaultBranchId,
+          DatabaseService.currentBranchId,
+        ],
       );
     });
 
+    await AuditLogService.log(
+      action: 'payment',
+      entityTable: 'credit_payments',
+      entityId: paymentGroupId,
+    );
     return paymentGroupId;
   }
 
@@ -315,13 +363,15 @@ class CustomerRepository {
       LEFT JOIN sales s ON s.id = cp.sale_id
       LEFT JOIN users u ON u.id = cp.user_id
       WHERE cp.payment_group_id = ?
+        AND cp.deleted_at IS NULL
+        AND COALESCE(cp.branch_id, ?) = ?
       ORDER BY
         CASE WHEN s.due_date IS NULL THEN 1 ELSE 0 END,
         s.due_date ASC,
         s.created_at ASC,
         cp.received_at ASC
       ''',
-      [paymentGroupId],
+      [paymentGroupId, ..._currentBranchArgs],
     );
 
     if (rows.isEmpty) {

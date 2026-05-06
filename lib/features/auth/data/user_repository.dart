@@ -104,8 +104,10 @@ class UserRepository {
       'role': normalizedRole,
       'feature_access_json': _defaultFeatureAccessJsonForRole(normalizedRole),
       'allowed_service_ids_json': null,
+      'allowed_branch_ids_json': null,
       'pos_mode': UserAccessProfile.posModeBoth,
-      'service_order_scope': UserAccessProfile.serviceOrderScopeAllVisibleServices,
+      'service_order_scope':
+          UserAccessProfile.serviceOrderScopeAllVisibleServices,
       'created_at': now,
       'updated_at': now,
       'sync_status': 'pending',
@@ -147,8 +149,10 @@ class UserRepository {
       'role': nextRole,
       'feature_access_json': defaultFeatureAccessJson,
       'allowed_service_ids_json': null,
+      'allowed_branch_ids_json': null,
       'pos_mode': UserAccessProfile.posModeBoth,
-      'service_order_scope': UserAccessProfile.serviceOrderScopeAllVisibleServices,
+      'service_order_scope':
+          UserAccessProfile.serviceOrderScopeAllVisibleServices,
       'updated_at': DateTime.now().toIso8601String(),
       'sync_status': 'pending',
     }, userId);
@@ -157,6 +161,7 @@ class UserRepository {
       await SessionService.updateAccess(
         featureAccessJson: defaultFeatureAccessJson,
         allowedServiceIdsJson: null,
+        allowedBranchIdsJson: null,
         posMode: UserAccessProfile.posModeBoth,
         serviceOrderScope:
             UserAccessProfile.serviceOrderScopeAllVisibleServices,
@@ -169,6 +174,7 @@ class UserRepository {
     required String userId,
     required List<String> featureAccess,
     required List<String> allowedServiceIds,
+    List<String> allowedBranchIds = const [],
     required String posMode,
     required String serviceOrderScope,
   }) async {
@@ -188,6 +194,10 @@ class UserRepository {
         normalizedRole == RolePermissions.admin || allowedServiceIds.isEmpty
         ? null
         : UserAccessProfile.encodeStringList(allowedServiceIds);
+    final nextAllowedBranchIdsJson =
+        normalizedRole == RolePermissions.admin || allowedBranchIds.isEmpty
+        ? null
+        : UserAccessProfile.encodeStringList(allowedBranchIds);
     final nextPosMode = UserAccessProfile.resolvePosMode(
       role: normalizedRole,
       rawPosMode: posMode,
@@ -201,6 +211,7 @@ class UserRepository {
     await DatabaseService.update(_table, {
       'feature_access_json': nextFeatureAccessJson,
       'allowed_service_ids_json': nextAllowedServiceIdsJson,
+      'allowed_branch_ids_json': nextAllowedBranchIdsJson,
       'pos_mode': nextPosMode,
       'service_order_scope': nextServiceOrderScope,
       'updated_at': now,
@@ -211,6 +222,7 @@ class UserRepository {
       await SessionService.updateAccess(
         featureAccessJson: nextFeatureAccessJson,
         allowedServiceIdsJson: nextAllowedServiceIdsJson,
+        allowedBranchIdsJson: nextAllowedBranchIdsJson,
         posMode: nextPosMode,
         serviceOrderScope: nextServiceOrderScope,
       );
@@ -330,6 +342,7 @@ class UserRepository {
       'role',
       'feature_access_json',
       'allowed_service_ids_json',
+      'allowed_branch_ids_json',
       'pos_mode',
       'service_order_scope',
       'created_at',

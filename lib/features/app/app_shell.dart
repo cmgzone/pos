@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/services/session_service.dart';
 import '../../core/services/shop_settings.dart';
+import '../../core/services/branch_service.dart';
 import '../../core/services/sync_controller.dart';
 import '../../core/services/license_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -12,12 +13,16 @@ import '../training/widgets/training_anchor.dart';
 import '../customers/presentation/kopesha_screen.dart';
 import '../products/presentation/category_management_screen.dart';
 import '../products/presentation/product_list_screen.dart';
+import '../products/presentation/stock_list_screen.dart';
+import '../products/presentation/stock_transfer_screen.dart';
 import '../purchases/presentation/purchase_management_screen.dart';
 import '../reports/presentation/profit_loss_screen.dart';
 import '../reports/presentation/reports_screen.dart';
 import '../sales/presentation/pos_screen.dart';
 import '../sales/presentation/sales_history_screen.dart';
 import '../services/presentation/service_management_screen.dart';
+import '../settings/presentation/audit_log_screen.dart';
+import '../settings/presentation/branch_management_screen.dart';
 import '../settings/presentation/settings_screen.dart';
 import '../shifts/presentation/shift_management_screen.dart';
 import 'dashboard_screen.dart';
@@ -62,6 +67,15 @@ class AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 11,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.design_services_outlined,
+        selectedIcon: Icons.design_services_rounded,
+        label: 'Services',
+      ),
+    ),
+    _NavDestination(
       index: 4,
       section: _NavSection.main,
       item: _NavItem(
@@ -89,6 +103,15 @@ class AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 12,
+      section: _NavSection.inventory,
+      item: _NavItem(
+        icon: Icons.fact_check_outlined,
+        selectedIcon: Icons.fact_check_rounded,
+        label: 'Stock List',
+      ),
+    ),
+    _NavDestination(
       index: 2,
       section: _NavSection.inventory,
       item: _NavItem(
@@ -107,12 +130,12 @@ class AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
-      index: 11,
+      index: 15,
       section: _NavSection.inventory,
       item: _NavItem(
-        icon: Icons.design_services_outlined,
-        selectedIcon: Icons.design_services_rounded,
-        label: 'Services',
+        icon: Icons.swap_horiz_outlined,
+        selectedIcon: Icons.swap_horiz_rounded,
+        label: 'Transfers',
       ),
     ),
     _NavDestination(
@@ -151,11 +174,41 @@ class AppShellState extends ConsumerState<AppShell> {
         label: 'Settings',
       ),
     ),
+    _NavDestination(
+      index: 13,
+      section: _NavSection.system,
+      item: _NavItem(
+        icon: Icons.store_mall_directory_outlined,
+        selectedIcon: Icons.store_mall_directory_rounded,
+        label: 'Branches',
+      ),
+    ),
+    _NavDestination(
+      index: 14,
+      section: _NavSection.system,
+      item: _NavItem(
+        icon: Icons.manage_search_outlined,
+        selectedIcon: Icons.manage_search_rounded,
+        label: 'Audit Logs',
+      ),
+    ),
   ];
 
-  static const _mobileBottomDefaults = [0, 1, 4, 5];
+  static const _mobileBottomDefaults = [0, 11, 4, 5];
 
-  List<int> get _allowedIndices => SessionService.currentNavigationIndices;
+  List<int> get _allowedIndices {
+    final indices = [...SessionService.currentNavigationIndices];
+    if (RolePermissions.canManageOperationalSettings(
+      SessionService.currentUserRole,
+    )) {
+      indices.addAll([13, 14]);
+    }
+    if (SessionService.canAccessFeature(UserAccessProfile.featurePurchases) ||
+        SessionService.canAccessFeature(UserAccessProfile.featureProducts)) {
+      indices.add(15);
+    }
+    return indices;
+  }
 
   int get _currentIndex => _allowedIndices.contains(_selectedIndex)
       ? _selectedIndex
@@ -300,34 +353,43 @@ class AppShellState extends ConsumerState<AppShell> {
                       labelType: NavigationRailLabelType.all,
                       leading: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.asset(
-                            'assets/images/logo.png',
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.asset(
+                                'assets/images/logo.png',
                                 width: 48,
                                 height: 48,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      AppColors.primary,
-                                      AppColors.primaryLight,
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(
-                                  Icons.point_of_sale_rounded,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              );
-                            },
-                          ),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          AppColors.primary,
+                                          AppColors.primaryLight,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Icon(
+                                      Icons.point_of_sale_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            _BranchPill(
+                              compact: true,
+                              onTap: () => _selectIndex(13),
+                            ),
+                          ],
                         ),
                       ),
                       destinations: _allowedDestinations
@@ -448,6 +510,13 @@ class AppShellState extends ConsumerState<AppShell> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  _BranchPill(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _selectIndex(13);
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       _buildDrawerBadge(
@@ -509,7 +578,9 @@ class AppShellState extends ConsumerState<AppShell> {
                               label: destination.item.label,
                               isSelected: currentIndex == destination.index,
                               onTap: () {
-                                setState(() => _selectedIndex = destination.index);
+                                setState(
+                                  () => _selectedIndex = destination.index,
+                                );
                                 Navigator.pop(context);
                               },
                             ),
@@ -563,6 +634,14 @@ class AppShellState extends ConsumerState<AppShell> {
         return const ShiftManagementScreen();
       case 11:
         return const ServiceManagementScreen();
+      case 12:
+        return const StockListScreen();
+      case 13:
+        return const BranchManagementScreen();
+      case 14:
+        return const AuditLogScreen();
+      case 15:
+        return const StockTransferScreen();
       default:
         return const PosScreen();
     }
@@ -595,6 +674,67 @@ class AppShellState extends ConsumerState<AppShell> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BranchPill extends StatelessWidget {
+  final bool compact;
+  final VoidCallback onTap;
+
+  const _BranchPill({this.compact = false, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: BranchService.getBranches(activeOnly: true),
+      builder: (context, snapshot) {
+        final currentId = BranchService.currentBranchId;
+        final branches = snapshot.data ?? const <Map<String, dynamic>>[];
+        final current = branches.where((b) => b['id'] == currentId).firstOrNull;
+        final name = (current?['name'] as String?)?.trim().isNotEmpty == true
+            ? current!['name'] as String
+            : 'Main Branch';
+        return Material(
+          color: compact
+              ? AppColors.surfaceHighlight
+              : Colors.white.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(999),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 8 : 10,
+                vertical: compact ? 5 : 7,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.store_mall_directory_rounded,
+                    size: compact ? 13 : 15,
+                    color: compact ? AppColors.primary : Colors.white,
+                  ),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      compact ? (current?['code'] as String? ?? 'MAIN') : name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: compact ? AppColors.textPrimary : Colors.white,
+                        fontSize: compact ? 10 : 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

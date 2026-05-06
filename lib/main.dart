@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/navigation/app_navigator.dart';
+import 'core/services/branch_service.dart';
 import 'core/services/database_service.dart';
 import 'core/services/license_service.dart';
 import 'core/services/preferences_recovery_service.dart';
@@ -116,6 +117,7 @@ class _SplashScreenState extends State<SplashScreen>
     await DatabaseService.initialize();
     await ShopSettings.init();
     await SessionService.init();
+    await BranchService.init();
     await SyncSettingsService.init();
     await LicenseService.init();
   }

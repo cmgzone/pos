@@ -12,6 +12,8 @@ class SessionService {
   static const _keyCurrentFeatureAccessJson = 'current_feature_access_json';
   static const _keyCurrentAllowedServiceIdsJson =
       'current_allowed_service_ids_json';
+  static const _keyCurrentAllowedBranchIdsJson =
+      'current_allowed_branch_ids_json';
   static const _keyCurrentPosMode = 'current_pos_mode';
   static const _keyCurrentServiceOrderScope = 'current_service_order_scope';
 
@@ -38,6 +40,9 @@ class SessionService {
   static String? get currentAllowedServiceIdsJson =>
       _prefs?.getString(_keyCurrentAllowedServiceIdsJson);
 
+  static String? get currentAllowedBranchIdsJson =>
+      _prefs?.getString(_keyCurrentAllowedBranchIdsJson);
+
   static String get currentPosMode => UserAccessProfile.resolvePosMode(
     role: currentUserRole,
     rawPosMode: _prefs?.getString(_keyCurrentPosMode),
@@ -61,6 +66,12 @@ class SessionService {
         rawAllowedServiceIdsJson: currentAllowedServiceIdsJson,
       );
 
+  static List<String> get currentAllowedBranchIds =>
+      UserAccessProfile.resolveAllowedBranchIds(
+        role: currentUserRole,
+        rawAllowedBranchIdsJson: currentAllowedBranchIdsJson,
+      );
+
   static List<int> get currentNavigationIndices =>
       UserAccessProfile.navigationIndicesForFeatures(currentFeatureAccess);
 
@@ -82,6 +93,19 @@ class SessionService {
       return true;
     }
     final allowedIds = currentAllowedServiceIds;
+    return allowedIds.isEmpty || allowedIds.contains(cleanId);
+  }
+
+  static bool canAccessBranchId(String? branchId) {
+    if (RolePermissions.normalizeRole(currentUserRole) ==
+        RolePermissions.admin) {
+      return true;
+    }
+    final cleanId = branchId?.trim() ?? '';
+    if (cleanId.isEmpty) {
+      return true;
+    }
+    final allowedIds = currentAllowedBranchIds;
     return allowedIds.isEmpty || allowedIds.contains(cleanId);
   }
 
@@ -120,6 +144,10 @@ class SessionService {
       _keyCurrentAllowedServiceIdsJson,
       user['allowed_service_ids_json'] as String?,
     );
+    await _writeOptionalString(
+      _keyCurrentAllowedBranchIdsJson,
+      user['allowed_branch_ids_json'] as String?,
+    );
     await _writeOptionalString(_keyCurrentPosMode, user['pos_mode'] as String?);
     await _writeOptionalString(
       _keyCurrentServiceOrderScope,
@@ -138,6 +166,7 @@ class SessionService {
   static Future<void> updateAccess({
     String? featureAccessJson,
     String? allowedServiceIdsJson,
+    String? allowedBranchIdsJson,
     String? posMode,
     String? serviceOrderScope,
   }) async {
@@ -146,6 +175,10 @@ class SessionService {
     await _writeOptionalString(
       _keyCurrentAllowedServiceIdsJson,
       allowedServiceIdsJson,
+    );
+    await _writeOptionalString(
+      _keyCurrentAllowedBranchIdsJson,
+      allowedBranchIdsJson,
     );
     await _writeOptionalString(_keyCurrentPosMode, posMode);
     await _writeOptionalString(_keyCurrentServiceOrderScope, serviceOrderScope);
@@ -167,6 +200,7 @@ class SessionService {
     await _prefs!.remove(_keyCurrentUserRole);
     await _prefs!.remove(_keyCurrentFeatureAccessJson);
     await _prefs!.remove(_keyCurrentAllowedServiceIdsJson);
+    await _prefs!.remove(_keyCurrentAllowedBranchIdsJson);
     await _prefs!.remove(_keyCurrentPosMode);
     await _prefs!.remove(_keyCurrentServiceOrderScope);
   }
@@ -344,6 +378,16 @@ class UserAccessProfile {
       return const [];
     }
     return _decodeStringList(rawAllowedServiceIdsJson);
+  }
+
+  static List<String> resolveAllowedBranchIds({
+    required String role,
+    String? rawAllowedBranchIdsJson,
+  }) {
+    if (RolePermissions.normalizeRole(role) == RolePermissions.admin) {
+      return const [];
+    }
+    return _decodeStringList(rawAllowedBranchIdsJson);
   }
 
   static String resolvePosMode({required String role, String? rawPosMode}) {

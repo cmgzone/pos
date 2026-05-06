@@ -122,7 +122,7 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          isActive ? 'Active Batch' : 'Finished Batch',
+                          _batchTitle(b, isActive),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: isActive
@@ -153,6 +153,16 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
                       ],
                     ),
                     const SizedBox(height: 4),
+                    if ((b['batch_number'] as String?)?.trim().isNotEmpty ==
+                        true)
+                      Text(
+                        'Batch No: ${b['batch_number']}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     Text(
                       'Received: ${_formatDate(b['received_at'])}',
                       style: const TextStyle(
@@ -229,5 +239,13 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
       return value?.toString() ?? '';
     }
     return '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+  }
+
+  String _batchTitle(Map<String, dynamic> batch, bool isActive) {
+    final batchNumber = (batch['batch_number'] as String?)?.trim();
+    if (batchNumber != null && batchNumber.isNotEmpty) {
+      return isActive ? 'Batch $batchNumber' : 'Finished batch $batchNumber';
+    }
+    return isActive ? 'Active Batch' : 'Finished Batch';
   }
 }

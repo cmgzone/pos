@@ -17,10 +17,14 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
   List<Map<String, dynamic>> _dailyData = [];
   List<Map<String, dynamic>> _recentExpenses = [];
   List<Map<String, dynamic>> _categoryTotals = [];
+  List<Map<String, dynamic>> _dailyExpenseReport = [];
   List<Map<String, dynamic>> _categories = [];
   Map<String, dynamic> _totals = {};
   bool _isLoading = true;
   int _daysRange = 7;
+  String _periodMode = '7';
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
 
   @override
   void initState() {
@@ -33,28 +37,108 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     try {
       _dailyData = await ExpenseRepository.getDailyProfitLoss(
         daysRange: _daysRange,
+        startDate: _rangeStartDate,
+        endDate: _rangeEndDate,
       );
       _totals = await ExpenseRepository.getProfitLossTotals(
         daysRange: _daysRange,
+        startDate: _rangeStartDate,
+        endDate: _rangeEndDate,
       );
       _categories = await ExpenseRepository.getCategories();
       _categoryTotals = await ExpenseRepository.getExpenseCategoryTotals(
         daysRange: _daysRange,
+        startDate: _rangeStartDate,
+        endDate: _rangeEndDate,
       );
+      _dailyExpenseReport =
+          await ExpenseRepository.getDailyExpenseCategoryReport(
+            daysRange: _daysRange,
+            startDate: _rangeStartDate,
+            endDate: _rangeEndDate,
+          );
       _recentExpenses = await ExpenseRepository.getRecentExpenses(
         daysRange: _daysRange,
-        limit: 10,
+        limit: 20,
+        startDate: _rangeStartDate,
+        endDate: _rangeEndDate,
       );
     } catch (e) {
       debugPrint('[P&L] Error: $e');
       _dailyData = [];
       _totals = {};
       _categoryTotals = [];
+      _dailyExpenseReport = [];
       _recentExpenses = [];
     }
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  DateTime? get _rangeStartDate {
+    final today = _dateOnly(DateTime.now());
+    switch (_periodMode) {
+      case 'today':
+        return today;
+      case 'yesterday':
+        return today.subtract(const Duration(days: 1));
+      case 'custom':
+        return _customStartDate;
+      default:
+        return null;
+    }
+  }
+
+  DateTime? get _rangeEndDate {
+    final today = _dateOnly(DateTime.now());
+    switch (_periodMode) {
+      case 'today':
+        return today;
+      case 'yesterday':
+        return today.subtract(const Duration(days: 1));
+      case 'custom':
+        return _customEndDate;
+      default:
+        return null;
+    }
+  }
+
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  void _setPeriod(String mode, int daysRange) {
+    setState(() {
+      _periodMode = mode;
+      _daysRange = daysRange;
+    });
+    _loadData();
+  }
+
+  Future<void> _pickCustomExpenseRange() async {
+    final today = _dateOnly(DateTime.now());
+    final initialStart =
+        _customStartDate ?? today.subtract(const Duration(days: 6));
+    final initialEnd = _customEndDate ?? today;
+
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: today.add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(start: initialStart, end: initialEnd),
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _periodMode = 'custom';
+      _customStartDate = _dateOnly(picked.start);
+      _customEndDate = _dateOnly(picked.end);
+      _daysRange = picked.duration.inDays + 1;
+    });
+    _loadData();
   }
 
   Future<void> _showAddCategoryDialog() async {
@@ -112,6 +196,16 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     controller.dispose();
     if (created == true) {
       await _loadData();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Expense category created'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.success,
+        ),
+      );
     }
   }
 
@@ -276,6 +370,16 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
 
     if (created == true) {
       await _loadData();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Expense added'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.success,
+        ),
+      );
     }
   }
 
@@ -347,39 +451,6 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
         automaticallyImplyLeading: false,
         title: const Text('Profit & Loss'),
         actions: [
-          if (isMobile) ...[
-            IconButton(
-              icon: const Icon(Icons.label_outline),
-              tooltip: 'Add Category',
-              onPressed: _showAddCategoryDialog,
-            ),
-            TrainingAnchor(
-              id: 'pl.addExpense',
-              child: IconButton(
-                icon: const Icon(Icons.add_circle_outline),
-                tooltip: 'Add Expense',
-                onPressed: _showAddExpenseDialog,
-              ),
-            ),
-          ] else ...[
-            IconButton(
-              icon: const Icon(Icons.label_outline),
-              tooltip: 'Add Category',
-              onPressed: _showAddCategoryDialog,
-            ),
-            TrainingAnchor(
-              id: 'pl.addExpense',
-              child: FilledButton.icon(
-                onPressed: _showAddExpenseDialog,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Expense'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
           SizedBox(width: isMobile ? 4 : 16),
         ],
@@ -406,39 +477,45 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                               style: TextStyle(color: AppColors.textSecondary),
                             ),
                             _PeriodChip(
-                              label: '7 Days',
-                              selected: _daysRange == 7,
-                              onTap: () {
-                                _daysRange = 7;
-                                _loadData();
-                              },
+                              label: 'Today',
+                              selected: _periodMode == 'today',
+                              onTap: () => _setPeriod('today', 1),
                             ),
                             _PeriodChip(
-                              label: '14 Days',
-                              selected: _daysRange == 14,
-                              onTap: () {
-                                _daysRange = 14;
-                                _loadData();
-                              },
+                              label: 'Yesterday',
+                              selected: _periodMode == 'yesterday',
+                              onTap: () => _setPeriod('yesterday', 1),
+                            ),
+                            _PeriodChip(
+                              label: '7 Days',
+                              selected: _periodMode == '7',
+                              onTap: () => _setPeriod('7', 7),
                             ),
                             _PeriodChip(
                               label: '30 Days',
-                              selected: _daysRange == 30,
-                              onTap: () {
-                                _daysRange = 30;
-                                _loadData();
-                              },
+                              selected: _periodMode == '30',
+                              onTap: () => _setPeriod('30', 30),
                             ),
                             _PeriodChip(
                               label: '90 Days',
-                              selected: _daysRange == 90,
-                              onTap: () {
-                                _daysRange = 90;
-                                _loadData();
-                              },
+                              selected: _periodMode == '90',
+                              onTap: () => _setPeriod('90', 90),
+                            ),
+                            _PeriodChip(
+                              label: _periodMode == 'custom'
+                                  ? '${_formatDateValue(_rangeStartDate ?? DateTime.now())} - ${_formatDateValue(_rangeEndDate ?? DateTime.now())}'
+                                  : 'Custom Date',
+                              selected: _periodMode == 'custom',
+                              onTap: _pickCustomExpenseRange,
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 14),
+                      _ExpenseActionsBar(
+                        isMobile: isMobile,
+                        onCreateCategory: _showAddCategoryDialog,
+                        onAddExpense: _showAddExpenseDialog,
                       ),
                       const SizedBox(height: 24),
                       TrainingAnchor(
@@ -541,11 +618,11 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                         ),
                       const SizedBox(height: 20),
                       _SectionCard(
-                        title: 'Daily Breakdown',
-                        icon: Icons.calendar_today,
+                        title: 'Profit & Loss Report',
+                        icon: Icons.stacked_line_chart_outlined,
                         child: _dailyData.isEmpty
                             ? const Text(
-                                'No sales or expense data for this period',
+                                'No profit or loss data for this date range',
                                 style: TextStyle(
                                   color: AppColors.textSecondary,
                                 ),
@@ -559,8 +636,12 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                                   final dayExpenses =
                                       (day['total_expenses'] as num? ?? 0)
                                           .toDouble();
+                                  final grossProfit =
+                                      (day['gross_profit'] as num? ?? 0)
+                                          .toDouble();
                                   final net = (day['net_profit'] as num? ?? 0)
                                       .toDouble();
+                                  final grossPositive = grossProfit >= 0;
                                   final positive = net >= 0;
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
@@ -621,6 +702,14 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                                               color: AppColors.error,
                                             ),
                                             _MiniMetric(
+                                              label: 'Gross Profit',
+                                              value:
+                                                  '${grossPositive ? '+' : ''}${ShopSettings.currency}${grossProfit.toStringAsFixed(2)}',
+                                              color: grossPositive
+                                                  ? AppColors.success
+                                                  : AppColors.error,
+                                            ),
+                                            _MiniMetric(
                                               label: 'Net',
                                               value:
                                                   '${positive ? '+' : ''}${ShopSettings.currency}${net.toStringAsFixed(2)}',
@@ -637,10 +726,26 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                               ),
                       ),
                       const SizedBox(height: 20),
+                      _SectionCard(
+                        title: 'Expenses Report',
+                        icon: Icons.request_quote_outlined,
+                        child: _dailyExpenseReport.isEmpty
+                            ? const Text(
+                                'No expenses recorded for this date range',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
+                              )
+                            : _DailyExpenseReportList(
+                                rows: _dailyExpenseReport,
+                                formatDate: _formatDate,
+                              ),
+                      ),
+                      const SizedBox(height: 20),
                       TrainingAnchor(
                         id: 'pl.expenses',
                         child: _SectionCard(
-                          title: 'Recent Expenses',
+                          title: 'Expense Records',
                           icon: Icons.receipt_long_outlined,
                           child: _recentExpenses.isEmpty
                               ? const Text(
@@ -674,8 +779,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                                                   '${expense['category_name'] ?? 'Uncategorized'} - ${_formatDate(expense['incurred_on'] as String? ?? '')}',
                                                   style: const TextStyle(
                                                     color:
-                                                        AppColors
-                                                            .textSecondary,
+                                                        AppColors.textSecondary,
                                                     fontSize: 12,
                                                   ),
                                                 ),
@@ -734,6 +838,161 @@ class _PeriodChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DailyExpenseReportList extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+  final String Function(String value) formatDate;
+
+  const _DailyExpenseReportList({required this.rows, required this.formatDate});
+
+  @override
+  Widget build(BuildContext context) {
+    final groupedRows = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      final day = row['day_key'] as String? ?? '';
+      groupedRows.putIfAbsent(day, () => []).add(row);
+    }
+
+    return Column(
+      children: groupedRows.entries.map((entry) {
+        final dayTotal = entry.value.fold<double>(
+          0,
+          (sum, row) => sum + ((row['total_amount'] as num?) ?? 0).toDouble(),
+        );
+        final entryCount = entry.value.fold<int>(
+          0,
+          (sum, row) => sum + ((row['expense_count'] as num?) ?? 0).toInt(),
+        );
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceHighlight,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      formatDate(entry.key),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$entryCount entries',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${ShopSettings.currency}${dayTotal.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Column(
+                children: entry.value.map((row) {
+                  final amount = ((row['total_amount'] as num?) ?? 0)
+                      .toDouble();
+                  final count = ((row['expense_count'] as num?) ?? 0).toInt();
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            row['category_name'] as String? ?? 'Uncategorized',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        Text(
+                          '$count',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          '${ShopSettings.currency}${amount.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ExpenseActionsBar extends StatelessWidget {
+  final bool isMobile;
+  final VoidCallback onCreateCategory;
+  final VoidCallback onAddExpense;
+
+  const _ExpenseActionsBar({
+    required this.isMobile,
+    required this.onCreateCategory,
+    required this.onAddExpense,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final createCategoryButton = OutlinedButton.icon(
+      onPressed: onCreateCategory,
+      icon: const Icon(Icons.label_outline, size: 18),
+      label: const Text('Create Expense Category'),
+    );
+    final addExpenseButton = TrainingAnchor(
+      id: 'pl.addExpense',
+      child: FilledButton.icon(
+        onPressed: onAddExpense,
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('Add Expense'),
+        style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+      ),
+    );
+
+    if (isMobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          addExpenseButton,
+          const SizedBox(height: 10),
+          createCategoryButton,
+        ],
+      );
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [addExpenseButton, createCategoryButton],
     );
   }
 }

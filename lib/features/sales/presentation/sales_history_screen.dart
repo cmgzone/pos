@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
@@ -9,6 +11,7 @@ import '../../shifts/data/shift_preferences_service.dart';
 import '../../shifts/data/shift_repository.dart';
 import '../../shifts/presentation/shift_auto_open_dialog.dart';
 import '../../settings/data/payment_method_repository.dart';
+import '../../products/data/product_repository.dart';
 import '../../services/data/service_provider.dart';
 import '../../services/data/service_repository.dart';
 import '../../training/widgets/training_anchor.dart';
@@ -149,7 +152,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isMobile = constraints.maxWidth < 720;
+        final isMobile = constraints.maxWidth < 720 || Platform.isWindows;
         return Scaffold(
           appBar: AppBar(
             backgroundColor: AppColors.surface,
@@ -242,6 +245,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       return switch (_selectedSaleType) {
         'service' => serviceCount > 0 && productCount == 0,
         'product' => productCount > 0 && serviceCount == 0,
+        'single_product' => productCount == 1 && serviceCount == 0,
+        'multi_product' => productCount > 1 && serviceCount == 0,
         'mixed' => productCount > 0 && serviceCount > 0,
         _ => true,
       };
@@ -285,6 +290,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       activeOnly: true,
     )).where((method) => method['is_credit'] != 1).toList();
     final services = await ServiceRepository.getServices(activeOnly: true);
+    final products = await ProductRepository.getAll();
     if (!mounted) {
       return;
     }
@@ -302,8 +308,11 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     final taxController = TextEditingController(text: '0');
     final quantityController = TextEditingController(text: '1');
     final priceController = TextEditingController();
+    final manualProductNameController = TextEditingController();
     final customerNameController = TextEditingController();
-    final assignedStaffController = TextEditingController();
+    final assignedStaffController = TextEditingController(
+      text: ServiceRepository.defaultAssignedStaffName(),
+    );
     final bayController = TextEditingController();
     final noteController = TextEditingController();
     DateTime saleDate = DateTime.now();
@@ -311,7 +320,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     Map<String, dynamic>? selectedService = services.isEmpty
         ? null
         : services.first;
-    var recordMode = services.isEmpty ? 'manual' : 'service';
+    Map<String, dynamic>? selectedProduct = products.isEmpty
+        ? null
+        : products.first;
+    var recordMode = 'product';
     bool isSaving = false;
     var savedCount = 0;
     var currentFields = selectedService == null
@@ -345,7 +357,18 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           .toStringAsFixed(2);
     }
 
+    void syncPriceFromProduct() {
+      final product = selectedProduct;
+      if (product == null) {
+        return;
+      }
+      priceController.text = (product['price'] as num? ?? 0).toStringAsFixed(2);
+    }
+
     syncPriceFromService();
+    if (recordMode == 'product') {
+      syncPriceFromProduct();
+    }
 
     Future<void> saveManualRecord({
       required BuildContext dialogContext,
@@ -355,10 +378,21 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       final messenger = ScaffoldMessenger.of(dialogContext);
       final quantity = double.tryParse(quantityController.text.trim()) ?? 0;
       final price = double.tryParse(priceController.text.trim()) ?? 0;
-      final total = recordMode == 'service'
+      final total = recordMode == 'service' || recordMode == 'product'
           ? quantity * price
           : (double.tryParse(totalController.text.trim()) ?? 0);
       final tax = double.tryParse(taxController.text.trim()) ?? 0;
+      if (recordMode == 'product' && selectedProduct == null) {
+        if (manualProductNameController.text.trim().isEmpty) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Choose or enter a product to record.'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+          return;
+        }
+      }
       if (recordMode == 'service' && selectedService == null) {
         messenger.showSnackBar(
           const SnackBar(
@@ -368,10 +402,11 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         );
         return;
       }
-      if (recordMode == 'service' && (quantity <= 0 || price <= 0)) {
+      if ((recordMode == 'service' || recordMode == 'product') &&
+          (quantity <= 0 || price <= 0)) {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('Enter service quantity and price greater than 0.'),
+            content: Text('Enter quantity and price greater than 0.'),
             backgroundColor: AppColors.warning,
           ),
         );
@@ -414,6 +449,29 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       setDialogState(() => isSaving = true);
       try {
         final service = selectedService;
+        var product = selectedProduct;
+        if (recordMode == 'product' && product == null) {
+          final productName = manualProductNameController.text.trim();
+          final productId = await ProductRepository.create(
+            name: productName,
+            price: price,
+            cost: 0,
+            stock: 0,
+            lowStock: 0,
+            trackStock: false,
+          );
+          product = {
+            'id': productId,
+            'name': productName,
+            'price': price,
+            'cost': 0,
+            'unit': 'pcs',
+            'stock_unit': 'pcs',
+            'sale_unit': 'pcs',
+            'sale_to_stock_factor': 1,
+            'track_stock': 0,
+          };
+        }
         String? serviceOrderId;
         if (recordMode == 'service' && service != null) {
           serviceOrderId = await ServiceRepository.createOrder(
@@ -424,6 +482,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             checkedInAt: saleDate.toIso8601String(),
             status: 'completed',
             assignedStaff: assignedStaffController.text,
+            assignedStaffUserId:
+                ServiceRepository.currentAssignedStaffUserIdFor(
+                  assignedStaffController.text,
+                ),
             bayNumber: bayController.text,
             price: total,
             note: noteController.text,
@@ -451,6 +513,21 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     'product_name': service['name'] as String? ?? 'Service',
                     'quantity': quantity,
                     'unit_price': price,
+                  },
+                ]
+              : recordMode == 'product' && product != null
+              ? [
+                  {
+                    'line_type': 'product',
+                    'product_id': product['id'],
+                    'product_name': product['name'] as String? ?? 'Product',
+                    'quantity': quantity,
+                    'unit_price': price,
+                    'unit_cost': (product['cost'] as num? ?? 0).toDouble(),
+                    'unit': UnitUtils.saleUnitForProduct(product),
+                    'sale_to_stock_factor': UnitUtils.saleToStockFactor(
+                      product,
+                    ),
                   },
                 ]
               : const [],
@@ -481,8 +558,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           totalController.clear();
           taxController.text = '0';
           quantityController.text = '1';
+          manualProductNameController.clear();
           customerNameController.clear();
-          assignedStaffController.clear();
+          assignedStaffController.text =
+              ServiceRepository.defaultAssignedStaffName();
           bayController.clear();
           noteController.clear();
           for (final controller in fieldControllers.values) {
@@ -490,6 +569,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           }
           if (recordMode == 'service') {
             syncPriceFromService();
+          } else if (recordMode == 'product') {
+            syncPriceFromProduct();
           }
         });
         messenger.showSnackBar(
@@ -530,34 +611,40 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (services.isNotEmpty) ...[
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
+                  SegmentedButton<String>(
+                    segments: [
+                      const ButtonSegment(
+                        value: 'product',
+                        icon: Icon(Icons.inventory_2_outlined),
+                        label: Text('Product'),
+                      ),
+                      if (services.isNotEmpty)
+                        const ButtonSegment(
                           value: 'service',
                           icon: Icon(Icons.design_services_outlined),
                           label: Text('Service'),
                         ),
-                        ButtonSegment(
-                          value: 'manual',
-                          icon: Icon(Icons.edit_note_outlined),
-                          label: Text('Total'),
-                        ),
-                      ],
-                      selected: {recordMode},
-                      onSelectionChanged: isSaving
-                          ? null
-                          : (selection) {
-                              setDialogState(() {
-                                recordMode = selection.first;
-                                if (recordMode == 'service') {
-                                  syncPriceFromService();
-                                }
-                              });
-                            },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
+                      const ButtonSegment(
+                        value: 'manual',
+                        icon: Icon(Icons.edit_note_outlined),
+                        label: Text('Total'),
+                      ),
+                    ],
+                    selected: {recordMode},
+                    onSelectionChanged: isSaving
+                        ? null
+                        : (selection) {
+                            setDialogState(() {
+                              recordMode = selection.first;
+                              if (recordMode == 'service') {
+                                syncPriceFromService();
+                              } else if (recordMode == 'product') {
+                                syncPriceFromProduct();
+                              }
+                            });
+                          },
+                  ),
+                  const SizedBox(height: 12),
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
@@ -591,6 +678,117 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (recordMode == 'product') ...[
+                    if (savedCount > 0) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.success.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: Text(
+                          '$savedCount record${savedCount == 1 ? '' : 's'} saved',
+                          style: const TextStyle(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (products.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedProduct?['id'] as String?,
+                        decoration: const InputDecoration(
+                          labelText: 'Product',
+                          prefixIcon: Icon(Icons.inventory_2_outlined),
+                        ),
+                        items: products
+                            .map(
+                              (product) => DropdownMenuItem(
+                                value: product['id'] as String,
+                                child: Text(
+                                  product['name'] as String? ?? 'Product',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: isSaving
+                            ? null
+                            : (value) {
+                                if (value == null) {
+                                  return;
+                                }
+                                final product = products.firstWhere(
+                                  (product) => product['id'] == value,
+                                  orElse: () => products.first,
+                                );
+                                setDialogState(() {
+                                  selectedProduct = product;
+                                  syncPriceFromProduct();
+                                });
+                              },
+                      )
+                    else
+                      TextField(
+                        controller: manualProductNameController,
+                        enabled: !isSaving,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Product Name',
+                          prefixIcon: Icon(Icons.inventory_2_outlined),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    _ManualSaleResponsiveRow(
+                      children: [
+                        TextField(
+                          controller: quantityController,
+                          enabled: !isSaving,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Quantity',
+                            prefixIcon: Icon(Icons.format_list_numbered),
+                          ),
+                        ),
+                        TextField(
+                          controller: priceController,
+                          enabled: !isSaving,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Price',
+                            prefixIcon: Icon(Icons.attach_money),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Sale Total',
+                        prefixIcon: Icon(Icons.summarize_outlined),
+                      ),
+                      child: Text(
+                        '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (recordMode == 'service' && services.isNotEmpty) ...[
                     if (savedCount > 0) ...[
                       Container(
@@ -887,6 +1085,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     taxController.dispose();
     quantityController.dispose();
     priceController.dispose();
+    manualProductNameController.dispose();
     customerNameController.dispose();
     assignedStaffController.dispose();
     bayController.dispose();
@@ -2017,6 +2216,8 @@ class _SaleTypeFilterBar extends StatelessWidget {
     final filters = const [
       ('all', 'All Types', Icons.list_alt_outlined),
       ('product', 'Products', Icons.inventory_2_outlined),
+      ('single_product', 'One Product', Icons.looks_one_outlined),
+      ('multi_product', 'Multi Product', Icons.view_list_outlined),
       ('service', 'Services', Icons.design_services_outlined),
       ('mixed', 'Mixed', Icons.merge_type_outlined),
     ];
@@ -2275,11 +2476,24 @@ class _SaleRow extends StatelessWidget {
     final isServiceSale = serviceLineCount > 0 && productLineCount == 0;
     final isMixedSale = serviceLineCount > 0 && productLineCount > 0;
     final serviceNames = (sale['service_names'] as String?)?.trim() ?? '';
+    final productNames = (sale['product_names'] as String?)?.trim() ?? '';
     final saleTypeLabel = isServiceSale
         ? 'Service sale'
         : isMixedSale
         ? 'Products + services'
+        : productLineCount == 1
+        ? 'One product sale'
+        : productLineCount > 1
+        ? 'Multi-product sale'
         : 'Product sale';
+    final saleDisplayNames = isServiceSale
+        ? serviceNames
+        : isMixedSale
+        ? [
+            if (productNames.isNotEmpty) productNames,
+            if (serviceNames.isNotEmpty) serviceNames,
+          ].join(' + ')
+        : productNames;
     final hasRefund = (sale['refund_sale_id'] as String?)?.isNotEmpty == true;
     final refundState = _refundStateLabel(sale);
     final dateStr = dt != null
@@ -2288,7 +2502,7 @@ class _SaleRow extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 560) {
+        if (constraints.maxWidth < 560 || Platform.isWindows) {
           return _MobileSaleRowCard(
             sale: sale,
             onTap: onTap,
@@ -2296,7 +2510,7 @@ class _SaleRow extends StatelessWidget {
             isRefund: isRefund,
             isServiceSale: isServiceSale,
             saleTypeLabel: saleTypeLabel,
-            serviceNames: serviceNames,
+            serviceNames: saleDisplayNames,
             dateStr: dateStr,
             refundState: hasRefund
                 ? (refundState.isEmpty ? 'Refunded' : refundState)
@@ -2358,8 +2572,8 @@ class _SaleRow extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          serviceNames.isNotEmpty
-                              ? '$saleTypeLabel - $serviceNames'
+                          saleDisplayNames.isNotEmpty
+                              ? '$saleTypeLabel - $saleDisplayNames'
                               : saleTypeLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

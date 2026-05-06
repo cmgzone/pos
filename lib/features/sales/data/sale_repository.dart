@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/database_service.dart';
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/utils/unit_utils.dart';
 
@@ -15,6 +16,13 @@ class SaleRepository {
 
   static double _roundMoney(double value) {
     return double.parse(value.toStringAsFixed(2));
+  }
+
+  static String _effectiveBranchId(String? branchId) {
+    final cleanBranchId = branchId?.trim() ?? '';
+    return cleanBranchId.isEmpty
+        ? DatabaseService.currentBranchId
+        : cleanBranchId;
   }
 
   static String _serviceRefundKey({
@@ -129,13 +137,15 @@ class SaleRepository {
       final batches = await DatabaseService.rawQuery(
         '''
         SELECT * FROM stock_batches
-        WHERE product_id = ? AND quantity_remaining > 0
+        WHERE product_id = ?
+          AND quantity_remaining > 0
+          AND COALESCE(branch_id, ?) = ?
         ORDER BY
           CASE WHEN expiry_date IS NULL OR TRIM(expiry_date) = '' THEN 1 ELSE 0 END ASC,
           date(expiry_date) ASC,
           received_at ASC
         ''',
-        [pid],
+        [pid, DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
       );
 
       final mutableBatches = List<Map<String, dynamic>>.from(batches);
@@ -163,6 +173,7 @@ class SaleRepository {
 
     batch.insert(_salesTable, {
       'id': saleId,
+      'branch_id': DatabaseService.currentBranchId,
       'total_amount': totalAmount,
       'tax': tax,
       'discount': discount,
@@ -329,6 +340,11 @@ class SaleRepository {
     }
 
     await batch.commit(noResult: true);
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: _salesTable,
+      entityId: saleId,
+    );
     return saleId;
   }
 
@@ -337,10 +353,12 @@ class SaleRepository {
     String? startDate,
     String? endDate,
     String? cashierId,
+    String? branchId,
   }) async {
     final clauses = <String>[];
     final whereArgs = <dynamic>[];
     final normalizedCashierId = cashierId?.trim();
+    final effectiveBranchId = _effectiveBranchId(branchId);
 
     if (startDate != null) {
       clauses.add('s.created_at >= ?');
@@ -354,6 +372,8 @@ class SaleRepository {
       clauses.add('s.user_id = ?');
       whereArgs.add(normalizedCashierId);
     }
+    clauses.add('COALESCE(s.branch_id, ?) = ?');
+    whereArgs.addAll([DatabaseService.defaultBranchId, effectiveBranchId]);
     clauses.add('s.deleted_at IS NULL');
     final where = clauses.isEmpty ? '' : 'WHERE ${clauses.join(' AND ')}';
 
@@ -382,7 +402,20 @@ class SaleRepository {
           SELECT GROUP_CONCAT(ssi.service_name, ', ')
           FROM $_serviceItemsTable ssi
           WHERE ssi.sale_id = s.id
-        ) as service_names
+        ) as service_names,
+        (
+          SELECT GROUP_CONCAT(
+            CASE
+              WHEN si.variant_id IS NOT NULL THEN p.name || ' - ' || COALESCE(pv.name, '')
+              ELSE p.name
+            END,
+            ', '
+          )
+          FROM $_itemsTable si
+          JOIN products p ON p.id = si.product_id
+          LEFT JOIN product_variants pv ON pv.id = si.variant_id
+          WHERE si.sale_id = s.id
+        ) as product_names
       FROM $_salesTable s
       LEFT JOIN users u ON u.id = s.user_id
       $where
@@ -407,9 +440,15 @@ class SaleRepository {
         COALESCE(u.role, 'CASHIER') as cashier_role
       FROM $_salesTable s
       LEFT JOIN users u ON u.id = s.user_id
-      WHERE s.id = ? AND s.deleted_at IS NULL
+      WHERE s.id = ?
+        AND s.deleted_at IS NULL
+        AND COALESCE(s.branch_id, ?) = ?
       ''',
-      [saleId],
+      [
+        saleId,
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
     );
     if (sales.isEmpty) {
       return null;
@@ -516,6 +555,12 @@ class SaleRepository {
         );
       }
     });
+    await AuditLogService.log(
+      action: 'delete',
+      entityTable: _salesTable,
+      entityId: saleId,
+      branchId: sale['branch_id'] as String?,
+    );
   }
 
   static Future<List<Map<String, dynamic>>> getRefundableItems(
@@ -738,6 +783,7 @@ class SaleRepository {
     await DatabaseService.db.transaction((txn) async {
       await txn.insert(_salesTable, {
         'id': refundId,
+        'branch_id': original['branch_id'] ?? DatabaseService.currentBranchId,
         'total_amount': -refundTotal,
         'tax': -refundTax,
         'discount': -refundDiscount,
@@ -868,6 +914,8 @@ class SaleRepository {
           await txn.insert('stock_batches', {
             'id': _uuid.v4(),
             'product_id': productId,
+            'branch_id':
+                original['branch_id'] ?? DatabaseService.currentBranchId,
             'quantity_received': stockQuantity,
             'quantity_remaining': stockQuantity,
             'unit_cost': stockUnitCost,
@@ -880,21 +928,38 @@ class SaleRepository {
       }
     });
 
+    await AuditLogService.log(
+      action: 'refund',
+      entityTable: _salesTable,
+      entityId: refundId,
+      branchId: original['branch_id'] as String?,
+    );
     return refundId;
   }
 
   /// Get today's sales summary
   static Future<Map<String, dynamic>> getTodaySummary({
     String? cashierId,
+    String? branchId,
   }) async {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final normalizedCashierId = cashierId?.trim();
+    final effectiveBranchId = _effectiveBranchId(branchId);
     final profitWhere = <String>[
       's2.created_at LIKE ?',
       's2.deleted_at IS NULL',
+      'COALESCE(s2.branch_id, ?) = ?',
     ];
-    final totalWhere = <String>['created_at LIKE ?', 'deleted_at IS NULL'];
-    final args = <dynamic>['$today%'];
+    final totalWhere = <String>[
+      'created_at LIKE ?',
+      'deleted_at IS NULL',
+      'COALESCE(branch_id, ?) = ?',
+    ];
+    final args = <dynamic>[
+      '$today%',
+      DatabaseService.defaultBranchId,
+      effectiveBranchId,
+    ];
 
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       profitWhere.add('s2.user_id = ?');
@@ -902,6 +967,7 @@ class SaleRepository {
     }
 
     args.add('$today%');
+    args.addAll([DatabaseService.defaultBranchId, effectiveBranchId]);
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       totalWhere.add('user_id = ?');
       args.add(normalizedCashierId);
@@ -926,7 +992,7 @@ class SaleRepository {
             SELECT SUM(ssi.quantity * ssi.unit_price)
             FROM $_serviceItemsTable ssi
             JOIN $_salesTable s3 ON ssi.sale_id = s3.id
-            WHERE ${normalizedCashierId != null && normalizedCashierId.isNotEmpty ? "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND s3.user_id = ?" : "s3.created_at LIKE ? AND s3.deleted_at IS NULL"}
+            WHERE ${normalizedCashierId != null && normalizedCashierId.isNotEmpty ? "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND COALESCE(s3.branch_id, ?) = ? AND s3.user_id = ?" : "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND COALESCE(s3.branch_id, ?) = ?"}
           ), 0)
           - COALESCE(SUM(discount), 0)
         ) as total_profit
@@ -936,6 +1002,8 @@ class SaleRepository {
       [
         ...args,
         '$today%',
+        DatabaseService.defaultBranchId,
+        effectiveBranchId,
         if (normalizedCashierId != null && normalizedCashierId.isNotEmpty)
           normalizedCashierId,
       ],

@@ -235,6 +235,7 @@ app.post('/api/auth/register', async (req, res, next) => {
           role: 'ADMIN',
           feature_access_json: null,
           allowed_service_ids_json: null,
+          allowed_branch_ids_json: null,
           pos_mode: 'both',
           service_order_scope: 'all_visible_services',
           created_at: now.toISOString(),
@@ -371,6 +372,7 @@ app.post('/api/auth/login', async (req, res, next) => {
           role: user.role,
           feature_access_json: user.feature_access_json,
           allowed_service_ids_json: user.allowed_service_ids_json,
+          allowed_branch_ids_json: user.allowed_branch_ids_json,
           pos_mode: user.pos_mode,
           service_order_scope: user.service_order_scope,
           created_at: toIsoString(user.created_at),
@@ -448,6 +450,7 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
     const date = normalizeReportDate(req.query.date);
     const cashierId = normalizeOptionalText(req.query.cashierId);
     const userId = normalizeOptionalText(req.query.userId);
+    const branchId = normalizeOptionalText(req.query.branchId);
 
     if (userId) {
       await updateLastSeen(userId, businessContext.businessId);
@@ -458,6 +461,10 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
     if (cashierId) {
       whereClauses.push(`s.user_id = $${params.length + 1}`);
       params.push(cashierId);
+    }
+    if (branchId) {
+      whereClauses.push(`COALESCE(s.branch_id, 'main_branch') = $${params.length + 1}`);
+      params.push(branchId);
     }
 
     const result = await query(
@@ -529,6 +536,7 @@ app.get('/api/sync/status', async (req, res, next) => {
     const businessContext = await requireBusinessContext(req);
     const syncWindow = parseSyncWindow(req.query);
     const userId = normalizeOptionalText(req.query.userId);
+    const branchId = normalizeOptionalText(req.query.branchId);
 
     if (userId) {
       await updateLastSeen(userId, businessContext.businessId);
@@ -538,6 +546,7 @@ app.get('/api/sync/status', async (req, res, next) => {
       const snapshotCursor = await getSnapshotCursor(
         client,
         businessContext.businessId,
+        branchId,
       );
       const tables = {};
 
@@ -546,6 +555,7 @@ app.get('/api/sync/status', async (req, res, next) => {
           table.name,
           syncWindow,
           businessContext.businessId,
+          branchId,
         );
         const result = await client.query(sql, params);
         tables[table.name] = result.rows[0];
@@ -576,6 +586,7 @@ app.get('/api/sync/pull', async (req, res, next) => {
     const businessContext = await requireBusinessContext(req);
     const syncWindow = parseSyncWindow(req.query);
     const userId = normalizeOptionalText(req.query.userId);
+    const branchId = normalizeOptionalText(req.query.branchId);
 
     if (userId) {
       await updateLastSeen(userId, businessContext.businessId);
@@ -585,6 +596,7 @@ app.get('/api/sync/pull', async (req, res, next) => {
       const snapshotCursor = await getSnapshotCursor(
         client,
         businessContext.businessId,
+        branchId,
       );
       const data = {};
 
@@ -593,6 +605,7 @@ app.get('/api/sync/pull', async (req, res, next) => {
           table.name,
           syncWindow,
           businessContext.businessId,
+          branchId,
         );
         const result = await client.query(sql, params);
         data[table.name] = result.rows.map((row) =>
@@ -627,6 +640,7 @@ app.post('/api/sync/push', async (req, res, next) => {
       req.body && typeof req.body === 'object' ? req.body.changes : null;
     const deviceId = normalizeOptionalText(req.body?.deviceId);
     const userId = normalizeOptionalText(req.body?.userId);
+    const branchId = normalizeOptionalText(req.body?.branchId);
 
     if (!deviceId) {
       return res.status(400).json({ ok: false, error: 'deviceId is required' });
@@ -681,6 +695,19 @@ app.post('/api/sync/push', async (req, res, next) => {
               ...prepared.error,
             });
             continue;
+          }
+          if (branchId && isBranchScopedTable(table.name)) {
+            const rowBranchId = normalizeOptionalText(prepared.record.branch_id);
+            if (rowBranchId && rowBranchId !== branchId) {
+              invalid[table.name] += 1;
+              tableInvalidRows.push({
+                id: prepared.record.id,
+                code: 'branch_scope_mismatch',
+                message: 'Record branch does not match the sync branch',
+              });
+              continue;
+            }
+            prepared.record.branch_id = rowBranchId || branchId;
           }
 
           const result = await upsertRow(
@@ -1004,32 +1031,51 @@ function toIsoString(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-function buildStatusQuery(tableName, syncWindow, businessId) {
+function branchScopeClause(tableName, branchId, params) {
+  if (!branchId || !isBranchScopedTable(tableName)) {
+    return '';
+  }
+  params.push(branchId);
+  return ` AND COALESCE(branch_id, 'main_branch') = $${params.length}`;
+}
+
+function isBranchScopedTable(tableName) {
+  const table = syncTables.find((entry) => entry.name === tableName);
+  return Boolean(table?.columns?.includes('branch_id'));
+}
+
+function buildStatusQuery(tableName, syncWindow, businessId, branchId) {
+  const baseParams = [businessId];
+  const branchClause = branchScopeClause(tableName, branchId, baseParams);
   if (syncWindow.cursor != null) {
+    const params = [...baseParams, syncWindow.cursor];
+    const cursorParam = `$${params.length}`;
     return {
       sql: `SELECT
               COUNT(*)::int AS total_records,
               COUNT(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS deleted_records,
-              COUNT(*) FILTER (WHERE server_revision > $2::bigint)::int AS changed_since,
+              COUNT(*) FILTER (WHERE server_revision > ${cursorParam}::bigint)::int AS changed_since,
               MAX(updated_at) AS latest_update,
               MAX(server_revision)::text AS latest_revision
             FROM ${tableName}
-            WHERE business_id = $1`,
-      params: [businessId, syncWindow.cursor],
+            WHERE business_id = $1${branchClause}`,
+      params,
     };
   }
 
   if (syncWindow.since != null) {
+    const params = [...baseParams, syncWindow.since];
+    const sinceParam = `$${params.length}`;
     return {
       sql: `SELECT
               COUNT(*)::int AS total_records,
               COUNT(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS deleted_records,
-              COUNT(*) FILTER (WHERE updated_at > $2)::int AS changed_since,
+              COUNT(*) FILTER (WHERE updated_at > ${sinceParam})::int AS changed_since,
               MAX(updated_at) AS latest_update,
               MAX(server_revision)::text AS latest_revision
             FROM ${tableName}
-            WHERE business_id = $1`,
-      params: [businessId, syncWindow.since],
+            WHERE business_id = $1${branchClause}`,
+      params,
     };
   }
 
@@ -1041,55 +1087,68 @@ function buildStatusQuery(tableName, syncWindow, businessId) {
             MAX(updated_at) AS latest_update,
             MAX(server_revision)::text AS latest_revision
           FROM ${tableName}
-          WHERE business_id = $1`,
-    params: [businessId],
+          WHERE business_id = $1${branchClause}`,
+    params: baseParams,
   };
 }
 
-function buildPullQuery(tableName, syncWindow, businessId) {
+function buildPullQuery(tableName, syncWindow, businessId, branchId) {
+  const baseParams = [businessId];
+  const branchClause = branchScopeClause(tableName, branchId, baseParams);
   if (syncWindow.cursor != null) {
+    const params = [...baseParams, syncWindow.cursor];
+    const cursorParam = `$${params.length}`;
     return {
       sql: `SELECT *
             FROM ${tableName}
             WHERE business_id = $1
-              AND server_revision > $2::bigint
+              ${branchClause}
+              AND server_revision > ${cursorParam}::bigint
             ORDER BY server_revision ASC, id ASC`,
-      params: [businessId, syncWindow.cursor],
+      params,
     };
   }
 
   if (syncWindow.since != null) {
+    const params = [...baseParams, syncWindow.since];
+    const sinceParam = `$${params.length}`;
     return {
       sql: `SELECT *
             FROM ${tableName}
             WHERE business_id = $1
-              AND updated_at > $2
+              ${branchClause}
+              AND updated_at > ${sinceParam}
             ORDER BY updated_at ASC, id ASC`,
-      params: [businessId, syncWindow.since],
+      params,
     };
   }
 
   return {
     sql: `SELECT *
           FROM ${tableName}
-          WHERE business_id = $1
+          WHERE business_id = $1${branchClause}
           ORDER BY updated_at ASC, id ASC`,
-    params: [businessId],
+    params: baseParams,
   };
 }
 
-async function getSnapshotCursor(client, businessId) {
+async function getSnapshotCursor(client, businessId, branchId = null) {
   const revisionUnion = syncTables
     .map(
-      (table) =>
-        `SELECT MAX(server_revision) AS latest_revision FROM ${table.name} WHERE business_id = $1`,
+      (table) => {
+        const branchClause =
+          branchId && isBranchScopedTable(table.name)
+            ? " AND COALESCE(branch_id, 'main_branch') = $2"
+            : '';
+        return `SELECT MAX(server_revision) AS latest_revision FROM ${table.name} WHERE business_id = $1${branchClause}`;
+      },
     )
     .join(' UNION ALL ');
 
   const result = await client.query(
     `SELECT MAX(latest_revision)::text AS snapshot_cursor
      FROM (${revisionUnion}) AS revision_snapshot`,
-    [businessId],
+    branchId ? [businessId, branchId] : [businessId],
   );
 
   return normalizeCursor(result.rows[0]?.snapshot_cursor);

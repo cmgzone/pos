@@ -1,8 +1,24 @@
 const syncTables = [
   {
+    name: 'branches',
+    columns: [
+      'id',
+      'name',
+      'code',
+      'phone',
+      'address',
+      'is_active',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'sync_status',
+    ],
+  },
+  {
     name: 'categories',
     columns: [
       'id',
+      'branch_id',
       'name',
       'color',
       'created_at',
@@ -15,6 +31,7 @@ const syncTables = [
     name: 'expense_categories',
     columns: [
       'id',
+      'branch_id',
       'name',
       'color',
       'created_at',
@@ -34,6 +51,7 @@ const syncTables = [
       'role',
       'feature_access_json',
       'allowed_service_ids_json',
+      'allowed_branch_ids_json',
       'pos_mode',
       'service_order_scope',
       'created_at',
@@ -46,6 +64,7 @@ const syncTables = [
     name: 'customers',
     columns: [
       'id',
+      'branch_id',
       'name',
       'phone',
       'email',
@@ -60,6 +79,7 @@ const syncTables = [
     name: 'shifts',
     columns: [
       'id',
+      'branch_id',
       'user_id',
       'cashier_name',
       'status',
@@ -84,6 +104,7 @@ const syncTables = [
     name: 'suppliers',
     columns: [
       'id',
+      'branch_id',
       'name',
       'phone',
       'email',
@@ -99,6 +120,7 @@ const syncTables = [
     name: 'products',
     columns: [
       'id',
+      'branch_id',
       'name',
       'price',
       'cost',
@@ -127,6 +149,7 @@ const syncTables = [
     name: 'product_variants',
     columns: [
       'id',
+      'branch_id',
       'product_id',
       'name',
       'price',
@@ -146,6 +169,7 @@ const syncTables = [
     name: 'purchase_invoices',
     columns: [
       'id',
+      'branch_id',
       'supplier_id',
       'supplier_name',
       'invoice_number',
@@ -161,7 +185,9 @@ const syncTables = [
     name: 'stock_batches',
     columns: [
       'id',
+      'branch_id',
       'product_id',
+      'batch_number',
       'quantity_received',
       'quantity_remaining',
       'unit_cost',
@@ -177,9 +203,35 @@ const syncTables = [
     ],
   },
   {
+    name: 'stock_transfers',
+    columns: [
+      'id',
+      'branch_id',
+      'from_branch_id',
+      'to_branch_id',
+      'product_id',
+      'product_name',
+      'quantity',
+      'unit',
+      'status',
+      'requested_by',
+      'approved_by',
+      'received_by',
+      'note',
+      'requested_at',
+      'approved_at',
+      'received_at',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'sync_status',
+    ],
+  },
+  {
     name: 'sales',
     columns: [
       'id',
+      'branch_id',
       'total_amount',
       'tax',
       'discount',
@@ -225,6 +277,7 @@ const syncTables = [
     name: 'cash_movements',
     columns: [
       'id',
+      'branch_id',
       'shift_id',
       'user_id',
       'type',
@@ -240,6 +293,7 @@ const syncTables = [
     name: 'credit_payments',
     columns: [
       'id',
+      'branch_id',
       'payment_group_id',
       'customer_id',
       'sale_id',
@@ -257,6 +311,7 @@ const syncTables = [
     name: 'expenses',
     columns: [
       'id',
+      'branch_id',
       'category_id',
       'category_name',
       'title',
@@ -273,6 +328,7 @@ const syncTables = [
     name: 'services',
     columns: [
       'id',
+      'branch_id',
       'name',
       'category',
       'description',
@@ -306,6 +362,7 @@ const syncTables = [
     name: 'service_orders',
     columns: [
       'id',
+      'branch_id',
       'service_id',
       'service_name',
       'customer_id',
@@ -351,6 +408,25 @@ const syncTables = [
       'service_name',
       'quantity',
       'unit_price',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'sync_status',
+    ],
+  },
+  {
+    name: 'audit_logs',
+    columns: [
+      'id',
+      'branch_id',
+      'user_id',
+      'user_name',
+      'user_role',
+      'action',
+      'entity_table',
+      'entity_id',
+      'before_json',
+      'after_json',
       'created_at',
       'updated_at',
       'deleted_at',

@@ -55,8 +55,10 @@ class SyncService {
   static const _timeout = Duration(seconds: 20);
 
   static const List<String> _pushTableOrder = [
+    'branches',
     'categories',
     'expense_categories',
+    'payment_methods',
     'users',
     'customers',
     'suppliers',
@@ -65,6 +67,7 @@ class SyncService {
     'purchase_invoices',
     'shifts',
     'stock_batches',
+    'stock_transfers',
     'sales',
     'sale_items',
     'cash_movements',
@@ -75,11 +78,14 @@ class SyncService {
     'service_orders',
     'service_field_values',
     'service_sale_items',
+    'audit_logs',
   ];
 
   static const List<String> _pullTableOrder = [
+    'branches',
     'categories',
     'expense_categories',
+    'payment_methods',
     'users',
     'customers',
     'suppliers',
@@ -89,6 +95,7 @@ class SyncService {
     'shifts',
     'sales',
     'stock_batches',
+    'stock_transfers',
     'sale_items',
     'cash_movements',
     'credit_payments',
@@ -98,6 +105,7 @@ class SyncService {
     'service_orders',
     'service_field_values',
     'service_sale_items',
+    'audit_logs',
   ];
 
   static Future<LocalSyncSnapshot> getLocalSnapshot() async {
@@ -143,7 +151,11 @@ class SyncService {
     final userId = SessionService.currentUserId;
     final client = http.Client();
     try {
-      final params = {'cursor': cursor, 'deviceId': deviceId};
+      final params = {
+        'cursor': cursor,
+        'deviceId': deviceId,
+        'branchId': DatabaseService.currentBranchId,
+      };
       if (userId.isNotEmpty) {
         params['userId'] = userId;
       }
@@ -260,7 +272,11 @@ class SyncService {
 
     final client = http.Client();
     try {
-      final bodyPayload = {'deviceId': deviceId, 'changes': payload};
+      final bodyPayload = {
+        'deviceId': deviceId,
+        'branchId': DatabaseService.currentBranchId,
+        'changes': payload,
+      };
       if (userId.isNotEmpty) {
         bodyPayload['userId'] = userId;
       }
@@ -367,7 +383,11 @@ class SyncService {
     final userId = SessionService.currentUserId;
     final client = http.Client();
     try {
-      final params = {'cursor': cursor, 'deviceId': deviceId};
+      final params = {
+        'cursor': cursor,
+        'deviceId': deviceId,
+        'branchId': DatabaseService.currentBranchId,
+      };
       if (userId.isNotEmpty) {
         params['userId'] = userId;
       }

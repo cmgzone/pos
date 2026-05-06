@@ -69,7 +69,7 @@ class _ServiceManagementScreenState
     extends ConsumerState<ServiceManagementScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  static const _tabTitles = ['Queue', 'Orders', 'Catalog', 'Reports'];
+  static const _tabTitles = ['Sell', 'Orders', 'Catalog', 'Reports'];
 
   @override
   void initState() {
@@ -93,8 +93,7 @@ class _ServiceManagementScreenState
     ref.invalidate(serviceSalesByDateProvider);
   }
 
-  bool get _showsOrderCreationAction =>
-      _tabController.index == 0 || _tabController.index == 1;
+  bool get _showsOrderCreationAction => _tabController.index == 1;
 
   Future<void> _handlePrimaryAction() async {
     if (_showsOrderCreationAction) {
@@ -121,14 +120,6 @@ class _ServiceManagementScreenState
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.car_repair_outlined),
-            tooltip: 'Queue Board',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CarwashQueueScreen()),
-            ),
-          ),
-          IconButton(
             onPressed: _refresh,
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -139,13 +130,17 @@ class _ServiceManagementScreenState
       body: TabBarView(
         controller: _tabController,
         children: [
-          _QueueTab(onRefresh: _refresh),
+          ServicePosPanel(
+            onOpenOrders: () => _tabController.animateTo(1),
+            onRefresh: _refresh,
+          ),
           _OrdersTab(onRefresh: _refresh),
           _CatalogTab(onRefresh: _refresh),
           _ServiceReportsTab(onRefresh: _refresh),
         ],
       ),
-      floatingActionButton: _tabController.index == 3
+      floatingActionButton:
+          _tabController.index == 0 || _tabController.index == 3
           ? null
           : FloatingActionButton.extended(
               onPressed: _handlePrimaryAction,
@@ -163,7 +158,10 @@ class _ServiceManagementScreenState
 }
 
 class ServicePosPanel extends ConsumerStatefulWidget {
-  const ServicePosPanel({super.key});
+  final VoidCallback? onOpenOrders;
+  final VoidCallback? onRefresh;
+
+  const ServicePosPanel({super.key, this.onOpenOrders, this.onRefresh});
 
   @override
   ConsumerState<ServicePosPanel> createState() => _ServicePosPanelState();
@@ -171,12 +169,9 @@ class ServicePosPanel extends ConsumerStatefulWidget {
 
 class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
   String? _selectedCategory;
-  String _viewMode = 'quick_sell'; // 'quick_sell' or 'queue'
   String _serviceQuery = '';
   final TextEditingController _serviceSearchController =
       TextEditingController();
-
-  bool get _isQuickSellMode => _viewMode == 'quick_sell';
 
   @override
   void dispose() {
@@ -218,6 +213,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
     final serviceName = service['name'] as String? ?? 'Service';
     final basePrice = (service['base_price'] as num? ?? 0).toDouble();
     final serviceId = service['id'] as String;
+    final assignedStaff = ServiceRepository.defaultAssignedStaffName();
 
     // Create a temporary service order for quick sell
     try {
@@ -227,6 +223,10 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
         entryMode: 'walk_in',
         customerName: 'Walk-in Customer',
         status: 'ready', // Mark as ready for immediate checkout
+        assignedStaff: assignedStaff,
+        assignedStaffUserId: ServiceRepository.currentAssignedStaffUserIdFor(
+          assignedStaff,
+        ),
         price: basePrice,
       );
 
@@ -280,23 +280,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
     Map<String, dynamic> service,
     List<Map<String, dynamic>> allServices,
   ) async {
-    if (_isQuickSellMode) {
-      await _handleQuickSellService(service);
-      return;
-    }
-
-    await _createServiceOrder(
-      services: allServices,
-      initialServiceId: service['id'] as String?,
-      openQueueBoardOnSuccess: true,
-    );
-  }
-
-  void _setViewMode(String value) {
-    if (_viewMode == value) {
-      return;
-    }
-    setState(() => _viewMode = value);
+    await _handleQuickSellService(service);
   }
 
   void _setSelectedCategory(String? category) {
@@ -348,77 +332,58 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
 
   Widget _buildHeader(BuildContext context, {required bool compact}) {
     final title = Text(
-      compact ? 'Services' : 'Service Desk',
+      compact ? 'Sell Service' : 'Sell Service',
       style: Theme.of(
         context,
       ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
     );
-    final modeSwitch = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(
-            value: 'quick_sell',
-            icon: Icon(Icons.flash_on_outlined),
-            label: Text('Quick Sell'),
+
+    Future<void> createOrder() async {
+      final services = await ServiceRepository.getServices(activeOnly: true);
+      if (!mounted) return;
+      await _createServiceOrder(services: services);
+      widget.onRefresh?.call();
+    }
+
+    final actions = Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        FilledButton.icon(
+          onPressed: createOrder,
+          icon: const Icon(Icons.add_task, size: 18),
+          label: Text(compact ? 'Order' : 'New Order'),
+          style: FilledButton.styleFrom(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 14,
+              vertical: compact ? 10 : 13,
+            ),
           ),
-          ButtonSegment(
-            value: 'queue',
-            icon: Icon(Icons.event_note_outlined),
-            label: Text('Queue'),
+        ),
+        OutlinedButton.icon(
+          onPressed: widget.onOpenOrders,
+          icon: const Icon(Icons.assignment_outlined, size: 18),
+          label: const Text('Orders'),
+          style: OutlinedButton.styleFrom(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 14,
+              vertical: compact ? 10 : 13,
+            ),
           ),
-        ],
-        selected: {_viewMode},
-        onSelectionChanged: (selection) => _setViewMode(selection.first),
-        showSelectedIcon: false,
-      ),
+        ),
+      ],
     );
-    final orderButton = compact
-        ? IconButton.filled(
-            tooltip: 'New service order',
-            onPressed: () async {
-              final services = await ServiceRepository.getServices(
-                activeOnly: true,
-              );
-              if (!mounted) return;
-              await _createServiceOrder(services: services);
-            },
-            icon: const Icon(Icons.add_task, size: 20),
-          )
-        : FilledButton.icon(
-            onPressed: () async {
-              final services = await ServiceRepository.getServices(
-                activeOnly: true,
-              );
-              if (!mounted) return;
-              await _createServiceOrder(services: services);
-            },
-            icon: const Icon(Icons.add_task),
-            label: const Text('New Order'),
-          );
 
     if (compact) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(child: title),
-              orderButton,
-            ],
-          ),
-          const SizedBox(height: 10),
-          modeSwitch,
+          Row(children: [Expanded(child: title)]),
+          const SizedBox(height: 12),
+          actions,
         ],
       );
     }
-
-    final controls = Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [modeSwitch, orderButton],
-    );
 
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
@@ -426,7 +391,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 12,
       runSpacing: 12,
-      children: [title, controls],
+      children: [title, actions],
     );
   }
 
@@ -497,7 +462,6 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
         final service = displayedServices[index];
         return _MobileServiceTile(
           service: service,
-          isQuickSellMode: _isQuickSellMode,
           onTap: () => _handleServiceTap(service, allServices),
         );
       },
@@ -596,25 +560,19 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                           ),
                         ),
                       ),
-                      if (_isQuickSellMode)
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.add_shopping_cart_rounded,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        )
-                      else
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          color: AppColors.textSecondary,
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        child: const Icon(
+                          Icons.add_shopping_cart_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -645,9 +603,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
     AsyncValue<List<Map<String, dynamic>>> todayOrdersAsync,
     List<CartItem> cart,
   ) {
-    return _isQuickSellMode
-        ? _buildServicesGrid(servicesAsync)
-        : _buildTodayOrdersList(todayOrdersAsync, cart);
+    return _buildServicesGrid(servicesAsync);
   }
 
   Widget _buildDesktopLayout(
@@ -1067,14 +1023,9 @@ class _ServiceDurationBadge extends StatelessWidget {
 
 class _MobileServiceTile extends StatelessWidget {
   final Map<String, dynamic> service;
-  final bool isQuickSellMode;
   final VoidCallback onTap;
 
-  const _MobileServiceTile({
-    required this.service,
-    required this.isQuickSellMode,
-    required this.onTap,
-  });
+  const _MobileServiceTile({required this.service, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1158,19 +1109,13 @@ class _MobileServiceTile extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: isQuickSellMode
-                          ? AppColors.primary
-                          : AppColors.surfaceHighlight,
+                      color: AppColors.primary,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      isQuickSellMode
-                          ? Icons.add_shopping_cart_rounded
-                          : Icons.chevron_right_rounded,
+                    child: const Icon(
+                      Icons.add_shopping_cart_rounded,
                       size: 20,
-                      color: isQuickSellMode
-                          ? Colors.white
-                          : AppColors.textSecondary,
+                      color: Colors.white,
                     ),
                   ),
                 ],
@@ -1404,86 +1349,12 @@ class _OrdersTab extends ConsumerWidget {
   }
 }
 
-class _QueueTab extends ConsumerWidget {
-  final VoidCallback onRefresh;
-
-  const _QueueTab({required this.onRefresh});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final todayAsync = ref.watch(serviceTodayOrdersProvider);
-    final cart = ref.watch(cartProvider);
-
-    return todayAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Text(
-          'Error: $e',
-          style: const TextStyle(color: AppColors.error),
-        ),
-      ),
-      data: (allOrders) {
-        // Filter out orders that are already added to the cart
-        final orders = allOrders.where((order) {
-          return !cart.any((item) => item.serviceOrderId == order['id']);
-        }).toList();
-
-        if (orders.isEmpty) {
-          return const _EmptyState(
-            icon: Icons.checklist_rounded,
-            title: 'Empty Queue',
-            subtitle: 'No active service orders in the queue today.',
-          );
-        }
-
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: orders.map((order) {
-                return SizedBox(
-                  width: 320,
-                  child: _ServiceOrderTile(
-                    order: order,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CarwashQueueScreen(),
-                        ),
-                      );
-                    },
-                    onViewDetails: () => showServiceOrderDetailsDialog(
-                      context,
-                      ref,
-                      order['id'] as String,
-                    ),
-                    onCharge: () => chargeServiceOrder(context, ref, order),
-                    onDelete: () =>
-                        deleteServiceOrderWithConfirmation(context, ref, order),
-                    onAdvanceStatus: () async {
-                      await advanceServiceOrderStatus(ref, order);
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
 class _ServiceOrderTile extends StatelessWidget {
   final Map<String, dynamic> order;
   final Future<void> Function() onAdvanceStatus;
   final VoidCallback? onCharge;
   final VoidCallback? onViewDetails;
   final VoidCallback? onDelete;
-  final VoidCallback? onTap;
 
   const _ServiceOrderTile({
     required this.order,
@@ -1491,7 +1362,6 @@ class _ServiceOrderTile extends StatelessWidget {
     this.onCharge,
     this.onViewDetails,
     this.onDelete,
-    this.onTap,
   });
 
   @override
@@ -1508,7 +1378,7 @@ class _ServiceOrderTile extends StatelessWidget {
         _canChargeServiceStatus(status);
 
     return InkWell(
-      onTap: onTap ?? onViewDetails,
+      onTap: onViewDetails,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(12), // Reduced from 16
@@ -2941,7 +2811,9 @@ Future<bool> showCreateServiceOrderDialog(
   DateTime? pickedSchedule;
   String? selectedBay;
   final baysCount = ShopSettings.carwashBaysCount;
-  final assignedStaffController = TextEditingController();
+  final assignedStaffController = TextEditingController(
+    text: ServiceRepository.defaultAssignedStaffName(),
+  );
   final priceController = TextEditingController();
   final noteController = TextEditingController();
   var isSaving = false;
@@ -3221,6 +3093,10 @@ Future<bool> showCreateServiceOrderDialog(
                               ? 'booked'
                               : 'checked_in',
                           assignedStaff: assignedStaffController.text,
+                          assignedStaffUserId:
+                              ServiceRepository.currentAssignedStaffUserIdFor(
+                                assignedStaffController.text,
+                              ),
                           bayNumber: selectedBay,
                           price:
                               double.tryParse(priceController.text.trim()) ?? 0,

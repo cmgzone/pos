@@ -598,6 +598,18 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                                     ],
                                   ),
                             const SizedBox(height: 10),
+                            TextField(
+                              controller: line.batchNumberController,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: const InputDecoration(
+                                labelText: 'Batch Number',
+                                prefixIcon: Icon(Icons.numbers_outlined),
+                                helperText:
+                                    'Recommended for medicine and pharmacy stock.',
+                              ),
+                              onChanged: (_) => setDialogState(() {}),
+                            ),
+                            const SizedBox(height: 10),
                             Container(
                               decoration: BoxDecoration(
                                 color: AppColors.surface,
@@ -735,6 +747,7 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                               'unit': product == null
                                   ? UnitUtils.defaultUnit
                                   : UnitUtils.purchaseUnitForProduct(product),
+                              'batch_number': line.batchNumberController.text,
                               'expiry_date': ExpiryUtils.toStorageString(
                                 line.expiryDate,
                               ),
@@ -875,6 +888,36 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                             ),
                           ],
                         ),
+                        if ((item['batch_number'] as String?)
+                                ?.trim()
+                                .isNotEmpty ==
+                            true)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  'Batch: ${item['batch_number']}',
+                                  style: const TextStyle(
+                                    color: AppColors.primaryLight,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         if ((item['expiry_date'] as String?)
                                 ?.trim()
                                 .isNotEmpty ==
@@ -1271,10 +1314,12 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
 class _PurchaseLineDraft {
   String? productId;
   DateTime? expiryDate;
+  final TextEditingController batchNumberController = TextEditingController();
   final TextEditingController quantityController = TextEditingController();
   final TextEditingController unitCostController = TextEditingController();
 
   void dispose() {
+    batchNumberController.dispose();
     quantityController.dispose();
     unitCostController.dispose();
   }

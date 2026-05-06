@@ -6,10 +6,41 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 
+enum ReportBranchScope { current, all, compare }
+
 /// All reporting queries that go beyond P&L.
 /// Each method returns raw maps — the UI layer formats/presents them.
 class ReportRepository {
   static const _requestTimeout = Duration(seconds: 15);
+
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
+  static bool get _canUseAllBranchReports {
+    final role = RolePermissions.normalizeRole(SessionService.currentUserRole);
+    return role == RolePermissions.admin || role == RolePermissions.manager;
+  }
+
+  static ReportBranchScope _effectiveScope(ReportBranchScope scope) {
+    return scope == ReportBranchScope.all && _canUseAllBranchReports
+        ? ReportBranchScope.all
+        : ReportBranchScope.current;
+  }
+
+  static void _addBranchFilter(
+    List<String> clauses,
+    List<dynamic> args,
+    String alias,
+    ReportBranchScope scope,
+  ) {
+    if (_effectiveScope(scope) == ReportBranchScope.all) {
+      return;
+    }
+    clauses.add('COALESCE($alias.branch_id, ?) = ?');
+    args.addAll(_currentBranchArgs);
+  }
 
   // ── Top Debtors ────────────────────────────────────────────────────────────
 
@@ -17,7 +48,8 @@ class ReportRepository {
   static Future<List<Map<String, dynamic>>> getTopDebtors({
     int limit = 20,
   }) async {
-    return DatabaseService.rawQuery('''
+    return DatabaseService.rawQuery(
+      '''
       SELECT
         c.id,
         c.name,
@@ -33,11 +65,16 @@ class ReportRepository {
         AND s.balance_due > 0
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
+        AND COALESCE(s.branch_id, ?) = ?
       WHERE c.balance > 0
+        AND c.deleted_at IS NULL
+        AND COALESCE(c.branch_id, ?) = ?
       GROUP BY c.id
       ORDER BY c.balance DESC
       LIMIT $limit
-    ''');
+    ''',
+      [..._currentBranchArgs, ..._currentBranchArgs],
+    );
   }
 
   // ── Overdue Aging ──────────────────────────────────────────────────────────
@@ -66,8 +103,9 @@ class ReportRepository {
         AND s.balance_due > 0
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
+        AND COALESCE(s.branch_id, ?) = ?
       ORDER BY s.due_date ASC
-    ''');
+    ''', _currentBranchArgs);
   }
 
   /// Aggregate totals per aging bucket.
@@ -98,7 +136,8 @@ class ReportRepository {
         AND s.balance_due > 0
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
-    ''');
+        AND COALESCE(s.branch_id, ?) = ?
+    ''', _currentBranchArgs);
     return rows.isNotEmpty ? Map<String, dynamic>.from(rows.first) : {};
   }
 
@@ -109,9 +148,24 @@ class ReportRepository {
     int daysRange = 30,
     int limit = 20,
     bool ascending = false, // false = best sellers, true = worst sellers
+    ReportBranchScope branchScope = ReportBranchScope.current,
   }) async {
     final order = ascending ? 'ASC' : 'DESC';
-    return DatabaseService.rawQuery('''
+    final clauses = <String>[
+      'p.deleted_at IS NULL',
+    ];
+    final args = <dynamic>[];
+    final salesClauses = <String>[
+      's.created_at >= datetime(\'now\', \'-$daysRange days\')',
+      's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
+    ];
+    final salesArgs = <dynamic>[];
+    _addBranchFilter(salesClauses, salesArgs, 's', branchScope);
+    _addBranchFilter(clauses, args, 'p', branchScope);
+
+    return DatabaseService.rawQuery(
+      '''
       SELECT
         p.id,
         p.name,
@@ -129,23 +183,43 @@ class ReportRepository {
       FROM products p
       LEFT JOIN sale_items si ON si.product_id = p.id
       LEFT JOIN sales s ON s.id = si.sale_id
-        AND s.created_at >= datetime('now', '-$daysRange days')
-        AND s.refund_sale_id IS NULL
-        AND s.deleted_at IS NULL
+        AND ${salesClauses.join(' AND ')}
+      WHERE ${clauses.join(' AND ')}
       GROUP BY p.id
       ORDER BY total_qty_sold $order, total_revenue $order
       LIMIT $limit
-    ''');
+    ''',
+      [...salesArgs, ...args],
+    );
   }
-
-  // ── Stock Movement ─────────────────────────────────────────────────────────
 
   /// Stock received (purchases) vs sold per product for the period.
   static Future<List<Map<String, dynamic>>> getStockMovement({
     int daysRange = 30,
     int limit = 30,
+    ReportBranchScope branchScope = ReportBranchScope.current,
   }) async {
-    return DatabaseService.rawQuery('''
+    final receivedClauses = <String>[
+      'received_at >= datetime(\'now\', \'-$daysRange days\')',
+      'deleted_at IS NULL',
+    ];
+    final receivedArgs = <dynamic>[];
+    _addBranchFilter(receivedClauses, receivedArgs, 'stock_batches', branchScope);
+
+    final soldClauses = <String>[
+      's.created_at >= datetime(\'now\', \'-$daysRange days\')',
+      's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
+    ];
+    final soldArgs = <dynamic>[];
+    _addBranchFilter(soldClauses, soldArgs, 's', branchScope);
+
+    final productClauses = <String>['p.deleted_at IS NULL'];
+    final productArgs = <dynamic>[];
+    _addBranchFilter(productClauses, productArgs, 'p', branchScope);
+
+    return DatabaseService.rawQuery(
+      '''
       SELECT
         p.id,
         p.name,
@@ -166,21 +240,83 @@ class ReportRepository {
       LEFT JOIN (
         SELECT product_id, SUM(quantity_received) as qty_in
         FROM stock_batches
-        WHERE received_at >= datetime('now', '-$daysRange days')
+        WHERE ${receivedClauses.join(' AND ')}
         GROUP BY product_id
       ) received ON received.product_id = p.id
       LEFT JOIN (
         SELECT si.product_id, SUM(si.quantity) as qty_out
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id
-        WHERE s.created_at >= datetime('now', '-$daysRange days')
-          AND s.refund_sale_id IS NULL
-          AND s.deleted_at IS NULL
+        WHERE ${soldClauses.join(' AND ')}
         GROUP BY si.product_id
       ) sold ON sold.product_id = p.id
-      WHERE COALESCE(received.qty_in, 0) > 0 OR COALESCE(sold.qty_out, 0) > 0
+      WHERE ${productClauses.join(' AND ')}
+        AND (COALESCE(received.qty_in, 0) > 0 OR COALESCE(sold.qty_out, 0) > 0)
       ORDER BY qty_out DESC, qty_in DESC
       LIMIT $limit
+    ''',
+      [...receivedArgs, ...soldArgs, ...productArgs],
+    );
+  }
+
+  // ── Branch Comparison ──────────────────────────────────────────────────────
+
+  /// Per-branch aggregates: revenue, profit, expenses, product/service
+  /// revenue, sales count, and refund totals for a given date range.
+  /// Only available for managers and admins.
+  static Future<List<Map<String, dynamic>>> getBranchComparison({
+    int daysRange = 30,
+  }) async {
+    if (!_canUseAllBranchReports) {
+      return const [];
+    }
+    return DatabaseService.rawQuery('''
+      SELECT
+        b.id                as branch_id,
+        b.name              as branch_name,
+        COALESCE(agg.revenue, 0)          as revenue,
+        COALESCE(agg.gross_profit, 0)     as gross_profit,
+        COALESCE(agg.product_revenue, 0)  as product_revenue,
+        COALESCE(agg.service_revenue, 0)  as service_revenue,
+        COALESCE(agg.sale_count, 0)       as sale_count,
+        COALESCE(agg.refund_total, 0)     as refund_total,
+        COALESCE(agg.refund_count, 0)     as refund_count,
+        COALESCE(exp.total_expenses, 0)   as total_expenses,
+        COALESCE(agg.gross_profit, 0) - COALESCE(exp.total_expenses, 0) as net_profit
+      FROM branches b
+      LEFT JOIN (
+        SELECT
+          COALESCE(s.branch_id, '${DatabaseService.defaultBranchId}') as bid,
+          SUM(CASE WHEN s.refund_sale_id IS NULL THEN s.total_amount ELSE 0 END) as revenue,
+          SUM(CASE WHEN s.refund_sale_id IS NULL THEN
+            COALESCE((SELECT SUM(si.quantity * (si.unit_price - si.unit_cost)) FROM sale_items si WHERE si.sale_id = s.id), 0)
+            + COALESCE((SELECT SUM(ssi.quantity * ssi.unit_price) FROM service_sale_items ssi WHERE ssi.sale_id = s.id), 0)
+          ELSE 0 END) as gross_profit,
+          SUM(CASE WHEN s.refund_sale_id IS NULL THEN
+            COALESCE((SELECT SUM(si.quantity * si.unit_price) FROM sale_items si WHERE si.sale_id = s.id), 0)
+          ELSE 0 END) as product_revenue,
+          SUM(CASE WHEN s.refund_sale_id IS NULL THEN
+            COALESCE((SELECT SUM(ssi.quantity * ssi.unit_price) FROM service_sale_items ssi WHERE ssi.sale_id = s.id), 0)
+          ELSE 0 END) as service_revenue,
+          COUNT(CASE WHEN s.refund_sale_id IS NULL THEN 1 END) as sale_count,
+          SUM(CASE WHEN s.refund_sale_id IS NOT NULL THEN ABS(s.total_amount) ELSE 0 END) as refund_total,
+          COUNT(CASE WHEN s.refund_sale_id IS NOT NULL THEN 1 END) as refund_count
+        FROM sales s
+        WHERE s.deleted_at IS NULL
+          AND s.created_at >= datetime('now', '-$daysRange days')
+        GROUP BY bid
+      ) agg ON agg.bid = b.id
+      LEFT JOIN (
+        SELECT
+          COALESCE(e.branch_id, '${DatabaseService.defaultBranchId}') as bid,
+          SUM(e.amount) as total_expenses
+        FROM expenses e
+        WHERE e.incurred_on >= date('now', '-$daysRange days')
+          AND e.deleted_at IS NULL
+        GROUP BY bid
+      ) exp ON exp.bid = b.id
+      WHERE b.deleted_at IS NULL
+      ORDER BY COALESCE(agg.revenue, 0) DESC, b.name COLLATE NOCASE ASC
     ''');
   }
 
@@ -190,6 +326,7 @@ class ReportRepository {
   static Future<Map<String, dynamic>> getDailySummary({
     String? date, // defaults to today
     String? cashierId,
+    ReportBranchScope branchScope = ReportBranchScope.current,
   }) async {
     final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
     final normalizedCashierId = cashierId?.trim();
@@ -199,6 +336,7 @@ class ReportRepository {
       's.deleted_at IS NULL',
     ];
     final summaryArgs = <dynamic>[d];
+    _addBranchFilter(summaryWhere, summaryArgs, 's', branchScope);
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       summaryWhere.add('s.user_id = ?');
       summaryArgs.add(normalizedCashierId);
@@ -232,6 +370,7 @@ class ReportRepository {
       's.deleted_at IS NULL',
     ];
     final profitArgs = <dynamic>[d];
+    _addBranchFilter(profitWhere, profitArgs, 's', branchScope);
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       profitWhere.add('s.user_id = ?');
       profitArgs.add(normalizedCashierId);
@@ -270,6 +409,7 @@ class ReportRepository {
       's.deleted_at IS NULL',
     ];
     final topProductsArgs = <dynamic>[d];
+    _addBranchFilter(topProductsWhere, topProductsArgs, 's', branchScope);
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       topProductsWhere.add('s.user_id = ?');
       topProductsArgs.add(normalizedCashierId);
@@ -297,6 +437,7 @@ class ReportRepository {
       's.deleted_at IS NULL',
     ];
     final topServicesArgs = <dynamic>[d];
+    _addBranchFilter(topServicesWhere, topServicesArgs, 's', branchScope);
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       topServicesWhere.add('s.user_id = ?');
       topServicesArgs.add(normalizedCashierId);
@@ -336,8 +477,9 @@ class ReportRepository {
     final baseWhere = <String>[
       'DATE(s.created_at) = ?',
       's.deleted_at IS NULL',
+      'COALESCE(s.branch_id, ?) = ?',
     ];
-    final args = <dynamic>[d];
+    final args = <dynamic>[d, ..._currentBranchArgs];
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       baseWhere.add('s.user_id = ?');
       args.add(normalizedCashierId);
@@ -414,6 +556,7 @@ class ReportRepository {
     if (currentUserId.isNotEmpty) {
       queryParameters['userId'] = currentUserId;
     }
+    queryParameters['branchId'] = DatabaseService.currentBranchId;
     if (cashierId != null && cashierId.isNotEmpty) {
       queryParameters['cashierId'] = cashierId;
     }

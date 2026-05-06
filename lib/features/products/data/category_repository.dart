@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 
@@ -7,11 +8,17 @@ const _uuid = Uuid();
 class CategoryRepository {
   static const _table = 'categories';
 
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
   /// Get all categories
   static Future<List<Map<String, dynamic>>> getAll() async {
     return DatabaseService.queryAll(
       _table,
-      where: 'deleted_at IS NULL',
+      where: 'deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: _currentBranchArgs,
       orderBy: 'name ASC',
     );
   }
@@ -20,8 +27,8 @@ class CategoryRepository {
   static Future<Map<String, dynamic>?> getById(String id) async {
     final rows = await DatabaseService.queryAll(
       _table,
-      where: 'id = ? AND deleted_at IS NULL',
-      whereArgs: [id],
+      where: 'id = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [id, ..._currentBranchArgs],
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
@@ -56,15 +63,21 @@ class CategoryRepository {
       await txn.update(
         'products',
         {'category_id': null, 'updated_at': now, 'sync_status': 'pending'},
-        where: 'category_id = ? AND deleted_at IS NULL',
-        whereArgs: [id],
+        where:
+            'category_id = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+        whereArgs: [id, ..._currentBranchArgs],
       );
       await txn.update(
         _table,
         {'deleted_at': now, 'updated_at': now, 'sync_status': 'pending'},
-        where: 'id = ?',
-        whereArgs: [id],
+        where: 'id = ? AND COALESCE(branch_id, ?) = ?',
+        whereArgs: [id, ..._currentBranchArgs],
       );
     });
+    await AuditLogService.log(
+      action: 'delete',
+      entityTable: _table,
+      entityId: id,
+    );
   }
 }

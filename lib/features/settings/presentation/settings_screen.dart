@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:pos_app/core/services/backup_service.dart';
+import 'package:pos_app/core/services/branch_service.dart';
+import 'package:pos_app/core/services/database_service.dart';
+import 'package:pos_app/core/services/cash_drawer_service.dart';
 import 'package:pos_app/core/services/license_service.dart';
 import 'package:pos_app/core/services/session_service.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
@@ -40,7 +43,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _currencyController;
   late TextEditingController _footerController;
   late TextEditingController _baysController;
+  late TextEditingController _cashDrawerPrinterPathController;
   bool _autoSyncEnabled = true;
+  bool _cashDrawerEnabled = false;
 
   bool _saving = false;
   bool _hasChanges = false;
@@ -78,7 +83,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _baysController = TextEditingController(
       text: ShopSettings.carwashBaysCount.toString(),
     )..addListener(_markChanged);
+    _cashDrawerPrinterPathController = TextEditingController(
+      text: ShopSettings.cashDrawerPrinterPath,
+    )..addListener(_markChanged);
     _autoSyncEnabled = SyncSettingsService.autoSyncEnabled;
+    _cashDrawerEnabled = ShopSettings.cashDrawerEnabled;
 
     _loadBackups();
     if (_canManageUsers) {
@@ -102,6 +111,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _currencyController.dispose();
     _footerController.dispose();
     _baysController.dispose();
+    _cashDrawerPrinterPathController.dispose();
     super.dispose();
   }
 
@@ -119,6 +129,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ShopSettings.setReceiptFooter(_footerController.text.trim());
       await ShopSettings.setCarwashBaysCount(
         int.tryParse(_baysController.text) ?? 4,
+      );
+      await ShopSettings.setCashDrawerEnabled(_cashDrawerEnabled);
+      await ShopSettings.setCashDrawerPrinterPath(
+        _cashDrawerPrinterPathController.text,
       );
       await SyncSettingsService.setAutoSyncEnabled(_autoSyncEnabled);
       await ref
@@ -383,6 +397,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     final services = await ServiceRepository.getServices();
+    final branches = await BranchService.getBranches(activeOnly: true);
     if (!mounted) {
       return;
     }
@@ -400,6 +415,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     final selectedServiceIds = initialAllowedServiceIds.toSet();
     var allowAllServices = initialAllowedServiceIds.isEmpty;
+    final initialAllowedBranchIds = UserAccessProfile.resolveAllowedBranchIds(
+      role: role,
+      rawAllowedBranchIdsJson: user['allowed_branch_ids_json'] as String?,
+    );
+    final selectedBranchIds = initialAllowedBranchIds.toSet();
+    var allowAllBranches = initialAllowedBranchIds.isEmpty;
     var posMode = UserAccessProfile.resolvePosMode(
       role: role,
       rawPosMode: user['pos_mode'] as String?,
@@ -544,7 +565,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(
-                        value: UserAccessProfile.serviceOrderScopeAllVisibleServices,
+                        value: UserAccessProfile
+                            .serviceOrderScopeAllVisibleServices,
                         icon: Icon(Icons.visibility_outlined),
                         label: Text('All Allowed'),
                       ),
@@ -556,9 +578,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ],
                     selected: {serviceOrderScope},
                     onSelectionChanged: (selection) {
-                      setDialogState(
-                        () => serviceOrderScope = selection.first,
-                      );
+                      setDialogState(() => serviceOrderScope = selection.first);
                     },
                     showSelectedIcon: false,
                   ),
@@ -616,6 +636,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         }).toList(),
                       ),
                   ],
+                  const SizedBox(height: 18),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: allowAllBranches,
+                    title: const Text(
+                      'Allow all branches',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text(
+                      'Turn this off to choose which branches this staff member can use.',
+                    ),
+                    onChanged: (value) {
+                      setDialogState(() => allowAllBranches = value);
+                    },
+                  ),
+                  if (!allowAllBranches) ...[
+                    const SizedBox(height: 8),
+                    if (branches.isEmpty)
+                      const Text(
+                        'No branches created yet.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: branches.map((branch) {
+                          final branchId = branch['id'] as String? ?? '';
+                          final branchName =
+                              branch['name'] as String? ?? 'Branch';
+                          return FilterChip(
+                            label: Text(branchName),
+                            selected: selectedBranchIds.contains(branchId),
+                            onSelected: (selected) {
+                              setDialogState(() {
+                                if (selected) {
+                                  selectedBranchIds.add(branchId);
+                                } else {
+                                  selectedBranchIds.remove(branchId);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -642,6 +708,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         );
                         return;
                       }
+                      if (!allowAllBranches &&
+                          branches.isNotEmpty &&
+                          selectedBranchIds.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Choose at least one branch or enable all branches.',
+                            ),
+                            backgroundColor: AppColors.warning,
+                          ),
+                        );
+                        return;
+                      }
 
                       setDialogState(() => saving = true);
                       try {
@@ -651,6 +730,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           allowedServiceIds: allowAllServices
                               ? const []
                               : selectedServiceIds.toList(),
+                          allowedBranchIds: allowAllBranches
+                              ? const []
+                              : selectedBranchIds.toList(),
                           posMode: posMode,
                           serviceOrderScope: serviceOrderScope,
                         );
@@ -712,6 +794,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       role: role,
       rawAllowedServiceIdsJson: user['allowed_service_ids_json'] as String?,
     );
+    final branches = UserAccessProfile.resolveAllowedBranchIds(
+      role: role,
+      rawAllowedBranchIdsJson: user['allowed_branch_ids_json'] as String?,
+    );
     final posMode = UserAccessProfile.resolvePosMode(
       role: role,
       rawPosMode: user['pos_mode'] as String?,
@@ -722,7 +808,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final serviceSummary = services.isEmpty
         ? 'All services'
         : '${services.length} services';
-    return '$featureCount features • POS: ${_labelForPosMode(posMode)} • $serviceSummary';
+    final branchSummary = branches.isEmpty
+        ? 'All branches'
+        : '${branches.length} branches';
+    return '$featureCount features • POS: ${_labelForPosMode(posMode)} • $serviceSummary • $branchSummary';
   }
 
   String _labelForPosMode(String posMode) {
@@ -734,6 +823,151 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       default:
         return 'Both';
     }
+  }
+
+  Widget _buildStaffBranchChips(Map<String, dynamic> user, String role) {
+    final normalizedRole = RolePermissions.normalizeRole(role);
+
+    // Admins always have full access
+    if (normalizedRole == RolePermissions.admin) {
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.verified_outlined,
+                    size: 12, color: AppColors.success),
+                const SizedBox(width: 4),
+                Text(
+                  'All branches',
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final branchIds = UserAccessProfile.resolveAllowedBranchIds(
+      role: normalizedRole,
+      rawAllowedBranchIdsJson: user['allowed_branch_ids_json'] as String?,
+    );
+
+    // Empty list means unrestricted (all branches)
+    if (branchIds.isEmpty) {
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.business_outlined,
+                    size: 12, color: AppColors.primaryLight),
+                const SizedBox(width: 4),
+                Text(
+                  'All branches',
+                  style: TextStyle(
+                    color: AppColors.primaryLight,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Show individual branch chips
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _resolveBranchNames(branchIds),
+      builder: (context, snapshot) {
+        final branches = snapshot.data ?? [];
+        return Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final branch in branches)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.store_outlined,
+                        size: 12, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      branch['name'] as String? ?? branch['id'] as String,
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (branches.isEmpty)
+              for (final id in branchIds)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    id,
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveBranchNames(
+    List<String> branchIds,
+  ) async {
+    if (branchIds.isEmpty) {
+      return const [];
+    }
+    final placeholders = List.filled(branchIds.length, '?').join(', ');
+    return DatabaseService.rawQuery(
+      'SELECT id, name FROM branches WHERE id IN ($placeholders) AND deleted_at IS NULL ORDER BY name COLLATE NOCASE ASC',
+      branchIds,
+    );
   }
 
   Future<void> _showChangePasswordDialog() async {
@@ -1443,6 +1677,134 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _buildCashDrawerCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Device-local label ──
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.computer_outlined,
+                    size: 14, color: AppColors.warning),
+                const SizedBox(width: 6),
+                Text(
+                  'Device-local setting — not shared across branches or devices',
+                  style: TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Open physical cash drawer after cash sales',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: const Text(
+              'Disabled until a manager or admin sets the Windows printer share or port.',
+            ),
+            value: _cashDrawerEnabled,
+            onChanged: (value) {
+              setState(() => _cashDrawerEnabled = value);
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildField(
+            'Drawer Printer Share / Port',
+            r'e.g. \\localhost\ReceiptPrinter or LPT1:',
+            _cashDrawerPrinterPathController,
+            Icons.print_outlined,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _cashDrawerEnabled ? _testCashDrawer : null,
+                icon: const Icon(Icons.lock_open_outlined, size: 18),
+                label: const Text('Test Open'),
+              ),
+              const Text(
+                'Test open is limited to managers and admins.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testCashDrawer() async {
+    if (_hasChanges) {
+      await _save();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Open Cash Drawer?'),
+        content: const Text(
+          'This will send an open command to the configured drawer printer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.lock_open_outlined, size: 18),
+            label: const Text('Open Drawer'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) {
+      return;
+    }
+
+    final result = await CashDrawerService.testOpen();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: result.success ? AppColors.success : AppColors.error,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncState = ref.watch(syncControllerProvider);
@@ -1710,9 +2072,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       keyboardType: TextInputType.number,
                     ),
+                    if (Platform.isWindows) ...[
+                      const SizedBox(height: 20),
+                      _buildCashDrawerCard(),
+                    ],
                   ]),
                   const SizedBox(height: 32),
-                  _buildSectionHeader(Icons.payment_outlined, 'Payment Methods'),
+                  _buildSectionHeader(
+                    Icons.payment_outlined,
+                    'Payment Methods',
+                  ),
                   const SizedBox(height: 4),
                   const Text(
                     'Define custom payment options available during checkout.',
@@ -1917,6 +2286,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       fontSize: 12,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  _buildStaffBranchChips(user, selectedRole),
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 12,

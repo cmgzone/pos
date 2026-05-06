@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/utils/unit_utils.dart';
 
@@ -8,6 +9,11 @@ const _uuid = Uuid();
 class HeldSaleRepository {
   static const _heldSalesTable = 'held_sales';
   static const _heldSaleItemsTable = 'held_sale_items';
+
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
 
   static Future<String> createHold({
     required String name,
@@ -25,6 +31,7 @@ class HeldSaleRepository {
     await DatabaseService.db.transaction((txn) async {
       await txn.insert(_heldSalesTable, {
         'id': holdId,
+        'branch_id': DatabaseService.currentBranchId,
         'name': name,
         'subtotal': subtotal,
         'tax': tax,
@@ -68,6 +75,11 @@ class HeldSaleRepository {
       }
     });
 
+    await AuditLogService.log(
+      action: 'hold',
+      entityTable: _heldSalesTable,
+      entityId: holdId,
+    );
     return holdId;
   }
 
@@ -86,8 +98,9 @@ class HeldSaleRepository {
         created_at,
         updated_at
       FROM $_heldSalesTable
+      WHERE COALESCE(branch_id, ?) = ?
       ORDER BY updated_at DESC, created_at DESC
-    ''');
+    ''', _currentBranchArgs);
 
     return rows.map(_normalizeHoldSummary).toList();
   }
@@ -97,8 +110,8 @@ class HeldSaleRepository {
         .transaction<Map<String, dynamic>?>((txn) async {
           final holdRows = await txn.query(
             _heldSalesTable,
-            where: 'id = ?',
-            whereArgs: [holdId],
+            where: 'id = ? AND COALESCE(branch_id, ?) = ?',
+            whereArgs: [holdId, ..._currentBranchArgs],
             limit: 1,
           );
           if (holdRows.isEmpty) {
@@ -135,6 +148,13 @@ class HeldSaleRepository {
       return null;
     }
 
+    await AuditLogService.log(
+      action: 'take',
+      entityTable: _heldSalesTable,
+      entityId: holdId,
+      branchId: heldSale['branch_id'] as String?,
+    );
+
     final refreshed = await _refreshHeldItems(
       List<Map<String, dynamic>>.from(heldSale['items'] as List<dynamic>),
     );
@@ -148,6 +168,16 @@ class HeldSaleRepository {
 
   static Future<void> deleteHold(String holdId) async {
     await DatabaseService.db.transaction((txn) async {
+      final holdRows = await txn.query(
+        _heldSalesTable,
+        columns: const ['id'],
+        where: 'id = ? AND COALESCE(branch_id, ?) = ?',
+        whereArgs: [holdId, ..._currentBranchArgs],
+        limit: 1,
+      );
+      if (holdRows.isEmpty) {
+        return;
+      }
       await txn.delete(
         _heldSaleItemsTable,
         where: 'held_sale_id = ?',
@@ -155,6 +185,11 @@ class HeldSaleRepository {
       );
       await txn.delete(_heldSalesTable, where: 'id = ?', whereArgs: [holdId]);
     });
+    await AuditLogService.log(
+      action: 'delete',
+      entityTable: _heldSalesTable,
+      entityId: holdId,
+    );
   }
 
   static Future<_RefreshedHeldItems> _refreshHeldItems(
@@ -173,7 +208,17 @@ class HeldSaleRepository {
       final productId = item['product_id'] as String? ?? '';
       final product = productId.isEmpty
           ? null
-          : await DatabaseService.queryById('products', productId);
+          : (await DatabaseService.rawQuery(
+              '''
+              SELECT *
+              FROM products
+              WHERE id = ?
+                AND deleted_at IS NULL
+                AND COALESCE(branch_id, ?) = ?
+              LIMIT 1
+              ''',
+              [productId, ..._currentBranchArgs],
+            )).firstOrNull;
       final variantId = item['variant_id'] as String?;
       final variantName = item['variant_name'] as String?;
       final baseName =
@@ -190,7 +235,17 @@ class HeldSaleRepository {
       final factor = _positiveDouble(item['sale_to_stock_factor'], fallback: 1);
       final variant = (variantId == null || variantId.trim().isEmpty)
           ? null
-          : await DatabaseService.queryById('product_variants', variantId);
+          : (await DatabaseService.rawQuery(
+              '''
+              SELECT *
+              FROM product_variants
+              WHERE id = ?
+                AND deleted_at IS NULL
+                AND COALESCE(branch_id, ?) = ?
+              LIMIT 1
+              ''',
+              [variantId, ..._currentBranchArgs],
+            )).firstOrNull;
       if (variantId != null && variantId.trim().isNotEmpty && variant == null) {
         adjustments.add('$itemName is no longer available and was removed.');
         continue;

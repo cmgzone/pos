@@ -6,8 +6,18 @@ import '../../../core/services/license_service.dart';
 const _uuid = Uuid();
 
 class ExpenseRepository {
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
   static Future<List<Map<String, dynamic>>> getCategories() async {
-    return DatabaseService.queryAll('expense_categories', orderBy: 'name ASC');
+    return DatabaseService.queryAll(
+      'expense_categories',
+      where: 'deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: _currentBranchArgs,
+      orderBy: 'name ASC',
+    );
   }
 
   static Future<String> createCategory({
@@ -70,20 +80,39 @@ class ExpenseRepository {
   static Future<List<Map<String, dynamic>>> getRecentExpenses({
     int daysRange = 30,
     int limit = 10,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
-    return DatabaseService.rawQuery('''
+    final range = _resolveDateRange(
+      daysRange: daysRange,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return DatabaseService.rawQuery(
+      '''
       SELECT *
       FROM expenses
-      WHERE incurred_on >= date('now', '-$daysRange days')
+      WHERE DATE(incurred_on) BETWEEN DATE(?) AND DATE(?)
+        AND COALESCE(branch_id, ?) = ?
       ORDER BY incurred_on DESC, created_at DESC
       LIMIT $limit
-      ''');
+      ''',
+      [range.start, range.end, ..._currentBranchArgs],
+    );
   }
 
   static Future<List<Map<String, dynamic>>> getDailyProfitLoss({
     required int daysRange,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
-    return DatabaseService.rawQuery('''
+    final range = _resolveDateRange(
+      daysRange: daysRange,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return DatabaseService.rawQuery(
+      '''
       WITH daily_sales AS (
         SELECT
           DATE(s.created_at) as day_key,
@@ -120,9 +149,10 @@ class ExpenseRepository {
           COALESCE(SUM(s.tax), 0) as tax,
           COALESCE(SUM(s.discount), 0) as discount
         FROM sales s
-        WHERE s.created_at >= datetime('now', '-$daysRange days')
+        WHERE DATE(s.created_at) BETWEEN DATE(?) AND DATE(?)
           AND s.deleted_at IS NULL
           AND s.refund_for_sale_id IS NULL
+          AND COALESCE(s.branch_id, ?) = ?
         GROUP BY DATE(s.created_at)
       ),
       daily_expenses AS (
@@ -130,7 +160,8 @@ class ExpenseRepository {
           DATE(e.incurred_on) as day_key,
           COALESCE(SUM(e.amount), 0) as total_expenses
         FROM expenses e
-        WHERE DATE(e.incurred_on) >= date('now', '-$daysRange days')
+        WHERE DATE(e.incurred_on) BETWEEN DATE(?) AND DATE(?)
+          AND COALESCE(e.branch_id, ?) = ?
         GROUP BY DATE(e.incurred_on)
       ),
       all_days AS (
@@ -152,13 +183,30 @@ class ExpenseRepository {
       LEFT JOIN daily_sales ds ON ds.day_key = all_days.day_key
       LEFT JOIN daily_expenses de ON de.day_key = all_days.day_key
       ORDER BY all_days.day_key DESC
-      ''');
+      ''',
+      [
+        range.start,
+        range.end,
+        ..._currentBranchArgs,
+        range.start,
+        range.end,
+        ..._currentBranchArgs,
+      ],
+    );
   }
 
   static Future<Map<String, dynamic>> getProfitLossTotals({
     required int daysRange,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
-    final rows = await DatabaseService.rawQuery('''
+    final range = _resolveDateRange(
+      daysRange: daysRange,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    final rows = await DatabaseService.rawQuery(
+      '''
       WITH sales_totals AS (
         SELECT
           COALESCE(SUM(
@@ -194,15 +242,17 @@ class ExpenseRepository {
           COALESCE(SUM(s.tax), 0) as total_tax,
           COALESCE(SUM(s.discount), 0) as total_discount
         FROM sales s
-        WHERE s.created_at >= datetime('now', '-$daysRange days')
+        WHERE DATE(s.created_at) BETWEEN DATE(?) AND DATE(?)
           AND s.deleted_at IS NULL
           AND s.refund_for_sale_id IS NULL
+          AND COALESCE(s.branch_id, ?) = ?
       ),
       expense_totals AS (
         SELECT
           COALESCE(SUM(amount), 0) as total_expenses
         FROM expenses
-        WHERE DATE(incurred_on) >= date('now', '-$daysRange days')
+        WHERE DATE(incurred_on) BETWEEN DATE(?) AND DATE(?)
+          AND COALESCE(branch_id, ?) = ?
       )
       SELECT
         sales_totals.total_revenue,
@@ -214,23 +264,103 @@ class ExpenseRepository {
         expense_totals.total_expenses,
         sales_totals.gross_profit - expense_totals.total_expenses as net_profit
       FROM sales_totals, expense_totals
-      ''');
+      ''',
+      [
+        range.start,
+        range.end,
+        ..._currentBranchArgs,
+        range.start,
+        range.end,
+        ..._currentBranchArgs,
+      ],
+    );
 
     return rows.isNotEmpty ? Map<String, dynamic>.from(rows.first) : {};
   }
 
   static Future<List<Map<String, dynamic>>> getExpenseCategoryTotals({
     required int daysRange,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
-    return DatabaseService.rawQuery('''
+    final range = _resolveDateRange(
+      daysRange: daysRange,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return DatabaseService.rawQuery(
+      '''
       SELECT
         COALESCE(category_name, 'Uncategorized') as category_name,
         COALESCE(SUM(amount), 0) as total_amount,
         COUNT(*) as expense_count
       FROM expenses
-      WHERE DATE(incurred_on) >= date('now', '-$daysRange days')
+      WHERE DATE(incurred_on) BETWEEN DATE(?) AND DATE(?)
+        AND COALESCE(branch_id, ?) = ?
       GROUP BY COALESCE(category_name, 'Uncategorized')
       ORDER BY total_amount DESC, category_name ASC
-      ''');
+      ''',
+      [range.start, range.end, ..._currentBranchArgs],
+    );
   }
+
+  static Future<List<Map<String, dynamic>>> getDailyExpenseCategoryReport({
+    required int daysRange,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final range = _resolveDateRange(
+      daysRange: daysRange,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return DatabaseService.rawQuery(
+      '''
+      SELECT
+        DATE(incurred_on) as day_key,
+        COALESCE(category_name, 'Uncategorized') as category_name,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COUNT(*) as expense_count
+      FROM expenses
+      WHERE DATE(incurred_on) BETWEEN DATE(?) AND DATE(?)
+        AND COALESCE(branch_id, ?) = ?
+      GROUP BY DATE(incurred_on), COALESCE(category_name, 'Uncategorized')
+      ORDER BY day_key DESC, total_amount DESC, category_name ASC
+      ''',
+      [range.start, range.end, ..._currentBranchArgs],
+    );
+  }
+
+  static _ExpenseDateRange _resolveDateRange({
+    required int daysRange,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    final today = DateTime.now();
+    final end = _dateOnly(endDate ?? today);
+    final start = _dateOnly(
+      startDate ?? end.subtract(Duration(days: daysRange - 1)),
+    );
+    return _ExpenseDateRange(
+      _formatSqlDate(start.isAfter(end) ? end : start),
+      _formatSqlDate(end),
+    );
+  }
+
+  static DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  static String _formatSqlDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+}
+
+class _ExpenseDateRange {
+  final String start;
+  final String end;
+
+  const _ExpenseDateRange(this.start, this.end);
 }

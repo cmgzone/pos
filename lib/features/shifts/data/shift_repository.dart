@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/session_service.dart';
 
@@ -31,6 +32,11 @@ class ShiftRepository {
   static const _shiftsTable = 'shifts';
   static const _cashMovementsTable = 'cash_movements';
 
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
   static String normalizeActorUserId(String? userId) {
     final normalized = userId?.trim() ?? '';
     return normalized.isEmpty ? 'admin' : normalized;
@@ -46,8 +52,9 @@ class ShiftRepository {
   }) async {
     final rows = await DatabaseService.queryAll(
       _shiftsTable,
-      where: 'user_id = ? AND status = ? AND deleted_at IS NULL',
-      whereArgs: [normalizeActorUserId(userId), 'open'],
+      where:
+          'user_id = ? AND status = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [normalizeActorUserId(userId), 'open', ..._currentBranchArgs],
       orderBy: 'opened_at DESC, id DESC',
       limit: 1,
     );
@@ -133,8 +140,8 @@ class ShiftRepository {
   static Future<Map<String, dynamic>?> getShiftById(String shiftId) async {
     final rows = await DatabaseService.queryAll(
       _shiftsTable,
-      where: 'id = ?',
-      whereArgs: [shiftId],
+      where: 'id = ? AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [shiftId, ..._currentBranchArgs],
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
@@ -145,8 +152,11 @@ class ShiftRepository {
     int limit = 20,
   }) async {
     final safeLimit = limit < 1 ? 1 : limit;
-    final clauses = <String>['deleted_at IS NULL'];
-    final args = <dynamic>[];
+    final clauses = <String>[
+      'deleted_at IS NULL',
+      'COALESCE(branch_id, ?) = ?',
+    ];
+    final args = <dynamic>[..._currentBranchArgs];
     final normalizedUserId = userId?.trim();
     if (normalizedUserId != null && normalizedUserId.isNotEmpty) {
       clauses.add('user_id = ?');
@@ -176,8 +186,9 @@ class ShiftRepository {
       'deleted_at IS NULL',
       'closed_at IS NOT NULL',
       'DATE(closed_at) = ?',
+      'COALESCE(branch_id, ?) = ?',
     ];
-    final args = <dynamic>[targetDate];
+    final args = <dynamic>[targetDate, ..._currentBranchArgs];
     final normalizedUserId = userId?.trim();
     if (normalizedUserId != null && normalizedUserId.isNotEmpty) {
       clauses.add('user_id = ?');
@@ -217,8 +228,9 @@ class ShiftRepository {
       'deleted_at IS NULL',
       'closed_at IS NOT NULL',
       'DATE(closed_at) = ?',
+      'COALESCE(branch_id, ?) = ?',
     ];
-    final args = <dynamic>[targetDate];
+    final args = <dynamic>[targetDate, ..._currentBranchArgs];
     final normalizedUserId = userId?.trim();
     if (normalizedUserId != null && normalizedUserId.isNotEmpty) {
       clauses.add('user_id = ?');
@@ -253,8 +265,9 @@ class ShiftRepository {
   ) async {
     return DatabaseService.queryAll(
       _cashMovementsTable,
-      where: 'shift_id = ? AND deleted_at IS NULL',
-      whereArgs: [shiftId],
+      where:
+          'shift_id = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [shiftId, ..._currentBranchArgs],
       orderBy: 'created_at DESC, id DESC',
     );
   }
@@ -292,6 +305,7 @@ class ShiftRepository {
     final now = DateTime.now().toIso8601String();
     final row = <String, dynamic>{
       'id': _uuid.v4(),
+      'branch_id': DatabaseService.currentBranchId,
       'user_id': normalizedUserId,
       'cashier_name': normalizeActorName(cashierName),
       'status': 'open',
@@ -336,7 +350,7 @@ class ShiftRepository {
     final now = DateTime.now().toIso8601String();
     final normalizedReason = _normalizedOptionalText(reason);
 
-    return DatabaseService.db.transaction((txn) async {
+    final row = await DatabaseService.db.transaction((txn) async {
       final shift = await _getShiftByIdWithExecutor(txn, shiftId);
       if (shift == null || (shift['deleted_at'] as String?) != null) {
         throw Exception('Shift not found');
@@ -347,6 +361,7 @@ class ShiftRepository {
 
       final row = <String, dynamic>{
         'id': _uuid.v4(),
+        'branch_id': shift['branch_id'] ?? DatabaseService.currentBranchId,
         'shift_id': shiftId,
         'user_id': normalizeActorUserId(userId),
         'type': normalizedType,
@@ -367,6 +382,13 @@ class ShiftRepository {
       );
       return row;
     });
+    await AuditLogService.log(
+      action: normalizedType,
+      entityTable: _cashMovementsTable,
+      entityId: row['id'] as String?,
+      branchId: row['branch_id'] as String?,
+    );
+    return row;
   }
 
   static Future<Map<String, dynamic>> closeShift({
@@ -379,7 +401,7 @@ class ShiftRepository {
       throw Exception('Closing cash cannot be negative');
     }
 
-    return DatabaseService.db.transaction((txn) async {
+    final closedShift = await DatabaseService.db.transaction((txn) async {
       final shift = await _getShiftByIdWithExecutor(txn, shiftId);
       if (shift == null || (shift['deleted_at'] as String?) != null) {
         throw Exception('Shift not found');
@@ -424,6 +446,13 @@ class ShiftRepository {
 
       return {...shift, ...updates};
     });
+    await AuditLogService.log(
+      action: 'close',
+      entityTable: _shiftsTable,
+      entityId: shiftId,
+      branchId: closedShift['branch_id'] as String?,
+    );
+    return closedShift;
   }
 
   static Map<String, dynamic> emptySummary() {
@@ -461,9 +490,15 @@ class ShiftRepository {
         COALESCE(SUM(CASE WHEN payment_type = 'kopesha' THEN total_amount ELSE 0 END), 0) AS kopesha_sales_total,
         COALESCE(SUM(CASE WHEN payment_type = 'refund_kopesha' THEN ABS(total_amount) ELSE 0 END), 0) AS kopesha_refunds_total
       FROM sales
-      WHERE shift_id = ? AND deleted_at IS NULL
+      WHERE shift_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
       ''',
-      [shiftId],
+      [
+        shiftId,
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
     );
     final movementsStats = await executor.rawQuery(
       '''
@@ -472,9 +507,15 @@ class ShiftRepository {
         COALESCE(SUM(CASE WHEN type = 'cash_in' THEN amount ELSE 0 END), 0) AS cash_in_total,
         COALESCE(SUM(CASE WHEN type = 'cash_out' THEN amount ELSE 0 END), 0) AS cash_out_total
       FROM $_cashMovementsTable
-      WHERE shift_id = ? AND deleted_at IS NULL
+      WHERE shift_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
       ''',
-      [shiftId],
+      [
+        shiftId,
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
     );
 
     final salesRow = salesStats.isEmpty
@@ -521,8 +562,12 @@ class ShiftRepository {
   ) async {
     final rows = await executor.query(
       _shiftsTable,
-      where: 'id = ?',
-      whereArgs: [shiftId],
+      where: 'id = ? AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [
+        shiftId,
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
       limit: 1,
     );
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);

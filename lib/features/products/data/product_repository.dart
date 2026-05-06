@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/database_service.dart';
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -11,6 +12,11 @@ enum ProductTypeFilter { all, variantsOnly, simpleOnly }
 
 class ProductRepository {
   static const _table = 'products';
+
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
 
   static String _typeFilterClause(String alias, ProductTypeFilter typeFilter) {
     return switch (typeFilter) {
@@ -25,7 +31,7 @@ class ProductRepository {
     String? categoryId,
     ProductTypeFilter typeFilter = ProductTypeFilter.all,
   }) async {
-    final args = <dynamic>[];
+    final args = <dynamic>[..._currentBranchArgs];
     final categoryClause = categoryId != null ? ' AND p.category_id = ?' : '';
     if (categoryId != null) {
       args.add(categoryId);
@@ -41,6 +47,7 @@ class ProductRepository {
         ) AS active_variant_count
       FROM $_table p
       WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
         $categoryClause
         ${_typeFilterClause('p', typeFilter)}
       ORDER BY p.name ASC
@@ -62,15 +69,22 @@ class ProductRepository {
     // args order: matched_variant_count(3) + matched_variant_names(3)
     //             + WHERE name/brand/barcode/sku (4) + variant EXISTS (3)
     //             + ORDER BY name/brand/barcode/sku (4) + categoryId appended last
-    final args = <dynamic>[
+    final projectionArgs = <dynamic>[
       like, like, like, // matched_variant_count: pv name/barcode/sku
       like, like, like, // matched_variant_names: pv name/barcode/sku
+    ];
+    final filterArgs = <dynamic>[
+      ..._currentBranchArgs,
       like, like, like, like, // WHERE: p.name/brand/barcode/sku
       like, like, like, // WHERE EXISTS: pv name/barcode/sku
     ];
+    final args = <dynamic>[...projectionArgs, ...filterArgs];
     final categoryClause = categoryId != null ? ' AND p.category_id = ?' : '';
     if (categoryId != null) {
-      args.add(categoryId);
+      args.insert(
+        projectionArgs.length + _currentBranchArgs.length,
+        categoryId,
+      );
     }
     args.addAll([like, like, like, like]); // ORDER BY: name/brand/barcode/sku
 
@@ -99,6 +113,7 @@ class ProductRepository {
         ) AS matched_variant_names
       FROM $_table p
       WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
         $categoryClause
         ${_typeFilterClause('p', typeFilter)}
         AND (
@@ -132,7 +147,7 @@ class ProductRepository {
     }
 
     final like = '%$trimmed%';
-    final productArgs = <dynamic>[];
+    final productArgs = <dynamic>[..._currentBranchArgs];
     final productCategoryClause = categoryId != null
         ? ' AND p.category_id = ?'
         : '';
@@ -141,7 +156,7 @@ class ProductRepository {
     }
     productArgs.addAll([like, like, like]);
 
-    final variantArgs = <dynamic>[];
+    final variantArgs = <dynamic>[..._currentBranchArgs];
     final variantCategoryClause = categoryId != null
         ? ' AND p.category_id = ?'
         : '';
@@ -171,6 +186,7 @@ class ProductRepository {
           'product' AS result_type
         FROM $_table p
         WHERE p.deleted_at IS NULL
+          AND COALESCE(p.branch_id, ?) = ?
           $productCategoryClause
           ${_typeFilterClause('p', typeFilter)}
           AND (p.name LIKE ? OR p.barcode LIKE ? OR p.sku LIKE ?)
@@ -197,6 +213,7 @@ class ProductRepository {
           ON pv.product_id = p.id
          AND pv.deleted_at IS NULL
         WHERE p.deleted_at IS NULL
+          AND COALESCE(p.branch_id, ?) = ?
           $variantCategoryClause
           ${_typeFilterClause('p', typeFilter)}
           AND (pv.name LIKE ? OR pv.barcode LIKE ? OR pv.sku LIKE ?)
@@ -219,8 +236,9 @@ class ProductRepository {
   static Future<Map<String, dynamic>?> getByBarcode(String barcode) async {
     final results = await DatabaseService.queryAll(
       _table,
-      where: 'barcode = ? AND deleted_at IS NULL',
-      whereArgs: [barcode],
+      where:
+          'barcode = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [barcode, ..._currentBranchArgs],
     );
     return results.isNotEmpty ? results.first : null;
   }
@@ -244,6 +262,7 @@ class ProductRepository {
     String? imageUrl,
     String? categoryId,
     String? initialExpiryDate,
+    String? initialBatchNumber,
     bool trackStock = true,
     bool hasVariants = false,
   }) async {
@@ -263,6 +282,7 @@ class ProductRepository {
 
     batch.insert(_table, {
       'id': id,
+      'branch_id': DatabaseService.currentBranchId,
       'name': name,
       'price': price,
       'cost': cost,
@@ -292,6 +312,8 @@ class ProductRepository {
       batch.insert('stock_batches', {
         'id': _uuid.v4(),
         'product_id': id,
+        'branch_id': DatabaseService.currentBranchId,
+        'batch_number': initialBatchNumber?.trim(),
         'quantity_received': stock,
         'quantity_remaining': stock,
         'unit_cost': cost ?? 0.0,
@@ -306,6 +328,11 @@ class ProductRepository {
     }
 
     await batch.commit(noResult: true);
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: _table,
+      entityId: id,
+    );
     return id;
   }
 
@@ -323,9 +350,14 @@ class ProductRepository {
 
   /// Get low-stock products
   static Future<List<Map<String, dynamic>>> getLowStock() async {
-    return DatabaseService.rawQuery(
-      'SELECT * FROM $_table WHERE stock <= low_stock ORDER BY stock ASC',
-    );
+    return DatabaseService.rawQuery('''
+      SELECT *
+      FROM $_table
+      WHERE stock <= low_stock
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY stock ASC
+      ''', _currentBranchArgs);
   }
 
   static Future<List<Map<String, dynamic>>> getExpiryAlerts({
@@ -345,12 +377,76 @@ class ProductRepository {
       JOIN products p ON p.id = sb.product_id
       WHERE sb.quantity_remaining > 0
         AND sb.deleted_at IS NULL
+        AND COALESCE(sb.branch_id, ?) = ?
         AND sb.expiry_date IS NOT NULL
         AND TRIM(sb.expiry_date) <> ''
         AND date(sb.expiry_date) <= date('now', '+$alertBeforeDays days')
       ORDER BY date(sb.expiry_date) ASC, sb.received_at ASC
       $limitClause
-    ''');
+    ''', _currentBranchArgs);
+  }
+
+  static Future<List<Map<String, dynamic>>> getStockList({
+    String? search,
+    String? categoryId,
+  }) async {
+    final args = <dynamic>[..._currentBranchArgs];
+    final clauses = <String>[
+      'p.deleted_at IS NULL',
+      'p.track_stock = 1',
+      'COALESCE(p.branch_id, ?) = ?',
+    ];
+
+    if (categoryId != null) {
+      clauses.add('p.category_id = ?');
+      args.add(categoryId);
+    }
+
+    final trimmedSearch = search?.trim() ?? '';
+    if (trimmedSearch.isNotEmpty) {
+      final like = '%$trimmedSearch%';
+      clauses.add(
+        '(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR sb.batch_number LIKE ?)',
+      );
+      args.addAll([like, like, like, like]);
+    }
+
+    return DatabaseService.rawQuery('''
+      SELECT
+        p.id AS product_id,
+        p.name AS product_name,
+        p.sku,
+        p.barcode,
+        p.category_id,
+        p.stock AS product_stock,
+        p.low_stock,
+        p.stock_unit,
+        p.sale_unit,
+        p.cost AS product_cost,
+        sb.id AS batch_id,
+        sb.batch_number,
+        sb.quantity_received,
+        sb.quantity_remaining,
+        sb.unit_cost,
+        sb.expiry_date,
+        sb.received_at,
+        pi.supplier_name,
+        pi.invoice_number,
+        CAST(julianday(date(sb.expiry_date)) - julianday(date('now')) AS INTEGER) AS days_to_expiry
+      FROM $_table p
+      LEFT JOIN stock_batches sb
+        ON sb.product_id = p.id
+       AND sb.deleted_at IS NULL
+       AND sb.quantity_remaining > 0
+      LEFT JOIN purchase_invoices pi ON pi.id = sb.purchase_id
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY
+        CASE WHEN sb.id IS NULL THEN 1 ELSE 0 END,
+        CASE WHEN sb.expiry_date IS NULL OR TRIM(sb.expiry_date) = '' THEN 1 ELSE 0 END,
+        date(sb.expiry_date) ASC,
+        p.name ASC,
+        sb.received_at DESC
+      ''', args);
   }
 
   /// Update stock after a sale (Legacy - will be replaced)
@@ -369,6 +465,7 @@ class ProductRepository {
     Map<String, dynamic>? product,
     String? sourceUnit,
     String? expiryDate,
+    String? batchNumber,
   }) async {
     await LicenseService.ensureWriteAccess(action: 'receive stock');
     final batch = DatabaseService.db.batch();
@@ -394,6 +491,8 @@ class ProductRepository {
     batch.insert('stock_batches', {
       'id': _uuid.v4(),
       'product_id': productId,
+      'branch_id': DatabaseService.currentBranchId,
+      'batch_number': batchNumber?.trim(),
       'quantity_received': convertedQuantity,
       'quantity_remaining': convertedQuantity,
       'unit_cost': convertedUnitCost,

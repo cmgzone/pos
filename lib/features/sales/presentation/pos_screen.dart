@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/cash_drawer_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_controller.dart';
@@ -23,7 +24,6 @@ import '../data/held_sale_provider.dart';
 import '../data/held_sale_repository.dart';
 import '../data/sale_repository.dart';
 import '../../app/app_shell.dart';
-import '../../services/presentation/service_management_screen.dart';
 import '../../services/data/service_repository.dart';
 import '../../services/data/service_provider.dart';
 
@@ -418,10 +418,41 @@ class _ProductSide extends ConsumerStatefulWidget {
 }
 
 class _ProductSideState extends ConsumerState<_ProductSide> {
-  String _browseMode = 'products';
+  final FocusNode _searchFocusNode = FocusNode();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _isVariantProduct(Map<String, dynamic> product) =>
       ((product['has_variants'] as num?) ?? 0) == 1;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearchField());
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _focusSearchField() {
+    if (!mounted || !Platform.isWindows) {
+      return;
+    }
+    _searchFocusNode.requestFocus();
+  }
+
+  void _clearSearch({bool refocus = true}) {
+    _searchController.clear();
+    ref.read(productSearchProvider.notifier).state = '';
+    if (refocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearchField());
+    }
+  }
 
   String _cartLabel(
     Map<String, dynamic> product, {
@@ -480,6 +511,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
         .read(cartProvider.notifier)
         .addProduct(product, variant: variant);
     _showAddToCartSnackBar(success, product, variant: variant);
+    _clearSearch();
   }
 
   Future<Map<String, dynamic>?> _pickVariantForProduct(
@@ -625,18 +657,15 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     }
   }
 
+  void _openServicesPage() {
+    AppShell.selectIndex(11);
+    AppShell.scaffoldKey.currentState?.closeDrawer();
+  }
+
   @override
   Widget build(BuildContext context) {
     final canUseProducts = SessionService.canUseProductPos;
     final canUseServices = SessionService.canUseServicePos;
-    final showModeToggle = canUseProducts && canUseServices;
-    final effectiveBrowseMode = canUseServices && !canUseProducts
-        ? 'services'
-        : canUseProducts && !canUseServices
-        ? 'products'
-        : canUseProducts
-        ? _browseMode
-        : '';
 
     if (!canUseProducts && !canUseServices) {
       return const Center(
@@ -651,38 +680,8 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       );
     }
 
-    if (effectiveBrowseMode == 'services') {
-      return Column(
-        children: [
-          if (showModeToggle)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                      value: 'products',
-                      icon: Icon(Icons.inventory_2_outlined),
-                      label: Text('Products'),
-                    ),
-                    ButtonSegment(
-                      value: 'services',
-                      icon: Icon(Icons.design_services_outlined),
-                      label: Text('Services'),
-                    ),
-                  ],
-                  selected: {_browseMode},
-                  onSelectionChanged: (selection) {
-                    setState(() => _browseMode = selection.first);
-                  },
-                  showSelectedIcon: false,
-                ),
-              ),
-            ),
-          const Expanded(child: ServicePosPanel()),
-        ],
-      );
+    if (!canUseProducts && canUseServices) {
+      return _ServiceOnlyPosShortcut(onTap: _openServicesPage);
     }
 
     final categoriesAsync = ref.watch(categoriesProvider);
@@ -694,93 +693,131 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     final compact = MediaQuery.sizeOf(context).width <= 520;
     final productPadding = compact ? 14.0 : 24.0;
 
+    Widget serviceShortcut({required bool iconOnly}) {
+      if (!canUseServices) {
+        return const SizedBox.shrink();
+      }
+      if (iconOnly) {
+        return Tooltip(
+          message: 'Open services',
+          child: Material(
+            color: AppColors.secondary,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: _openServicesPage,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: EdgeInsets.all(compact ? 12 : 14),
+                child: const Icon(
+                  Icons.design_services_outlined,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      return OutlinedButton.icon(
+        onPressed: _openServicesPage,
+        icon: const Icon(Icons.design_services_outlined, size: 18),
+        label: const Text('Services'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+          visualDensity: VisualDensity.compact,
+        ),
+      );
+    }
+
     return Container(
       color: AppColors.background,
       padding: EdgeInsets.all(productPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (showModeToggle)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'products',
-                    icon: Icon(Icons.inventory_2_outlined),
-                    label: Text('Products'),
-                  ),
-                  ButtonSegment(
-                    value: 'services',
-                    icon: Icon(Icons.design_services_outlined),
-                    label: Text('Services'),
-                  ),
-                ],
-                selected: {_browseMode},
-                onSelectionChanged: (selection) {
-                  setState(() => _browseMode = selection.first);
-                },
-                showSelectedIcon: false,
-              ),
-            ),
-          SizedBox(height: showModeToggle ? (compact ? 12 : 16) : 0),
           // Search bar with scan button
           TrainingAnchor(
             id: 'pos.search',
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: (v) =>
-                        ref.read(productSearchProvider.notifier).state = v,
-                    onSubmitted: (v) {
-                      final code = v.trim();
-                      final lower = code.toLowerCase();
-                      // Only attempt barcode lookup if it looks like a barcode
-                      // (not a URL or plain text search entry)
-                      if (code.length >= 4 &&
-                          !lower.startsWith('http') &&
-                          !lower.startsWith('www.') &&
-                          !lower.contains('://') &&
-                          RegExp(r'^[A-Za-z0-9\\-\\.]+$').hasMatch(code)) {
-                        _handleBarcodeScan(code);
-                      }
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Search products or scan barcode...',
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: AppColors.textSecondary,
-                      ),
-                      suffixIcon: searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () =>
-                                  ref
-                                          .read(productSearchProvider.notifier)
-                                          .state =
-                                      '',
-                            )
-                          : null,
-                    ),
-                  ),
-                ),
-                if (isMobileDevice) ...[
-                  SizedBox(width: compact ? 8 : 12),
-                  Material(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      onTap: _openCameraScanner,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: EdgeInsets.all(compact ? 12 : 14),
-                        child: const Icon(
-                          Icons.qr_code_scanner,
-                          color: Colors.white,
-                          size: 24,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        autofocus: Platform.isWindows,
+                        onTap: _focusSearchField,
+                        onChanged: (v) =>
+                            ref.read(productSearchProvider.notifier).state = v,
+                        onSubmitted: (v) {
+                          final code = v.trim();
+                          final lower = code.toLowerCase();
+                          // Only attempt barcode lookup if it looks like a barcode
+                          // (not a URL or plain text search entry)
+                          if (code.length >= 4 &&
+                              !lower.startsWith('http') &&
+                              !lower.startsWith('www.') &&
+                              !lower.contains('://') &&
+                              RegExp(r'^[A-Za-z0-9\\-\\.]+$').hasMatch(code)) {
+                            _handleBarcodeScan(code);
+                          } else {
+                            WidgetsBinding.instance.addPostFrameCallback(
+                              (_) => _focusSearchField(),
+                            );
+                          }
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search products or scan barcode...',
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: AppColors.textSecondary,
+                          ),
+                          suffixIcon: searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: _clearSearch,
+                                )
+                              : null,
                         ),
                       ),
+                    ),
+                    if (canUseServices) ...[
+                      SizedBox(width: compact ? 8 : 12),
+                      serviceShortcut(iconOnly: compact),
+                    ],
+                    if (isMobileDevice) ...[
+                      SizedBox(width: compact ? 8 : 12),
+                      Material(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          onTap: _openCameraScanner,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: EdgeInsets.all(compact ? 12 : 14),
+                            child: const Icon(
+                              Icons.qr_code_scanner,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (Platform.isWindows) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _searchFocusNode.hasFocus
+                        ? 'Scanner ready. Scan items without clicking again.'
+                        : 'Click here once, then scan barcode.',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
                     ),
                   ),
                 ],
@@ -897,6 +934,62 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   }
 }
 
+class _ServiceOnlyPosShortcut extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ServiceOnlyPosShortcut({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.design_services_outlined,
+                  color: AppColors.secondary,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Services are managed on the Services page',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Open Services to create orders, quick-sell jobs, and send service charges to the cart.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onTap,
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text('Open Services'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ──────────────── RIGHT SIDE: Cart ────────────────
 
 class _CartSide extends ConsumerWidget {
@@ -915,7 +1008,6 @@ class _CartSide extends ConsumerWidget {
     final currentSummaryAsync = ref.watch(currentShiftSummaryProvider);
     final currentSummary = currentSummaryAsync.valueOrNull;
     final hasOpenShift = currentShift != null;
-    final isMobileCart = MediaQuery.sizeOf(context).width <= 430;
     final requiresManagedShift = ShiftRepository.roleRequiresManagedShift(
       SessionService.currentUserRole,
     );
@@ -923,301 +1015,489 @@ class _CartSide extends ConsumerWidget {
         currentShiftAsync.isLoading ||
         (hasOpenShift && currentSummaryAsync.isLoading);
 
-    return Container(
-      color: AppColors.surface,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobileCart =
+            MediaQuery.sizeOf(context).width <= 430 ||
+            constraints.maxWidth <= 430;
+
+        return Container(
+          color: AppColors.surface,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Current Sale',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Current Sale',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        if (heldSalesAsync.isLoading)
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          TextButton.icon(
+                            onPressed: () => _showHeldSalesDialog(context, ref),
+                            icon: Icon(
+                              heldSaleCount > 0
+                                  ? Icons.pause_circle_filled_outlined
+                                  : Icons.pause_circle_outline,
+                              size: 18,
+                              color: heldSaleCount > 0
+                                  ? AppColors.primaryLight
+                                  : AppColors.textSecondary,
+                            ),
+                            label: Text(
+                              heldSaleCount > 0
+                                  ? 'Held ($heldSaleCount)'
+                                  : 'Held',
+                            ),
+                          ),
+                        if (cart.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            onPressed: () => _clearCurrentSale(ref),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: AppColors.error,
+                            ),
+                            label: const Text(
+                              'Clear',
+                              style: TextStyle(color: AppColors.error),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    if (heldSalesAsync.isLoading)
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else
-                      TextButton.icon(
-                        onPressed: () => _showHeldSalesDialog(context, ref),
-                        icon: Icon(
-                          heldSaleCount > 0
-                              ? Icons.pause_circle_filled_outlined
-                              : Icons.pause_circle_outline,
-                          size: 18,
-                          color: heldSaleCount > 0
-                              ? AppColors.primaryLight
-                              : AppColors.textSecondary,
-                        ),
-                        label: Text(
-                          heldSaleCount > 0 ? 'Held ($heldSaleCount)' : 'Held',
-                        ),
-                      ),
-                    if (cart.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: () => _clearCurrentSale(ref),
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          size: 18,
-                          color: AppColors.error,
-                        ),
-                        label: const Text(
-                          'Clear',
-                          style: TextStyle(color: AppColors.error),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: hasOpenShift
-                        ? AppColors.success.withValues(alpha: 0.10)
-                        : AppColors.warning.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: hasOpenShift
-                          ? AppColors.success.withValues(alpha: 0.25)
-                          : AppColors.warning.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        hasOpenShift
-                            ? Icons.timer_rounded
-                            : Icons.lock_clock_outlined,
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(isMobileCart ? 9 : 14),
+                      decoration: BoxDecoration(
                         color: hasOpenShift
-                            ? AppColors.success
-                            : AppColors.warning,
+                            ? AppColors.success.withValues(alpha: 0.10)
+                            : AppColors.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(
+                          isMobileCart ? 10 : 14,
+                        ),
+                        border: Border.all(
+                          color: hasOpenShift
+                              ? AppColors.success.withValues(alpha: 0.25)
+                              : AppColors.warning.withValues(alpha: 0.3),
+                        ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              hasOpenShift
-                                  ? 'Shift is open'
-                                  : currentShiftAsync.isLoading
-                                  ? 'Checking shift status...'
-                                  : requiresManagedShift
-                                  ? 'No shift open yet'
-                                  : 'Shift is optional',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                      child: Row(
+                        children: [
+                          Icon(
+                            hasOpenShift
+                                ? Icons.timer_rounded
+                                : Icons.lock_clock_outlined,
+                            color: hasOpenShift
+                                ? AppColors.success
+                                : AppColors.warning,
+                            size: isMobileCart ? 17 : 24,
+                          ),
+                          SizedBox(width: isMobileCart ? 8 : 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  hasOpenShift
+                                      ? 'Shift is open'
+                                      : currentShiftAsync.isLoading
+                                      ? 'Checking shift status...'
+                                      : requiresManagedShift
+                                      ? 'No shift open yet'
+                                      : 'Shift is optional',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: isMobileCart ? 12 : null,
+                                  ),
+                                ),
+                                if (!isMobileCart) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    hasOpenShift
+                                        ? 'Expected cash: ${ShopSettings.currency}${((currentSummary?['expected_cash'] as num?) ?? 0).toStringAsFixed(2)}'
+                                        : requiresManagedShift
+                                        ? 'The first cash transaction will auto-open a shift. Kopesha credit sales can continue now.'
+                                        : 'Open a shift only when you want drawer tracking for this session.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          (hasOpenShift
+                                                  ? AppColors.success
+                                                  : AppColors.warning)
+                                              .withValues(alpha: 0.95),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (!hasOpenShift && !currentShiftAsync.isLoading)
+                            TextButton(
+                              onPressed: () => AppShell.selectIndex(10),
+                              style: TextButton.styleFrom(
+                                visualDensity: isMobileCart
+                                    ? VisualDensity.compact
+                                    : VisualDensity.standard,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isMobileCart ? 6 : 8,
+                                  vertical: isMobileCart ? 4 : 8,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                requiresManagedShift
+                                    ? isMobileCart
+                                          ? 'Open'
+                                          : 'Open Manually'
+                                    : 'Go to Shifts',
+                                style: TextStyle(
+                                  fontSize: isMobileCart ? 12 : 14,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              hasOpenShift
-                                  ? 'Expected cash: ${ShopSettings.currency}${((currentSummary?['expected_cash'] as num?) ?? 0).toStringAsFixed(2)}'
-                                  : requiresManagedShift
-                                  ? 'The first cash transaction will auto-open a shift. Kopesha credit sales can continue now.'
-                                  : 'Open a shift only when you want drawer tracking for this session.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color:
-                                    (hasOpenShift
-                                            ? AppColors.success
-                                            : AppColors.warning)
-                                        .withValues(alpha: 0.95),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: cart.isEmpty
+                    ? _buildEmptyCartState(
+                        context,
+                        ref,
+                        heldSaleCount: heldSaleCount,
+                        holdsLoading: heldSalesAsync.isLoading,
+                      )
+                    : ListView.separated(
+                        padding: EdgeInsets.all(isMobileCart ? 12 : 16),
+                        itemCount: cart.length,
+                        separatorBuilder: (_, _) => isMobileCart
+                            ? const SizedBox(height: 10)
+                            : const Divider(height: 24),
+                        itemBuilder: (context, index) {
+                          final item = cart[index];
+                          return _CartItemRow(item: item);
+                        },
+                      ),
+              ),
+              if (cart.isNotEmpty)
+                Container(
+                  padding: EdgeInsets.all(isMobileCart ? 10 : 24),
+                  decoration: const BoxDecoration(
+                    color: AppColors.surfaceHighlight,
+                    border: Border(top: BorderSide(color: AppColors.border)),
+                  ),
+                  child: isMobileCart
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _CompactCartAmount(
+                                    label: 'Total',
+                                    value:
+                                        '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                                    valueColor: AppColors.success,
+                                    isPrimary: true,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _CompactCartAmount(
+                                    label: 'Profit',
+                                    value:
+                                        '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                                    valueColor: AppColors.success,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  height: 40,
+                                  child: ElevatedButton.icon(
+                                    onPressed: cashCheckoutBlocked
+                                        ? () => _handleBlockedCheckout(context)
+                                        : () => _processCheckout(context, ref),
+                                    icon: const Icon(Icons.payment, size: 16),
+                                    label: const Text('Pay'),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      backgroundColor: AppColors.success,
+                                      textStyle: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (discount > 0 || tax > 0) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Subtotal ${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (tax > 0)
+                                    Text(
+                                      'Tax ${ShopSettings.currency}${tax.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  if (discount > 0) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: AppColors.error,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
+                            ],
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _holdCurrentSale(context, ref),
+                                    icon: const Icon(
+                                      Icons.pause_circle_outline,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Hold'),
+                                    style: OutlinedButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      textStyle: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextButton.icon(
+                                    onPressed: heldSalesAsync.isLoading
+                                        ? null
+                                        : () => _showHeldSalesDialog(
+                                            context,
+                                            ref,
+                                          ),
+                                    icon: const Icon(
+                                      Icons.layers_outlined,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      heldSaleCount > 0
+                                          ? 'Held ($heldSaleCount)'
+                                          : 'Held',
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      textStyle: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            _SummaryRow(
+                              title: 'Subtotal',
+                              value:
+                                  '${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
+                            ),
+                            const SizedBox(height: 8),
+                            _SummaryRow(
+                              title: 'Tax (${ShopSettings.taxRate}%)',
+                              value:
+                                  '${ShopSettings.currency}${tax.toStringAsFixed(2)}',
+                            ),
+                            if (discount > 0) ...[
+                              const SizedBox(height: 8),
+                              _SummaryRow(
+                                title: 'Discount',
+                                value:
+                                    '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
+                                isDiscount: true,
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            const Divider(),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Total',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                Text(
+                                  '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        color: AppColors.success,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Total Profit',
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                Text(
+                                  '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    color: AppColors.success,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _holdCurrentSale(context, ref),
+                                    icon: const Icon(
+                                      Icons.pause_circle_outline,
+                                    ),
+                                    label: const Text('Hold Sale'),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextButton.icon(
+                                    onPressed: heldSalesAsync.isLoading
+                                        ? null
+                                        : () => _showHeldSalesDialog(
+                                            context,
+                                            ref,
+                                          ),
+                                    icon: const Icon(Icons.layers_outlined),
+                                    label: Text(
+                                      heldSaleCount > 0
+                                          ? 'Held Orders ($heldSaleCount)'
+                                          : 'Held Orders',
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (heldSaleCount > 0) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                'You have $heldSaleCount held sale${heldSaleCount == 1 ? '' : 's'} ready to resume.',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary.withValues(
+                                    alpha: 0.85,
+                                  ),
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: cashCheckoutBlocked
+                                        ? () => _handleBlockedCheckout(context)
+                                        : () => _processCheckout(context, ref),
+                                    icon: const Icon(Icons.payment),
+                                    label: const Text(
+                                      'Checkout',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 20,
+                                      ),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Select a payment method such as Cash, Kopesha, or Mobile Money during checkout.',
+                              style: TextStyle(
+                                color: AppColors.textSecondary.withValues(
+                                  alpha: 0.8,
+                                ),
+                                fontSize: 12,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
-                      ),
-                      if (!hasOpenShift && !currentShiftAsync.isLoading)
-                        TextButton(
-                          onPressed: () => AppShell.selectIndex(10),
-                          child: Text(
-                            requiresManagedShift
-                                ? 'Open Manually'
-                                : 'Go to Shifts',
-                          ),
-                        ),
-                    ],
-                  ),
                 ),
-              ],
-            ),
+            ],
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: cart.isEmpty
-                ? _buildEmptyCartState(
-                    context,
-                    ref,
-                    heldSaleCount: heldSaleCount,
-                    holdsLoading: heldSalesAsync.isLoading,
-                  )
-                : ListView.separated(
-                    padding: EdgeInsets.all(isMobileCart ? 12 : 16),
-                    itemCount: cart.length,
-                    separatorBuilder: (_, _) => isMobileCart
-                        ? const SizedBox(height: 10)
-                        : const Divider(height: 24),
-                    itemBuilder: (context, index) {
-                      final item = cart[index];
-                      return _CartItemRow(item: item);
-                    },
-                  ),
-          ),
-          if (cart.isNotEmpty)
-            Container(
-              padding: EdgeInsets.all(isMobileCart ? 16 : 24),
-              decoration: const BoxDecoration(
-                color: AppColors.surfaceHighlight,
-                border: Border(top: BorderSide(color: AppColors.border)),
-              ),
-              child: Column(
-                children: [
-                  _SummaryRow(
-                    title: 'Subtotal',
-                    value:
-                        '${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
-                  ),
-                  const SizedBox(height: 8),
-                  _SummaryRow(
-                    title: 'Tax (${ShopSettings.taxRate}%)',
-                    value: '${ShopSettings.currency}${tax.toStringAsFixed(2)}',
-                  ),
-                  if (discount > 0) ...[
-                    const SizedBox(height: 8),
-                    _SummaryRow(
-                      title: 'Discount',
-                      value:
-                          '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
-                      isDiscount: true,
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      Text(
-                        '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(
-                              color: AppColors.success,
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Total Profit',
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                      Text(
-                        '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: AppColors.success,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _holdCurrentSale(context, ref),
-                          icon: const Icon(Icons.pause_circle_outline),
-                          label: const Text('Hold Sale'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: heldSalesAsync.isLoading
-                              ? null
-                              : () => _showHeldSalesDialog(context, ref),
-                          icon: const Icon(Icons.layers_outlined),
-                          label: Text(
-                            heldSaleCount > 0
-                                ? 'Held Orders ($heldSaleCount)'
-                                : 'Held Orders',
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (heldSaleCount > 0) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'You have $heldSaleCount held sale${heldSaleCount == 1 ? '' : 's'} ready to resume.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary.withValues(alpha: 0.85),
-                        fontSize: 12,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: cashCheckoutBlocked
-                              ? () => _handleBlockedCheckout(context)
-                              : () => _processCheckout(context, ref),
-                          icon: const Icon(Icons.payment),
-                          label: const Text(
-                            'Checkout',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            backgroundColor: AppColors.success,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Select a payment method such as Cash, Kopesha, or Mobile Money during checkout.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.8),
-                      fontSize: 12,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1893,6 +2173,10 @@ class _CartSide extends ConsumerWidget {
       // ──────────────────────────────────────────────────────────────────
 
       if (context.mounted) {
+        await _openCashDrawerAfterSale(context, isCashDrawer);
+      }
+
+      if (context.mounted) {
         _showSaleSuccessDialog(
           context,
           saleId: saleId,
@@ -1915,6 +2199,22 @@ class _CartSide extends ConsumerWidget {
         _showSnackBar(context, 'Error: $e', backgroundColor: AppColors.error);
       }
     }
+  }
+
+  Future<void> _openCashDrawerAfterSale(
+    BuildContext context,
+    bool isCashDrawer,
+  ) async {
+    if (!isCashDrawer || !CashDrawerService.isReady) {
+      return;
+    }
+
+    final result = await CashDrawerService.openAfterCashSale();
+    if (!context.mounted || result.success) {
+      return;
+    }
+
+    _showSnackBar(context, result.message, backgroundColor: AppColors.warning);
   }
 
   void _showSaleSuccessDialog(
@@ -2705,41 +3005,49 @@ class _CartItemRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final compact = MediaQuery.sizeOf(context).width <= 430;
-    if (compact) {
-      return _MobileCartItemCard(
-        item: item,
-        onEditQuantity: () => _editQuantity(context, ref),
-        quantityControls: _buildQuantityControls(context, ref),
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            MediaQuery.sizeOf(context).width <= 430 ||
+            constraints.maxWidth <= 430;
+        if (compact) {
+          return _MobileCartItemCard(
+            item: item,
+            onEditQuantity: () => _editQuantity(context, ref),
+            quantityControls: _buildQuantityControls(context, ref),
+          );
+        }
 
-    final icon = Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: (item.isService ? AppColors.secondary : AppColors.primary)
-            .withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(
-        item.isService
-            ? Icons.design_services_rounded
-            : Icons.inventory_2_outlined,
-        color: item.isService ? AppColors.secondary : AppColors.primaryLight,
-        size: 20,
-      ),
-    );
+        final icon = Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: (item.isService ? AppColors.secondary : AppColors.primary)
+                .withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            item.isService
+                ? Icons.design_services_rounded
+                : Icons.inventory_2_outlined,
+            color: item.isService
+                ? AppColors.secondary
+                : AppColors.primaryLight,
+            size: 20,
+          ),
+        );
 
-    return Row(
-      children: [
-        icon,
-        const SizedBox(width: 12),
-        Expanded(child: _buildDetails()),
-        _buildQuantityControls(context, ref),
-        const SizedBox(width: 12),
-        SizedBox(width: 68, child: _buildTotalText()),
-      ],
+        return Row(
+          children: [
+            icon,
+            const SizedBox(width: 12),
+            Expanded(child: _buildDetails()),
+            _buildQuantityControls(context, ref),
+            const SizedBox(width: 12),
+            SizedBox(width: 68, child: _buildTotalText()),
+          ],
+        );
+      },
     );
   }
 }
@@ -2766,7 +3074,7 @@ class _MobileCartItemCard extends StatelessWidget {
         : AppColors.primaryLight;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
@@ -2779,21 +3087,21 @@ class _MobileCartItemCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   item.isService
                       ? Icons.design_services_rounded
                       : Icons.inventory_2_outlined,
                   color: accent,
-                  size: 21,
+                  size: 19,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2816,43 +3124,32 @@ class _MobileCartItemCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${ShopSettings.currency}${item.total.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: AppColors.primaryLight,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Profit ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: AppColors.success,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
+              _CartMetaChip(
+                icon: Icons.sell_outlined,
+                label:
+                    '${ShopSettings.currency}${item.total.toStringAsFixed(2)}',
+                color: AppColors.primaryLight,
+              ),
+              _CartMetaChip(
+                icon: Icons.trending_up,
+                label:
+                    'Profit ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
+                color: AppColors.success,
+              ),
               if (!item.isService && item.tracksStock)
                 _CartMetaChip(
                   icon: Icons.inventory_outlined,
@@ -2878,7 +3175,7 @@ class _MobileCartItemCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -2927,11 +3224,14 @@ class _MobileCartItemCard extends StatelessWidget {
 class _CartMetaChip extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color? color;
 
-  const _CartMetaChip({required this.icon, required this.label});
+  const _CartMetaChip({required this.icon, required this.label, this.color});
 
   @override
   Widget build(BuildContext context) {
+    final chipColor = color ?? AppColors.textSecondary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -2942,7 +3242,7 @@ class _CartMetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: AppColors.textSecondary),
+          Icon(icon, size: 13, color: chipColor),
           const SizedBox(width: 5),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 220),
@@ -2950,8 +3250,8 @@ class _CartMetaChip extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: chipColor,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -3285,6 +3585,57 @@ class _SummaryRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CompactCartAmount extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color valueColor;
+  final bool isPrimary;
+
+  const _CompactCartAmount({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: isPrimary ? 15 : 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

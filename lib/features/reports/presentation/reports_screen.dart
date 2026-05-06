@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/data/user_repository.dart';
@@ -16,13 +17,21 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+  late TabController _tabs;
   int _productDays = 30;
+  ReportBranchScope _branchScope = ReportBranchScope.current;
+
+  bool get _isManagerOrAdmin {
+    final role = RolePermissions.normalizeRole(SessionService.currentUserRole);
+    return role == RolePermissions.admin || role == RolePermissions.manager;
+  }
+
+  int get _tabCount => _isManagerOrAdmin ? 6 : 5;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 5, vsync: this);
+    _tabs = TabController(length: _tabCount, vsync: this);
   }
 
   @override
@@ -47,25 +56,59 @@ class _ReportsScreenState extends State<ReportsScreen>
             : null,
         automaticallyImplyLeading: false,
         title: const Text('Reports'),
+        actions: [
+          if (_isManagerOrAdmin)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SegmentedButton<ReportBranchScope>(
+                segments: const [
+                  ButtonSegment(
+                    value: ReportBranchScope.current,
+                    icon: Icon(Icons.store_outlined, size: 16),
+                    label: Text('Current', style: TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ReportBranchScope.all,
+                    icon: Icon(Icons.business_outlined, size: 16),
+                    label: Text('All', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+                selected: {_branchScope},
+                onSelectionChanged: (selection) {
+                  setState(() => _branchScope = selection.first);
+                },
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(isMobile ? 72 : 48),
           child: TrainingAnchor(
             id: 'reports.tabs',
             child: TabBar(
               controller: _tabs,
-              isScrollable: isMobile,
+              isScrollable: isMobile || _isManagerOrAdmin,
               indicatorColor: AppColors.primary,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
-              tabs: const [
-                Tab(icon: Icon(Icons.badge_outlined), text: 'Cashier Summary'),
-                Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Top Products'),
-                Tab(icon: Icon(Icons.people_outline), text: 'Top Debtors'),
-                Tab(icon: Icon(Icons.schedule_outlined), text: 'Overdue Aging'),
-                Tab(
+              tabs: [
+                const Tab(icon: Icon(Icons.badge_outlined), text: 'Cashier Summary'),
+                const Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Top Products'),
+                const Tab(icon: Icon(Icons.people_outline), text: 'Top Debtors'),
+                const Tab(icon: Icon(Icons.schedule_outlined), text: 'Overdue Aging'),
+                const Tab(
                   icon: Icon(Icons.swap_vert_rounded),
                   text: 'Stock Movement',
                 ),
+                if (_isManagerOrAdmin)
+                  const Tab(
+                    icon: Icon(Icons.compare_arrows_rounded),
+                    text: 'Compare Branches',
+                  ),
               ],
             ),
           ),
@@ -76,14 +119,16 @@ class _ReportsScreenState extends State<ReportsScreen>
         child: TabBarView(
           controller: _tabs,
           children: [
-            const _DailyCashierSummaryTab(),
+            _DailyCashierSummaryTab(branchScope: _branchScope),
             _TopProductsTab(
               daysRange: _productDays,
               onDaysChanged: (d) => setState(() => _productDays = d),
+              branchScope: _branchScope,
             ),
             const _TopDebtorsTab(),
             const _OverdueAgingTab(),
-            const _StockMovementTab(),
+            _StockMovementTab(branchScope: _branchScope),
+            if (_isManagerOrAdmin) const _BranchComparisonTab(),
           ],
         ),
       ),
@@ -96,7 +141,8 @@ class _ReportsScreenState extends State<ReportsScreen>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DailyCashierSummaryTab extends StatefulWidget {
-  const _DailyCashierSummaryTab();
+  final ReportBranchScope branchScope;
+  const _DailyCashierSummaryTab({this.branchScope = ReportBranchScope.current});
 
   @override
   State<_DailyCashierSummaryTab> createState() =>
@@ -119,6 +165,12 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(_DailyCashierSummaryTab old) {
+    super.didUpdateWidget(old);
+    if (old.branchScope != widget.branchScope) _load();
   }
 
   String get _dateKey =>
@@ -223,6 +275,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
       cashierId: nextSelectedCashierId == _allEmployeesId
           ? null
           : nextSelectedCashierId,
+      branchScope: widget.branchScope,
     );
     final closedShiftSummary = await ShiftRepository.getClosedShiftSummary(
       date: _dateKey,
@@ -1001,8 +1054,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
 class _TopProductsTab extends StatefulWidget {
   final int daysRange;
   final ValueChanged<int> onDaysChanged;
+  final ReportBranchScope branchScope;
 
-  const _TopProductsTab({required this.daysRange, required this.onDaysChanged});
+  const _TopProductsTab({required this.daysRange, required this.onDaysChanged, this.branchScope = ReportBranchScope.current});
 
   @override
   State<_TopProductsTab> createState() => _TopProductsTabState();
@@ -1023,7 +1077,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
   void didUpdateWidget(_TopProductsTab old) {
     super.didUpdateWidget(old);
     if (old.daysRange != widget.daysRange ||
-        old.daysRange != widget.daysRange) {
+        old.branchScope != widget.branchScope) {
       _load();
     }
   }
@@ -1033,6 +1087,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
     _products = await ReportRepository.getTopProducts(
       daysRange: widget.daysRange,
       ascending: _showWorst,
+      branchScope: widget.branchScope,
     );
     if (mounted) setState(() => _loading = false);
   }
@@ -1736,7 +1791,8 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StockMovementTab extends StatefulWidget {
-  const _StockMovementTab();
+  final ReportBranchScope branchScope;
+  const _StockMovementTab({this.branchScope = ReportBranchScope.current});
 
   @override
   State<_StockMovementTab> createState() => _StockMovementTabState();
@@ -1753,9 +1809,15 @@ class _StockMovementTabState extends State<_StockMovementTab> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(_StockMovementTab old) {
+    super.didUpdateWidget(old);
+    if (old.branchScope != widget.branchScope) _load();
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
-    _data = await ReportRepository.getStockMovement(daysRange: _days);
+    _data = await ReportRepository.getStockMovement(daysRange: _days, branchScope: widget.branchScope);
     if (mounted) setState(() => _loading = false);
   }
 
@@ -2217,6 +2279,304 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 6 — Compare Branches (Manager / Admin only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BranchComparisonTab extends StatefulWidget {
+  const _BranchComparisonTab();
+
+  @override
+  State<_BranchComparisonTab> createState() => _BranchComparisonTabState();
+}
+
+class _BranchComparisonTabState extends State<_BranchComparisonTab> {
+  int _days = 30;
+  List<Map<String, dynamic>> _branches = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    _branches = await ReportRepository.getBranchComparison(daysRange: _days);
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _money(dynamic v) {
+    final val = (v as num? ?? 0).toDouble();
+    return '${ShopSettings.currency}${val.toStringAsFixed(2)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Period selector
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Row(
+            children: [
+              ...[7, 14, 30, 90].map(
+                (d) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _Chip(
+                    label: '${d}d',
+                    selected: _days == d,
+                    onTap: () {
+                      setState(() => _days = d);
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Content
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _branches.isEmpty
+                  ? const _EmptyState(
+                      icon: Icons.compare_arrows_rounded,
+                      message: 'No branches found',
+                      subtitle:
+                          'Create branches in Settings to compare performance.',
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(20),
+                      itemCount: _branches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final b = _branches[index];
+                        final name = b['branch_name'] as String? ?? 'Branch';
+                        final revenue =
+                            (b['revenue'] as num? ?? 0).toDouble();
+                        final grossProfit =
+                            (b['gross_profit'] as num? ?? 0).toDouble();
+                        final netProfit =
+                            (b['net_profit'] as num? ?? 0).toDouble();
+                        final expenses =
+                            (b['total_expenses'] as num? ?? 0).toDouble();
+                        final productRev =
+                            (b['product_revenue'] as num? ?? 0).toDouble();
+                        final serviceRev =
+                            (b['service_revenue'] as num? ?? 0).toDouble();
+                        final saleCount =
+                            (b['sale_count'] as num? ?? 0).toInt();
+                        final refundTotal =
+                            (b['refund_total'] as num? ?? 0).toDouble();
+                        final refundCount =
+                            (b['refund_count'] as num? ?? 0).toInt();
+
+                        // Rank badge colors
+                        final rankColor = index == 0
+                            ? AppColors.primary
+                            : index == 1
+                                ? AppColors.primaryLight
+                                : AppColors.textSecondary;
+
+                        return Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: index == 0
+                                  ? AppColors.primary.withValues(alpha: 0.3)
+                                  : AppColors.border,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          rankColor.withValues(alpha: 0.15),
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '#${index + 1}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: rankColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$saleCount sales · $_days day period',
+                                          style: const TextStyle(
+                                            color: AppColors.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        _money(revenue),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryLight,
+                                          fontSize: 18,
+                                        ),
+                                      ),
+                                      const Text(
+                                        'Revenue',
+                                        style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              // Metrics grid
+                              Row(
+                                children: [
+                                  _BranchMetric(
+                                    label: 'Gross Profit',
+                                    value: _money(grossProfit),
+                                    color: grossProfit >= 0
+                                        ? AppColors.success
+                                        : AppColors.error,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _BranchMetric(
+                                    label: 'Expenses',
+                                    value: _money(expenses),
+                                    color: AppColors.warning,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _BranchMetric(
+                                    label: 'Net Profit',
+                                    value: _money(netProfit),
+                                    color: netProfit >= 0
+                                        ? AppColors.success
+                                        : AppColors.error,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  _BranchMetric(
+                                    label: 'Products',
+                                    value: _money(productRev),
+                                    color: AppColors.primary,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _BranchMetric(
+                                    label: 'Services',
+                                    value: _money(serviceRev),
+                                    color: AppColors.secondary,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _BranchMetric(
+                                    label: 'Refunds',
+                                    value: refundCount > 0
+                                        ? '$refundCount (${_money(refundTotal)})'
+                                        : '0',
+                                    color: AppColors.error,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BranchMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _BranchMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 10,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }

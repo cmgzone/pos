@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/session_service.dart';
@@ -14,12 +15,20 @@ class ServiceRepository {
   static const _ordersTable = 'service_orders';
   static const _valuesTable = 'service_field_values';
 
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
   static Future<List<Map<String, dynamic>>> getServices({
     bool activeOnly = false,
     String query = '',
   }) async {
-    final clauses = <String>["deleted_at IS NULL"];
-    final args = <dynamic>[];
+    final clauses = <String>[
+      "deleted_at IS NULL",
+      'COALESCE(branch_id, ?) = ?',
+    ];
+    final args = <dynamic>[..._currentBranchArgs];
     if (activeOnly) {
       clauses.add('is_active = 1');
     }
@@ -50,10 +59,12 @@ class ServiceRepository {
       '''
       SELECT *
       FROM $_servicesTable
-      WHERE id = ? AND deleted_at IS NULL
+      WHERE id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
       LIMIT 1
       ''',
-      [id],
+      [id, ..._currentBranchArgs],
     );
     return rows.isEmpty ? null : rows.first;
   }
@@ -93,6 +104,7 @@ class ServiceRepository {
     await DatabaseService.db.transaction((txn) async {
       await txn.insert(_servicesTable, {
         'id': serviceId,
+        'branch_id': DatabaseService.currentBranchId,
         'name': name.trim(),
         'category': _clean(category),
         'description': _clean(description),
@@ -122,6 +134,11 @@ class ServiceRepository {
       }
     });
 
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: _servicesTable,
+      entityId: serviceId,
+    );
     return serviceId;
   }
 
@@ -179,6 +196,11 @@ class ServiceRepository {
         });
       }
     });
+    await AuditLogService.log(
+      action: 'update',
+      entityTable: _servicesTable,
+      entityId: id,
+    );
   }
 
   static Future<void> deleteService(String id) async {
@@ -198,13 +220,21 @@ class ServiceRepository {
         whereArgs: [id],
       );
     });
+    await AuditLogService.log(
+      action: 'delete',
+      entityTable: _servicesTable,
+      entityId: id,
+    );
   }
 
   static Future<List<Map<String, dynamic>>> getOrders({
     String filter = 'active',
   }) async {
-    final clauses = <String>['so.deleted_at IS NULL'];
-    final args = <dynamic>[];
+    final clauses = <String>[
+      'so.deleted_at IS NULL',
+      'COALESCE(so.branch_id, ?) = ?',
+    ];
+    final args = <dynamic>[..._currentBranchArgs];
     switch (filter) {
       case 'today':
         clauses.add("so.status NOT IN ('paid', 'cancelled')");
@@ -231,6 +261,10 @@ class ServiceRepository {
     final accessClause = _serviceAccessClause('so.service_id', args);
     if (accessClause != null) {
       clauses.add(accessClause);
+    }
+    final assignmentClause = _serviceOrderAssignmentClause('so', args);
+    if (assignmentClause != null) {
+      clauses.add(assignmentClause);
     }
 
     return DatabaseService.rawQuery('''
@@ -265,17 +299,19 @@ class ServiceRepository {
       '''
       SELECT *
       FROM $_ordersTable
-      WHERE id = ? AND deleted_at IS NULL
+      WHERE id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
       LIMIT 1
       ''',
-      [orderId],
+      [orderId, ..._currentBranchArgs],
     );
     if (rows.isEmpty) {
       return null;
     }
 
     final order = rows.first;
-    if (!SessionService.canAccessServiceId(order['service_id'] as String?)) {
+    if (!_canAccessServiceOrder(order)) {
       return null;
     }
     final values = await DatabaseService.rawQuery(
@@ -300,6 +336,7 @@ class ServiceRepository {
     String? checkedInAt,
     String status = 'booked',
     String? assignedStaff,
+    String? assignedStaffUserId,
     String? bayNumber,
     double? price,
     String? note,
@@ -321,6 +358,7 @@ class ServiceRepository {
     await DatabaseService.db.transaction((txn) async {
       await txn.insert(_ordersTable, {
         'id': orderId,
+        'branch_id': DatabaseService.currentBranchId,
         'service_id': serviceId,
         'service_name': serviceName.trim(),
         'customer_id': _clean(customerId),
@@ -330,6 +368,7 @@ class ServiceRepository {
         'checked_in_at': _clean(checkedInAt),
         'status': status,
         'assigned_staff': _clean(assignedStaff),
+        'assigned_staff_user_id': _clean(assignedStaffUserId),
         'bay_number': _clean(bayNumber),
         'price': effectivePrice,
         'note': _clean(note),
@@ -353,6 +392,11 @@ class ServiceRepository {
       }
     });
 
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: _ordersTable,
+      entityId: orderId,
+    );
     return orderId;
   }
 
@@ -413,6 +457,12 @@ class ServiceRepository {
         whereArgs: [orderId],
       );
     });
+    await AuditLogService.log(
+      action: 'delete',
+      entityTable: _ordersTable,
+      entityId: orderId,
+      branchId: order['branch_id'] as String?,
+    );
   }
 
   static Future<void> attachSaleToOrder(String orderId, String saleId) async {
@@ -508,6 +558,21 @@ class ServiceRepository {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  static String defaultAssignedStaffName() {
+    return _clean(SessionService.currentUserName) ?? 'Cashier';
+  }
+
+  static String? currentAssignedStaffUserIdFor(String? assignedStaff) {
+    final currentName = _clean(SessionService.currentUserName);
+    final enteredStaff = _clean(assignedStaff);
+    if (currentName == null ||
+        enteredStaff == null ||
+        currentName.toLowerCase() != enteredStaff.toLowerCase()) {
+      return null;
+    }
+    return _clean(SessionService.currentUserId);
+  }
+
   static bool _asBool(Object? value) {
     if (value is bool) {
       return value;
@@ -519,8 +584,11 @@ class ServiceRepository {
   }
 
   static Future<Map<String, dynamic>> getServiceStats() async {
-    final summaryArgs = <dynamic>[];
-    final summaryClauses = <String>['deleted_at IS NULL'];
+    final summaryArgs = <dynamic>[..._currentBranchArgs];
+    final summaryClauses = <String>[
+      'deleted_at IS NULL',
+      'COALESCE(branch_id, ?) = ?',
+    ];
     final summaryAccessClause = _serviceAccessClause('service_id', summaryArgs);
     if (summaryAccessClause != null) {
       summaryClauses.add(summaryAccessClause);
@@ -542,8 +610,11 @@ class ServiceRepository {
       WHERE ${summaryClauses.join(' AND ')}
     ''', summaryArgs);
 
-    final topServiceArgs = <dynamic>[];
-    final topServiceClauses = <String>['deleted_at IS NULL'];
+    final topServiceArgs = <dynamic>[..._currentBranchArgs];
+    final topServiceClauses = <String>[
+      'deleted_at IS NULL',
+      'COALESCE(branch_id, ?) = ?',
+    ];
     final topServiceAccessClause = _serviceAccessClause(
       'service_id',
       topServiceArgs,
@@ -561,8 +632,11 @@ class ServiceRepository {
       LIMIT 6
     ''', topServiceArgs);
 
-    final recentOrderArgs = <dynamic>[];
-    final recentOrderClauses = <String>['so.deleted_at IS NULL'];
+    final recentOrderArgs = <dynamic>[..._currentBranchArgs];
+    final recentOrderClauses = <String>[
+      'so.deleted_at IS NULL',
+      'COALESCE(so.branch_id, ?) = ?',
+    ];
     final recentOrderAccessClause = _serviceAccessClause(
       'so.service_id',
       recentOrderArgs,
@@ -593,9 +667,10 @@ class ServiceRepository {
     final accessClause = _serviceAccessClause('ssi.service_id', accessArgs);
     final where = [
       'date(s.created_at) = date(?)',
+      'COALESCE(s.branch_id, ?) = ?',
       ?accessClause,
     ].join(' AND ');
-    final args = <dynamic>[date, ...accessArgs];
+    final args = <dynamic>[date, ..._currentBranchArgs, ...accessArgs];
 
     final summaryRows = await DatabaseService.rawQuery('''
       SELECT
@@ -669,5 +744,55 @@ class ServiceRepository {
     final placeholders = List.filled(allowedServiceIds.length, '?').join(',');
     args.addAll(allowedServiceIds);
     return '$columnName IN ($placeholders)';
+  }
+
+  static String? _serviceOrderAssignmentClause(
+    String tableAlias,
+    List<dynamic> args,
+  ) {
+    if (!SessionService.limitsServiceOrdersToAssigned) {
+      return null;
+    }
+
+    final clauses = <String>[];
+    final currentUserId = _clean(SessionService.currentUserId);
+    if (currentUserId != null) {
+      clauses.add('$tableAlias.assigned_staff_user_id = ?');
+      args.add(currentUserId);
+    }
+
+    final currentUserName = _clean(SessionService.currentUserName);
+    if (currentUserName != null) {
+      clauses.add('LOWER(TRIM($tableAlias.assigned_staff)) = LOWER(?)');
+      args.add(currentUserName);
+    }
+
+    if (clauses.isEmpty) {
+      return '1 = 0';
+    }
+    return '(${clauses.join(' OR ')})';
+  }
+
+  static bool _canAccessServiceOrder(Map<String, dynamic> order) {
+    if (!SessionService.canAccessServiceId(order['service_id'] as String?)) {
+      return false;
+    }
+    if (!SessionService.limitsServiceOrdersToAssigned) {
+      return true;
+    }
+
+    final currentUserId = _clean(SessionService.currentUserId);
+    final assignedStaffUserId = _clean(
+      order['assigned_staff_user_id'] as String?,
+    );
+    if (currentUserId != null && assignedStaffUserId == currentUserId) {
+      return true;
+    }
+
+    final currentUserName = _clean(SessionService.currentUserName);
+    final assignedStaff = _clean(order['assigned_staff'] as String?);
+    return currentUserName != null &&
+        assignedStaff != null &&
+        currentUserName.toLowerCase() == assignedStaff.toLowerCase();
   }
 }

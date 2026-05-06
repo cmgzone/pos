@@ -9,6 +9,8 @@ class ShopSettings {
   static const _keyCurrency = 'currency';
   static const _keyReceiptFooter = 'receipt_footer';
   static const _keyCarwashBays = 'carwash_bays_count';
+  static const _keyCashDrawerEnabled = 'cash_drawer_enabled';
+  static const _keyCashDrawerPrinterPath = 'cash_drawer_printer_path';
 
   static SharedPreferences? _prefs;
 
@@ -25,8 +27,11 @@ class ShopSettings {
   static String get currency => _prefs?.getString(_keyCurrency) ?? '\$';
   static String get receiptFooter =>
       _prefs?.getString(_keyReceiptFooter) ?? 'Thank you for your purchase!';
-  static int get carwashBaysCount =>
-      _prefs?.getInt(_keyCarwashBays) ?? 4;
+  static int get carwashBaysCount => _prefs?.getInt(_keyCarwashBays) ?? 4;
+  static bool get cashDrawerEnabled =>
+      _prefs?.getBool(_keyCashDrawerEnabled) ?? false;
+  static String get cashDrawerPrinterPath =>
+      _prefs?.getString(_keyCashDrawerPrinterPath) ?? '';
 
   // Setters
   static Future<void> setShopName(String value) =>
@@ -45,6 +50,16 @@ class ShopSettings {
       _prefs!.setString(_keyReceiptFooter, value);
   static Future<void> setCarwashBaysCount(int value) =>
       _prefs!.setInt(_keyCarwashBays, value);
+  static Future<void> setCashDrawerEnabled(bool value) =>
+      _prefs!.setBool(_keyCashDrawerEnabled, value);
+  static Future<void> setCashDrawerPrinterPath(String value) async {
+    final cleanValue = value.trim();
+    if (cleanValue.isEmpty) {
+      await _prefs!.remove(_keyCashDrawerPrinterPath);
+      return;
+    }
+    await _prefs!.setString(_keyCashDrawerPrinterPath, cleanValue);
+  }
 
   static Future<void> resetForBusinessSwitch() async {
     await init();
@@ -55,6 +70,8 @@ class ShopSettings {
     await _prefs!.remove(_keyTaxRate);
     await _prefs!.remove(_keyCurrency);
     await _prefs!.remove(_keyReceiptFooter);
+    await _prefs!.remove(_keyCashDrawerEnabled);
+    await _prefs!.remove(_keyCashDrawerPrinterPath);
   }
 
   /// Check if shop has been set up

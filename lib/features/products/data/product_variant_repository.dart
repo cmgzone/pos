@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 
@@ -8,20 +9,32 @@ const _uuid = Uuid();
 class ProductVariantRepository {
   static const _table = 'product_variants';
 
+  static List<dynamic> get _currentBranchArgs => [
+    DatabaseService.defaultBranchId,
+    DatabaseService.currentBranchId,
+  ];
+
   /// All variants for a product (non-deleted, sorted)
   static Future<List<Map<String, dynamic>>> getForProduct(
     String productId,
   ) async {
     return DatabaseService.queryAll(
       _table,
-      where: 'product_id = ? AND deleted_at IS NULL',
-      whereArgs: [productId],
+      where:
+          'product_id = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [productId, ..._currentBranchArgs],
       orderBy: 'sort_order ASC, name ASC',
     );
   }
 
   static Future<Map<String, dynamic>?> getById(String id) async {
-    return DatabaseService.queryById(_table, id);
+    final rows = await DatabaseService.queryAll(
+      _table,
+      where: 'id = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+      whereArgs: [id, ..._currentBranchArgs],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
   }
 
   /// Look up a variant by barcode; also joins parent product fields needed by
@@ -37,10 +50,12 @@ class ProductVariantRepository {
         p.image_url, p.category_id, p.track_stock, p.has_variants
       FROM $_table pv
       JOIN products p ON p.id = pv.product_id
-      WHERE pv.barcode = ? AND pv.deleted_at IS NULL
+      WHERE pv.barcode = ?
+        AND pv.deleted_at IS NULL
+        AND COALESCE(pv.branch_id, ?) = ?
       LIMIT 1
       ''',
-      [barcode],
+      [barcode, ..._currentBranchArgs],
     );
     return results.isNotEmpty ? results.first : null;
   }
@@ -61,6 +76,7 @@ class ProductVariantRepository {
     final now = DateTime.now().toIso8601String();
     await DatabaseService.db.insert(_table, {
       'id': id,
+      'branch_id': DatabaseService.currentBranchId,
       'product_id': productId,
       'name': name,
       'price': price,
@@ -74,6 +90,11 @@ class ProductVariantRepository {
       'updated_at': now,
       'sync_status': 'pending',
     });
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: _table,
+      entityId: id,
+    );
     return id;
   }
 
@@ -85,6 +106,11 @@ class ProductVariantRepository {
   static Future<void> delete(String id) async {
     await LicenseService.ensureWriteAccess(action: 'delete product variants');
     await DatabaseService.delete(_table, id);
+    await AuditLogService.log(
+      action: 'delete',
+      entityTable: _table,
+      entityId: id,
+    );
   }
 
   /// Toggle has_variants on the parent product. When disabling, does NOT
@@ -108,12 +134,20 @@ class ProductVariantRepository {
         SELECT COALESCE(SUM(stock), 0)
         FROM product_variants
         WHERE product_id = ? AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
       ),
       updated_at = ?,
       sync_status = 'pending'
       WHERE id = ?
+        AND COALESCE(branch_id, ?) = ?
       ''',
-      [productId, DateTime.now().toIso8601String(), productId],
+      [
+        productId,
+        ..._currentBranchArgs,
+        DateTime.now().toIso8601String(),
+        productId,
+        ..._currentBranchArgs,
+      ],
     );
   }
 }

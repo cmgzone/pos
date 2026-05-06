@@ -626,3 +626,103 @@ CREATE INDEX IF NOT EXISTS idx_payment_methods_sort_order
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_cash_drawer integer NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_sales_is_cash_drawer 
   ON sales(business_id, is_cash_drawer) WHERE deleted_at IS NULL;
+
+-- Enterprise branch/audit schema
+CREATE TABLE IF NOT EXISTS branches (
+  id text PRIMARY KEY,
+  business_id text,
+  name text NOT NULL,
+  code text,
+  phone text,
+  address text,
+  is_active integer NOT NULL DEFAULT 1,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  user_id text,
+  user_name text,
+  user_role text,
+  action text NOT NULL,
+  entity_table text NOT NULL,
+  entity_id text,
+  before_json text,
+  after_json text,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS stock_transfers (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  from_branch_id text NOT NULL,
+  to_branch_id text NOT NULL,
+  product_id text NOT NULL,
+  product_name text NOT NULL,
+  quantity double precision NOT NULL DEFAULT 0,
+  unit text,
+  status text NOT NULL DEFAULT 'requested',
+  requested_by text,
+  approved_by text,
+  received_by text,
+  note text,
+  requested_at timestamptz NOT NULL,
+  approved_at timestamptz,
+  received_at timestamptz,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_branch_ids_json text;
+
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE shifts ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS batch_number text;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE cash_movements ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE credit_payments ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE services ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE service_orders ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+
+CREATE INDEX IF NOT EXISTS idx_branches_business_revision ON branches(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_business_revision ON audit_logs(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_business_revision ON stock_transfers(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_branch_status ON stock_transfers(business_id, from_branch_id, to_branch_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_categories_branch_id ON categories(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_expense_categories_branch_id ON expense_categories(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_customers_branch_id ON customers(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_shifts_branch_id ON shifts(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_suppliers_branch_id ON suppliers(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_products_branch_id ON products(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_product_variants_branch_id ON product_variants(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_invoices_branch_id ON purchase_invoices(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_stock_batches_branch_id ON stock_batches(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_sales_branch_id ON sales(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_cash_movements_branch_id ON cash_movements(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_credit_payments_branch_id ON credit_payments(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_branch_id ON expenses(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_services_branch_id ON services(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_service_orders_branch_id ON service_orders(business_id, branch_id);

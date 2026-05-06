@@ -16,6 +16,7 @@ import 'product_form_screen.dart';
 import 'product_batches_screen.dart';
 import 'category_management_screen.dart';
 import 'product_variants_screen.dart';
+import 'stock_list_screen.dart';
 import '../../app/app_shell.dart';
 
 class ProductListScreen extends ConsumerStatefulWidget {
@@ -47,6 +48,19 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         automaticallyImplyLeading: false,
         title: const Text('Product Management'),
         actions: [
+          if (!isMobile)
+            OutlinedButton.icon(
+              onPressed: _openStockList,
+              icon: const Icon(Icons.fact_check_outlined, size: 18),
+              label: const Text('Stock List'),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.fact_check_outlined),
+              tooltip: 'Stock List',
+              onPressed: _openStockList,
+            ),
+          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.local_shipping_outlined),
             tooltip: 'Purchases & Suppliers',
@@ -295,6 +309,21 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                           label: '$lowStock Low Stock',
                           color: AppColors.warning,
                         ),
+                      FutureBuilder<List<Map<String, dynamic>>>(
+                        future: ProductRepository.getExpiryAlerts(),
+                        builder: (context, expirySnapshot) {
+                          final alertCount = expirySnapshot.data?.length ?? 0;
+                          if (alertCount == 0) {
+                            return const SizedBox.shrink();
+                          }
+                          return _StatChip(
+                            icon: Icons.event_busy_outlined,
+                            label:
+                                '$alertCount Expiry Alert${alertCount == 1 ? '' : 's'}',
+                            color: AppColors.error,
+                          );
+                        },
+                      ),
                     ],
                   );
                 },
@@ -316,6 +345,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   void _refreshProducts() {
     ref.invalidate(filteredProductsProvider);
     setState(() {});
+  }
+
+  Future<void> _openStockList() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StockListScreen()),
+    );
+    _refreshProducts();
   }
 
   void _showStockAdjustmentDialog(Map<String, dynamic> product) {
@@ -348,6 +385,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     final conversionFactor =
         UnitUtils.conversionFactor(purchaseUnit, stockUnit) ?? 1.0;
     final qtyController = TextEditingController();
+    final batchNumberController = TextEditingController();
     final costController = TextEditingController(
       text: (product['cost'] as num? ?? 0).toString(),
     );
@@ -419,6 +457,17 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                   ),
                 ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: batchNumberController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Batch Number',
+                  prefixIcon: Icon(Icons.numbers_outlined),
+                  helperText: 'Recommended for medicine stock tracking.',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
               const SizedBox(height: 16),
               RadioGroup<bool>(
                 groupValue: isTotalCostMode,
@@ -573,6 +622,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     product: product,
                     sourceUnit: purchaseUnit,
                     expiryDate: ExpiryUtils.toStorageString(expiryDate),
+                    batchNumber: batchNumberController.text,
                   );
                   if (ctx.mounted) Navigator.pop(ctx);
                   _refreshProducts();

@@ -1,16 +1,44 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:uuid/uuid.dart';
+
+import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
   static const int _databaseVersion = 15;
+  static const String defaultBranchId = 'main_branch';
+  static const _uuid = Uuid();
+
+  static const Set<String> _branchAwareTables = {
+    'categories',
+    'products',
+    'product_variants',
+    'customers',
+    'shifts',
+    'sales',
+    'cash_movements',
+    'held_sales',
+    'suppliers',
+    'purchase_invoices',
+    'stock_batches',
+    'stock_transfers',
+    'credit_payments',
+    'expense_categories',
+    'expenses',
+    'services',
+    'service_orders',
+    'audit_logs',
+  };
 
   static Database? _database;
   static String? _databasePath;
   static String? _databasePathOverride;
+  static String _currentBranchId = defaultBranchId;
 
   static Database get db {
     final database = _database;
@@ -27,6 +55,8 @@ class DatabaseService {
     }
     return path;
   }
+
+  static String get currentBranchId => _currentBranchId;
 
   static Future<void> initialize() async {
     if (_database != null) {
@@ -135,8 +165,18 @@ class DatabaseService {
     payload.putIfAbsent('created_at', () => now);
     payload.putIfAbsent('updated_at', () => now);
     payload.putIfAbsent('sync_status', () => 'pending');
+    await _applyDefaultBranch(database, table, payload);
 
-    return database.insert(table, payload);
+    final result = await database.insert(table, payload);
+    await _writeAuditLog(
+      database,
+      action: 'create',
+      tableName: table,
+      entityId: payload['id']?.toString(),
+      after: payload,
+      branchId: payload['branch_id']?.toString(),
+    );
+    return result;
   }
 
   static Future<int> update(
@@ -148,28 +188,151 @@ class DatabaseService {
     final payload = Map<String, dynamic>.from(data);
     payload.putIfAbsent('updated_at', () => DateTime.now().toIso8601String());
     payload.putIfAbsent('sync_status', () => 'pending');
+    await _applyDefaultBranch(database, table, payload);
 
-    return database.update(table, payload, where: 'id = ?', whereArgs: [id]);
+    final before = await _queryById(database, table, id);
+    final result = await database.update(
+      table,
+      payload,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await _writeAuditLog(
+      database,
+      action: 'update',
+      tableName: table,
+      entityId: id,
+      before: before,
+      after: payload,
+      branchId:
+          payload['branch_id']?.toString() ?? before?['branch_id']?.toString(),
+    );
+    return result;
   }
 
   static Future<int> delete(String table, String id) async {
     final database = await _ensureDatabase();
     final columns = await _getColumnNames(database, table);
+    final before = await _queryById(database, table, id);
     if (columns.contains('deleted_at')) {
       final now = DateTime.now().toIso8601String();
-      return database.update(
+      final result = await database.update(
         table,
         {'deleted_at': now, 'updated_at': now, 'sync_status': 'pending'},
         where: 'id = ?',
         whereArgs: [id],
       );
+      await _writeAuditLog(
+        database,
+        action: 'delete',
+        tableName: table,
+        entityId: id,
+        before: before,
+        after: {'deleted_at': now},
+        branchId: before?['branch_id']?.toString(),
+      );
+      return result;
     }
-    return database.delete(table, where: 'id = ?', whereArgs: [id]);
+    final result = await database.delete(
+      table,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await _writeAuditLog(
+      database,
+      action: 'delete',
+      tableName: table,
+      entityId: id,
+      before: before,
+      branchId: before?['branch_id']?.toString(),
+    );
+    return result;
+  }
+
+  static void setCurrentBranchId(String? branchId) {
+    final cleanBranchId = branchId?.trim() ?? '';
+    _currentBranchId = cleanBranchId.isEmpty ? defaultBranchId : cleanBranchId;
   }
 
   static Future<Database> _ensureDatabase() async {
     await initialize();
     return db;
+  }
+
+  static Future<void> _applyDefaultBranch(
+    DatabaseExecutor database,
+    String table,
+    Map<String, dynamic> payload,
+  ) async {
+    if (!_branchAwareTables.contains(table) || table == 'branches') {
+      return;
+    }
+    if (payload.containsKey('branch_id')) {
+      return;
+    }
+    final columns = await _getColumnNames(database, table);
+    if (columns.contains('branch_id')) {
+      payload['branch_id'] = _currentBranchId;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _queryById(
+    DatabaseExecutor database,
+    String table,
+    String id,
+  ) async {
+    try {
+      final rows = await database.query(
+        table,
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        return null;
+      }
+      return Map<String, dynamic>.from(rows.first);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _writeAuditLog(
+    DatabaseExecutor database, {
+    required String action,
+    required String tableName,
+    String? entityId,
+    Map<String, dynamic>? before,
+    Map<String, dynamic>? after,
+    String? branchId,
+  }) async {
+    if (tableName == 'audit_logs') {
+      return;
+    }
+    try {
+      final now = DateTime.now().toIso8601String();
+      await database.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'branch_id': branchId?.trim().isNotEmpty == true
+            ? branchId!.trim()
+            : _currentBranchId,
+        'user_id': SessionService.currentUserId.trim().isEmpty
+            ? null
+            : SessionService.currentUserId,
+        'user_name': SessionService.currentUserName,
+        'user_role': SessionService.currentUserRole,
+        'action': action,
+        'entity_table': tableName,
+        'entity_id': entityId,
+        'before_json': before == null ? null : jsonEncode(before),
+        'after_json': after == null ? null : jsonEncode(after),
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+    } catch (_) {
+      // Audit logging should never block the sale or stock operation itself.
+    }
   }
 
   static void _configureDatabaseFactory() {
@@ -207,8 +370,24 @@ class DatabaseService {
 
   static Future<void> _createTables(DatabaseExecutor database) async {
     await database.execute('''
+      CREATE TABLE IF NOT EXISTS branches (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        phone TEXT,
+        address TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         color TEXT,
         created_at TEXT NOT NULL,
@@ -221,6 +400,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS products (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         price REAL NOT NULL DEFAULT 0,
         cost REAL,
@@ -257,6 +437,7 @@ class DatabaseService {
         role TEXT NOT NULL DEFAULT 'CASHIER',
         feature_access_json TEXT,
         allowed_service_ids_json TEXT,
+        allowed_branch_ids_json TEXT,
         pos_mode TEXT NOT NULL DEFAULT 'both',
         service_order_scope TEXT NOT NULL DEFAULT 'all_visible_services',
         last_seen_at TEXT,
@@ -270,6 +451,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS customers (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         phone TEXT,
         email TEXT,
@@ -284,6 +466,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS shifts (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         user_id TEXT,
         cashier_name TEXT,
         status TEXT NOT NULL DEFAULT 'open',
@@ -309,6 +492,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS sales (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         total_amount REAL NOT NULL DEFAULT 0,
         tax REAL NOT NULL DEFAULT 0,
         discount REAL NOT NULL DEFAULT 0,
@@ -362,6 +546,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS cash_movements (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         shift_id TEXT NOT NULL,
         user_id TEXT,
         type TEXT NOT NULL,
@@ -379,6 +564,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS held_sales (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         subtotal REAL NOT NULL DEFAULT 0,
         tax REAL NOT NULL DEFAULT 0,
@@ -420,6 +606,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS suppliers (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         phone TEXT,
         email TEXT,
@@ -435,6 +622,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS purchase_invoices (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         supplier_id TEXT,
         supplier_name TEXT,
         invoice_number TEXT,
@@ -451,7 +639,9 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS stock_batches (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         product_id TEXT NOT NULL,
+        batch_number TEXT,
         quantity_received REAL NOT NULL DEFAULT 0,
         quantity_remaining REAL NOT NULL DEFAULT 0,
         unit_cost REAL NOT NULL DEFAULT 0,
@@ -471,8 +661,34 @@ class DatabaseService {
     ''');
 
     await database.execute('''
+      CREATE TABLE IF NOT EXISTS stock_transfers (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        from_branch_id TEXT NOT NULL,
+        to_branch_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        status TEXT NOT NULL DEFAULT 'requested',
+        requested_by TEXT,
+        approved_by TEXT,
+        received_by TEXT,
+        note TEXT,
+        requested_at TEXT NOT NULL,
+        approved_at TEXT,
+        received_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
       CREATE TABLE IF NOT EXISTS credit_payments (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         payment_group_id TEXT NOT NULL,
         customer_id TEXT NOT NULL,
         sale_id TEXT,
@@ -493,6 +709,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS expense_categories (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         color TEXT,
         created_at TEXT NOT NULL,
@@ -505,6 +722,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS expenses (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         category_id TEXT,
         category_name TEXT,
         title TEXT NOT NULL,
@@ -522,6 +740,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS services (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         name TEXT NOT NULL,
         category TEXT,
         description TEXT,
@@ -556,6 +775,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS service_orders (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         service_id TEXT NOT NULL,
         service_name TEXT NOT NULL,
         customer_id TEXT,
@@ -619,6 +839,7 @@ class DatabaseService {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS product_variants (
         id TEXT PRIMARY KEY,
+        branch_id TEXT,
         product_id TEXT NOT NULL,
         name TEXT NOT NULL,
         price REAL NOT NULL DEFAULT 0,
@@ -644,6 +865,25 @@ class DatabaseService {
         is_credit INTEGER NOT NULL DEFAULT 0,
         is_active INTEGER NOT NULL DEFAULT 1,
         sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        user_id TEXT,
+        user_name TEXT,
+        user_role TEXT,
+        action TEXT NOT NULL,
+        entity_table TEXT NOT NULL,
+        entity_id TEXT,
+        before_json TEXT,
+        after_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -876,6 +1116,20 @@ class DatabaseService {
       indexName: 'idx_sale_items_variant_id',
       columns: ['variant_id'],
     );
+    for (final table in _branchAwareTables) {
+      await _createIndexIfColumnsExist(
+        database,
+        table: table,
+        indexName: 'idx_${table}_branch_id',
+        columns: ['branch_id'],
+      );
+    }
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stock_transfers',
+      indexName: 'idx_stock_transfers_from_to_status',
+      columns: ['from_branch_id', 'to_branch_id', 'status'],
+    );
   }
 
   static Future<void> _createIndexIfColumnsExist(
@@ -919,9 +1173,89 @@ class DatabaseService {
     await _ensureProductVariantsSchema(database);
     await _ensureBrandColumn(database);
     await _ensurePaymentMethodsSchema(database);
+    await _ensureEnterpriseSchema(database);
     // Indexes must be created last because some of them target columns that
     // are added by the schema repair helpers above on older local databases.
     await _createIndexes(database);
+  }
+
+  static Future<void> _ensureEnterpriseSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS branches (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        phone TEXT,
+        address TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        user_id TEXT,
+        user_name TEXT,
+        user_role TEXT,
+        action TEXT NOT NULL,
+        entity_table TEXT NOT NULL,
+        entity_id TEXT,
+        before_json TEXT,
+        after_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS stock_transfers (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        from_branch_id TEXT NOT NULL,
+        to_branch_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        status TEXT NOT NULL DEFAULT 'requested',
+        requested_by TEXT,
+        approved_by TEXT,
+        received_by TEXT,
+        note TEXT,
+        requested_at TEXT NOT NULL,
+        approved_at TEXT,
+        received_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    for (final table in _branchAwareTables) {
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'branch_id',
+        definition: "TEXT DEFAULT '$defaultBranchId'",
+      );
+    }
+
+    final now = DateTime.now().toIso8601String();
+    await database.insert('branches', {
+      'id': defaultBranchId,
+      'name': 'Main Branch',
+      'code': 'MAIN',
+      'is_active': 1,
+      'created_at': now,
+      'updated_at': now,
+      'sync_status': 'pending',
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   /// Ensures variant tables and columns exist on databases created before
@@ -935,6 +1269,7 @@ class DatabaseService {
       CREATE TABLE IF NOT EXISTS product_variants (
         id TEXT PRIMARY KEY,
         product_id TEXT NOT NULL,
+        branch_id TEXT,
         name TEXT NOT NULL,
         price REAL NOT NULL DEFAULT 0,
         cost REAL,
@@ -1198,6 +1533,12 @@ class DatabaseService {
   }
 
   static Future<void> _ensurePurchaseSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'stock_batches',
+      column: 'batch_number',
+      definition: 'TEXT',
+    );
     await _ensureColumn(
       database,
       table: 'stock_batches',
@@ -1637,6 +1978,12 @@ class DatabaseService {
       database,
       table: 'users',
       column: 'allowed_service_ids_json',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'users',
+      column: 'allowed_branch_ids_json',
       definition: 'TEXT',
     );
     await _ensureColumn(
