@@ -264,6 +264,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: AppColors.warning,
         onTap: () => AppShell.selectIndex(8),
       ),
+      _DashboardAction(
+        icon: Icons.auto_awesome_outlined,
+        label: 'Ask Piki AI',
+        color: const Color(0xFF9B5CFF),
+        onTap: () => AppShell.selectIndex(16),
+      ),
     ];
 
     if (isMobile) {
@@ -284,6 +290,112 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: actions
           .map((action) => SizedBox(width: 180, child: action))
           .toList(),
+    );
+  }
+
+  Widget _buildPikiBanner() {
+    return GestureDetector(
+      onTap: () => AppShell.selectIndex(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A0A2E), Color(0xFF2D1060)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFF9B5CFF).withValues(alpha: 0.35),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF9B5CFF).withValues(alpha: 0.15),
+              blurRadius: 24,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // AI Icon glow
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF9B5CFF), Color(0xFFFF2A5F)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF9B5CFF).withValues(alpha: 0.4),
+                    blurRadius: 18,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text(
+                  'P',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 26,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Piki AI Agent',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ask about stock, profits, sales or restock needs — Piki plans and acts for you.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFF9B5CFF).withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF9B5CFF).withValues(alpha: 0.5),
+                ),
+              ),
+              child: const Text(
+                'Ask now →',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -812,6 +924,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: _buildQuickActions(isMobile),
                   ),
                 ),
+
+                const SizedBox(height: 24),
+                _buildPikiBanner(),
 
                 const SizedBox(height: 24),
                 _buildServiceSnapshot(isMobile),

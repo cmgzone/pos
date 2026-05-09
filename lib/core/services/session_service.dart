@@ -279,6 +279,7 @@ class UserAccessProfile {
   static const featureSettings = 'settings';
   static const featureShifts = 'shifts';
   static const featureServices = 'services';
+  static const featureAgent = 'agent';
 
   static const posModeBoth = 'both';
   static const posModeProducts = 'products';
@@ -299,6 +300,7 @@ class UserAccessProfile {
     featureSettings,
     featureShifts,
     featureServices,
+    featureAgent,
   ];
 
   static const configurableFeatures = [
@@ -328,6 +330,7 @@ class UserAccessProfile {
     featureSettings: 9,
     featureShifts: 10,
     featureServices: 11,
+    featureAgent: 16,
   };
 
   static List<String> defaultFeatureAccessForRole(String? role) {
@@ -343,6 +346,7 @@ class UserAccessProfile {
           featureKopesha,
           featureSettings,
           featureShifts,
+          featureAgent,
         ];
     }
   }

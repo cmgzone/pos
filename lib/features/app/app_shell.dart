@@ -7,6 +7,7 @@ import '../../core/services/branch_service.dart';
 import '../../core/services/sync_controller.dart';
 import '../../core/services/license_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../agent/presentation/piki_agent_screen.dart';
 import '../training/application/training_controller.dart';
 import '../training/presentation/training_hub_screen.dart';
 import '../training/widgets/training_anchor.dart';
@@ -91,6 +92,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.timer_outlined,
         selectedIcon: Icons.timer_rounded,
         label: 'Shifts',
+      ),
+    ),
+    _NavDestination(
+      index: 16,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.auto_awesome_outlined,
+        selectedIcon: Icons.auto_awesome_rounded,
+        label: 'Piki AI',
       ),
     ),
     _NavDestination(
@@ -203,10 +213,12 @@ class AppShellState extends ConsumerState<AppShell> {
     )) {
       indices.addAll([13, 14]);
     }
-    if (SessionService.canAccessFeature(UserAccessProfile.featurePurchases) ||
-        SessionService.canAccessFeature(UserAccessProfile.featureProducts)) {
+    if (SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
+        SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
       indices.add(15);
     }
+    // Piki AI is available to all authenticated users
+    if (!indices.contains(16)) indices.add(16);
     return indices;
   }
 
@@ -642,6 +654,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return const AuditLogScreen();
       case 15:
         return const StockTransferScreen();
+      case 16:
+        return const PikiAgentScreen();
       default:
         return const PosScreen();
     }

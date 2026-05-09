@@ -5,6 +5,7 @@ import 'core/navigation/app_navigator.dart';
 import 'core/services/branch_service.dart';
 import 'core/services/database_service.dart';
 import 'core/services/license_service.dart';
+import 'core/services/openrouter_service.dart';
 import 'core/services/preferences_recovery_service.dart';
 import 'core/services/session_service.dart';
 import 'core/services/shop_settings.dart';
@@ -120,6 +121,9 @@ class _SplashScreenState extends State<SplashScreen>
     await BranchService.init();
     await SyncSettingsService.init();
     await LicenseService.init();
+    await OpenRouterService.init();
+    // Refresh AI config from server in background (non-blocking)
+    OpenRouterService.refreshConfig().ignore();
   }
 
   String _formatStartupError(Object error) {

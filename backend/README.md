@@ -55,6 +55,14 @@ npm install
 npm run db:init
 ```
 
+This now creates the core sync tables and the platform AI tables used by:
+
+- `GET /api/platform/ai-config`
+- `PUT /api/platform/ai-config`
+- `POST /api/platform/ai-test`
+- `GET /api/ai/config`
+- `POST /api/ai/chat`
+
 5. Verify the connection
 
 ```bash
@@ -91,6 +99,15 @@ Use `SOCKET_URL` too if you later add real-time features on a separate origin.
 - `GET /api/sync/status?cursor=<server revision>`
 - `GET /api/sync/pull?cursor=<server revision>`
 - `POST /api/sync/push`
+- `POST /api/platform/login`
+- `GET /api/platform/dashboard`
+- `GET /api/platform/businesses`
+- `GET /api/platform/users`
+- `GET /api/platform/ai-config`
+- `PUT /api/platform/ai-config`
+- `POST /api/platform/ai-test`
+- `GET /api/ai/config`
+- `POST /api/ai/chat`
 
 Legacy timestamp sync is also still supported through `since=<ISO timestamp>`.
 

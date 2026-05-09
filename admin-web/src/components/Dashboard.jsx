@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import AiConfigPanel from './AiConfigPanel'
 
 export default function Dashboard({ token, onLogout }) {
   const [stats, setStats] = useState({ totalBusinesses: 0, activeSubscriptions: 0, totalUsers: 0 })
@@ -100,6 +101,13 @@ export default function Dashboard({ token, onLogout }) {
             >
               Users
             </button>
+            <button 
+              className={`btn ${activeTab === 'ai' ? '' : 'btn-secondary'}`}
+              style={{ borderRadius: 0, padding: '1rem 2rem', border: 'none', borderLeft: '1px solid var(--border-subtle)', background: activeTab === 'ai' ? 'var(--border-subtle)' : 'transparent', color: activeTab === 'ai' ? 'white' : 'var(--text-secondary)' }}
+              onClick={() => setActiveTab('ai')}
+            >
+              🤖 AI Config
+            </button>
           </div>
 
           <div style={{ padding: '1.5rem', minHeight: '400px' }}>
@@ -172,6 +180,10 @@ export default function Dashboard({ token, onLogout }) {
                       )}
                     </tbody>
                   </table>
+                )}
+
+                {activeTab === 'ai' && (
+                  <AiConfigPanel token={token} />
                 )}
               </div>
             )}

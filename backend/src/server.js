@@ -872,7 +872,258 @@ app.get('/api/platform/users', requirePlatformAdmin, async (req, res, next) => {
   }
 });
 
+// ── Platform Admin: AI Configuration ─────────────────────────────────────────
+
+app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const result = await query(
+      'SELECT api_key, model, enabled, updated_at FROM platform_ai_config WHERE id = 1'
+    );
+    const row = result.rows[0] || { api_key: '', model: 'openai/gpt-4o-mini', enabled: false };
+    const hasKey = Boolean(row.api_key && row.api_key.length > 0);
+    // Mask the API key for security — only show last 4 chars
+    const maskedKey = row.api_key
+      ? `${'•'.repeat(Math.max(0, row.api_key.length - 4))}${row.api_key.slice(-4)}`
+      : '';
+    res.json({
+      ok: true,
+      data: {
+        apiKey: maskedKey,
+        hasKey,
+        model: row.model,
+        enabled: Boolean(row.enabled && hasKey),
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const model = normalizeOptionalText(req.body?.model) || 'openai/gpt-4o-mini';
+    const enabled = Boolean(req.body?.enabled);
+    const rawApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+    const currentResult = await query(
+      'SELECT api_key FROM platform_ai_config WHERE id = 1'
+    );
+    const currentApiKey = currentResult.rows[0]?.api_key || '';
+
+    // Only update the API key if a new one was explicitly provided
+    // (not the masked version echoed back)
+    const hasNewKey = rawApiKey.length > 0 && !rawApiKey.startsWith('•');
+    const nextApiKey = hasNewKey ? rawApiKey : currentApiKey;
+
+    if (enabled && !nextApiKey) {
+      throw createHttpError(400, 'Add a valid OpenRouter API key before enabling AI');
+    }
+
+    if (hasNewKey) {
+      await query(
+        `INSERT INTO platform_ai_config (id, api_key, model, enabled, updated_at)
+         VALUES (1, $1, $2, $3, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET api_key = $1, model = $2, enabled = $3, updated_at = NOW()`,
+        [rawApiKey, model, enabled]
+      );
+    } else {
+      await query(
+        `INSERT INTO platform_ai_config (id, model, enabled, updated_at)
+         VALUES (1, $1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET model = $1, enabled = $2, updated_at = NOW()`,
+        [model, enabled]
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/platform/ai-test', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const result = await query(
+      'SELECT api_key, model FROM platform_ai_config WHERE id = 1'
+    );
+    const row = result.rows[0];
+    if (!row || !row.api_key) {
+      throw createHttpError(400, 'No API key configured');
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${row.api_key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://devispos.com',
+        'X-Title': 'Devis POS AI',
+      },
+      body: JSON.stringify({
+        model: row.model,
+        messages: [{ role: 'user', content: 'Say "AI is connected!" in exactly those words.' }],
+        max_tokens: 30,
+      }),
+    });
+
+    const orBody = await orResponse.json();
+    if (!orResponse.ok) {
+      throw createHttpError(
+        orResponse.status,
+        orBody?.error?.message || 'OpenRouter request failed'
+      );
+    }
+
+    const content = orBody?.choices?.[0]?.message?.content || '';
+    res.json({ ok: true, response: content, model: row.model });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+// ── Business-Auth'd AI Routes ────────────────────────────────────────────────
+
+const AI_RATE_LIMIT = 30; // requests per hour per business
+const AI_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+async function checkAiRateLimit(businessId) {
+  const now = new Date();
+  const result = await query(
+    'SELECT request_count, window_start FROM ai_rate_limits WHERE business_id = $1',
+    [businessId]
+  );
+
+  if (result.rows.length === 0) {
+    await query(
+      'INSERT INTO ai_rate_limits (business_id, request_count, window_start) VALUES ($1, 1, $2)',
+      [businessId, now.toISOString()]
+    );
+    return { allowed: true, remaining: AI_RATE_LIMIT - 1 };
+  }
+
+  const row = result.rows[0];
+  const windowStart = new Date(row.window_start);
+  const elapsed = now.getTime() - windowStart.getTime();
+
+  if (elapsed > AI_RATE_WINDOW_MS) {
+    // Reset window
+    await query(
+      'UPDATE ai_rate_limits SET request_count = 1, window_start = $2 WHERE business_id = $1',
+      [businessId, now.toISOString()]
+    );
+    return { allowed: true, remaining: AI_RATE_LIMIT - 1 };
+  }
+
+  if (row.request_count >= AI_RATE_LIMIT) {
+    const resetIn = Math.ceil((AI_RATE_WINDOW_MS - elapsed) / 60000);
+    return { allowed: false, remaining: 0, resetInMinutes: resetIn };
+  }
+
+  await query(
+    'UPDATE ai_rate_limits SET request_count = request_count + 1 WHERE business_id = $1',
+    [businessId]
+  );
+  return { allowed: true, remaining: AI_RATE_LIMIT - row.request_count - 1 };
+}
+
+app.get('/api/ai/config', async (req, res, next) => {
+  try {
+    await requireBusinessContext(req);
+    const result = await query(
+      'SELECT api_key, model, enabled FROM platform_ai_config WHERE id = 1'
+    );
+    const row = result.rows[0] || { api_key: '', model: 'openai/gpt-4o-mini', enabled: false };
+    res.json({
+      ok: true,
+      aiEnabled: Boolean(row.enabled && row.api_key),
+      aiModel: row.model,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/chat', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+
+    // Check if AI is enabled
+    const configResult = await query(
+      'SELECT api_key, model, enabled FROM platform_ai_config WHERE id = 1'
+    );
+    const aiConfig = configResult.rows[0];
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    // Rate limiting
+    const rateCheck = await checkAiRateLimit(businessContext.businessId);
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`
+      );
+    }
+
+    const messages = req.body?.messages;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw createHttpError(400, 'messages array is required');
+    }
+
+    // Build system prompt with business context
+    const systemPrompt = req.body?.systemPrompt || '';
+
+    const fullMessages = [
+      ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+      ...messages,
+    ];
+
+    const fetch = (await import('node-fetch')).default;
+    const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${aiConfig.api_key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://devispos.com',
+        'X-Title': 'Devis POS AI',
+      },
+      body: JSON.stringify({
+        model: aiConfig.model,
+        messages: fullMessages,
+        max_tokens: 1024,
+        temperature: 0.7,
+      }),
+    });
+
+    const orBody = await orResponse.json();
+    if (!orResponse.ok) {
+      const errorMsg = orBody?.error?.message || 'OpenRouter request failed';
+      throw createHttpError(orResponse.status === 401 ? 502 : orResponse.status, errorMsg);
+    }
+
+    const content = orBody?.choices?.[0]?.message?.content || '';
+    const usage = orBody?.usage || {};
+
+    res.json({
+      ok: true,
+      content,
+      model: aiConfig.model,
+      usage: {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.use((error, req, res, next) => {
+
   const statusCode =
     error && Number.isInteger(error.statusCode) ? error.statusCode : 500;
 

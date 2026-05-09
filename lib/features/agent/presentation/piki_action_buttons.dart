@@ -1,0 +1,104 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/app_colors.dart';
+import '../../app/app_shell.dart';
+
+/// Row of action buttons rendered inside task-complete message cards.
+class PikiActionButtons extends StatelessWidget {
+  final Map<String, dynamic>? results;
+
+  const PikiActionButtons({super.key, this.results});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRestock = results?.containsKey('restockList') ?? false;
+    final hasReport = results?.containsKey('todaysSummary') ??
+        results?.containsKey('salesReport') ??
+        false;
+    final hasPurchaseCreated = results?.containsKey('purchaseDraftConfirm') ?? false;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (hasRestock)
+          _ActionChip(
+            icon: Icons.description_outlined,
+            label: 'View Draft',
+            onTap: () => AppShell.selectIndex(12), // Stock List
+          ),
+        if (!hasPurchaseCreated)
+          _ActionChip(
+            icon: Icons.check_circle_outline,
+            label: 'Confirm',
+            filled: true,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Tasks confirmed ✓'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+        if (hasReport)
+          _ActionChip(
+            icon: Icons.open_in_new_rounded,
+            label: 'Open Report',
+            onTap: () => AppShell.selectIndex(8), // Reports
+          ),
+        if (hasPurchaseCreated)
+          _ActionChip(
+            icon: Icons.local_shipping_outlined,
+            label: 'Open Purchases',
+            filled: true,
+            onTap: () => AppShell.selectIndex(3),
+          ),
+      ],
+    );
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+
+  const _ActionChip({
+    required this.icon,
+    required this.label,
+    this.filled = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (filled) {
+      return FilledButton.icon(
+        onPressed: onTap,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: const TextStyle(fontSize: 13)),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textPrimary,
+        side: const BorderSide(color: AppColors.border),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(label, style: const TextStyle(fontSize: 13)),
+    );
+  }
+}

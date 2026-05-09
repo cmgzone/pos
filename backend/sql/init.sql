@@ -36,6 +36,23 @@ CREATE TABLE IF NOT EXISTS devices (
   updated_at timestamptz NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS platform_ai_config (
+  id integer PRIMARY KEY DEFAULT 1,
+  api_key text NOT NULL DEFAULT '',
+  model text NOT NULL DEFAULT 'openai/gpt-4o-mini',
+  enabled boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  CONSTRAINT platform_ai_config_single_row CHECK (id = 1)
+);
+
+INSERT INTO platform_ai_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS ai_rate_limits (
+  business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+  request_count integer NOT NULL DEFAULT 0,
+  window_start timestamptz NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS categories (
   id text PRIMARY KEY,
   business_id text,
