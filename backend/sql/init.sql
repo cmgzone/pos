@@ -6,11 +6,13 @@ CREATE TABLE IF NOT EXISTS businesses (
   owner_name text,
   owner_email text,
   country_code text NOT NULL DEFAULT 'GLOBAL',
+  selling_mode text NOT NULL DEFAULT 'combo',
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
 
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'combo';
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
@@ -29,6 +31,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
   description text,
   is_active boolean NOT NULL DEFAULT true,
   features_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb,
   max_branches integer NOT NULL DEFAULT 1,
   max_employees integer NOT NULL DEFAULT 1,
   max_ai_agents integer NOT NULL DEFAULT 0,
@@ -39,6 +42,9 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE subscription_plans
+  ADD COLUMN IF NOT EXISTS allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS platform_payment_gateways (
   provider text PRIMARY KEY,

@@ -18,6 +18,14 @@ class ProductRepository {
     DatabaseService.currentBranchId,
   ];
 
+  static Future<void> _ensureProductWriteAccess(String action) async {
+    await LicenseService.ensureWriteAccess(action: action);
+    await LicenseService.ensureFeatureAccess(
+      featureKey: 'products',
+      action: action,
+    );
+  }
+
   static String _typeFilterClause(String alias, ProductTypeFilter typeFilter) {
     return switch (typeFilter) {
       ProductTypeFilter.all => '',
@@ -268,7 +276,7 @@ class ProductRepository {
     bool trackStock = true,
     bool hasVariants = false,
   }) async {
-    await LicenseService.ensureWriteAccess(action: 'create products');
+    await _ensureProductWriteAccess('create products');
     final id = _uuid.v4();
     final now = DateTime.now().toIso8601String();
     final normalizedUnit = UnitUtils.normalize(unit);
@@ -340,13 +348,13 @@ class ProductRepository {
 
   /// Update a product
   static Future<void> update(String id, Map<String, dynamic> data) async {
-    await LicenseService.ensureWriteAccess(action: 'update products');
+    await _ensureProductWriteAccess('update products');
     await DatabaseService.update(_table, data, id);
   }
 
   /// Delete a product
   static Future<void> delete(String id) async {
-    await LicenseService.ensureWriteAccess(action: 'delete products');
+    await _ensureProductWriteAccess('delete products');
     await DatabaseService.delete(_table, id);
   }
 
@@ -469,7 +477,7 @@ class ProductRepository {
     String? expiryDate,
     String? batchNumber,
   }) async {
-    await LicenseService.ensureWriteAccess(action: 'receive stock');
+    await _ensureProductWriteAccess('receive stock');
     final batch = DatabaseService.db.batch();
     final now = DateTime.now().toIso8601String();
     final productData =

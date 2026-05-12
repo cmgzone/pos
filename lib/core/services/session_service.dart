@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'license_service.dart';
+
 class SessionService {
   static SharedPreferences? _prefs;
 
@@ -110,10 +112,12 @@ class SessionService {
   }
 
   static bool get canUseProductPos =>
-      currentPosMode != UserAccessProfile.posModeServices;
+      currentPosMode != UserAccessProfile.posModeServices &&
+      LicenseService.currentSnapshot.entitlements.canSellProducts;
 
   static bool get canUseServicePos =>
-      currentPosMode != UserAccessProfile.posModeProducts;
+      currentPosMode != UserAccessProfile.posModeProducts &&
+      LicenseService.currentSnapshot.entitlements.canSellServices;
 
   static bool get limitsServiceOrdersToAssigned =>
       currentServiceOrderScope ==

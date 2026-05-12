@@ -24,6 +24,14 @@ const FEATURE_KEYS = Object.freeze({
   proactivePiki: 'proactive_piki',
 });
 
+const SELLING_MODES = Object.freeze({
+  products: 'products',
+  services: 'services',
+  combo: 'combo',
+});
+
+const DEFAULT_SELLING_MODES = Object.freeze(Object.values(SELLING_MODES));
+
 const BASE_FEATURES = [
   FEATURE_KEYS.pos,
   FEATURE_KEYS.products,
@@ -70,6 +78,7 @@ const DEFAULT_PLANS = [
     aiRateWeekly: 200,
     aiRateMonthly: 500,
     sortOrder: 10,
+    sellingModes: [SELLING_MODES.products],
   },
   {
     code: 'starter',
@@ -83,6 +92,7 @@ const DEFAULT_PLANS = [
     aiRateWeekly: 1000,
     aiRateMonthly: 3000,
     sortOrder: 20,
+    sellingModes: [SELLING_MODES.products],
   },
   {
     code: 'growth',
@@ -96,6 +106,7 @@ const DEFAULT_PLANS = [
     aiRateWeekly: 5000,
     aiRateMonthly: 15000,
     sortOrder: 30,
+    sellingModes: [...DEFAULT_SELLING_MODES],
   },
   {
     code: 'pro',
@@ -109,6 +120,7 @@ const DEFAULT_PLANS = [
     aiRateWeekly: 20000,
     aiRateMonthly: 60000,
     sortOrder: 40,
+    sellingModes: [...DEFAULT_SELLING_MODES],
   },
   {
     code: 'enterprise',
@@ -123,6 +135,7 @@ const DEFAULT_PLANS = [
     aiRateWeekly: 9999999,
     aiRateMonthly: 99999999,
     sortOrder: 50,
+    sellingModes: [...DEFAULT_SELLING_MODES],
   },
 ];
 
@@ -160,12 +173,21 @@ async function ensureSubscriptionSchema(target = query) {
   await runQuery(
     target,
     `
+    ALTER TABLE businesses
+      ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'combo'
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
     CREATE TABLE IF NOT EXISTS subscription_plans (
       code text PRIMARY KEY,
       name text NOT NULL,
       description text,
       is_active boolean NOT NULL DEFAULT true,
       features_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+      allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb,
       max_branches integer NOT NULL DEFAULT 1,
       max_employees integer NOT NULL DEFAULT 1,
       max_ai_agents integer NOT NULL DEFAULT 0,
@@ -176,6 +198,14 @@ async function ensureSubscriptionSchema(target = query) {
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    ALTER TABLE subscription_plans
+      ADD COLUMN IF NOT EXISTS allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb
     `,
   );
 
@@ -281,6 +311,7 @@ async function ensureSubscriptionSchema(target = query) {
         description,
         is_active,
         features_json,
+        allowed_selling_modes_json,
         max_branches,
         max_employees,
         max_ai_agents,
@@ -289,7 +320,7 @@ async function ensureSubscriptionSchema(target = query) {
         ai_rate_monthly,
         sort_order
       )
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
       ON CONFLICT (code) DO NOTHING
       `,
       [
@@ -298,6 +329,7 @@ async function ensureSubscriptionSchema(target = query) {
         plan.description,
         plan.isActive !== false,
         JSON.stringify(plan.features),
+        JSON.stringify(plan.sellingModes || DEFAULT_SELLING_MODES),
         plan.maxBranches,
         plan.maxEmployees,
         plan.maxAiAgents,
@@ -464,6 +496,7 @@ async function listPublicPlans({ countryCode } = {}, target = query) {
       ...plan,
       prices,
       price: exactPrice || fallbackPrice || null,
+      sellingModes: availableSellingModesForEntitlements(plan.entitlements),
       entitlements: plan.entitlements,
     };
   });
@@ -840,6 +873,12 @@ function normalizePlanInput(input, existing = {}) {
         ? existing.isActive ?? true
         : Boolean(raw.isActive ?? raw.is_active),
     features,
+    sellingModes: normalizeSellingModes(
+      raw.sellingModes ??
+        raw.allowedSellingModes ??
+        raw.allowed_selling_modes,
+      existing.sellingModes ?? DEFAULT_SELLING_MODES,
+    ),
     maxBranches: normalizeLimit(raw.maxBranches ?? raw.max_branches, existing.maxBranches ?? 1),
     maxEmployees: normalizeLimit(
       raw.maxEmployees ?? raw.max_employees,
@@ -891,6 +930,8 @@ function normalizePlanRow(row) {
     description: row.description || '',
     isActive: Boolean(row.is_active),
     features: entitlements.features,
+    sellingModes: entitlements.allowedSellingModes,
+    availableSellingModes: availableSellingModesForEntitlements(entitlements),
     maxBranches: entitlements.maxBranches,
     maxEmployees: entitlements.maxEmployees,
     maxAiAgents: entitlements.maxAiAgents,
@@ -919,8 +960,14 @@ function normalizePriceRow(row) {
 
 function normalizeEntitlements(row) {
   const features = normalizeFeatureList(row.features_json);
+  const allowedSellingModes = normalizeSellingModes(
+    row.allowed_selling_modes_json,
+    DEFAULT_SELLING_MODES,
+  );
   return {
     features,
+    allowedSellingModes,
+    sellingModes: availableSellingModesForFeatures(features, allowedSellingModes),
     maxBranches: normalizeLimit(row.max_branches, 1),
     maxEmployees: normalizeLimit(row.max_employees, 1),
     maxAiAgents: normalizeLimit(row.max_ai_agents, 0),
@@ -934,8 +981,14 @@ function normalizeEntitlements(row) {
 
 function defaultTrialEntitlements() {
   const trial = DEFAULT_PLANS[0];
+  const allowedSellingModes = normalizeSellingModes(
+    trial.sellingModes,
+    DEFAULT_SELLING_MODES,
+  );
   return {
     features: [...trial.features],
+    allowedSellingModes,
+    sellingModes: availableSellingModesForFeatures(trial.features, allowedSellingModes),
     maxBranches: trial.maxBranches,
     maxEmployees: trial.maxEmployees,
     maxAiAgents: trial.maxAiAgents,
@@ -978,6 +1031,119 @@ function normalizeFeatureList(value) {
     }
   }
   return normalized;
+}
+
+function normalizeSellingModes(value, fallback = DEFAULT_SELLING_MODES) {
+  let source = value;
+  if (typeof value === 'string') {
+    try {
+      source = JSON.parse(value);
+    } catch (_) {
+      source = value.split(',');
+    }
+  }
+  if (!Array.isArray(source)) {
+    source = fallback;
+  }
+  const normalized = [];
+  for (const item of source) {
+    const mode = normalizeSellingMode(item);
+    if (mode && !normalized.includes(mode)) {
+      normalized.push(mode);
+    }
+  }
+  return normalized.length ? normalized : [...fallback];
+}
+
+function normalizeSellingMode(value) {
+  const mode = normalizeText(value)?.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+  switch (mode) {
+    case SELLING_MODES.products:
+    case 'product':
+    case 'retail':
+      return SELLING_MODES.products;
+    case SELLING_MODES.services:
+    case 'service':
+      return SELLING_MODES.services;
+    case SELLING_MODES.combo:
+    case 'both':
+    case 'mixed':
+      return SELLING_MODES.combo;
+    default:
+      return null;
+  }
+}
+
+function availableSellingModesForEntitlements(entitlements) {
+  return availableSellingModesForFeatures(
+    entitlements?.features || [],
+    entitlements?.allowedSellingModes || DEFAULT_SELLING_MODES,
+  );
+}
+
+function availableSellingModesForFeatures(features, allowedModes = DEFAULT_SELLING_MODES) {
+  const featureSet = new Set(features || []);
+  const allowedSet = new Set(normalizeSellingModes(allowedModes, DEFAULT_SELLING_MODES));
+  const modes = [];
+  if (allowedSet.has(SELLING_MODES.products) && featureSet.has(FEATURE_KEYS.products)) {
+    modes.push(SELLING_MODES.products);
+  }
+  if (allowedSet.has(SELLING_MODES.services) && featureSet.has(FEATURE_KEYS.services)) {
+    modes.push(SELLING_MODES.services);
+  }
+  if (
+    allowedSet.has(SELLING_MODES.combo) &&
+    featureSet.has(FEATURE_KEYS.products) &&
+    featureSet.has(FEATURE_KEYS.services)
+  ) {
+    modes.push(SELLING_MODES.combo);
+  }
+  return modes;
+}
+
+function applySellingModeToEntitlements(entitlements, sellingMode) {
+  const mode = normalizeSellingMode(sellingMode) || SELLING_MODES.combo;
+  const source = entitlements && typeof entitlements === 'object'
+    ? entitlements
+    : defaultTrialEntitlements();
+  const disabled = new Set();
+  if (mode === SELLING_MODES.products) {
+    disabled.add(FEATURE_KEYS.services);
+  } else if (mode === SELLING_MODES.services) {
+    disabled.add(FEATURE_KEYS.products);
+    disabled.add(FEATURE_KEYS.categories);
+    disabled.add(FEATURE_KEYS.purchases);
+    disabled.add(FEATURE_KEYS.stockList);
+    disabled.add(FEATURE_KEYS.transfers);
+  }
+  return {
+    ...source,
+    features: (source.features || []).filter((feature) => !disabled.has(feature)),
+    sellingMode: mode,
+    allowedSellingModes: source.allowedSellingModes || DEFAULT_SELLING_MODES,
+    sellingModes: availableSellingModesForEntitlements(source),
+  };
+}
+
+function validateSellingModeEntitlement(entitlements, sellingMode) {
+  const mode = normalizeSellingMode(sellingMode);
+  if (!mode) {
+    return {
+      ok: false,
+      message: 'Choose products, services, or combo for the business type.',
+    };
+  }
+  const modes = availableSellingModesForEntitlements(entitlements);
+  if (!modes.includes(mode)) {
+    return {
+      ok: false,
+      message:
+        mode === SELLING_MODES.combo
+          ? 'This plan must include both Products and Services before Combo can be selected.'
+          : `This plan does not include ${mode}.`,
+    };
+  }
+  return { ok: true, mode };
 }
 
 function normalizeCode(value) {
@@ -1036,6 +1202,9 @@ module.exports = {
   ALL_FEATURES,
   DEFAULT_PLANS,
   FEATURE_KEYS,
+  SELLING_MODES,
+  applySellingModeToEntitlements,
+  availableSellingModesForEntitlements,
   ensureSubscriptionSchema,
   listPaymentGateways,
   listPlans,
@@ -1048,7 +1217,9 @@ module.exports = {
   normalizePriceInput,
   normalizePriceRow,
   normalizeProvider,
+  normalizeSellingMode,
   providerForCountry,
   resolvePlanPrice,
   savePaymentGateway,
+  validateSellingModeEntitlement,
 };

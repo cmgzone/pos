@@ -73,6 +73,7 @@ class SubscriptionPlanSummary {
   final String name;
   final String description;
   final List<String> features;
+  final List<String> sellingModes;
   final SubscriptionEntitlements entitlements;
   final List<SubscriptionPlanPrice> prices;
   final SubscriptionPlanPrice? price;
@@ -82,6 +83,7 @@ class SubscriptionPlanSummary {
     required this.name,
     required this.description,
     required this.features,
+    required this.sellingModes,
     required this.entitlements,
     required this.prices,
     required this.price,
@@ -89,12 +91,17 @@ class SubscriptionPlanSummary {
 
   factory SubscriptionPlanSummary.fromJson(Map<String, dynamic> json) {
     final rawFeatures = json['features'];
+    final rawSellingModes =
+        json['sellingModes'] ?? json['availableSellingModes'];
     return SubscriptionPlanSummary(
       code: json['code']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       features: rawFeatures is List
           ? rawFeatures.map((item) => item.toString()).toList()
+          : const [],
+      sellingModes: rawSellingModes is List
+          ? rawSellingModes.map((item) => item.toString()).toList()
           : const [],
       entitlements: SubscriptionEntitlements.fromJson(json['entitlements']),
       prices: json['prices'] is List

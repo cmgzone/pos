@@ -17,6 +17,8 @@ class SubscriptionEntitlements {
   final int maxEmployees;
   final int maxAiAgents;
   final Map<String, int> aiRateLimits;
+  final String sellingMode;
+  final List<String> sellingModes;
 
   const SubscriptionEntitlements({
     required this.features,
@@ -24,6 +26,8 @@ class SubscriptionEntitlements {
     required this.maxEmployees,
     required this.maxAiAgents,
     required this.aiRateLimits,
+    required this.sellingMode,
+    required this.sellingModes,
   });
 
   const SubscriptionEntitlements.empty()
@@ -31,7 +35,9 @@ class SubscriptionEntitlements {
       maxBranches = 0,
       maxEmployees = 0,
       maxAiAgents = 0,
-      aiRateLimits = const {};
+      aiRateLimits = const {},
+      sellingMode = 'combo',
+      sellingModes = const [];
 
   factory SubscriptionEntitlements.fromJson(Object? value) {
     if (value is! Map) {
@@ -54,12 +60,21 @@ class SubscriptionEntitlements {
         rates[entry.key.toString()] = _readInt(entry.value);
       }
     }
+    final rawSellingModes =
+        value['sellingModes'] ?? value['allowedSellingModes'];
     return SubscriptionEntitlements(
       features: features,
       maxBranches: _readInt(value['maxBranches']),
       maxEmployees: _readInt(value['maxEmployees']),
       maxAiAgents: _readInt(value['maxAiAgents']),
       aiRateLimits: rates,
+      sellingMode: _readText(value['sellingMode']) ?? 'combo',
+      sellingModes: rawSellingModes is List
+          ? rawSellingModes
+                .map((item) => item?.toString().trim() ?? '')
+                .where((item) => item.isNotEmpty)
+                .toList()
+          : const [],
     );
   }
 
@@ -68,7 +83,12 @@ class SubscriptionEntitlements {
       maxBranches == 0 &&
       maxEmployees == 0 &&
       maxAiAgents == 0 &&
-      aiRateLimits.isEmpty;
+      aiRateLimits.isEmpty &&
+      sellingModes.isEmpty;
+
+  bool get canSellProducts => features.isEmpty || features.contains('products');
+
+  bool get canSellServices => features.isEmpty || features.contains('services');
 
   int limitFor(SubscriptionLimit limit) {
     switch (limit) {
@@ -86,6 +106,11 @@ class SubscriptionEntitlements {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static String? _readText(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 }
 

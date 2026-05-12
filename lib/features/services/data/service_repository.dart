@@ -20,6 +20,14 @@ class ServiceRepository {
     DatabaseService.currentBranchId,
   ];
 
+  static Future<void> _ensureServiceWriteAccess(String action) async {
+    await LicenseService.ensureWriteAccess(action: action);
+    await LicenseService.ensureFeatureAccess(
+      featureKey: 'services',
+      action: action,
+    );
+  }
+
   static Future<List<Map<String, dynamic>>> getServices({
     bool activeOnly = false,
     String query = '',
@@ -97,7 +105,7 @@ class ServiceRepository {
     bool isActive = true,
     List<Map<String, dynamic>> fields = const [],
   }) async {
-    await LicenseService.ensureWriteAccess(action: 'create services');
+    await _ensureServiceWriteAccess('create services');
     final serviceId = _uuid.v4();
     final now = DateTime.now().toIso8601String();
 
@@ -152,7 +160,7 @@ class ServiceRepository {
     bool isActive = true,
     List<Map<String, dynamic>> fields = const [],
   }) async {
-    await LicenseService.ensureWriteAccess(action: 'update services');
+    await _ensureServiceWriteAccess('update services');
     final now = DateTime.now().toIso8601String();
 
     await DatabaseService.db.transaction((txn) async {
@@ -204,7 +212,7 @@ class ServiceRepository {
   }
 
   static Future<void> deleteService(String id) async {
-    await LicenseService.ensureWriteAccess(action: 'delete services');
+    await _ensureServiceWriteAccess('delete services');
     final now = DateTime.now().toIso8601String();
     await DatabaseService.db.transaction((txn) async {
       await txn.update(
@@ -342,7 +350,7 @@ class ServiceRepository {
     String? note,
     List<Map<String, dynamic>> fieldValues = const [],
   }) async {
-    await LicenseService.ensureWriteAccess(action: 'create service orders');
+    await _ensureServiceWriteAccess('create service orders');
     if (!SessionService.canAccessServiceId(serviceId)) {
       throw Exception(
         'This account is not allowed to create orders for that service.',
@@ -401,6 +409,7 @@ class ServiceRepository {
   }
 
   static Future<void> updateOrderBay(String orderId, String? bayNumber) async {
+    await _ensureServiceWriteAccess('update service orders');
     final order = await getOrderById(orderId);
     if (order == null) {
       throw Exception('Service order not found or access denied.');
@@ -414,7 +423,7 @@ class ServiceRepository {
   }
 
   static Future<void> updateOrderStatus(String orderId, String status) async {
-    await LicenseService.ensureWriteAccess(action: 'update service orders');
+    await _ensureServiceWriteAccess('update service orders');
     final order = await getOrderById(orderId);
     if (order == null) {
       throw Exception('Service order not found or access denied.');
@@ -432,7 +441,7 @@ class ServiceRepository {
   }
 
   static Future<void> deleteOrder(String orderId) async {
-    await LicenseService.ensureWriteAccess(action: 'delete service orders');
+    await _ensureServiceWriteAccess('delete service orders');
     final order = await getOrderById(orderId);
     if (order == null) {
       throw Exception('Service order not found or access denied.');

@@ -28,6 +28,7 @@ const {
 } = require('./pikiProactive');
 const {
   FEATURE_KEYS,
+  applySellingModeToEntitlements,
   ensureSubscriptionSchema,
   listPaymentGateways,
   listPlans,
@@ -39,8 +40,10 @@ const {
   normalizePlanInput,
   normalizePriceInput,
   normalizeProvider,
+  normalizeSellingMode,
   resolvePlanPrice,
   savePaymentGateway,
+  validateSellingModeEntitlement,
 } = require('./subscriptionPlans');
 const {
   ensureCommunicationSchema,
@@ -148,6 +151,9 @@ app.post('/api/auth/register', async (req, res, next) => {
     const requestedPlanCode = normalizeOptionalText(
       req.body?.requestedPlanCode || req.body?.planCode || req.body?.plan,
     );
+    const requestedSellingMode = normalizeSellingMode(
+      req.body?.sellingMode || req.body?.businessType || req.body?.saleMode,
+    ) || 'products';
 
     if (!businessName) {
       throw createHttpError(400, 'Business name is required');
@@ -190,7 +196,19 @@ app.post('/api/auth/register', async (req, res, next) => {
     if (!selectedPrice) {
       throw createHttpError(404, 'No active price is configured for the selected plan');
     }
-    const selectedEntitlements = await loadEntitlementsForPlan(requestedPlanCode);
+    const planEntitlements = await loadEntitlementsForPlan(requestedPlanCode);
+    const sellingModeValidation = validateSellingModeEntitlement(
+      planEntitlements,
+      requestedSellingMode,
+    );
+    if (!sellingModeValidation.ok) {
+      throw createHttpError(400, sellingModeValidation.message);
+    }
+    const sellingMode = sellingModeValidation.mode;
+    const selectedEntitlements = applySellingModeToEntitlements(
+      planEntitlements,
+      sellingMode,
+    );
     const startsPaid = Number(selectedPrice.amountMinor || 0) === 0;
     const initialPlan = startsPaid ? requestedPlanCode : 'trial';
 
@@ -215,14 +233,15 @@ app.post('/api/auth/register', async (req, res, next) => {
       // Create business
       const businessId = crypto.randomUUID();
       await client.query(
-        `INSERT INTO businesses (id, name, owner_name, owner_email, country_code, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+        `INSERT INTO businesses (id, name, owner_name, owner_email, country_code, selling_mode, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
         [
           businessId,
           businessName,
           ownerName,
           ownerEmail,
           countryCode,
+          sellingMode,
           now.toISOString(),
         ],
       );
@@ -288,7 +307,7 @@ app.post('/api/auth/register', async (req, res, next) => {
 
       // Load context for license
       const contextResult = await client.query(
-        `SELECT b.id AS business_id, b.name AS business_name, b.country_code,
+        `SELECT b.id AS business_id, b.name AS business_name, b.country_code, b.selling_mode,
                 s.plan, s.status, s.expires_at, s.grace_until, s.last_verified_at
          FROM businesses b
          JOIN subscriptions s ON s.business_id = b.id
@@ -296,15 +315,16 @@ app.post('/api/auth/register', async (req, res, next) => {
         [businessId],
       );
       const businessContext = contextResult.rows[0];
-      const entitlements = await loadEntitlementsForPlan(
-        businessContext.plan,
-        client,
+      const entitlements = applySellingModeToEntitlements(
+        await loadEntitlementsForPlan(businessContext.plan, client),
+        sellingMode,
       );
 
       const license = issueLicense({
         businessId,
         businessName,
         countryCode,
+        sellingMode,
         deviceId,
         subscription: businessContext,
         entitlements,
@@ -312,7 +332,7 @@ app.post('/api/auth/register', async (req, res, next) => {
       });
 
       return {
-        business: { id: businessId, name: businessName, countryCode },
+        business: { id: businessId, name: businessName, countryCode, sellingMode },
         accessToken,
         subscription: {
           plan: initialPlan,
@@ -381,7 +401,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 
     const result = await withTransaction(async (client) => {
       const userResult = await client.query(
-        `SELECT u.*, b.name AS business_name, b.country_code
+        `SELECT u.*, b.name AS business_name, b.country_code, b.selling_mode
          FROM users u
          JOIN businesses b ON b.id = u.business_id
          WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
@@ -454,15 +474,16 @@ app.post('/api/auth/login', async (req, res, next) => {
         [businessId],
       );
       const subscription = subResult.rows[0] || {};
-      const entitlements = await loadEntitlementsForPlan(
-        subscription.plan,
-        client,
+      const entitlements = applySellingModeToEntitlements(
+        await loadEntitlementsForPlan(subscription.plan, client),
+        user.selling_mode,
       );
 
       const license = issueLicense({
         businessId,
         businessName: user.business_name,
         countryCode: user.country_code,
+        sellingMode: user.selling_mode,
         deviceId,
         subscription,
         entitlements,
@@ -476,6 +497,7 @@ app.post('/api/auth/login', async (req, res, next) => {
           id: businessId,
           name: user.business_name,
           countryCode: normalizeCountryCode(user.country_code || 'GLOBAL'),
+          sellingMode: normalizeSellingMode(user.selling_mode) || 'combo',
         },
         accessToken,
         subscription: {
@@ -993,7 +1015,7 @@ app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next)
   try {
     await ensureSubscriptionSchema();
     const result = await query(`
-      SELECT b.id, b.name, b.owner_name, b.owner_email, b.country_code, b.created_at,
+      SELECT b.id, b.name, b.owner_name, b.owner_email, b.country_code, b.selling_mode, b.created_at,
              s.plan, s.status, s.expires_at, s.grace_until
       FROM businesses b
       LEFT JOIN subscriptions s ON s.business_id = b.id
@@ -1098,6 +1120,14 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
       throw createHttpError(400, 'businessId and plan are required');
     }
 
+    const businessResult = await query(
+      'SELECT id, selling_mode FROM businesses WHERE id = $1 LIMIT 1',
+      [businessId],
+    );
+    if (!businessResult.rows.length) {
+      throw createHttpError(404, 'Business not found');
+    }
+
     const planResult = await query(
       'SELECT code FROM subscription_plans WHERE code = $1 LIMIT 1',
       [plan],
@@ -1105,6 +1135,20 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
     if (!planResult.rows.length) {
       throw createHttpError(404, 'Subscription plan not found');
     }
+    const requestedSellingMode = normalizeSellingMode(
+      req.body?.sellingMode ??
+        req.body?.selling_mode ??
+        businessResult.rows[0].selling_mode,
+    ) || 'combo';
+    const planEntitlements = await loadEntitlementsForPlan(plan);
+    const sellingModeValidation = validateSellingModeEntitlement(
+      planEntitlements,
+      requestedSellingMode,
+    );
+    if (!sellingModeValidation.ok) {
+      throw createHttpError(400, sellingModeValidation.message);
+    }
+    const sellingMode = sellingModeValidation.mode;
 
     const now = new Date();
     const expiresAt =
@@ -1114,40 +1158,53 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
       parseOptionalDate(req.body?.graceUntil || req.body?.grace_until) ||
       addDays(expiresAt, config.subscriptionGraceDays);
 
-    const result = await query(
-      `
-      INSERT INTO subscriptions (
-        business_id,
-        plan,
-        status,
-        expires_at,
-        grace_until,
-        last_verified_at,
-        created_at,
-        updated_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $6, $6)
-      ON CONFLICT (business_id) DO UPDATE
-      SET plan = EXCLUDED.plan,
-          status = EXCLUDED.status,
-          expires_at = EXCLUDED.expires_at,
-          grace_until = EXCLUDED.grace_until,
-          last_verified_at = EXCLUDED.last_verified_at,
-          updated_at = EXCLUDED.updated_at
-      RETURNING *
-      `,
-      [
-        businessId,
-        plan,
-        status,
-        expiresAt.toISOString(),
-        graceUntil.toISOString(),
-        now.toISOString(),
-      ],
-    );
+    const result = await withTransaction(async (client) => {
+      await client.query(
+        `
+        UPDATE businesses
+        SET selling_mode = $2, updated_at = $3
+        WHERE id = $1
+        `,
+        [businessId, sellingMode, now.toISOString()],
+      );
+      return client.query(
+        `
+        INSERT INTO subscriptions (
+          business_id,
+          plan,
+          status,
+          expires_at,
+          grace_until,
+          last_verified_at,
+          created_at,
+          updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $6, $6)
+        ON CONFLICT (business_id) DO UPDATE
+        SET plan = EXCLUDED.plan,
+            status = EXCLUDED.status,
+            expires_at = EXCLUDED.expires_at,
+            grace_until = EXCLUDED.grace_until,
+            last_verified_at = EXCLUDED.last_verified_at,
+            updated_at = EXCLUDED.updated_at
+        RETURNING *
+        `,
+        [
+          businessId,
+          plan,
+          status,
+          expiresAt.toISOString(),
+          graceUntil.toISOString(),
+          now.toISOString(),
+        ],
+      );
+    });
 
-    const entitlements = await loadEntitlementsForPlan(plan);
-    res.json({ ok: true, data: { ...result.rows[0], entitlements } });
+    const entitlements = applySellingModeToEntitlements(planEntitlements, sellingMode);
+    res.json({
+      ok: true,
+      data: { ...result.rows[0], selling_mode: sellingMode, entitlements },
+    });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -1338,6 +1395,7 @@ app.get('/api/subscription/current', async (req, res, next) => {
       businessContext.businessId,
       businessContext.plan,
       countryCode,
+      businessContext.sellingMode,
     );
     res.json({ ok: true, data: overview });
   } catch (error) {
@@ -2234,6 +2292,7 @@ async function saveSubscriptionPlan(rawInput) {
         description,
         is_active,
         features_json,
+        allowed_selling_modes_json,
         max_branches,
         max_employees,
         max_ai_agents,
@@ -2244,12 +2303,13 @@ async function saveSubscriptionPlan(rawInput) {
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
       ON CONFLICT (code) DO UPDATE
       SET name = EXCLUDED.name,
           description = EXCLUDED.description,
           is_active = EXCLUDED.is_active,
           features_json = EXCLUDED.features_json,
+          allowed_selling_modes_json = EXCLUDED.allowed_selling_modes_json,
           max_branches = EXCLUDED.max_branches,
           max_employees = EXCLUDED.max_employees,
           max_ai_agents = EXCLUDED.max_ai_agents,
@@ -2265,6 +2325,7 @@ async function saveSubscriptionPlan(rawInput) {
         plan.description,
         plan.isActive,
         JSON.stringify(plan.features),
+        JSON.stringify(plan.sellingModes),
         plan.maxBranches,
         plan.maxEmployees,
         plan.maxAiAgents,
@@ -2316,7 +2377,7 @@ async function saveSubscriptionPlan(rawInput) {
   });
 }
 
-async function loadSubscriptionOverview(businessId, planCode, countryCode) {
+async function loadSubscriptionOverview(businessId, planCode, countryCode, sellingMode) {
   await ensureSubscriptionSchema();
   const subscriptionResult = await query(
     'SELECT * FROM subscriptions WHERE business_id = $1 LIMIT 1',
@@ -2326,7 +2387,10 @@ async function loadSubscriptionOverview(businessId, planCode, countryCode) {
     plan: planCode || 'trial',
     status: 'active',
   };
-  const entitlements = await loadEntitlementsForPlan(subscription.plan);
+  const entitlements = applySellingModeToEntitlements(
+    await loadEntitlementsForPlan(subscription.plan),
+    sellingMode,
+  );
   const usage = await getBusinessUsage(businessId);
   const markets = await listPublicMarkets();
   const selectedMarket = selectSubscriptionMarket(markets, { countryCode });

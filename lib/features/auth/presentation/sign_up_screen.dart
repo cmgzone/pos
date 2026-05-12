@@ -36,6 +36,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   SubscriptionCatalog? _catalog;
   String? _selectedMarketKey;
   String? _selectedPlanCode;
+  String? _selectedSellingMode;
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
@@ -80,6 +81,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _catalog = catalog;
         _selectedMarketKey = market?.key;
         _selectedPlanCode = plan?.code;
+        _selectedSellingMode = _firstSellingMode(plan);
         _isLoadingCatalog = false;
       });
     } catch (error) {
@@ -101,6 +103,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return null;
   }
 
+  String? _firstSellingMode(SubscriptionPlanSummary? plan) {
+    if (plan == null || plan.sellingModes.isEmpty) return null;
+    if (plan.sellingModes.contains('products')) return 'products';
+    return plan.sellingModes.first;
+  }
+
   void _selectMarket(String? key) {
     final catalog = _catalog;
     if (catalog == null || key == null) return;
@@ -112,6 +120,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() {
       _selectedMarketKey = key;
       _selectedPlanCode = plan?.code;
+      _selectedSellingMode = _firstSellingMode(plan);
     });
   }
 
@@ -167,8 +176,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     final market = _selectedMarket;
     final plan = _selectedPlan;
-    if (_isBusinessSetupFlow && (market == null || plan == null)) {
-      setState(() => _error = 'Choose your country and subscription plan.');
+    final sellingMode = _selectedSellingMode;
+    if (_isBusinessSetupFlow &&
+        (market == null || plan == null || sellingMode == null)) {
+      setState(
+        () => _error =
+            'Choose your country, subscription plan, and what you sell.',
+      );
       return;
     }
 
@@ -199,6 +213,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         deviceId: deviceId,
         countryCode: market?.countryCode ?? 'GLOBAL',
         requestedPlanCode: plan?.code ?? 'trial',
+        sellingMode: sellingMode ?? 'products',
         provider: market?.provider,
       );
 
@@ -413,10 +428,51 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 onSelected: _isLoading
                     ? null
-                    : (_) => setState(() => _selectedPlanCode = plan.code),
+                    : (_) => setState(() {
+                        _selectedPlanCode = plan.code;
+                        _selectedSellingMode = _firstSellingMode(plan);
+                      }),
               );
             }).toList(),
           ),
+        if (_selectedPlan != null &&
+            _selectedPlan!.sellingModes.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          const Text(
+            'What do you sell?',
+            style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _selectedPlan!.sellingModes.map((mode) {
+              final selected = mode == _selectedSellingMode;
+              return ChoiceChip(
+                selected: selected,
+                avatar: Icon(switch (mode) {
+                  'services' => Icons.design_services_outlined,
+                  'combo' => Icons.all_inclusive_outlined,
+                  _ => Icons.inventory_2_outlined,
+                }, size: 18),
+                label: Text(switch (mode) {
+                  'services' => 'Services only',
+                  'combo' => 'Products + Services',
+                  _ => 'Products only',
+                }),
+                onSelected: _isLoading
+                    ? null
+                    : (_) => setState(() => _selectedSellingMode = mode),
+              );
+            }).toList(),
+          ),
+        ] else if (_selectedPlan != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            'This plan is not available for product or service selling yet.',
+            style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
+          ),
+        ],
         if (_selectedPlan != null) ...[
           const SizedBox(height: 10),
           Text(

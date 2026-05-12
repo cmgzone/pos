@@ -30,6 +30,7 @@ test('issueLicense signs a stable base64 payload', () => {
 
   assert.equal(license.payload.business_id, 'biz-1');
   assert.equal(license.payload.status, 'active');
+  assert.equal(license.payload.selling_mode, 'combo');
   assert.deepEqual(license.payload.entitlements.features, ['pos', 'agent']);
   assert.equal(license.payload.entitlements.maxBranches, 1);
   assert.equal(license.signature, signPayload(license.payloadBase64));

@@ -6,6 +6,7 @@ function issueLicense({
   businessId,
   businessName,
   countryCode,
+  sellingMode,
   deviceId,
   subscription,
   entitlements,
@@ -17,6 +18,9 @@ function issueLicense({
     country_code: String(countryCode || subscription?.country_code || 'GLOBAL')
       .trim()
       .toUpperCase(),
+    selling_mode: String(sellingMode || subscription?.selling_mode || 'combo')
+      .trim()
+      .toLowerCase(),
     device_id: String(deviceId).trim(),
     plan: String(subscription.plan || 'trial').trim(),
     status: resolveSubscriptionState(subscription, issuedAt).status,

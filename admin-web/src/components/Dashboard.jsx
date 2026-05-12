@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import AiConfigPanel from './AiConfigPanel'
 import SubscriptionPlansPanel from './SubscriptionPlansPanel'
 
+const sellingModeLabels = {
+  products: 'Products only',
+  services: 'Services only',
+  combo: 'Products + Services',
+}
+
+const sellingModeOptions = ['products', 'services', 'combo']
+
 export default function Dashboard({ token, onLogout }) {
   const [stats, setStats] = useState({ totalBusinesses: 0, activeSubscriptions: 0, totalUsers: 0 })
   const [businesses, setBusinesses] = useState([])
@@ -69,8 +77,20 @@ export default function Dashboard({ token, onLogout }) {
     }
   }
 
-  const assignBusinessPlan = async (business, planCode) => {
-    if (!planCode || planCode === business.plan) return
+  const planAllowsSellingMode = (plan, mode) => {
+    const modes = plan?.availableSellingModes || plan?.sellingModes || []
+    return modes.includes(mode)
+  }
+
+  const assignBusinessPlan = async (
+    business,
+    planCode,
+    sellingMode = business.selling_mode || 'combo',
+  ) => {
+    if (!planCode) return
+    if (planCode === business.plan && sellingMode === (business.selling_mode || 'combo')) {
+      return
+    }
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 30)
     const graceUntil = new Date(expiresAt)
@@ -88,6 +108,7 @@ export default function Dashboard({ token, onLogout }) {
         },
         body: JSON.stringify({
           plan: planCode,
+          sellingMode,
           status: 'active',
           expiresAt: expiresAt.toISOString(),
           graceUntil: graceUntil.toISOString()
@@ -105,6 +126,7 @@ export default function Dashboard({ token, onLogout }) {
                 ...item,
                 plan: updated.plan || planCode,
                 status: updated.status || 'active',
+                selling_mode: updated.selling_mode || sellingMode,
                 expires_at: updated.expires_at || expiresAt.toISOString(),
                 grace_until: updated.grace_until || graceUntil.toISOString(),
               }
@@ -214,6 +236,7 @@ export default function Dashboard({ token, onLogout }) {
                         <th>Business Name</th>
                         <th>Owner Info</th>
                         <th>Country</th>
+                        <th>Sells</th>
                         <th>Plan</th>
                         <th>Status</th>
                         <th>Expires</th>
@@ -222,7 +245,7 @@ export default function Dashboard({ token, onLogout }) {
                     </thead>
                     <tbody>
                       {businesses.length === 0 ? (
-                        <tr><td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No businesses found</td></tr>
+                        <tr><td colSpan="9" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No businesses found</td></tr>
                       ) : (
                         businesses.map(b => {
                           const rowState = assignmentState[b.id] || {}
@@ -235,6 +258,32 @@ export default function Dashboard({ token, onLogout }) {
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b.owner_email}</div>
                             </td>
                             <td>{b.country_code || 'GLOBAL'}</td>
+                            <td>
+                              <select
+                                className="form-input compact-input"
+                                value={b.selling_mode || 'combo'}
+                                disabled={rowState.saving}
+                                onChange={(event) =>
+                                  assignBusinessPlan(
+                                    b,
+                                    b.plan || 'trial',
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                {sellingModeOptions.map((mode) => {
+                                  const activePlan = plans.find((plan) => plan.code === (b.plan || 'trial'))
+                                  const isCurrent = mode === (b.selling_mode || 'combo')
+                                  const disabled =
+                                    !isCurrent && !planAllowsSellingMode(activePlan, mode)
+                                  return (
+                                    <option key={mode} value={mode} disabled={disabled}>
+                                      {sellingModeLabels[mode]}
+                                    </option>
+                                  )
+                                })}
+                              </select>
+                            </td>
                             <td><span style={{ textTransform: 'capitalize' }}>{b.plan || 'N/A'}</span></td>
                             <td>{getStatusBadge(b.status)}</td>
                             <td style={{ color: 'var(--text-muted)' }}>{b.expires_at ? new Date(b.expires_at).toLocaleDateString() : 'N/A'}</td>
@@ -243,11 +292,25 @@ export default function Dashboard({ token, onLogout }) {
                                 className="form-input compact-input"
                                 value={b.plan || 'trial'}
                                 disabled={rowState.saving}
-                                onChange={(event) => assignBusinessPlan(b, event.target.value)}
+                                onChange={(event) =>
+                                  assignBusinessPlan(
+                                    b,
+                                    event.target.value,
+                                    b.selling_mode || 'combo',
+                                  )
+                                }
                               >
-                                {plans.map(plan => (
-                                  <option key={plan.code} value={plan.code}>{plan.name}</option>
-                                ))}
+                                {plans.map(plan => {
+                                  const isCurrent = plan.code === (b.plan || 'trial')
+                                  const disabled =
+                                    !isCurrent &&
+                                    !planAllowsSellingMode(plan, b.selling_mode || 'combo')
+                                  return (
+                                    <option key={plan.code} value={plan.code} disabled={disabled}>
+                                      {plan.name}
+                                    </option>
+                                  )
+                                })}
                               </select>
                               {rowState.saving && <div className="row-note">Saving...</div>}
                               {rowState.message && <div className="row-note success">{rowState.message}</div>}

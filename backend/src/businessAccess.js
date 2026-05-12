@@ -4,9 +4,11 @@ const { config } = require('./config');
 const { query, withTransaction } = require('./db');
 const { issueLicense, resolveSubscriptionState } = require('./licenseTokens');
 const {
+  applySellingModeToEntitlements,
   ensureSubscriptionSchema,
   loadEntitlementsForPlan,
   normalizeCountryCode,
+  normalizeSellingMode,
 } = require('./subscriptionPlans');
 
 async function activateBusinessAccess({
@@ -16,10 +18,12 @@ async function activateBusinessAccess({
   ownerEmail,
   deviceName,
   countryCode,
+  sellingMode,
 }) {
   const normalizedDeviceId = normalizeText(deviceId);
   const normalizedBusinessName = normalizeText(businessName);
   const normalizedCountryCode = normalizeCountryCode(countryCode || 'GLOBAL');
+  const normalizedSellingMode = normalizeSellingMode(sellingMode) || 'combo';
 
   if (!normalizedDeviceId) {
     throw new Error('deviceId is required');
@@ -38,8 +42,8 @@ async function activateBusinessAccess({
       businessId = crypto.randomUUID();
       await client.query(
         `
-        INSERT INTO businesses (id, name, owner_name, owner_email, country_code, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $6)
+        INSERT INTO businesses (id, name, owner_name, owner_email, country_code, selling_mode, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
         `,
         [
           businessId,
@@ -47,6 +51,7 @@ async function activateBusinessAccess({
           normalizeText(ownerName),
           normalizeText(ownerEmail),
           normalizedCountryCode,
+          normalizedSellingMode,
           now.toISOString(),
         ],
       );
@@ -78,7 +83,8 @@ async function activateBusinessAccess({
           owner_name = COALESCE(NULLIF($3, ''), owner_name),
           owner_email = COALESCE(NULLIF($4, ''), owner_email),
           country_code = COALESCE(NULLIF($5, ''), country_code),
-          updated_at = $6
+          selling_mode = COALESCE(NULLIF($6, ''), selling_mode),
+          updated_at = $7
         WHERE id = $1
         `,
         [
@@ -87,6 +93,7 @@ async function activateBusinessAccess({
           normalizeText(ownerName),
           normalizeText(ownerEmail),
           normalizedCountryCode,
+          normalizedSellingMode,
           now.toISOString(),
         ],
       );
@@ -210,6 +217,7 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
       b.id AS business_id,
       b.name AS business_name,
       b.country_code,
+      b.selling_mode,
       s.plan,
       s.status,
       s.expires_at,
@@ -232,11 +240,16 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
 
   const context = result.rows[0];
   const licenseState = resolveSubscriptionState(context);
-  const entitlements = await loadEntitlementsForPlan(context.plan);
+  const sellingMode = normalizeSellingMode(context.selling_mode) || 'combo';
+  const entitlements = applySellingModeToEntitlements(
+    await loadEntitlementsForPlan(context.plan),
+    sellingMode,
+  );
   return {
     businessId: context.business_id,
     businessName: context.business_name,
     countryCode: normalizeCountryCode(context.country_code || 'GLOBAL'),
+    sellingMode,
     deviceId: context.device_id,
     plan: context.plan,
     entitlements,
@@ -292,6 +305,7 @@ async function loadBusinessContextByDevice(client, deviceId) {
       b.id AS business_id,
       b.name AS business_name,
       b.country_code,
+      b.selling_mode,
       s.plan,
       s.status,
       s.expires_at,
@@ -317,6 +331,7 @@ async function loadBusinessContextByToken(client, accessToken, deviceId) {
       b.id AS business_id,
       b.name AS business_name,
       b.country_code,
+      b.selling_mode,
       s.plan,
       s.status,
       s.expires_at,
@@ -347,15 +362,19 @@ async function buildAccessResponse({
     throw new Error('Business access context could not be resolved');
   }
 
-  const entitlements = await loadEntitlementsForPlan(
-    businessContext.plan,
-    client || query,
+  const entitlements = applySellingModeToEntitlements(
+    await loadEntitlementsForPlan(
+      businessContext.plan,
+      client || query,
+    ),
+    businessContext.selling_mode,
   );
 
   const license = issueLicense({
     businessId: businessContext.business_id,
     businessName: businessContext.business_name,
     countryCode: normalizeCountryCode(businessContext.country_code || 'GLOBAL'),
+    sellingMode: normalizeSellingMode(businessContext.selling_mode) || 'combo',
     deviceId,
     subscription: businessContext,
     entitlements,
@@ -367,6 +386,7 @@ async function buildAccessResponse({
       id: businessContext.business_id,
       name: businessContext.business_name,
       countryCode: normalizeCountryCode(businessContext.country_code || 'GLOBAL'),
+      sellingMode: normalizeSellingMode(businessContext.selling_mode) || 'combo',
     },
     accessToken,
     subscription: {

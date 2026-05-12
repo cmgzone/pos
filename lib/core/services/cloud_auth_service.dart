@@ -82,6 +82,7 @@ class CloudAuthService {
     required String deviceId,
     required String countryCode,
     required String requestedPlanCode,
+    required String sellingMode,
     String? provider,
   }) async {
     final normalizedUrl = backendUrl.trim();
@@ -108,6 +109,7 @@ class CloudAuthService {
               'deviceName': _deviceName,
               'countryCode': countryCode,
               'requestedPlanCode': requestedPlanCode,
+              'sellingMode': sellingMode,
               if (provider != null && provider.trim().isNotEmpty)
                 'provider': provider.trim(),
             }),

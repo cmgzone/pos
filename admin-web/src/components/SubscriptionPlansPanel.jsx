@@ -23,6 +23,14 @@ const FEATURE_LABELS = {
 
 const defaultFeatures = Object.keys(FEATURE_LABELS)
 
+const SELLING_MODE_LABELS = {
+  products: 'Products only',
+  services: 'Services only',
+  combo: 'Products + Services',
+}
+
+const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
+
 const GATEWAY_FIELDS = {
   mpesa: {
     public: [
@@ -210,6 +218,16 @@ export default function SubscriptionPlansPanel({ token }) {
         ? Array.from(new Set([...currentFeatures, feature]))
         : currentFeatures.filter((item) => item !== feature)
       return { ...current, features: nextFeatures }
+    })
+  }
+
+  const updateSellingMode = (mode, enabled) => {
+    setDraft((current) => {
+      const currentModes = current.sellingModes || defaultSellingModes
+      const nextModes = enabled
+        ? Array.from(new Set([...currentModes, mode]))
+        : currentModes.filter((item) => item !== mode)
+      return { ...current, sellingModes: nextModes.length ? nextModes : currentModes }
     })
   }
 
@@ -524,6 +542,27 @@ export default function SubscriptionPlansPanel({ token }) {
                 <span>{FEATURE_LABELS[feature] || feature}</span>
               </label>
             ))}
+          </div>
+
+          <div className="selling-mode-panel">
+            <div className="gateway-panel-header">
+              <div>
+                <h3>Selling Modes</h3>
+                <p>Registration can offer only the modes this plan and its features support.</p>
+              </div>
+            </div>
+            <div className="feature-grid">
+              {defaultSellingModes.map((mode) => (
+                <label key={mode} className="feature-toggle">
+                  <input
+                    type="checkbox"
+                    checked={(draft.sellingModes || defaultSellingModes).includes(mode)}
+                    onChange={(event) => updateSellingMode(mode, event.target.checked)}
+                  />
+                  <span>{SELLING_MODE_LABELS[mode]}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="editor-actions">
