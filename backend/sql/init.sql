@@ -120,6 +120,18 @@ CREATE INDEX IF NOT EXISTS idx_pos_payment_requests_business
 CREATE INDEX IF NOT EXISTS idx_pos_payment_requests_checkout
   ON pos_payment_requests(checkout_request_id);
 
+CREATE TABLE IF NOT EXISTS business_payment_gateways (
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  display_name text,
+  is_active boolean NOT NULL DEFAULT false,
+  public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (business_id, provider)
+);
+
 CREATE TABLE IF NOT EXISTS platform_message_gateways (
   provider text PRIMARY KEY,
   display_name text NOT NULL,

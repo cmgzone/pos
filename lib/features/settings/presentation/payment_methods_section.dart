@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:pos_app/core/services/pos_payment_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
 import '../data/payment_method_provider.dart';
 import '../data/payment_method_repository.dart';
@@ -14,6 +15,115 @@ class PaymentMethodsSection extends ConsumerStatefulWidget {
 }
 
 class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
+  final _mpesaDisplayNameController = TextEditingController(text: 'M-Pesa');
+  final _mpesaShortcodeController = TextEditingController();
+  final _mpesaAccountReferenceController = TextEditingController();
+  final _mpesaCallbackUrlController = TextEditingController();
+  final _mpesaConsumerKeyController = TextEditingController();
+  final _mpesaConsumerSecretController = TextEditingController();
+  final _mpesaPasskeyController = TextEditingController();
+
+  bool _mpesaActive = false;
+  bool _loadingMpesa = true;
+  bool _savingMpesa = false;
+  String _mpesaTransactionType = 'CustomerPayBillOnline';
+  String _mpesaMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMpesaSettings();
+  }
+
+  @override
+  void dispose() {
+    _mpesaDisplayNameController.dispose();
+    _mpesaShortcodeController.dispose();
+    _mpesaAccountReferenceController.dispose();
+    _mpesaCallbackUrlController.dispose();
+    _mpesaConsumerKeyController.dispose();
+    _mpesaConsumerSecretController.dispose();
+    _mpesaPasskeyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMpesaSettings() async {
+    setState(() {
+      _loadingMpesa = true;
+      _mpesaMessage = '';
+    });
+    try {
+      final settings = await PosPaymentService.fetchBusinessMpesaSettings();
+      final publicConfig = settings.publicConfig;
+      final secretConfig = settings.secretConfig;
+      if (!mounted) return;
+      setState(() {
+        _mpesaActive = settings.isActive;
+        _mpesaDisplayNameController.text = settings.displayName;
+        _mpesaShortcodeController.text =
+            publicConfig['shortcode']?.toString() ?? '';
+        _mpesaTransactionType =
+            publicConfig['transactionType']?.toString() ??
+            'CustomerPayBillOnline';
+        _mpesaAccountReferenceController.text =
+            publicConfig['accountReference']?.toString() ?? '';
+        _mpesaCallbackUrlController.text =
+            publicConfig['callbackUrl']?.toString() ?? '';
+        _mpesaConsumerKeyController.text =
+            secretConfig['consumerKey']?.toString() ?? '';
+        _mpesaConsumerSecretController.text =
+            secretConfig['consumerSecret']?.toString() ?? '';
+        _mpesaPasskeyController.text =
+            secretConfig['passkey']?.toString() ?? '';
+        _loadingMpesa = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingMpesa = false;
+        _mpesaMessage = 'M-Pesa settings unavailable: $error';
+      });
+    }
+  }
+
+  Future<void> _saveMpesaSettings() async {
+    setState(() {
+      _savingMpesa = true;
+      _mpesaMessage = '';
+    });
+    try {
+      final settings = await PosPaymentService.saveBusinessMpesaSettings(
+        isActive: _mpesaActive,
+        displayName: _mpesaDisplayNameController.text,
+        shortcode: _mpesaShortcodeController.text,
+        transactionType: _mpesaTransactionType,
+        accountReference: _mpesaAccountReferenceController.text,
+        callbackUrl: _mpesaCallbackUrlController.text,
+        consumerKey: _mpesaConsumerKeyController.text,
+        consumerSecret: _mpesaConsumerSecretController.text,
+        passkey: _mpesaPasskeyController.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _mpesaActive = settings.isActive;
+        _mpesaConsumerKeyController.text =
+            settings.secretConfig['consumerKey']?.toString() ?? '';
+        _mpesaConsumerSecretController.text =
+            settings.secretConfig['consumerSecret']?.toString() ?? '';
+        _mpesaPasskeyController.text =
+            settings.secretConfig['passkey']?.toString() ?? '';
+        _mpesaMessage = 'M-Pesa collection saved';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _mpesaMessage = 'M-Pesa save failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _savingMpesa = false);
+      }
+    }
+  }
+
   Future<void> _showAddPaymentMethodDialog([
     Map<String, dynamic>? existing,
   ]) async {
@@ -226,6 +336,8 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
             ],
           ),
           const SizedBox(height: 20),
+          _buildMpesaCollectionSettings(),
+          const SizedBox(height: 20),
           paymentMethodsAsync.when(
             data: (methods) {
               if (methods.isEmpty) {
@@ -311,6 +423,161 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMpesaCollectionSettings() {
+    if (_loadingMpesa) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'M-Pesa Business Collection',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Switch(
+              value: _mpesaActive,
+              onChanged: _savingMpesa
+                  ? null
+                  : (value) => setState(() => _mpesaActive = value),
+              activeThumbColor: AppColors.primaryLight,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: _mpesaDisplayNameController,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: _mpesaShortcodeController,
+                decoration: const InputDecoration(
+                  labelText: 'Till or PayBill number',
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+            SizedBox(
+              width: 260,
+              child: DropdownButtonFormField<String>(
+                initialValue: _mpesaTransactionType,
+                decoration: const InputDecoration(
+                  labelText: 'Transaction type',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'CustomerPayBillOnline',
+                    child: Text('PayBill'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'CustomerBuyGoodsOnline',
+                    child: Text('Buy Goods'),
+                  ),
+                ],
+                onChanged: _savingMpesa
+                    ? null
+                    : (value) => setState(
+                        () => _mpesaTransactionType =
+                            value ?? 'CustomerPayBillOnline',
+                      ),
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: _mpesaAccountReferenceController,
+                decoration: const InputDecoration(
+                  labelText: 'Account reference',
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 320,
+              child: TextField(
+                controller: _mpesaCallbackUrlController,
+                decoration: const InputDecoration(
+                  labelText: 'Callback URL override',
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 260,
+              child: TextField(
+                controller: _mpesaConsumerKeyController,
+                decoration: const InputDecoration(labelText: 'Consumer key'),
+              ),
+            ),
+            SizedBox(
+              width: 260,
+              child: TextField(
+                controller: _mpesaConsumerSecretController,
+                decoration: const InputDecoration(labelText: 'Consumer secret'),
+              ),
+            ),
+            SizedBox(
+              width: 320,
+              child: TextField(
+                controller: _mpesaPasskeyController,
+                decoration: const InputDecoration(labelText: 'Passkey'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton.icon(
+              onPressed: _savingMpesa ? null : _saveMpesaSettings,
+              icon: _savingMpesa
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save_outlined, size: 18),
+              label: Text(_savingMpesa ? 'Saving...' : 'Save M-Pesa'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _savingMpesa ? null : _loadMpesaSettings,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Reload'),
+            ),
+            if (_mpesaMessage.isNotEmpty)
+              Text(
+                _mpesaMessage,
+                style: TextStyle(
+                  color: _mpesaMessage.contains('saved')
+                      ? AppColors.success
+                      : AppColors.error,
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

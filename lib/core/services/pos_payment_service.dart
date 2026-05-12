@@ -8,6 +8,8 @@ class PosMpesaConfig {
   final String providerLabel;
   final String countryCode;
   final String currency;
+  final bool merchantConfigured;
+  final String? merchantShortcode;
   final String? message;
 
   const PosMpesaConfig({
@@ -15,6 +17,8 @@ class PosMpesaConfig {
     required this.providerLabel,
     required this.countryCode,
     required this.currency,
+    required this.merchantConfigured,
+    this.merchantShortcode,
     this.message,
   });
 
@@ -24,7 +28,36 @@ class PosMpesaConfig {
       providerLabel: json['providerLabel']?.toString() ?? 'M-Pesa',
       countryCode: json['countryCode']?.toString() ?? 'KE',
       currency: json['currency']?.toString() ?? 'KES',
+      merchantConfigured: json['merchantConfigured'] == true,
+      merchantShortcode: json['merchantShortcode']?.toString(),
       message: json['message']?.toString(),
+    );
+  }
+}
+
+class BusinessMpesaSettings {
+  final bool isActive;
+  final String displayName;
+  final Map<String, dynamic> publicConfig;
+  final Map<String, dynamic> secretConfig;
+
+  const BusinessMpesaSettings({
+    required this.isActive,
+    required this.displayName,
+    required this.publicConfig,
+    required this.secretConfig,
+  });
+
+  factory BusinessMpesaSettings.fromJson(Map<String, dynamic> json) {
+    return BusinessMpesaSettings(
+      isActive: json['isActive'] == true,
+      displayName: json['displayName']?.toString() ?? 'M-Pesa',
+      publicConfig: json['publicConfig'] is Map<String, dynamic>
+          ? json['publicConfig'] as Map<String, dynamic>
+          : const {},
+      secretConfig: json['secretConfig'] is Map<String, dynamic>
+          ? json['secretConfig'] as Map<String, dynamic>
+          : const {},
     );
   }
 }
@@ -82,6 +115,59 @@ class PosPaymentService {
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
     return PosMpesaConfig.fromJson(data);
+  }
+
+  static Future<BusinessMpesaSettings> fetchBusinessMpesaSettings() async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('business/payment-gateways/mpesa'),
+      queryParameters: {'deviceId': deviceId},
+      options: Options(headers: headers),
+    );
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    return BusinessMpesaSettings.fromJson(data);
+  }
+
+  static Future<BusinessMpesaSettings> saveBusinessMpesaSettings({
+    required bool isActive,
+    required String displayName,
+    required String shortcode,
+    required String transactionType,
+    required String accountReference,
+    required String callbackUrl,
+    required String consumerKey,
+    required String consumerSecret,
+    required String passkey,
+  }) async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.put<Map<String, dynamic>>(
+      _url('business/payment-gateways/mpesa'),
+      data: {
+        'deviceId': deviceId,
+        'displayName': displayName.trim().isEmpty
+            ? 'M-Pesa'
+            : displayName.trim(),
+        'isActive': isActive,
+        'publicConfig': {
+          'shortcode': shortcode.trim(),
+          'transactionType': transactionType.trim().isEmpty
+              ? 'CustomerPayBillOnline'
+              : transactionType.trim(),
+          'accountReference': accountReference.trim(),
+          'callbackUrl': callbackUrl.trim(),
+        },
+        'secretConfig': {
+          'consumerKey': consumerKey.trim(),
+          'consumerSecret': consumerSecret.trim(),
+          'passkey': passkey.trim(),
+        },
+      },
+      options: Options(headers: headers),
+    );
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    return BusinessMpesaSettings.fromJson(data);
   }
 
   static Future<PosPayment> startMpesaCheckout({

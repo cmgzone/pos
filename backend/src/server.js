@@ -56,6 +56,8 @@ const {
 } = require('./communication');
 const {
   ensurePosPaymentSchema,
+  loadBusinessPaymentGateway,
+  saveBusinessPaymentGateway,
   loadPosMpesaConfig,
   createMpesaPosCheckout,
   loadPosPayment,
@@ -1531,6 +1533,34 @@ app.post('/api/subscription/mpesa/callback', async (req, res, next) => {
     }
 
     res.json({ ok: true });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/business/payment-gateways/:provider', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const gateway = await loadBusinessPaymentGateway(
+      businessContext.businessId,
+      req.params.provider,
+      { includeSecrets: false },
+    );
+    res.json({ ok: true, data: gateway });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/business/payment-gateways/:provider', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const gateway = await saveBusinessPaymentGateway(
+      businessContext.businessId,
+      req.params.provider,
+      req.body || {},
+    );
+    res.json({ ok: true, data: gateway });
   } catch (error) {
     next(normalizeRouteError(error));
   }

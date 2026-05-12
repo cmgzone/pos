@@ -7,6 +7,8 @@ const {
   normalizeCountryCode,
 } = require('./subscriptionPlans');
 
+const SECRET_MASK_PREFIX = '********';
+
 let schemaReady = false;
 
 async function ensurePosPaymentSchema(target = query) {
@@ -14,6 +16,23 @@ async function ensurePosPaymentSchema(target = query) {
   if (canUseCache && schemaReady) {
     return;
   }
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS business_payment_gateways (
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      provider text NOT NULL,
+      display_name text,
+      is_active boolean NOT NULL DEFAULT false,
+      public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (business_id, provider)
+    )
+    `,
+  );
 
   await runQuery(
     target,
@@ -70,23 +89,128 @@ async function ensurePosPaymentSchema(target = query) {
   }
 }
 
+async function loadBusinessPaymentGateway(
+  businessId,
+  provider,
+  { includeSecrets = false } = {},
+  target = query,
+) {
+  await ensurePosPaymentSchema(target);
+  const cleanProvider = normalizeProvider(provider);
+  const result = await runQuery(
+    target,
+    `
+    SELECT *
+    FROM business_payment_gateways
+    WHERE business_id = $1 AND provider = $2
+    LIMIT 1
+    `,
+    [businessId, cleanProvider],
+  );
+  return normalizeBusinessPaymentGatewayRow(
+    result.rows[0] || {
+      business_id: businessId,
+      provider: cleanProvider,
+      display_name: providerLabel(cleanProvider),
+      is_active: false,
+      public_config_json: '{}',
+      secret_config_json: '{}',
+    },
+    { includeSecrets },
+  );
+}
+
+async function saveBusinessPaymentGateway(
+  businessId,
+  provider,
+  input = {},
+  target = query,
+) {
+  await ensurePosPaymentSchema(target);
+  const cleanProvider = normalizeProvider(provider || input.provider);
+  const existing = await loadBusinessPaymentGateway(
+    businessId,
+    cleanProvider,
+    { includeSecrets: true },
+    target,
+  );
+  const normalized = normalizeBusinessPaymentGatewayInput(input, {
+    ...existing,
+    provider: cleanProvider,
+  });
+
+  const result = await runQuery(
+    target,
+    `
+    INSERT INTO business_payment_gateways (
+      business_id,
+      provider,
+      display_name,
+      is_active,
+      public_config_json,
+      secret_config_json,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, NOW(), NOW())
+    ON CONFLICT (business_id, provider) DO UPDATE
+    SET display_name = EXCLUDED.display_name,
+        is_active = EXCLUDED.is_active,
+        public_config_json = EXCLUDED.public_config_json,
+        secret_config_json = EXCLUDED.secret_config_json,
+        updated_at = NOW()
+    RETURNING *
+    `,
+    [
+      businessId,
+      cleanProvider,
+      normalized.displayName,
+      normalized.isActive,
+      JSON.stringify(normalized.publicConfig),
+      JSON.stringify(normalized.secretConfig),
+    ],
+  );
+
+  return normalizeBusinessPaymentGatewayRow(result.rows[0], {
+    includeSecrets: false,
+  });
+}
+
 async function loadPosMpesaConfig(businessContext) {
   await ensurePosPaymentSchema();
   const countryCode = normalizeCountryCode(businessContext?.countryCode || 'GLOBAL');
-  const gateway = await loadPaymentGateway('mpesa');
-  const countries = gateway?.countries || [];
-  const active =
-    Boolean(gateway?.isActive) &&
+  const platformGateway = await loadPaymentGateway('mpesa');
+  const businessGateway = await loadBusinessPaymentGateway(
+    businessContext?.businessId,
+    'mpesa',
+    { includeSecrets: true },
+  );
+  const countries = platformGateway?.countries || [];
+  const platformActive =
+    Boolean(platformGateway?.isActive) &&
     (countries.includes(countryCode) || countries.includes('GLOBAL'));
+  const mpesaConfig = resolveMpesaGatewayConfig(platformGateway, businessGateway);
+  const merchantConfigured =
+    Boolean(businessGateway?.isActive) &&
+    Boolean(mpesaConfig.shortcode) &&
+    Boolean(mpesaConfig.consumerKey) &&
+    Boolean(mpesaConfig.consumerSecret) &&
+    Boolean(mpesaConfig.passkey) &&
+    Boolean(mpesaConfig.callbackUrl);
+  const active = platformActive && merchantConfigured;
   return {
     active,
     provider: 'mpesa',
-    providerLabel: gateway?.displayName || 'M-Pesa',
+    providerLabel: businessGateway?.displayName || platformGateway?.displayName || 'M-Pesa',
     countryCode,
     currency: countryCode === 'KE' ? 'KES' : 'KES',
+    merchantConfigured,
+    merchantShortcode: businessGateway?.publicConfig?.shortcode || null,
     message: active
       ? null
-      : 'M-Pesa POS checkout is not active for this business country.',
+      : platformActive
+        ? 'Add this business M-Pesa merchant credentials in Payment Methods.'
+        : 'M-Pesa POS checkout is not active for this business country.',
   };
 }
 
@@ -111,7 +235,12 @@ async function createMpesaPosCheckout({
     throw createError(400, configStatus.message);
   }
 
-  const gateway = await loadPaymentGateway('mpesa');
+  const platformGateway = await loadPaymentGateway('mpesa');
+  const businessGateway = await loadBusinessPaymentGateway(
+    businessContext.businessId,
+    'mpesa',
+    { includeSecrets: true },
+  );
   const paymentId = crypto.randomUUID();
   const externalReference = `pos_${paymentId.slice(0, 12)}`;
   const now = new Date().toISOString();
@@ -152,7 +281,11 @@ async function createMpesaPosCheckout({
     return normalizePosPaymentRow(result.rows[0]);
   });
 
-  const mpesa = await initiateMpesaPosCheckout(payment, gateway);
+  const mpesa = await initiateMpesaPosCheckout(
+    payment,
+    platformGateway,
+    businessGateway,
+  );
   return { ...payment, mpesa };
 }
 
@@ -293,8 +426,8 @@ async function handlePosMpesaCallback({
   });
 }
 
-async function initiateMpesaPosCheckout(payment, gateway) {
-  const mpesaConfig = resolveMpesaGatewayConfig(gateway);
+async function initiateMpesaPosCheckout(payment, platformGateway, businessGateway) {
+  const mpesaConfig = resolveMpesaGatewayConfig(platformGateway, businessGateway);
   if (
     !mpesaConfig.consumerKey ||
     !mpesaConfig.consumerSecret ||
@@ -313,7 +446,7 @@ async function initiateMpesaPosCheckout(payment, gateway) {
     );
     return {
       status: 'configuration_required',
-      message: 'M-Pesa credentials are not configured in the admin panel.',
+      message: 'M-Pesa credentials are not configured for this business.',
     };
   }
 
@@ -337,13 +470,13 @@ async function initiateMpesaPosCheckout(payment, gateway) {
         BusinessShortCode: mpesaConfig.shortcode,
         Password: password,
         Timestamp: timestamp,
-        TransactionType: 'CustomerPayBillOnline',
+        TransactionType: mpesaConfig.transactionType,
         Amount: amount,
         PartyA: phoneNumber,
         PartyB: mpesaConfig.shortcode,
         PhoneNumber: phoneNumber,
         CallBackURL: mpesaConfig.callbackUrl,
-        AccountReference: payment.externalReference,
+        AccountReference: mpesaConfig.accountReference || payment.externalReference,
         TransactionDesc: 'Velora POS sale',
       }),
     },
@@ -409,17 +542,108 @@ async function getMpesaAccessToken(mpesaConfig) {
   return body.access_token;
 }
 
-function resolveMpesaGatewayConfig(gateway) {
-  const publicConfig = gateway?.publicConfig || {};
-  const secretConfig = gateway?.secretConfig || {};
+function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
+  const platformPublicConfig = platformGateway?.publicConfig || {};
+  const businessPublicConfig = businessGateway?.publicConfig || {};
+  const businessSecretConfig = businessGateway?.secretConfig || {};
   return {
-    baseUrl: publicConfig.baseUrl || config.mpesaBaseUrl,
-    shortcode: publicConfig.shortcode || config.mpesaShortcode,
-    callbackUrl: publicConfig.callbackUrl || config.mpesaCallbackUrl,
-    consumerKey: secretConfig.consumerKey || config.mpesaConsumerKey,
-    consumerSecret: secretConfig.consumerSecret || config.mpesaConsumerSecret,
-    passkey: secretConfig.passkey || config.mpesaPasskey,
+    baseUrl:
+      businessPublicConfig.baseUrl ||
+      platformPublicConfig.baseUrl ||
+      config.mpesaBaseUrl,
+    shortcode: businessPublicConfig.shortcode || '',
+    callbackUrl:
+      businessPublicConfig.callbackUrl ||
+      platformPublicConfig.callbackUrl ||
+      config.mpesaCallbackUrl,
+    transactionType:
+      businessPublicConfig.transactionType || 'CustomerPayBillOnline',
+    accountReference: businessPublicConfig.accountReference || '',
+    consumerKey: businessSecretConfig.consumerKey || '',
+    consumerSecret: businessSecretConfig.consumerSecret || '',
+    passkey: businessSecretConfig.passkey || '',
   };
+}
+
+function normalizeBusinessPaymentGatewayInput(input, existing = {}) {
+  const raw = input && typeof input === 'object' ? input : {};
+  return {
+    provider: normalizeProvider(raw.provider ?? existing.provider),
+    displayName:
+      normalizeText(raw.displayName ?? raw.display_name) ||
+      existing.displayName ||
+      providerLabel(existing.provider),
+    isActive:
+      raw.isActive == null && raw.is_active == null
+        ? existing.isActive ?? false
+        : Boolean(raw.isActive ?? raw.is_active),
+    publicConfig: normalizeConfigObject(
+      raw.publicConfig ?? raw.public_config ?? {},
+      existing.publicConfig || {},
+      { secret: false },
+    ),
+    secretConfig: normalizeConfigObject(
+      raw.secretConfig ?? raw.secret_config ?? {},
+      existing.secretConfig || {},
+      { secret: true },
+    ),
+  };
+}
+
+function normalizeBusinessPaymentGatewayRow(row, { includeSecrets = false } = {}) {
+  const secretConfig = parseJson(row.secret_config_json, {});
+  return {
+    businessId: row.business_id,
+    provider: normalizeProvider(row.provider),
+    displayName: row.display_name || providerLabel(row.provider),
+    isActive: Boolean(row.is_active),
+    publicConfig: parseJson(row.public_config_json, {}),
+    secretConfig: includeSecrets ? secretConfig : maskConfigObject(secretConfig),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function normalizeConfigObject(input, existing = {}, { secret = false } = {}) {
+  const raw = input && typeof input === 'object' && !Array.isArray(input)
+    ? input
+    : {};
+  const normalized = { ...existing };
+  for (const [key, value] of Object.entries(raw)) {
+    const cleanKey = normalizeText(key);
+    if (!cleanKey) continue;
+    const text = value == null ? '' : String(value).trim();
+    if (secret && (!text || text.startsWith(SECRET_MASK_PREFIX))) {
+      continue;
+    }
+    if (!secret && !text) {
+      delete normalized[cleanKey];
+      continue;
+    }
+    normalized[cleanKey] = text;
+  }
+  return normalized;
+}
+
+function maskConfigObject(configObject) {
+  const masked = {};
+  for (const [key, value] of Object.entries(configObject || {})) {
+    const text = value == null ? '' : String(value);
+    masked[key] = text ? `${SECRET_MASK_PREFIX}${text.slice(-4)}` : '';
+  }
+  return masked;
+}
+
+function normalizeProvider(value) {
+  return normalizeText(value)?.toLowerCase().replace(/[^a-z0-9_]+/g, '_') || 'mpesa';
+}
+
+function providerLabel(provider) {
+  switch (normalizeProvider(provider)) {
+    case 'mpesa':
+      return 'M-Pesa';
+    default:
+      return normalizeProvider(provider).replace(/_/g, ' ');
+  }
 }
 
 function normalizePosPaymentRow(row) {
@@ -528,9 +752,12 @@ async function runQuery(target, text, params) {
 
 module.exports = {
   ensurePosPaymentSchema,
+  loadBusinessPaymentGateway,
+  saveBusinessPaymentGateway,
   loadPosMpesaConfig,
   createMpesaPosCheckout,
   loadPosPayment,
   linkPosPaymentToSale,
   handlePosMpesaCallback,
+  resolveMpesaGatewayConfig,
 };
