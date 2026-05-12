@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
@@ -28,22 +30,295 @@ class PikiMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     if (message.sender == PikiSender.user) return _buildUserBubble();
 
+    Widget child;
     switch (message.messageType) {
       case PikiMessageType.thinking:
-        return _buildThinkingCard();
+        child = _buildThinkingCard();
+        break;
       case PikiMessageType.working:
-        return _buildWorkingCard();
+        child = _buildWorkingCard();
+        break;
       case PikiMessageType.taskComplete:
-        return _buildTaskCompleteCard();
+        child = _buildTaskCompleteCard();
+        break;
       case PikiMessageType.productCard:
-        return _buildProductCard();
+        child = _buildProductCard();
+        break;
       case PikiMessageType.error:
-        return _buildErrorBubble();
+        child = _buildErrorBubble();
+        break;
       case PikiMessageType.aiResponse:
-        return _buildAiResponseBubble();
+        child = _buildAiResponseBubble();
+        break;
+      case PikiMessageType.alert:
+        child = _buildAlertBubble();
+        break;
+      case PikiMessageType.chart:
+        child = _buildChartBubble();
+        break;
       case PikiMessageType.text:
-        return _buildAgentTextBubble();
+        child = _buildAgentTextBubble();
+        break;
     }
+
+    if (message.suggestions != null && message.suggestions!.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          child,
+          const SizedBox(height: 12),
+          _buildSuggestionChips(),
+          const SizedBox(height: 12),
+        ],
+      );
+    }
+
+    return child;
+  }
+
+  Widget _buildSuggestionChips() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 48),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: message.suggestions!.map((s) {
+          return InkWell(
+            onTap: () => onSendPrompt?.call(s),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.reply, size: 14, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      s,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Alert bubble ──────────────────────────────────────────────────────────
+
+  Widget _buildAlertBubble() {
+    final data = message.attachedData ?? {};
+    final title = data['title'] as String? ?? 'Alert';
+    final priority = data['priority'] as String? ?? 'medium';
+    final details = data['details'] as String? ?? '';
+    final suggestion = data['suggestion'] as String? ?? '';
+    final action = data['action'] as String?;
+
+    final color = priority == 'high' ? AppColors.warning : AppColors.secondary;
+
+    return _AgentRow(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 340),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(6),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+          ),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  priority == 'high' ? Icons.error_outline : Icons.info_outline,
+                  color: color,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message.content,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (details.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                details,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            if (suggestion.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lightbulb_outline, size: 14, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        suggestion,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => onSendPrompt?.call(suggestion),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: color,
+                    side: BorderSide(color: color.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text('Take Action', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Chart bubble ──────────────────────────────────────────────────────────
+
+  Widget _buildChartBubble() {
+    final data = message.attachedData ?? {};
+    final results = (data['tool_results'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final chartData = results.firstWhere((r) => r['type'] == 'chart', orElse: () => {});
+    
+    if (chartData.isEmpty) return _buildAgentTextBubble();
+
+    final title = chartData['title'] as String? ?? 'Data Visualization';
+    final labels = (chartData['labels'] as List?)?.cast<String>() ?? [];
+    final values = (chartData['values'] as List?)?.cast<num>() ?? [];
+
+    return _AgentRow(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 340),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 180,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: values.isEmpty ? 10 : values.map((v) => v.toDouble()).reduce((a, b) => a > b ? a : b) * 1.2,
+                  barTouchData: BarTouchData(enabled: true),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= labels.length) return const SizedBox();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              labels[index].length > 6 ? '${labels[index].substring(0, 5)}..' : labels[index],
+                              style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  barGroups: List.generate(values.length, (i) {
+                    return BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: values[i].toDouble(),
+                          color: AppColors.primary,
+                          width: 16,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(4),
+                            topRight: Radius.circular(4),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (message.content.isNotEmpty)
+              Text(
+                message.content,
+                style: const TextStyle(fontSize: 13, height: 1.5),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── User bubble ────────────────────────────────────────────────────────
@@ -354,7 +629,10 @@ class PikiMessageBubble extends StatelessWidget {
             if (details.isNotEmpty) const SizedBox(height: 8),
 
             // Action buttons
-            PikiActionButtons(results: results),
+            PikiActionButtons(
+              results: results,
+              onSendPrompt: onSendPrompt,
+            ),
           ],
         ),
       ),
@@ -652,14 +930,27 @@ class PikiMessageBubble extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             // Content
-            Text(
-              message.content,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
-                height: 1.6,
+            MarkdownBody(
+              data: message.content,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+                listBullet: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+                h1: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                h2: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                h3: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                strong: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
               ),
             ),
+            // ── Dynamic tool result cards ────────────────────────────────
+            ..._buildToolResultCards(),
             if (_purchaseDraftPreview != null) ...[
               const SizedBox(height: 14),
               Container(
@@ -960,6 +1251,140 @@ class PikiMessageBubble extends StatelessWidget {
     }
     return ((result['count'] as num? ?? 0).toInt() > 0);
   }
+
+  List<Widget> _buildToolResultCards() {
+    final toolResults = (message.attachedData?['tool_results'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+
+    if (toolResults.isEmpty) return const [];
+
+    final cards = <Widget>[];
+
+    for (final result in toolResults) {
+      final type = result['type'] as String?;
+      final success = result['success'] as bool? ?? false;
+
+      if (type == 'create_product' && success) {
+        cards.add(_buildCard(
+          icon: Icons.inventory_2,
+          color: AppColors.primary,
+          title: 'Product Created',
+          subtitle: result['name'] as String? ?? 'New Product',
+          value: result['price'] != null ? '${ShopSettings.currency}${result['price']}' : null,
+        ));
+      } else if (type == 'create_service' && success) {
+        cards.add(_buildCard(
+          icon: Icons.handyman,
+          color: AppColors.secondary,
+          title: 'Service Created',
+          subtitle: result['name'] as String? ?? 'New Service',
+          value: result['price'] != null ? '${ShopSettings.currency}${result['price']}' : null,
+        ));
+      } else if (type == 'record_product_sale' && success) {
+        cards.add(_buildCard(
+          icon: Icons.point_of_sale,
+          color: AppColors.success,
+          title: 'Product Sale Recorded',
+          subtitle: '${result['quantity']}x ${result['product_name']} (${result['payment_type']})',
+          value: result['total'] != null ? '${ShopSettings.currency}${result['total']}' : null,
+        ));
+      } else if (type == 'record_service_sale' && success) {
+        cards.add(_buildCard(
+          icon: Icons.receipt_long,
+          color: AppColors.success,
+          title: 'Service Sale Recorded',
+          subtitle: '${result['service_name']} (${result['payment_type']})',
+          value: result['total'] != null ? '${ShopSettings.currency}${result['total']}' : null,
+        ));
+      } else if (type == 'add_service_field' && success) {
+        cards.add(_buildCard(
+          icon: Icons.format_list_bulleted_add,
+          color: AppColors.warning,
+          title: 'Field Added',
+          subtitle: '${result['field_label']} added to ${result['service_name']}',
+          value: result['field_type'] as String?,
+        ));
+      }
+    }
+
+    if (cards.isEmpty) return const [];
+
+    return [
+      const SizedBox(height: 12),
+      ...cards.map((card) => Padding(
+        padding: const EdgeInsets.only(bottom: 8.0),
+        child: card,
+      )),
+    ];
+  }
+
+  Widget _buildCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    String? value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (value != null) ...[
+            const SizedBox(width: 12),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -989,13 +1414,20 @@ class _AgentRow extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Center(
-              child: Text(
-                'P',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Center(
+                  child: Text(
+                    'P',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ),
             ),

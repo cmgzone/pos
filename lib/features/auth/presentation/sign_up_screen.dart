@@ -5,6 +5,7 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
@@ -28,11 +29,91 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isLoadingCatalog = false;
   String? _error;
   bool _showPassword = false;
   bool _showConfirmPassword = false;
+  SubscriptionCatalog? _catalog;
+  String? _selectedMarketKey;
+  String? _selectedPlanCode;
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
+
+  SubscriptionMarket? get _selectedMarket {
+    final catalog = _catalog;
+    if (catalog == null) return null;
+    for (final market in catalog.markets) {
+      if (market.key == _selectedMarketKey) return market;
+    }
+    return catalog.selectedMarket ??
+        (catalog.markets.isEmpty ? null : catalog.markets.first);
+  }
+
+  SubscriptionPlanSummary? get _selectedPlan {
+    final catalog = _catalog;
+    if (catalog == null) return null;
+    for (final plan in catalog.plans) {
+      if (plan.code == _selectedPlanCode) return plan;
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isBusinessSetupFlow) {
+      _loadSubscriptionCatalog();
+    }
+  }
+
+  Future<void> _loadSubscriptionCatalog() async {
+    setState(() => _isLoadingCatalog = true);
+    try {
+      await SyncSettingsService.init();
+      final catalog = await SubscriptionService.fetchPlans();
+      final market =
+          catalog.selectedMarket ??
+          (catalog.markets.isNotEmpty ? catalog.markets.first : null);
+      final plan = market == null ? null : _firstPlanForMarket(catalog, market);
+      if (!mounted) return;
+      setState(() {
+        _catalog = catalog;
+        _selectedMarketKey = market?.key;
+        _selectedPlanCode = plan?.code;
+        _isLoadingCatalog = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load subscription plans: $error';
+        _isLoadingCatalog = false;
+      });
+    }
+  }
+
+  SubscriptionPlanSummary? _firstPlanForMarket(
+    SubscriptionCatalog catalog,
+    SubscriptionMarket market,
+  ) {
+    for (final plan in catalog.plans) {
+      if (plan.priceFor(market) != null) return plan;
+    }
+    return null;
+  }
+
+  void _selectMarket(String? key) {
+    final catalog = _catalog;
+    if (catalog == null || key == null) return;
+    final market = catalog.markets.firstWhere(
+      (item) => item.key == key,
+      orElse: () => catalog.markets.first,
+    );
+    final plan = _firstPlanForMarket(catalog, market);
+    setState(() {
+      _selectedMarketKey = key;
+      _selectedPlanCode = plan?.code;
+    });
+  }
 
   void _goToSignIn() {
     if (Navigator.of(context).canPop()) {
@@ -84,6 +165,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
+    final market = _selectedMarket;
+    final plan = _selectedPlan;
+    if (_isBusinessSetupFlow && (market == null || plan == null)) {
+      setState(() => _error = 'Choose your country and subscription plan.');
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _error = null;
@@ -109,6 +197,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         phone: phone,
         password: password,
         deviceId: deviceId,
+        countryCode: market?.countryCode ?? 'GLOBAL',
+        requestedPlanCode: plan?.code ?? 'trial',
+        provider: market?.provider,
       );
 
       final incomingBusinessId = ((response.business['id'] as String?) ?? '')
@@ -160,6 +251,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         await SyncSettingsService.setLocalBusinessId(incomingBusinessId);
       }
 
+      if (response.checkoutRequired && response.checkoutContext != null) {
+        await _startRegistrationCheckout(response, phone);
+      }
+
       if (_isBusinessSetupFlow) {
         await ShopSettings.init();
         await ShopSettings.setShopName(
@@ -186,6 +281,156 @@ class _SignUpScreenState extends State<SignUpScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _startRegistrationCheckout(
+    CloudAuthResponse response,
+    String phone,
+  ) async {
+    final checkoutContext =
+        response.checkoutContext ?? const <String, dynamic>{};
+    final planCode = checkoutContext['planCode']?.toString() ?? '';
+    final countryCode = checkoutContext['countryCode']?.toString() ?? '';
+    final provider = checkoutContext['provider']?.toString() ?? '';
+    if (planCode.isEmpty || countryCode.isEmpty || provider.isEmpty) return;
+
+    try {
+      final checkout = await SubscriptionService.startCheckout(
+        planCode: planCode,
+        countryCode: countryCode,
+        provider: provider,
+        phoneNumber: provider == 'mpesa' ? phone : null,
+      );
+      if (!mounted) return;
+      final message =
+          checkout.message ??
+          (provider == 'mpesa'
+              ? 'M-Pesa checkout started. Paid features unlock after confirmation.'
+              : 'Checkout started. Complete payment from Subscription settings.');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Account created, but checkout could not start: $error',
+          ),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    }
+  }
+
+  Widget _buildSubscriptionChooser() {
+    if (_isLoadingCatalog) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LinearProgressIndicator(minHeight: 2),
+          SizedBox(height: 12),
+          Text(
+            'Loading available countries and plans...',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ],
+      );
+    }
+
+    final catalog = _catalog;
+    if (catalog == null || catalog.markets.isEmpty) {
+      return OutlinedButton.icon(
+        onPressed: _loadSubscriptionCatalog,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Load subscription plans'),
+      );
+    }
+
+    final market = _selectedMarket;
+    final visiblePlans = market == null
+        ? <SubscriptionPlanSummary>[]
+        : catalog.plans.where((plan) => plan.priceFor(market) != null).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Country',
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedMarketKey,
+          decoration: const InputDecoration(
+            prefixIcon: _GradientIcon(Icons.public_outlined),
+          ),
+          items: catalog.markets
+              .map(
+                (market) => DropdownMenuItem(
+                  value: market.key,
+                  child: Text(market.displayLabel),
+                ),
+              )
+              .toList(),
+          onChanged: _isLoading ? null : _selectMarket,
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Plan',
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        if (visiblePlans.isEmpty)
+          const Text(
+            'No active plans are configured for this country.',
+            style: TextStyle(color: AppColors.error, fontSize: 12),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: visiblePlans.map((plan) {
+              final price = market == null ? null : plan.priceFor(market);
+              final selected = plan.code == _selectedPlanCode;
+              return ChoiceChip(
+                selected: selected,
+                label: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(plan.name),
+                    Text(
+                      price?.displayAmount ?? 'No price',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: selected
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                onSelected: _isLoading
+                    ? null
+                    : (_) => setState(() => _selectedPlanCode = plan.code),
+              );
+            }).toList(),
+          ),
+        if (_selectedPlan != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            '${_selectedPlan!.entitlements.maxBranches} branch(es), '
+            '${_selectedPlan!.entitlements.maxEmployees} employee(s), '
+            '${_selectedPlan!.entitlements.maxAiAgents} AI seat(s)',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -338,6 +583,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   prefixIcon: _GradientIcon(Icons.storefront_outlined),
                 ),
               ),
+              const SizedBox(height: 20),
+              _buildSubscriptionChooser(),
               const SizedBox(height: 20),
             ],
             const Text(

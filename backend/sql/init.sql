@@ -5,9 +5,12 @@ CREATE TABLE IF NOT EXISTS businesses (
   name text NOT NULL,
   owner_name text,
   owner_email text,
+  country_code text NOT NULL DEFAULT 'GLOBAL',
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
+
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL';
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
@@ -19,6 +22,136 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  code text PRIMARY KEY,
+  name text NOT NULL,
+  description text,
+  is_active boolean NOT NULL DEFAULT true,
+  features_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  max_branches integer NOT NULL DEFAULT 1,
+  max_employees integer NOT NULL DEFAULT 1,
+  max_ai_agents integer NOT NULL DEFAULT 0,
+  ai_rate_hourly integer NOT NULL DEFAULT 0,
+  ai_rate_weekly integer NOT NULL DEFAULT 0,
+  ai_rate_monthly integer NOT NULL DEFAULT 0,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS platform_payment_gateways (
+  provider text PRIMARY KEY,
+  display_name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT false,
+  countries_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS subscription_plan_prices (
+  id text PRIMARY KEY,
+  plan_code text NOT NULL REFERENCES subscription_plans(code) ON DELETE CASCADE,
+  country_code text NOT NULL DEFAULT 'GLOBAL',
+  currency text NOT NULL DEFAULT 'USD',
+  amount_minor integer NOT NULL DEFAULT 0,
+  billing_period text NOT NULL DEFAULT 'monthly',
+  provider text NOT NULL DEFAULT 'google_pay',
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_plan_prices_unique
+  ON subscription_plan_prices(plan_code, country_code, provider, billing_period);
+
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  plan_code text NOT NULL REFERENCES subscription_plans(code),
+  price_id text REFERENCES subscription_plan_prices(id),
+  provider text NOT NULL,
+  country_code text NOT NULL,
+  currency text NOT NULL,
+  amount_minor integer NOT NULL,
+  billing_period text NOT NULL DEFAULT 'monthly',
+  status text NOT NULL DEFAULT 'pending',
+  phone_number text,
+  external_reference text,
+  checkout_request_id text,
+  google_pay_token_json jsonb,
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  completed_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_business
+  ON subscription_payments(business_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS pos_payment_requests (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  sale_id text,
+  provider text NOT NULL,
+  country_code text NOT NULL DEFAULT 'KE',
+  currency text NOT NULL DEFAULT 'KES',
+  amount_minor integer NOT NULL,
+  phone_number text,
+  status text NOT NULL DEFAULT 'pending',
+  external_reference text,
+  checkout_request_id text,
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  completed_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_pos_payment_requests_business
+  ON pos_payment_requests(business_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pos_payment_requests_checkout
+  ON pos_payment_requests(checkout_request_id);
+
+CREATE TABLE IF NOT EXISTS platform_message_gateways (
+  provider text PRIMARY KEY,
+  display_name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT false,
+  countries_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS business_communication_settings (
+  business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+  whatsapp_number text,
+  sms_sender_id text,
+  allow_api_send boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS message_send_logs (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  user_id text,
+  channel text NOT NULL,
+  mode text NOT NULL DEFAULT 'api',
+  provider text,
+  recipient text NOT NULL,
+  body text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  error_message text,
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_send_logs_business
+  ON message_send_logs(business_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS business_access_tokens (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
@@ -40,6 +173,9 @@ CREATE TABLE IF NOT EXISTS platform_ai_config (
   id integer PRIMARY KEY DEFAULT 1,
   api_key text NOT NULL DEFAULT '',
   model text NOT NULL DEFAULT 'openai/gpt-4o-mini',
+  stt_model text NOT NULL DEFAULT 'openai/whisper-1',
+  tts_model text NOT NULL DEFAULT 'openai/tts-1',
+  tts_voice text NOT NULL DEFAULT 'alloy',
   enabled boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT NOW(),
   CONSTRAINT platform_ai_config_single_row CHECK (id = 1)
@@ -52,6 +188,55 @@ CREATE TABLE IF NOT EXISTS ai_rate_limits (
   request_count integer NOT NULL DEFAULT 0,
   window_start timestamptz NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS ai_rate_limit_counters (
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  period text NOT NULL,
+  request_count integer NOT NULL DEFAULT 0,
+  window_start timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (business_id, period)
+);
+
+CREATE TABLE IF NOT EXISTS piki_learning (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text,
+  kind text NOT NULL,
+  phrase text NOT NULL,
+  target text NOT NULL,
+  weight double precision NOT NULL DEFAULT 1,
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_piki_learning_business_phrase
+  ON piki_learning(business_id, kind, COALESCE(branch_id, ''), LOWER(phrase))
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS piki_proactive_insights (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text,
+  severity text NOT NULL DEFAULT 'info',
+  kind text NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  action_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  dedupe_key text NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  generated_at timestamptz NOT NULL DEFAULT NOW(),
+  acknowledged_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_piki_proactive_dedupe
+  ON piki_proactive_insights(business_id, dedupe_key);
+CREATE INDEX IF NOT EXISTS idx_piki_proactive_active
+  ON piki_proactive_insights(business_id, status, generated_at DESC);
 
 CREATE TABLE IF NOT EXISTS categories (
   id text PRIMARY KEY,
@@ -218,6 +403,10 @@ CREATE TABLE IF NOT EXISTS sales (
   amount_tendered double precision NOT NULL DEFAULT 0,
   change_given double precision NOT NULL DEFAULT 0,
   balance_due double precision NOT NULL DEFAULT 0,
+  payment_provider text,
+  payment_reference text,
+  payment_status text,
+  payment_metadata_json jsonb,
   refund_sale_id text,
   refund_for_sale_id text,
   refund_note text,
@@ -365,6 +554,10 @@ ALTER TABLE shifts ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS shift_id text;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_provider text;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_reference text;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_status text;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_metadata_json jsonb;
 CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS business_id text;
@@ -703,6 +896,28 @@ CREATE TABLE IF NOT EXISTS stock_transfers (
   deleted_at timestamptz,
   sync_status text NOT NULL DEFAULT 'synced'
 );
+
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS branch_id text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS from_branch_id text NOT NULL DEFAULT '';
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS to_branch_id text NOT NULL DEFAULT '';
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS product_id text NOT NULL DEFAULT '';
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS product_name text NOT NULL DEFAULT 'Product';
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS quantity double precision NOT NULL DEFAULT 0;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS unit text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'requested';
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS requested_by text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS approved_by text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS received_by text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS note text;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS approved_at timestamptz;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS received_at timestamptz;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_branch_ids_json text;
 

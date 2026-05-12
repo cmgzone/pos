@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../data/customer_repository.dart';
 import '../../sales/presentation/receipt_service.dart';
+import 'customer_message_dialog.dart';
 
 class CustomerKopeshaDetailScreen extends StatefulWidget {
   final String customerId;
@@ -108,6 +110,34 @@ class _CustomerKopeshaDetailScreenState
     );
   }
 
+  Future<void> _messageCustomer() async {
+    final statement = _statement;
+    if (statement == null) return;
+    final customer = statement['customer'] as Map<String, dynamic>? ?? {};
+    final summary =
+        statement['summary'] as Map<String, dynamic>? ??
+        <String, dynamic>{'outstanding_balance': customer['balance'] ?? 0.0};
+    final name = customer['name'] as String? ?? 'Customer';
+    final phone = customer['phone'] as String? ?? '';
+    final balance =
+        '${ShopSettings.currency}${_money(summary['outstanding_balance']).toStringAsFixed(2)}';
+    final message = MessagingService.balanceReminder(
+      customerName: name,
+      balance: balance,
+      dueDate: summary['next_due_date'] as String?,
+    );
+    await CustomerMessageDialog.show(
+      context,
+      customerName: name,
+      phoneNumber: phone,
+      initialMessage: message,
+      metadata: {
+        'source': 'kopesha_statement',
+        'customerId': widget.customerId,
+      },
+    );
+  }
+
   String _contactLine(Map<String, dynamic> customer) {
     final parts = [customer['phone'] as String?, customer['email'] as String?]
         .where((value) => value != null && value.isNotEmpty)
@@ -181,6 +211,11 @@ class _CustomerKopeshaDetailScreenState
         backgroundColor: AppColors.surface,
         title: Text(customer['name'] as String? ?? 'Customer Statement'),
         actions: [
+          IconButton(
+            onPressed: _messageCustomer,
+            icon: const Icon(Icons.message_outlined),
+            tooltip: 'Message customer',
+          ),
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh),

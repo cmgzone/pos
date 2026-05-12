@@ -14,6 +14,10 @@ class CloudAuthResponse {
   final Map<String, dynamic> subscription;
   final Map<String, dynamic> license;
   final Map<String, dynamic> user;
+  final Map<String, dynamic> selectedPlan;
+  final Map<String, dynamic> selectedMarket;
+  final Map<String, dynamic>? checkoutContext;
+  final bool checkoutRequired;
 
   const CloudAuthResponse({
     required this.business,
@@ -21,6 +25,10 @@ class CloudAuthResponse {
     required this.subscription,
     required this.license,
     required this.user,
+    required this.selectedPlan,
+    required this.selectedMarket,
+    required this.checkoutContext,
+    required this.checkoutRequired,
   });
 
   factory CloudAuthResponse.fromJson(Map<String, dynamic> json) {
@@ -38,6 +46,16 @@ class CloudAuthResponse {
       user: json['user'] is Map<String, dynamic>
           ? json['user'] as Map<String, dynamic>
           : const <String, dynamic>{},
+      selectedPlan: json['selectedPlan'] is Map<String, dynamic>
+          ? json['selectedPlan'] as Map<String, dynamic>
+          : const <String, dynamic>{},
+      selectedMarket: json['selectedMarket'] is Map<String, dynamic>
+          ? json['selectedMarket'] as Map<String, dynamic>
+          : const <String, dynamic>{},
+      checkoutContext: json['checkoutContext'] is Map<String, dynamic>
+          ? json['checkoutContext'] as Map<String, dynamic>
+          : null,
+      checkoutRequired: json['checkoutRequired'] == true,
     );
   }
 }
@@ -62,6 +80,9 @@ class CloudAuthService {
     required String phone,
     required String password,
     required String deviceId,
+    required String countryCode,
+    required String requestedPlanCode,
+    String? provider,
   }) async {
     final normalizedUrl = backendUrl.trim();
     if (normalizedUrl.isEmpty) {
@@ -85,6 +106,10 @@ class CloudAuthService {
               'password': hashedPassword,
               'deviceId': deviceId,
               'deviceName': _deviceName,
+              'countryCode': countryCode,
+              'requestedPlanCode': requestedPlanCode,
+              if (provider != null && provider.trim().isNotEmpty)
+                'provider': provider.trim(),
             }),
           )
           .timeout(_timeout);
@@ -92,14 +117,16 @@ class CloudAuthService {
       final body = _decodeJson(response);
 
       if (response.statusCode == 409) {
-        final message = _readText(body['error']) ??
+        final message =
+            _readText(body['error']) ??
             'An account with that email already exists.';
         throw Exception(message);
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final message =
-            _readText(body['error']) ?? 'Registration failed (${response.statusCode})';
+            _readText(body['error']) ??
+            'Registration failed (${response.statusCode})';
         throw Exception(message);
       }
 
@@ -191,9 +218,14 @@ class CloudAuthService {
   /// Persist the cloud auth response locally: store the license binding,
   /// sync settings, and return the user record for local DB insertion.
   static Future<void> persistCloudResponse(CloudAuthResponse response) async {
-    // Store the license/access binding by refreshing against the backend.
     await LicenseService.init();
     await SyncSettingsService.init();
+    await LicenseService.storeAccessResponse({
+      'business': response.business,
+      'accessToken': response.accessToken,
+      'subscription': response.subscription,
+      'license': response.license,
+    });
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isNotEmpty) {
       try {

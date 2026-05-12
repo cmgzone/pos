@@ -543,7 +543,9 @@ class SyncService {
         continue;
       }
 
-      normalized[key] = value;
+      normalized[key] = value is Map || value is List
+          ? jsonEncode(value)
+          : value;
     }
     normalized['sync_status'] = syncStatus;
     return normalized;

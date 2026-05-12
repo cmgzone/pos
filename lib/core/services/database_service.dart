@@ -507,6 +507,10 @@ class DatabaseService {
         amount_tendered REAL NOT NULL DEFAULT 0,
         change_given REAL NOT NULL DEFAULT 0,
         balance_due REAL NOT NULL DEFAULT 0,
+        payment_provider TEXT,
+        payment_reference TEXT,
+        payment_status TEXT,
+        payment_metadata_json TEXT,
         refund_sale_id TEXT,
         refund_for_sale_id TEXT,
         refund_note TEXT,
@@ -1174,9 +1178,62 @@ class DatabaseService {
     await _ensureBrandColumn(database);
     await _ensurePaymentMethodsSchema(database);
     await _ensureEnterpriseSchema(database);
+    await _ensureStockTransferSchema(database);
+    await _ensureAgentMemorySchema(database);
+    await _ensureAgentChatSchema(database);
     // Indexes must be created last because some of them target columns that
     // are added by the schema repair helpers above on older local databases.
     await _createIndexes(database);
+  }
+
+  static Future<void> _ensureAgentChatSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS piki_sessions (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS piki_messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        message_type TEXT NOT NULL,
+        attached_data_json TEXT,
+        steps_json TEXT,
+        suggestions_json TEXT,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES piki_sessions(id) ON DELETE CASCADE
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'piki_messages',
+      indexName: 'idx_piki_messages_session_id',
+      columns: ['session_id'],
+    );
+  }
+
+  static Future<void> _ensureAgentMemorySchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS piki_memory (
+        id TEXT PRIMARY KEY,
+        key TEXT NOT NULL,
+        value_json TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'piki_memory',
+      indexName: 'idx_piki_memory_key',
+      columns: ['key'],
+    );
   }
 
   static Future<void> _ensureEnterpriseSchema(DatabaseExecutor database) async {
@@ -1256,6 +1313,150 @@ class DatabaseService {
       'updated_at': now,
       'sync_status': 'pending',
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  static Future<void> _ensureStockTransferSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS stock_transfers (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        from_branch_id TEXT NOT NULL,
+        to_branch_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        status TEXT NOT NULL DEFAULT 'requested',
+        requested_by TEXT,
+        approved_by TEXT,
+        received_by TEXT,
+        note TEXT,
+        requested_at TEXT NOT NULL,
+        approved_at TEXT,
+        received_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'branch_id',
+      definition: "TEXT DEFAULT '$defaultBranchId'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'from_branch_id',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'to_branch_id',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'product_id',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'product_name',
+      definition: "TEXT NOT NULL DEFAULT 'Product'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'quantity',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'unit',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'status',
+      definition: "TEXT NOT NULL DEFAULT 'requested'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'requested_by',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'approved_by',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'received_by',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'note',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'requested_at',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'approved_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'received_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'created_at',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'updated_at',
+      definition: "TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'deleted_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'stock_transfers',
+      column: 'sync_status',
+      definition: "TEXT NOT NULL DEFAULT 'pending'",
+    );
   }
 
   /// Ensures variant tables and columns exist on databases created before
@@ -1490,6 +1691,30 @@ class DatabaseService {
       column: 'due_date',
       definition: 'TEXT',
     );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'payment_provider',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'payment_reference',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'payment_status',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'payment_metadata_json',
+      definition: 'TEXT',
+    );
   }
 
   static Future<void> _ensureSalesCashDrawerSchema(
@@ -1687,6 +1912,7 @@ class DatabaseService {
       'suppliers',
       'purchase_invoices',
       'stock_batches',
+      'stock_transfers',
       'credit_payments',
       'expense_categories',
       'expenses',

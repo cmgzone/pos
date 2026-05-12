@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/database_service.dart';
@@ -64,6 +66,10 @@ class SaleRepository {
     String? customerId,
     String? customerName,
     String? dueDate,
+    String? paymentProvider,
+    String? paymentReference,
+    String? paymentStatus,
+    Map<String, dynamic>? paymentMetadata,
     DateTime? createdAt,
   }) async {
     await LicenseService.ensureWriteAccess(action: 'complete sales');
@@ -188,6 +194,12 @@ class SaleRepository {
       'amount_tendered': normalizedAmountTendered,
       'change_given': normalizedChangeGiven < 0 ? 0.0 : normalizedChangeGiven,
       'balance_due': balanceDue,
+      'payment_provider': paymentProvider,
+      'payment_reference': paymentReference,
+      'payment_status': paymentStatus,
+      'payment_metadata_json': paymentMetadata == null
+          ? null
+          : jsonEncode(paymentMetadata),
       'created_at': saleTimestamp,
       'updated_at': now,
       'sync_status': 'pending',

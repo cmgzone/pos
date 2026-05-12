@@ -56,10 +56,20 @@ class BranchService {
     String? address,
   }) async {
     await LicenseService.ensureWriteAccess(action: 'create branches');
+    await LicenseService.ensureFeatureAccess(
+      featureKey: 'branches',
+      action: 'branch management',
+    );
     final cleanName = name.trim();
     if (cleanName.isEmpty) {
       throw Exception('Branch name is required');
     }
+    final branches = await getBranches(activeOnly: true);
+    await LicenseService.ensureLimitAvailable(
+      limit: SubscriptionLimit.branches,
+      currentCount: branches.length,
+      label: 'active branch(es)',
+    );
 
     final id = _branchUuid.v4();
     await DatabaseService.insert('branches', {

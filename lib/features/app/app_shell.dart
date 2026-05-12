@@ -217,9 +217,54 @@ class AppShellState extends ConsumerState<AppShell> {
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
       indices.add(15);
     }
-    // Piki AI is available to all authenticated users
-    if (!indices.contains(16)) indices.add(16);
-    return indices;
+    return indices.where(_isAllowedBySubscription).toList();
+  }
+
+  bool _isAllowedBySubscription(int index) {
+    final feature = _planFeatureForIndex(index);
+    return feature == null ||
+        LicenseService.currentSnapshot.allowsFeature(feature);
+  }
+
+  String? _planFeatureForIndex(int index) {
+    switch (index) {
+      case 0:
+        return UserAccessProfile.featurePos;
+      case 1:
+        return UserAccessProfile.featureProducts;
+      case 2:
+        return UserAccessProfile.featureCategories;
+      case 3:
+        return UserAccessProfile.featurePurchases;
+      case 4:
+        return UserAccessProfile.featureSales;
+      case 5:
+        return UserAccessProfile.featureDashboard;
+      case 6:
+        return UserAccessProfile.featureKopesha;
+      case 7:
+        return UserAccessProfile.featureProfitLoss;
+      case 8:
+        return UserAccessProfile.featureReports;
+      case 9:
+        return UserAccessProfile.featureSettings;
+      case 10:
+        return UserAccessProfile.featureShifts;
+      case 11:
+        return UserAccessProfile.featureServices;
+      case 12:
+        return UserAccessProfile.featureStockList;
+      case 13:
+        return UserAccessProfile.featureBranches;
+      case 14:
+        return UserAccessProfile.featureAuditLogs;
+      case 15:
+        return UserAccessProfile.featureTransfers;
+      case 16:
+        return UserAccessProfile.featureAgent;
+      default:
+        return null;
+    }
   }
 
   int get _currentIndex => _allowedIndices.contains(_selectedIndex)

@@ -2,6 +2,9 @@ const path = require('path');
 
 const { pool } = require('./db');
 const { runSqlFile } = require('./sqlStatements');
+const { ensureSubscriptionSchema } = require('./subscriptionPlans');
+const { ensureCommunicationSchema } = require('./communication');
+const { ensurePosPaymentSchema } = require('./posPayments');
 
 async function main() {
   const sqlPath = path.resolve(__dirname, '..', 'sql', 'init.sql');
@@ -10,6 +13,9 @@ async function main() {
   try {
     await client.query('BEGIN');
     const statementCount = await runSqlFile(client, sqlPath);
+    await ensureSubscriptionSchema(client);
+    await ensureCommunicationSchema(client);
+    await ensurePosPaymentSchema(client);
     await client.query('COMMIT');
 
     console.log(

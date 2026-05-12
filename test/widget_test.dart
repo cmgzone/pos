@@ -36,7 +36,7 @@ void main() {
   test('Role permissions limit cashier access and preserve admin access', () {
     expect(
       RolePermissions.navigationIndicesForRole(RolePermissions.cashier),
-      const [0, 4, 5, 6, 9],
+      const [0, 4, 5, 6, 9, 10, 16],
     );
     expect(RolePermissions.canRefundSales(RolePermissions.cashier), isFalse);
     expect(

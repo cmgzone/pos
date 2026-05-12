@@ -23,6 +23,8 @@ import 'package:pos_app/features/training/application/training_controller.dart';
 import 'package:pos_app/features/training/presentation/training_hub_screen.dart';
 import 'package:pos_app/features/training/widgets/training_anchor.dart';
 import 'package:pos_app/features/settings/presentation/payment_methods_section.dart';
+import 'package:pos_app/features/settings/presentation/communication_settings_section.dart';
+import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -421,6 +423,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     final selectedBranchIds = initialAllowedBranchIds.toSet();
     var allowAllBranches = initialAllowedBranchIds.isEmpty;
+    final aiSeatsWithoutThis = await UserRepository.countAiEnabledUsers(
+      excludeUserId: userId,
+    );
+    if (!mounted) {
+      return;
+    }
     var posMode = UserAccessProfile.resolvePosMode(
       role: role,
       rawPosMode: user['pos_mode'] as String?,
@@ -498,25 +506,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: UserAccessProfile.configurableFeatures
-                        .map(
-                          (featureKey) => FilterChip(
-                            label: Text(
-                              UserAccessProfile.featureLabel(featureKey),
-                            ),
-                            selected: selectedFeatures.contains(featureKey),
-                            onSelected: (selected) {
-                              setDialogState(() {
-                                if (selected) {
-                                  selectedFeatures.add(featureKey);
-                                } else {
-                                  selectedFeatures.remove(featureKey);
-                                }
-                              });
-                            },
-                          ),
-                        )
-                        .toList(),
+                    children: UserAccessProfile.configurableFeatures.map((
+                      featureKey,
+                    ) {
+                      final aiSeatBlocked =
+                          featureKey == UserAccessProfile.featureAgent &&
+                          !selectedFeatures.contains(featureKey) &&
+                          !LicenseService.canAddWithinLimit(
+                            limit: SubscriptionLimit.aiAgents,
+                            currentCount: aiSeatsWithoutThis,
+                          );
+                      return FilterChip(
+                        label: Text(UserAccessProfile.featureLabel(featureKey)),
+                        selected: selectedFeatures.contains(featureKey),
+                        onSelected: aiSeatBlocked
+                            ? null
+                            : (selected) {
+                                setDialogState(() {
+                                  if (selected) {
+                                    selectedFeatures.add(featureKey);
+                                  } else {
+                                    selectedFeatures.remove(featureKey);
+                                  }
+                                });
+                              },
+                      );
+                    }).toList(),
                   ),
                   const SizedBox(height: 18),
                   const Text(
@@ -843,8 +858,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.verified_outlined,
-                    size: 12, color: AppColors.success),
+                Icon(
+                  Icons.verified_outlined,
+                  size: 12,
+                  color: AppColors.success,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'All branches',
@@ -881,8 +899,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.business_outlined,
-                    size: 12, color: AppColors.primaryLight),
+                Icon(
+                  Icons.business_outlined,
+                  size: 12,
+                  color: AppColors.primaryLight,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'All branches',
@@ -910,8 +931,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: [
             for (final branch in branches)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
@@ -919,8 +939,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.store_outlined,
-                        size: 12, color: AppColors.primary),
+                    Icon(
+                      Icons.store_outlined,
+                      size: 12,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       branch['name'] as String? ?? branch['id'] as String,
@@ -936,8 +959,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             if (branches.isEmpty)
               for (final id in branchIds)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
@@ -1699,8 +1724,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.computer_outlined,
-                    size: 14, color: AppColors.warning),
+                Icon(
+                  Icons.computer_outlined,
+                  size: 14,
+                  color: AppColors.warning,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   'Device-local setting — not shared across branches or devices',
@@ -2059,6 +2087,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ]),
                   const SizedBox(height: 32),
                   _buildSectionHeader(
+                    Icons.message_outlined,
+                    'Customer Messaging',
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Set business contact defaults for WhatsApp and SMS provider sends.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const CommunicationSettingsSection(),
+                  const SizedBox(height: 32),
+                  _buildSectionHeader(
                     Icons.garage_outlined,
                     'Operational Settings',
                   ),
@@ -2107,6 +2150,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     id: 'settings.sync',
                     child: _buildSyncCard(syncState),
                   ),
+                  const SizedBox(height: 16),
+                  const SubscriptionPlansSection(),
                   const SizedBox(height: 32),
                   _buildSectionHeader(
                     Icons.backup_outlined,

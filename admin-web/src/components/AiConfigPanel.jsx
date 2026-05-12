@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 const MODELS = [
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', tier: 'Budget' },
@@ -12,6 +12,17 @@ const MODELS = [
   { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek', tier: 'Budget' },
 ]
 
+const STT_MODELS = [
+  { id: 'openai/whisper-1', name: 'Whisper 1', provider: 'OpenAI', tier: 'Voice' },
+]
+
+const TTS_MODELS = [
+  { id: 'openai/tts-1', name: 'TTS 1', provider: 'OpenAI', tier: 'Voice' },
+  { id: 'openai/tts-1-hd', name: 'TTS 1 HD', provider: 'OpenAI', tier: 'Premium' },
+]
+
+const TTS_VOICES = ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer']
+
 export default function AiConfigPanel({ token }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -21,11 +32,14 @@ export default function AiConfigPanel({ token }) {
   const [apiKey, setApiKey] = useState('')
   const [hasKey, setHasKey] = useState(false)
   const [model, setModel] = useState('openai/gpt-4o-mini')
+  const [sttModel, setSttModel] = useState('openai/whisper-1')
+  const [ttsModel, setTtsModel] = useState('openai/tts-1')
+  const [ttsVoice, setTtsVoice] = useState('alloy')
   const [enabled, setEnabled] = useState(false)
   const [showKey, setShowKey] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
 
-  const headers = { 'Authorization': `Bearer ${token}` }
+  const authHeaders = useCallback(() => ({ 'Authorization': `Bearer ${token}` }), [token])
 
   const hasUsableApiKey = () => {
     if (hasKey) return true
@@ -33,20 +47,19 @@ export default function AiConfigPanel({ token }) {
     return trimmed.length > 0 && !trimmed.startsWith('•')
   }
 
-  useEffect(() => {
-    fetchConfig()
-  }, [])
-
-  const fetchConfig = async () => {
+  const fetchConfig = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/platform/ai-config', { headers })
+      const res = await fetch('/api/platform/ai-config', { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         if (data.ok) {
           setApiKey(data.data.apiKey || '')
           setHasKey(data.data.hasKey)
           setModel(data.data.model || 'openai/gpt-4o-mini')
+          setSttModel(data.data.sttModel || 'openai/whisper-1')
+          setTtsModel(data.data.ttsModel || 'openai/tts-1')
+          setTtsVoice(data.data.ttsVoice || 'alloy')
           setEnabled(Boolean(data.data.enabled && data.data.hasKey))
           setUpdatedAt(data.data.updatedAt)
         }
@@ -56,7 +69,11 @@ export default function AiConfigPanel({ token }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authHeaders])
+
+  useEffect(() => {
+    fetchConfig()
+  }, [fetchConfig])
 
   const saveConfig = async () => {
     setSaving(true)
@@ -69,8 +86,8 @@ export default function AiConfigPanel({ token }) {
     try {
       const res = await fetch('/api/platform/ai-config', {
         method: 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, model, enabled }),
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey, model, sttModel, ttsModel, ttsVoice, enabled }),
       })
       const data = await res.json()
       if (data.ok) {
@@ -79,7 +96,7 @@ export default function AiConfigPanel({ token }) {
       } else {
         setTestResult({ type: 'error', message: data.error || 'Failed to save' })
       }
-    } catch (err) {
+    } catch {
       setTestResult({ type: 'error', message: 'Network error saving config' })
     } finally {
       setSaving(false)
@@ -92,7 +109,7 @@ export default function AiConfigPanel({ token }) {
     try {
       const res = await fetch('/api/platform/ai-test', {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       })
       const data = await res.json()
       if (data.ok) {
@@ -103,7 +120,7 @@ export default function AiConfigPanel({ token }) {
       } else {
         setTestResult({ type: 'error', message: `❌ ${data.error}` })
       }
-    } catch (err) {
+    } catch {
       setTestResult({ type: 'error', message: '❌ Network error — is the backend running?' })
     } finally {
       setTesting(false)
@@ -118,7 +135,21 @@ export default function AiConfigPanel({ token }) {
     )
   }
 
-  const selectedModel = MODELS.find(m => m.id === model) || MODELS[0]
+  const renderModelBadges = (catalog, value) => {
+    const selectedModel = catalog.find(m => m.id === value) || {
+      provider: 'Custom',
+      tier: 'Custom',
+    }
+
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+        <span className={`badge ${selectedModel.tier === 'Budget' || selectedModel.tier === 'Voice' ? 'badge-success' : selectedModel.tier === 'Custom' ? 'badge-secondary' : 'badge-warning'}`}>
+          {selectedModel.tier}
+        </span>
+        <span className="badge badge-info">{selectedModel.provider}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '680px' }}>
@@ -225,22 +256,68 @@ export default function AiConfigPanel({ token }) {
             </option>
           ))}
         </datalist>
-        
-        {(() => {
-          const selectedModel = MODELS.find(m => m.id === model) || {
-            name: 'Custom Model',
-            provider: 'Custom',
-            tier: 'Custom'
-          };
-          return (
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-              <span className={`badge ${selectedModel.tier === 'Budget' ? 'badge-success' : selectedModel.tier === 'Custom' ? 'badge-secondary' : 'badge-warning'}`}>
-                {selectedModel.tier}
-              </span>
-              <span className="badge badge-info">{selectedModel.provider}</span>
-            </div>
-          );
-        })()}
+        {renderModelBadges(MODELS, model)}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+        <div className="form-group">
+          <label className="form-label">Speech-to-Text Model</label>
+          <input
+            list="stt-models-list"
+            className="form-input"
+            value={sttModel}
+            onChange={(e) => setSttModel(e.target.value)}
+            placeholder="openai/whisper-1"
+          />
+          <datalist id="stt-models-list">
+            {STT_MODELS.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.name} - {m.provider}
+              </option>
+            ))}
+          </datalist>
+          {renderModelBadges(STT_MODELS, sttModel)}
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Text-to-Speech Model</label>
+          <input
+            list="tts-models-list"
+            className="form-input"
+            value={ttsModel}
+            onChange={(e) => setTtsModel(e.target.value)}
+            placeholder="openai/tts-1"
+          />
+          <datalist id="tts-models-list">
+            {TTS_MODELS.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.name} - {m.provider}
+              </option>
+            ))}
+          </datalist>
+          {renderModelBadges(TTS_MODELS, ttsModel)}
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">TTS Voice</label>
+        <input
+          list="tts-voices-list"
+          className="form-input"
+          value={ttsVoice}
+          onChange={(e) => setTtsVoice(e.target.value)}
+          placeholder="alloy"
+        />
+        <datalist id="tts-voices-list">
+          {TTS_VOICES.map(voice => (
+            <option key={voice} value={voice}>
+              {voice}
+            </option>
+          ))}
+        </datalist>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+          Used by Piki when speaking back to hands-free POS users.
+        </span>
       </div>
 
       {/* Test result */}

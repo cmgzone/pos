@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/pos_payment_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../customers/data/customer_repository.dart';
@@ -31,16 +32,20 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
+  final _mpesaPhoneController = TextEditingController();
 
   List<Map<String, dynamic>> _customers = [];
   Map<String, dynamic>? _selectedCustomer;
   bool _isLoading = true;
+  PosMpesaConfig? _mpesaConfig;
+  bool _isLoadingMpesa = true;
   DateTime _selectedDueDate = DateTime.now().add(const Duration(days: 14));
 
   @override
   void initState() {
     super.initState();
     _loadCustomers();
+    _loadMpesaConfig();
   }
 
   @override
@@ -49,7 +54,22 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
+    _mpesaPhoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMpesaConfig() async {
+    try {
+      final config = await PosPaymentService.fetchMpesaConfig();
+      if (!mounted) return;
+      setState(() {
+        _mpesaConfig = config;
+        _isLoadingMpesa = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingMpesa = false);
+    }
   }
 
   Future<void> _loadCustomers([String query = '']) async {
@@ -156,6 +176,34 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     });
   }
 
+  void _handleMpesaCheckout() {
+    final config = _mpesaConfig;
+    if (config?.active != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(config?.message ?? 'M-Pesa is not active.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    final phone = _mpesaPhoneController.text.trim();
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter the customer M-Pesa phone number'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    Navigator.pop(context, {
+      'type': 'mpesa',
+      'phoneNumber': phone,
+      'customer': _selectedCustomer,
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentBalance =
@@ -254,6 +302,44 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
             const SizedBox(height: 12),
+            if (_isLoadingMpesa)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            else if (_mpesaConfig?.active == true) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.success.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _mpesaPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: '${_mpesaConfig!.providerLabel} phone',
+                          prefixIcon: const Icon(Icons.phone_android_outlined),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _handleMpesaCheckout,
+                      icon: const Icon(Icons.mobile_friendly_outlined),
+                      label: Text(_mpesaConfig!.providerLabel),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             paymentMethodsAsync.when(
               data: (methods) {
                 if (methods.isEmpty) {
@@ -457,8 +543,15 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                 : AppColors.surface,
                             borderRadius: BorderRadius.circular(14),
                             child: InkWell(
-                              onTap: () =>
-                                  setState(() => _selectedCustomer = customer),
+                              onTap: () => setState(() {
+                                _selectedCustomer = customer;
+                                final phone = customer['phone'] as String?;
+                                if (_mpesaPhoneController.text.trim().isEmpty &&
+                                    phone != null &&
+                                    phone.trim().isNotEmpty) {
+                                  _mpesaPhoneController.text = phone.trim();
+                                }
+                              }),
                               borderRadius: BorderRadius.circular(14),
                               child: Container(
                                 padding: const EdgeInsets.all(14),

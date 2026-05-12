@@ -11,6 +11,7 @@ import '../reports/data/report_repository.dart';
 import '../sales/data/sale_repository.dart';
 import '../services/data/service_repository.dart';
 import '../shifts/data/shift_repository.dart';
+import '../agent/data/piki_agent_service.dart';
 import 'app_shell.dart';
 import '../../widgets/beautiful_icon.dart';
 import '../../widgets/empty_state_widget.dart';
@@ -36,6 +37,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _readyServiceOrders = [];
   List<Map<String, dynamic>> _topServices = [];
   bool _isLoading = true;
+
+  String? _dailyBrief;
+  bool _isBriefLoading = true;
 
   bool get _isCashierView =>
       RolePermissions.normalizeRole(SessionService.currentUserRole) ==
@@ -92,10 +96,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
+  String _formatCompact(num? val, {bool isCurrency = false}) {
+    if (val == null) return isCurrency ? '${ShopSettings.currency}0' : '0';
+    double v = val.toDouble();
+    if (v.abs() < 1000) return isCurrency ? '${ShopSettings.currency}${v.toStringAsFixed(2)}' : v.toInt().toString();
+    
+    String suffix = '';
+    if (v.abs() >= 1000000) {
+      v = v / 1000000;
+      suffix = 'M';
+    } else if (v.abs() >= 1000) {
+      v = v / 1000;
+      suffix = 'K';
+    }
+    
+    String formatted = v.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '') + suffix;
+    return isCurrency ? '${ShopSettings.currency}$formatted' : formatted;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadDashboard();
+    _loadDailyBrief();
+  }
+
+  Future<void> _loadDailyBrief() async {
+    if (!mounted) return;
+    setState(() {
+      _isBriefLoading = true;
+      _dailyBrief = null;
+    });
+
+    try {
+      final result = await PikiAgentService.executeSkill(PikiSkill.dailyBrief);
+      if (mounted) {
+        setState(() {
+          _dailyBrief = result['summary'] as String?;
+          _isBriefLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _dailyBrief = 'Could not fetch daily brief at this time.';
+          _isBriefLoading = false;
+        });
+      }
+    }
   }
 
   Future<Map<String, dynamic>> _loadSaleTypeSummary(String? cashierId) async {
@@ -417,12 +465,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label: 'Service Sales',
         value:
             '$serviceSales • ${ShopSettings.currency}${serviceRevenue.toStringAsFixed(2)}',
+        compactValue: '$serviceSales • ${_formatCompact(serviceRevenue, isCurrency: true)}',
         color: AppColors.secondary,
       ),
       _MiniStat(
         label: 'Product Sales',
         value:
             '$productSales • ${ShopSettings.currency}${productRevenue.toStringAsFixed(2)}',
+        compactValue: '$productSales • ${_formatCompact(productRevenue, isCurrency: true)}',
         color: AppColors.primary,
         compact: isMobile,
       ),
@@ -430,6 +480,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label: 'Mixed Sales',
         value:
             '$mixedSales • ${ShopSettings.currency}${mixedRevenue.toStringAsFixed(2)}',
+        compactValue: '$mixedSales • ${_formatCompact(mixedRevenue, isCurrency: true)}',
         color: AppColors.warning,
         compact: isMobile,
       ),
@@ -597,6 +648,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 );
               }).toList(),
             ),
+    );
+  }
+
+  Widget _buildDailyBriefCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: Color(0xFF9B5CFF), size: 24),
+              const SizedBox(width: 12),
+              const Text(
+                'Daily Business News & Brief',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              if (_isBriefLoading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9B5CFF)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_isBriefLoading)
+            Text(
+              'Fetching today\'s market news and analyzing your performance...',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
+            )
+          else
+            Text(
+              _dailyBrief ?? 'No brief available today.',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -806,6 +923,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               label: revenueLabel,
                               value:
                                   '${ShopSettings.currency}${(_todaySummary['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
+                              compactValue: _formatCompact(_todaySummary['total_revenue'] as num?, isCurrency: true),
                               color: AppColors.success,
                               compact: true,
                             ),
@@ -814,6 +932,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               label: profitLabel,
                               value:
                                   '${ShopSettings.currency}${(_todaySummary['total_profit'] as num? ?? 0).toStringAsFixed(2)}',
+                              compactValue: _formatCompact(_todaySummary['total_profit'] as num?, isCurrency: true),
                               color:
                                   ((_todaySummary['total_profit'] as num? ??
                                           0) >=
@@ -863,6 +982,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 label: revenueLabel,
                                 value:
                                     '${ShopSettings.currency}${(_todaySummary['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
+                                compactValue: _formatCompact(_todaySummary['total_revenue'] as num?, isCurrency: true),
                                 color: AppColors.success,
                               ),
                             ),
@@ -873,6 +993,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 label: profitLabel,
                                 value:
                                     '${ShopSettings.currency}${(_todaySummary['total_profit'] as num? ?? 0).toStringAsFixed(2)}',
+                                compactValue: _formatCompact(_todaySummary['total_profit'] as num?, isCurrency: true),
                                 color:
                                     ((_todaySummary['total_profit'] as num? ??
                                             0) >=
@@ -1084,12 +1205,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       label: 'Counted Cash',
                                       value:
                                           '${ShopSettings.currency}${((_closedShiftSummary['counted_cash_total'] as num?) ?? 0).toStringAsFixed(2)}',
+                                      compactValue: _formatCompact(_closedShiftSummary['counted_cash_total'] as num?, isCurrency: true),
                                       color: AppColors.success,
                                     ),
                                     _MiniStat(
                                       label: 'Net Over/Short',
                                       value:
                                           '${ShopSettings.currency}${((_closedShiftSummary['net_difference'] as num?) ?? 0).toStringAsFixed(2)}',
+                                      compactValue: _formatCompact(_closedShiftSummary['net_difference'] as num?, isCurrency: true),
                                       color: _shiftDifferenceColor(
                                         _closedShiftSummary['net_difference']
                                             as num?,
@@ -1621,6 +1744,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 32),
 
+                if (!_isCashierView)
+                  _buildDailyBriefCard(),
+
                 // ── Recent Sales ──
                 TrainingAnchor(
                   id: 'dashboard.recentSales',
@@ -1724,144 +1850,178 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class _KpiCard extends StatelessWidget {
+class _KpiCard extends StatefulWidget {
   final IconData icon;
   final String label;
   final String value;
+  final String? compactValue;
   final Color color;
   final bool compact;
   const _KpiCard({
     required this.icon,
     required this.label,
     required this.value,
+    this.compactValue,
     required this.color,
     this.compact = false,
   });
 
   @override
+  State<_KpiCard> createState() => _KpiCardState();
+}
+
+class _KpiCardState extends State<_KpiCard> {
+  bool _showExact = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(compact ? 12 : 20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(compact ? 14 : 22),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: EdgeInsets.all(compact ? 8 : 12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(compact ? 10 : 14),
-                ),
-                child: BeautifulIcon(
-                  icon,
-                  color: color,
-                  size: compact ? 17 : 24,
-                ),
-              ),
-              if (!compact)
+    final displayValue = (_showExact || widget.compactValue == null) ? widget.value : widget.compactValue!;
+    return GestureDetector(
+      onTap: widget.compactValue != null ? () {
+        setState(() {
+          _showExact = !_showExact;
+        });
+      } : null,
+      child: Container(
+        padding: EdgeInsets.all(widget.compact ? 12 : 20),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(widget.compact ? 14 : 22),
+          border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
                 Container(
-                  width: 32,
-                  height: 4,
+                  padding: EdgeInsets.all(widget.compact ? 8 : 12),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
+                    color: widget.color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(widget.compact ? 10 : 14),
+                  ),
+                  child: BeautifulIcon(
+                    widget.icon,
+                    color: widget.color,
+                    size: widget.compact ? 17 : 24,
                   ),
                 ),
-            ],
-          ),
-          SizedBox(height: compact ? 8 : 20),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: compact ? 10 : 12,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
+                if (!widget.compact)
+                  Container(
+                    width: 32,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: widget.color.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+              ],
             ),
-          ),
-          SizedBox(height: compact ? 2 : 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
+            SizedBox(height: widget.compact ? 8 : 20),
+            Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: compact ? 19 : 26,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: AppColors.textSecondary,
+                fontSize: widget.compact ? 10 : 12,
+                fontWeight: FontWeight.w500,
                 letterSpacing: 0,
               ),
             ),
-          ),
-        ],
+            SizedBox(height: widget.compact ? 2 : 6),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                displayValue,
+                style: TextStyle(
+                  fontSize: widget.compact ? 14 : 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _MiniStat extends StatelessWidget {
+class _MiniStat extends StatefulWidget {
   final String label;
   final String value;
+  final String? compactValue;
   final Color color;
   final bool compact;
 
   const _MiniStat({
     required this.label,
     required this.value,
+    this.compactValue,
     required this.color,
     this.compact = false,
   });
 
   @override
+  State<_MiniStat> createState() => _MiniStatState();
+}
+
+class _MiniStatState extends State<_MiniStat> {
+  bool _showExact = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: compact ? null : 170,
-      padding: EdgeInsets.all(compact ? 10 : 14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
-        borderRadius: BorderRadius.circular(compact ? 12 : 14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: compact ? 10 : 12,
+    final displayValue = (_showExact || widget.compactValue == null) ? widget.value : widget.compactValue!;
+    return GestureDetector(
+      onTap: widget.compactValue != null ? () {
+        setState(() {
+          _showExact = !_showExact;
+        });
+      } : null,
+      child: Container(
+        width: widget.compact ? null : 170,
+        padding: EdgeInsets.all(widget.compact ? 10 : 14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(widget.compact ? 12 : 14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: widget.compact ? 10 : 12,
+              ),
             ),
-          ),
-          SizedBox(height: compact ? 3 : 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: compact ? 13 : 16,
+            SizedBox(height: widget.compact ? 3 : 6),
+            Text(
+              displayValue,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: widget.color,
+                fontWeight: FontWeight.w700,
+                fontSize: widget.compact ? 12 : 14,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -137,7 +137,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         RegExp(_stockAllowsDecimal ? r'^\d*\.?\d{0,3}' : r'^\d*'),
       );
 
-  Future<void> _save() async {
+  Future<void> _save({bool openVariants = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
@@ -154,13 +154,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
       double? finalCost;
       if (_costController.text.isNotEmpty) {
-        final rawCost = double.parse(_costController.text);
+        final rawCost = double.tryParse(_costController.text) ?? 0;
         finalCost = _isTotalCostMode && stock > 0 ? (rawCost / stock) : rawCost;
       }
 
       final payload = <String, dynamic>{
         'name': _nameController.text.trim(),
-        'price': double.parse(_priceController.text),
+        'price': double.tryParse(_priceController.text) ?? 0.0,
         'cost': finalCost,
         'sku': _skuController.text.isNotEmpty
             ? _skuController.text.trim()
@@ -185,13 +185,15 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         'has_variants': _hasVariants ? 1 : 0,
       };
 
+      Map<String, dynamic>? updatedProduct;
       if (_isEditing) {
         await ProductRepository.update(
           widget.product!['id'] as String,
           payload,
         );
+        updatedProduct = await ProductRepository.getById(widget.product!['id'] as String);
       } else {
-        await ProductRepository.create(
+        final id = await ProductRepository.create(
           name: payload['name'] as String,
           price: payload['price'] as double,
           cost: payload['cost'] as double?,
@@ -212,10 +214,23 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           trackStock: _trackStock,
           hasVariants: _hasVariants,
         );
+        updatedProduct = await ProductRepository.getById(id);
       }
 
       ref.invalidate(filteredProductsProvider);
-      if (mounted) Navigator.pop(context, true);
+      
+      if (!mounted) return;
+
+      if (openVariants && updatedProduct != null) {
+        await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => ProductVariantsScreen(product: updatedProduct!),
+          ),
+        );
+        if (mounted) Navigator.pop(context, true);
+      } else {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -281,22 +296,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     });
   }
 
-  Future<void> _openVariantManager() async {
-    if (!_isEditing || !_hasVariants) {
-      return;
-    }
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ProductVariantsScreen(product: widget.product!),
-      ),
-    );
-    if (changed == true) {
-      ref.invalidate(filteredProductsProvider);
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    }
-  }
+
 
   Widget _buildImagePicker() {
     final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
@@ -1025,7 +1025,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                   ],
                                   validator: (v) {
                                     if (v == null || v.isEmpty) {
-                                      return 'Price is required';
+                                      return _hasVariants ? null : 'Price is required';
                                     }
                                     if (double.tryParse(v) == null) {
                                       return 'Invalid price';
@@ -1139,7 +1139,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                     ],
                                     validator: (v) {
                                       if (v == null || v.isEmpty) {
-                                        return 'Price is required';
+                                        return _hasVariants ? null : 'Price is required';
                                       }
                                       if (double.tryParse(v) == null) {
                                         return 'Invalid price';
@@ -1515,9 +1515,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       const SizedBox(height: 12),
                       Text(
                         _hasVariants
-                            ? _isEditing
-                                  ? 'Save your product changes, then open the variant manager to add, edit, delete, and stock each variant.'
-                                  : 'Create the product first, then reopen it to add and stock its variants.'
+                            ? 'Save your product, then manage variants to add choices, edit stock, and set specific pricing.'
                             : 'Simple products keep price and stock directly on the main product record.',
                         style: const TextStyle(
                           color: AppColors.textSecondary,
@@ -1527,13 +1525,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       if (_hasVariants) ...[
                         const SizedBox(height: 16),
                         FilledButton.icon(
-                          onPressed: _isEditing ? _openVariantManager : null,
+                          onPressed: _isLoading ? null : () => _save(openVariants: true),
                           icon: const Icon(Icons.tune_outlined, size: 18),
-                          label: Text(
-                            _isEditing
-                                ? 'Manage Variants'
-                                : 'Save Product First',
-                          ),
+                          label: const Text('Save & Manage Variants'),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.primary,
                           ),

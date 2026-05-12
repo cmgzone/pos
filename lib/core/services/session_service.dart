@@ -280,6 +280,11 @@ class UserAccessProfile {
   static const featureShifts = 'shifts';
   static const featureServices = 'services';
   static const featureAgent = 'agent';
+  static const featureStockList = 'stock_list';
+  static const featureTransfers = 'transfers';
+  static const featureBranches = 'branches';
+  static const featureAuditLogs = 'audit_logs';
+  static const featureProactivePiki = 'proactive_piki';
 
   static const posModeBoth = 'both';
   static const posModeProducts = 'products';
@@ -301,6 +306,11 @@ class UserAccessProfile {
     featureShifts,
     featureServices,
     featureAgent,
+    featureStockList,
+    featureTransfers,
+    featureBranches,
+    featureAuditLogs,
+    featureProactivePiki,
   ];
 
   static const configurableFeatures = [
@@ -315,6 +325,7 @@ class UserAccessProfile {
     featureReports,
     featureShifts,
     featureServices,
+    featureAgent,
   ];
 
   static const _featureToNavigationIndex = <String, int>{
@@ -331,6 +342,10 @@ class UserAccessProfile {
     featureShifts: 10,
     featureServices: 11,
     featureAgent: 16,
+    featureStockList: 12,
+    featureBranches: 13,
+    featureAuditLogs: 14,
+    featureTransfers: 15,
   };
 
   static List<String> defaultFeatureAccessForRole(String? role) {
@@ -474,6 +489,18 @@ class UserAccessProfile {
         return 'Shifts';
       case featureServices:
         return 'Services';
+      case featureAgent:
+        return 'Piki AI';
+      case featureStockList:
+        return 'Stock List';
+      case featureTransfers:
+        return 'Transfers';
+      case featureBranches:
+        return 'Branches';
+      case featureAuditLogs:
+        return 'Audit Logs';
+      case featureProactivePiki:
+        return 'Proactive Piki';
       default:
         return featureKey;
     }

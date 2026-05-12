@@ -39,6 +39,13 @@ class UserRepository {
     return (rows.first['count'] as num? ?? 0).toInt();
   }
 
+  static Future<int> countAiEnabledUsers({String? excludeUserId}) async {
+    final users = await getAll();
+    return users
+        .where((user) => user['id'] != excludeUserId && _isAiEnabledUser(user))
+        .length;
+  }
+
   static Future<Map<String, dynamic>?> findById(String userId) async {
     final rows = await DatabaseService.queryAll(
       _table,
@@ -78,6 +85,11 @@ class UserRepository {
     final normalizedRole = role.trim().toUpperCase();
 
     await LicenseService.ensureWriteAccess(action: 'manage staff accounts');
+    await LicenseService.ensureLimitAvailable(
+      limit: SubscriptionLimit.employees,
+      currentCount: await count(),
+      label: 'employee account(s)',
+    );
     if (cleanName.isEmpty || cleanEmail.isEmpty || cleanPassword.isEmpty) {
       throw const AuthException('Name, email, and password are required.');
     }
@@ -95,6 +107,13 @@ class UserRepository {
 
     final now = DateTime.now().toIso8601String();
     final id = _uuid.v4();
+    final defaultFeatures = UserAccessProfile.defaultFeatureAccessForRole(
+      normalizedRole,
+    ).toList();
+    if (defaultFeatures.contains(UserAccessProfile.featureAgent) &&
+        !(await _canGrantAdditionalAiSeat())) {
+      defaultFeatures.remove(UserAccessProfile.featureAgent);
+    }
     final userPayload = <String, dynamic>{
       'id': id,
       'name': cleanName,
@@ -102,7 +121,9 @@ class UserRepository {
       'phone': cleanPhone.isEmpty ? null : cleanPhone,
       'password': AuthPasswordService.hashPassword(cleanPassword),
       'role': normalizedRole,
-      'feature_access_json': _defaultFeatureAccessJsonForRole(normalizedRole),
+      'feature_access_json': UserAccessProfile.encodeStringList(
+        defaultFeatures,
+      ),
       'allowed_service_ids_json': null,
       'allowed_branch_ids_json': null,
       'pos_mode': UserAccessProfile.posModeBoth,
@@ -187,6 +208,17 @@ class UserRepository {
     final normalizedRole = RolePermissions.normalizeRole(
       user['role'] as String?,
     );
+    final hadAiAccess = _isAiEnabledUser(user);
+    final wantsAiAccess =
+        normalizedRole == RolePermissions.admin ||
+        featureAccess.contains(UserAccessProfile.featureAgent);
+    if (!hadAiAccess && wantsAiAccess) {
+      await LicenseService.ensureLimitAvailable(
+        limit: SubscriptionLimit.aiAgents,
+        currentCount: await countAiEnabledUsers(),
+        label: 'Piki AI-enabled employee(s)',
+      );
+    }
     final nextFeatureAccessJson = normalizedRole == RolePermissions.admin
         ? _defaultFeatureAccessJsonForRole(normalizedRole)
         : UserAccessProfile.encodeStringList(featureAccess);
@@ -394,6 +426,25 @@ class UserRepository {
   static String? _readText(Object? value) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? null : text;
+  }
+
+  static Future<bool> _canGrantAdditionalAiSeat() async {
+    return LicenseService.canAddWithinLimit(
+      limit: SubscriptionLimit.aiAgents,
+      currentCount: await countAiEnabledUsers(),
+    );
+  }
+
+  static bool _isAiEnabledUser(Map<String, dynamic> user) {
+    final role = RolePermissions.normalizeRole(user['role'] as String?);
+    if (role == RolePermissions.admin) {
+      return true;
+    }
+    final features = UserAccessProfile.resolveFeatureAccess(
+      role: role,
+      rawFeatureAccessJson: user['feature_access_json'] as String?,
+    );
+    return features.contains(UserAccessProfile.featureAgent);
   }
 
   static String _defaultFeatureAccessJsonForRole(String role) {

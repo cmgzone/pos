@@ -39,6 +39,15 @@ void main() {
         await database.execute(
           'CREATE INDEX idx_stock_batches_product ON stock_batches(product_id)',
         );
+        await database.execute('''
+          CREATE TABLE stock_transfers (
+            id TEXT PRIMARY KEY,
+            from_branch_id TEXT NOT NULL,
+            to_branch_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            quantity REAL NOT NULL DEFAULT 0
+          )
+        ''');
       },
     );
     await legacyDatabase.close();
@@ -104,6 +113,42 @@ void main() {
       )).map((row) => row['name'] as String?).whereType<String>().toSet();
 
       expect(salesColumns, contains('shift_id'));
+
+      final stockTransferColumns = (await DatabaseService.rawQuery(
+        "PRAGMA table_info('stock_transfers')",
+      )).map((row) => row['name'] as String?).whereType<String>().toSet();
+
+      expect(
+        stockTransferColumns,
+        containsAll(<String>[
+          'branch_id',
+          'product_name',
+          'unit',
+          'status',
+          'requested_by',
+          'approved_by',
+          'received_by',
+          'note',
+          'requested_at',
+          'approved_at',
+          'received_at',
+          'created_at',
+          'updated_at',
+          'deleted_at',
+          'sync_status',
+        ]),
+      );
+
+      final stockTransferIndexNames = (await DatabaseService.rawQuery('''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'index' AND tbl_name = 'stock_transfers'
+    ''')).map((row) => row['name'] as String?).whereType<String>().toSet();
+
+      expect(
+        stockTransferIndexNames,
+        contains('idx_stock_transfers_from_to_status'),
+      );
     },
   );
 }

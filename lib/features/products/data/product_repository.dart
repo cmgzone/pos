@@ -181,6 +181,7 @@ class ProductRepository {
           NULL AS matched_variant_sku,
           NULL AS matched_variant_barcode,
           NULL AS matched_variant_price,
+          NULL AS matched_variant_cost,
           NULL AS matched_variant_stock,
           NULL AS matched_variant_low_stock,
           'product' AS result_type
@@ -205,6 +206,7 @@ class ProductRepository {
           pv.sku AS matched_variant_sku,
           pv.barcode AS matched_variant_barcode,
           pv.price AS matched_variant_price,
+          pv.cost AS matched_variant_cost,
           pv.stock AS matched_variant_stock,
           pv.low_stock AS matched_variant_low_stock,
           'variant' AS result_type

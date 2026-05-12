@@ -41,6 +41,13 @@ void main() {
         'expires_at': '2099-05-01T00:00:00.000Z',
         'grace_until': '2099-05-05T00:00:00.000Z',
         'issued_at': '2099-04-18T12:00:00.000Z',
+        'entitlements': {
+          'features': ['pos', 'agent'],
+          'maxBranches': 1,
+          'maxEmployees': 2,
+          'maxAiAgents': 1,
+          'aiRateLimits': {'hourly': 20, 'weekly': 200, 'monthly': 500},
+        },
       },
     );
 
@@ -50,6 +57,9 @@ void main() {
     expect(snapshot.hasBinding, isTrue);
     expect(snapshot.allowsWrites, isTrue);
     expect(snapshot.businessId, 'biz-1');
+    expect(snapshot.allowsFeature('agent'), isTrue);
+    expect(snapshot.allowsFeature('branches'), isFalse);
+    expect(snapshot.entitlements.maxBranches, 1);
   });
 
   test('blocks writes when the cached license is expired', () async {

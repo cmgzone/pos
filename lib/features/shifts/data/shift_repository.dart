@@ -486,7 +486,7 @@ class ShiftRepository {
         COALESCE(SUM(CASE WHEN total_amount > 0 THEN total_amount ELSE 0 END), 0) AS gross_sales,
         COALESCE(SUM(CASE WHEN total_amount < 0 THEN ABS(total_amount) ELSE 0 END), 0) AS refunded_total,
         COALESCE(SUM(CASE WHEN (is_cash_drawer = 1 OR payment_type = 'cash') AND payment_type NOT LIKE 'refund%' THEN total_amount ELSE 0 END), 0) AS cash_sales_total,
-        COALESCE(SUM(CASE WHEN (is_cash_drawer = 1 OR payment_type = 'cash') AND payment_type LIKE 'refund%' THEN ABS(total_amount) ELSE 0 END), 0) AS cash_refunds_total,
+        COALESCE(SUM(CASE WHEN (is_cash_drawer = 1 OR payment_type = 'refund_cash') AND payment_type LIKE 'refund%' THEN ABS(total_amount) ELSE 0 END), 0) AS cash_refunds_total,
         COALESCE(SUM(CASE WHEN payment_type = 'kopesha' THEN total_amount ELSE 0 END), 0) AS kopesha_sales_total,
         COALESCE(SUM(CASE WHEN payment_type = 'refund_kopesha' THEN ABS(total_amount) ELSE 0 END), 0) AS kopesha_refunds_total
       FROM sales

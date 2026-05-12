@@ -15,6 +15,7 @@ class StockTransferScreen extends StatefulWidget {
 class _StockTransferScreenState extends State<StockTransferScreen> {
   List<Map<String, dynamic>> _transfers = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -23,8 +24,15 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
-    _transfers = await StockTransferRepository.getForCurrentBranch();
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      _transfers = await StockTransferRepository.getForCurrentBranch();
+    } catch (error) {
+      _loadError = '$error';
+    }
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -273,6 +281,34 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
+          : _loadError != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.sync_problem_rounded,
+                      color: AppColors.warning,
+                      size: 42,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _loadError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           : _transfers.isEmpty
           ? const Center(
               child: Text(

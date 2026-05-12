@@ -3,6 +3,11 @@ const crypto = require('crypto');
 const { config } = require('./config');
 const { query, withTransaction } = require('./db');
 const { issueLicense, resolveSubscriptionState } = require('./licenseTokens');
+const {
+  ensureSubscriptionSchema,
+  loadEntitlementsForPlan,
+  normalizeCountryCode,
+} = require('./subscriptionPlans');
 
 async function activateBusinessAccess({
   deviceId,
@@ -10,9 +15,11 @@ async function activateBusinessAccess({
   ownerName,
   ownerEmail,
   deviceName,
+  countryCode,
 }) {
   const normalizedDeviceId = normalizeText(deviceId);
   const normalizedBusinessName = normalizeText(businessName);
+  const normalizedCountryCode = normalizeCountryCode(countryCode || 'GLOBAL');
 
   if (!normalizedDeviceId) {
     throw new Error('deviceId is required');
@@ -22,6 +29,7 @@ async function activateBusinessAccess({
   }
 
   return withTransaction(async (client) => {
+    await ensureSubscriptionSchema(client);
     const now = new Date();
     const existingContext = await loadBusinessContextByDevice(client, normalizedDeviceId);
 
@@ -30,14 +38,15 @@ async function activateBusinessAccess({
       businessId = crypto.randomUUID();
       await client.query(
         `
-        INSERT INTO businesses (id, name, owner_name, owner_email, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $5)
+        INSERT INTO businesses (id, name, owner_name, owner_email, country_code, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $6)
         `,
         [
           businessId,
           normalizedBusinessName,
           normalizeText(ownerName),
           normalizeText(ownerEmail),
+          normalizedCountryCode,
           now.toISOString(),
         ],
       );
@@ -68,7 +77,8 @@ async function activateBusinessAccess({
           name = COALESCE(NULLIF($2, ''), name),
           owner_name = COALESCE(NULLIF($3, ''), owner_name),
           owner_email = COALESCE(NULLIF($4, ''), owner_email),
-          updated_at = $5
+          country_code = COALESCE(NULLIF($5, ''), country_code),
+          updated_at = $6
         WHERE id = $1
         `,
         [
@@ -76,6 +86,7 @@ async function activateBusinessAccess({
           normalizedBusinessName,
           normalizeText(ownerName),
           normalizeText(ownerEmail),
+          normalizedCountryCode,
           now.toISOString(),
         ],
       );
@@ -121,6 +132,7 @@ async function activateBusinessAccess({
     );
 
     return buildAccessResponse({
+      client,
       deviceId: normalizedDeviceId,
       accessToken,
       businessContext: refreshedContext,
@@ -140,6 +152,7 @@ async function refreshBusinessAccess({ accessToken, deviceId }) {
   }
 
   return withTransaction(async (client) => {
+    await ensureSubscriptionSchema(client);
     const context = await loadBusinessContextByToken(
       client,
       normalizedToken,
@@ -174,6 +187,7 @@ async function refreshBusinessAccess({ accessToken, deviceId }) {
     );
 
     return buildAccessResponse({
+      client,
       deviceId: normalizedDeviceId,
       accessToken: normalizedToken,
       businessContext: refreshedContext,
@@ -189,11 +203,13 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
     return null;
   }
 
+  await ensureSubscriptionSchema();
   const result = await query(
     `
     SELECT
       b.id AS business_id,
       b.name AS business_name,
+      b.country_code,
       s.plan,
       s.status,
       s.expires_at,
@@ -216,11 +232,14 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
 
   const context = result.rows[0];
   const licenseState = resolveSubscriptionState(context);
+  const entitlements = await loadEntitlementsForPlan(context.plan);
   return {
     businessId: context.business_id,
     businessName: context.business_name,
+    countryCode: normalizeCountryCode(context.country_code || 'GLOBAL'),
     deviceId: context.device_id,
     plan: context.plan,
+    entitlements,
     subscriptionStatus: licenseState.status,
     usable: licenseState.usable,
     expiresAt: toIsoString(context.expires_at),
@@ -272,6 +291,7 @@ async function loadBusinessContextByDevice(client, deviceId) {
     SELECT
       b.id AS business_id,
       b.name AS business_name,
+      b.country_code,
       s.plan,
       s.status,
       s.expires_at,
@@ -296,6 +316,7 @@ async function loadBusinessContextByToken(client, accessToken, deviceId) {
     SELECT
       b.id AS business_id,
       b.name AS business_name,
+      b.country_code,
       s.plan,
       s.status,
       s.expires_at,
@@ -315,7 +336,8 @@ async function loadBusinessContextByToken(client, accessToken, deviceId) {
   return result.rows[0] || null;
 }
 
-function buildAccessResponse({
+async function buildAccessResponse({
+  client,
   deviceId,
   accessToken,
   businessContext,
@@ -325,11 +347,18 @@ function buildAccessResponse({
     throw new Error('Business access context could not be resolved');
   }
 
+  const entitlements = await loadEntitlementsForPlan(
+    businessContext.plan,
+    client || query,
+  );
+
   const license = issueLicense({
     businessId: businessContext.business_id,
     businessName: businessContext.business_name,
+    countryCode: normalizeCountryCode(businessContext.country_code || 'GLOBAL'),
     deviceId,
     subscription: businessContext,
+    entitlements,
     issuedAt,
   });
 
@@ -337,6 +366,7 @@ function buildAccessResponse({
     business: {
       id: businessContext.business_id,
       name: businessContext.business_name,
+      countryCode: normalizeCountryCode(businessContext.country_code || 'GLOBAL'),
     },
     accessToken,
     subscription: {
@@ -345,6 +375,7 @@ function buildAccessResponse({
       expiresAt: toIsoString(businessContext.expires_at),
       graceUntil: toIsoString(businessContext.grace_until),
       lastVerifiedAt: toIsoString(businessContext.last_verified_at) || issuedAt.toISOString(),
+      entitlements,
     },
     license,
   };

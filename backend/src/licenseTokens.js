@@ -5,13 +5,18 @@ const { config } = require('./config');
 function issueLicense({
   businessId,
   businessName,
+  countryCode,
   deviceId,
   subscription,
+  entitlements,
   issuedAt = new Date(),
 }) {
   const payload = {
     business_id: String(businessId).trim(),
     business_name: String(businessName || '').trim(),
+    country_code: String(countryCode || subscription?.country_code || 'GLOBAL')
+      .trim()
+      .toUpperCase(),
     device_id: String(deviceId).trim(),
     plan: String(subscription.plan || 'trial').trim(),
     status: resolveSubscriptionState(subscription, issuedAt).status,
@@ -19,6 +24,9 @@ function issueLicense({
     grace_until: toIsoString(subscription.grace_until),
     issued_at: toIsoString(issuedAt),
   };
+  if (entitlements && typeof entitlements === 'object') {
+    payload.entitlements = entitlements;
+  }
 
   const payloadBase64 = base64UrlEncode(JSON.stringify(payload));
   const signature = signPayload(payloadBase64);

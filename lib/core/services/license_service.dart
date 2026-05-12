@@ -9,6 +9,86 @@ import '../constants/app_constants.dart';
 
 enum LicenseAccessStatus { localOnly, active, grace, expired, invalid }
 
+enum SubscriptionLimit { branches, employees, aiAgents }
+
+class SubscriptionEntitlements {
+  final List<String> features;
+  final int maxBranches;
+  final int maxEmployees;
+  final int maxAiAgents;
+  final Map<String, int> aiRateLimits;
+
+  const SubscriptionEntitlements({
+    required this.features,
+    required this.maxBranches,
+    required this.maxEmployees,
+    required this.maxAiAgents,
+    required this.aiRateLimits,
+  });
+
+  const SubscriptionEntitlements.empty()
+    : features = const [],
+      maxBranches = 0,
+      maxEmployees = 0,
+      maxAiAgents = 0,
+      aiRateLimits = const {};
+
+  factory SubscriptionEntitlements.fromJson(Object? value) {
+    if (value is! Map) {
+      return const SubscriptionEntitlements.empty();
+    }
+    final rawFeatures = value['features'];
+    final features = <String>[];
+    if (rawFeatures is List) {
+      for (final feature in rawFeatures) {
+        final clean = feature?.toString().trim() ?? '';
+        if (clean.isNotEmpty && !features.contains(clean)) {
+          features.add(clean);
+        }
+      }
+    }
+    final rawRates = value['aiRateLimits'];
+    final rates = <String, int>{};
+    if (rawRates is Map) {
+      for (final entry in rawRates.entries) {
+        rates[entry.key.toString()] = _readInt(entry.value);
+      }
+    }
+    return SubscriptionEntitlements(
+      features: features,
+      maxBranches: _readInt(value['maxBranches']),
+      maxEmployees: _readInt(value['maxEmployees']),
+      maxAiAgents: _readInt(value['maxAiAgents']),
+      aiRateLimits: rates,
+    );
+  }
+
+  bool get isEmpty =>
+      features.isEmpty &&
+      maxBranches == 0 &&
+      maxEmployees == 0 &&
+      maxAiAgents == 0 &&
+      aiRateLimits.isEmpty;
+
+  int limitFor(SubscriptionLimit limit) {
+    switch (limit) {
+      case SubscriptionLimit.branches:
+        return maxBranches;
+      case SubscriptionLimit.employees:
+        return maxEmployees;
+      case SubscriptionLimit.aiAgents:
+        return maxAiAgents;
+    }
+  }
+
+  static int _readInt(Object? value) {
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+}
+
 class LicenseSnapshot {
   final String? businessId;
   final String? businessName;
@@ -19,6 +99,7 @@ class LicenseSnapshot {
   final DateTime? lastVerifiedAt;
   final LicenseAccessStatus accessStatus;
   final String? detail;
+  final SubscriptionEntitlements entitlements;
 
   const LicenseSnapshot({
     required this.businessId,
@@ -30,6 +111,7 @@ class LicenseSnapshot {
     required this.lastVerifiedAt,
     required this.accessStatus,
     required this.detail,
+    required this.entitlements,
   });
 
   const LicenseSnapshot.localOnly()
@@ -41,7 +123,8 @@ class LicenseSnapshot {
       graceUntil = null,
       lastVerifiedAt = null,
       accessStatus = LicenseAccessStatus.localOnly,
-      detail = 'Cloud subscription is not activated on this device yet.';
+      detail = 'Cloud subscription is not activated on this device yet.',
+      entitlements = const SubscriptionEntitlements.empty();
 
   bool get hasBinding =>
       (businessId?.trim().isNotEmpty ?? false) &&
@@ -51,6 +134,16 @@ class LicenseSnapshot {
       accessStatus == LicenseAccessStatus.localOnly ||
       accessStatus == LicenseAccessStatus.active ||
       accessStatus == LicenseAccessStatus.grace;
+
+  bool allowsFeature(String featureKey) {
+    if (accessStatus == LicenseAccessStatus.localOnly) {
+      return true;
+    }
+    if (entitlements.features.isEmpty) {
+      return true;
+    }
+    return entitlements.features.contains(featureKey);
+  }
 
   String get shortLabel {
     switch (accessStatus) {
@@ -164,6 +257,7 @@ class LicenseService {
         lastVerifiedAt: lastVerifiedAt,
         accessStatus: LicenseAccessStatus.invalid,
         detail: 'The cached cloud license is incomplete.',
+        entitlements: const SubscriptionEntitlements.empty(),
       );
     }
 
@@ -178,6 +272,7 @@ class LicenseService {
         lastVerifiedAt: lastVerifiedAt,
         accessStatus: LicenseAccessStatus.invalid,
         detail: 'The cached cloud license signature does not match.',
+        entitlements: const SubscriptionEntitlements.empty(),
       );
     }
 
@@ -193,6 +288,7 @@ class LicenseService {
         lastVerifiedAt: lastVerifiedAt,
         accessStatus: LicenseAccessStatus.invalid,
         detail: 'The cached cloud license could not be decoded.',
+        entitlements: const SubscriptionEntitlements.empty(),
       );
     }
 
@@ -216,6 +312,7 @@ class LicenseService {
         lastVerifiedAt: lastVerifiedAt,
         accessStatus: LicenseAccessStatus.invalid,
         detail: 'The cached cloud license does not match this device binding.',
+        entitlements: const SubscriptionEntitlements.empty(),
       );
     }
 
@@ -242,6 +339,7 @@ class LicenseService {
         expiresAt: expiresAt,
         graceUntil: graceUntil,
       ),
+      entitlements: SubscriptionEntitlements.fromJson(payload['entitlements']),
     );
   }
 
@@ -314,6 +412,11 @@ class LicenseService {
     }
   }
 
+  static Future<void> storeAccessResponse(Map<String, dynamic> body) async {
+    await init();
+    await _storeAccessResponse(body);
+  }
+
   static Future<void> ensureWriteAccess({required String action}) async {
     await init();
     final snapshot = currentSnapshot;
@@ -324,6 +427,47 @@ class LicenseService {
       return;
     }
     throw Exception(snapshot.buildActionMessage(action));
+  }
+
+  static Future<void> ensureFeatureAccess({
+    required String featureKey,
+    required String action,
+  }) async {
+    await init();
+    final snapshot = currentSnapshot;
+    if (!snapshot.hasBinding || snapshot.allowsFeature(featureKey)) {
+      return;
+    }
+    throw Exception('Your current subscription plan does not include $action.');
+  }
+
+  static Future<void> ensureLimitAvailable({
+    required SubscriptionLimit limit,
+    required int currentCount,
+    required String label,
+  }) async {
+    await init();
+    final snapshot = currentSnapshot;
+    if (!snapshot.hasBinding || snapshot.entitlements.isEmpty) {
+      return;
+    }
+    final max = snapshot.entitlements.limitFor(limit);
+    if (max <= 0 || currentCount < max) {
+      return;
+    }
+    throw Exception('Your current subscription plan allows $max $label.');
+  }
+
+  static bool canAddWithinLimit({
+    required SubscriptionLimit limit,
+    required int currentCount,
+  }) {
+    final snapshot = currentSnapshot;
+    if (!snapshot.hasBinding || snapshot.entitlements.isEmpty) {
+      return true;
+    }
+    final max = snapshot.entitlements.limitFor(limit);
+    return max <= 0 || currentCount < max;
   }
 
   static Future<void> clearBinding() async {

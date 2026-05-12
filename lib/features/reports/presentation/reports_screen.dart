@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/number_utils.dart';
 import '../../auth/data/user_repository.dart';
 import '../../app/app_shell.dart';
 import '../../shifts/data/shift_repository.dart';
@@ -482,6 +483,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           _SummaryMetricCard(
                             label: 'Revenue',
                             value: _displayMoney(_summary['total_revenue']),
+                            compactValue: NumberUtils.formatCompact(_summary['total_revenue'] as num?, isCurrency: true),
                             color: AppColors.success,
                             icon: Icons.attach_money,
                           ),
@@ -489,12 +491,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             label: 'Sales',
                             value:
                                 '${(_summary['total_sales'] as num? ?? 0).toInt()}',
+                            compactValue: NumberUtils.formatCompact(_summary['total_sales'] as num?),
                             color: AppColors.primary,
                             icon: Icons.receipt_long_outlined,
                           ),
                           _SummaryMetricCard(
                             label: 'Gross Profit',
                             value: _displayMoney(_summary['gross_profit']),
+                            compactValue: NumberUtils.formatCompact(_summary['gross_profit'] as num?, isCurrency: true),
                             color: AppColors.primaryLight,
                             icon: Icons.trending_up_rounded,
                           ),
@@ -2033,9 +2037,10 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _SummaryMetricCard extends StatelessWidget {
+class _SummaryMetricCard extends StatefulWidget {
   final String label;
   final String value;
+  final String? compactValue;
   final Color color;
   final IconData icon;
   final String? subtitle;
@@ -2043,67 +2048,87 @@ class _SummaryMetricCard extends StatelessWidget {
   const _SummaryMetricCard({
     required this.label,
     required this.value,
+    this.compactValue,
     required this.color,
     required this.icon,
     this.subtitle,
   });
 
   @override
+  State<_SummaryMetricCard> createState() => _SummaryMetricCardState();
+}
+
+class _SummaryMetricCardState extends State<_SummaryMetricCard> {
+  bool _showExact = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+    final displayValue = (_showExact || widget.compactValue == null) ? widget.value : widget.compactValue!;
+    return GestureDetector(
+      onTap: widget.compactValue != null ? () {
+        setState(() {
+          _showExact = !_showExact;
+        });
+      } : null,
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(widget.icon, color: widget.color),
             ),
-            child: Icon(icon, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle!,
+                    widget.label,
                     style: const TextStyle(
                       color: AppColors.textSecondary,
-                      fontSize: 11,
+                      fontSize: 12,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      displayValue,
+                      style: TextStyle(
+                        color: widget.color,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  if (widget.subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.subtitle!,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2123,29 +2148,33 @@ class _CashierStatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 11,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(color: color, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: TextStyle(color: color, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
   }
 }
 
@@ -2360,7 +2389,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                   : ListView.separated(
                       padding: const EdgeInsets.all(20),
                       itemCount: _branches.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      separatorBuilder: (context, _) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final b = _branches[index];
                         final name = b['branch_name'] as String? ?? 'Branch';
@@ -2550,14 +2579,14 @@ class _BranchMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Text(
               label,
               style: const TextStyle(

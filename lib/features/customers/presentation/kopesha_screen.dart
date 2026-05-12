@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -6,6 +7,7 @@ import '../../training/widgets/training_anchor.dart';
 import '../data/customer_repository.dart';
 import 'customer_account_screen.dart';
 import 'customer_kopesha_detail_screen.dart';
+import 'customer_message_dialog.dart';
 import '../../sales/presentation/receipt_service.dart';
 
 class KopeshaScreen extends StatefulWidget {
@@ -343,6 +345,25 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
     await _load();
   }
 
+  Future<void> _messageCustomer(Map<String, dynamic> customer) async {
+    final name = customer['name'] as String? ?? 'Customer';
+    final phone = customer['phone'] as String? ?? '';
+    final balance =
+        '${ShopSettings.currency}${_money(customer['outstanding_balance']).toStringAsFixed(2)}';
+    final message = MessagingService.balanceReminder(
+      customerName: name,
+      balance: balance,
+      dueDate: customer['next_due_date'] as String?,
+    );
+    await CustomerMessageDialog.show(
+      context,
+      customerName: name,
+      phoneNumber: phone,
+      initialMessage: message,
+      metadata: {'source': 'kopesha_list', 'customerId': customer['id']},
+    );
+  }
+
   Widget _stat(String label, String value, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -515,9 +536,7 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
                       child: Text(
                         'No customers match this Kopesha filter right now.',
                         style: TextStyle(
-                          color: AppColors.textSecondary.withValues(
-                            alpha: 0.9,
-                          ),
+                          color: AppColors.textSecondary.withValues(alpha: 0.9),
                         ),
                       ),
                     )
@@ -683,6 +702,17 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
                                         size: 18,
                                       ),
                                       label: const Text('View Statement'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _messageCustomer(c),
+                                      icon: const Icon(
+                                        Icons.message_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Message'),
                                     ),
                                   ),
                                   const SizedBox(width: 12),

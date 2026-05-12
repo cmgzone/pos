@@ -129,7 +129,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
           return ListView.separated(
             padding: const EdgeInsets.all(20),
             itemCount: logs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final log = logs[index];
               final action = log['action'] as String? ?? 'change';

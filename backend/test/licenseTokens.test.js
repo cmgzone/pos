@@ -18,11 +18,20 @@ test('issueLicense signs a stable base64 payload', () => {
       expires_at: '2026-05-01T00:00:00.000Z',
       grace_until: '2026-05-05T00:00:00.000Z',
     },
+    entitlements: {
+      features: ['pos', 'agent'],
+      maxBranches: 1,
+      maxEmployees: 2,
+      maxAiAgents: 1,
+      aiRateLimits: { hourly: 20, weekly: 200, monthly: 500 },
+    },
     issuedAt: new Date('2026-04-18T12:00:00.000Z'),
   });
 
   assert.equal(license.payload.business_id, 'biz-1');
   assert.equal(license.payload.status, 'active');
+  assert.deepEqual(license.payload.entitlements.features, ['pos', 'agent']);
+  assert.equal(license.payload.entitlements.maxBranches, 1);
   assert.equal(license.signature, signPayload(license.payloadBase64));
 });
 

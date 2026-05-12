@@ -6,39 +6,34 @@ import '../../app/app_shell.dart';
 /// Row of action buttons rendered inside task-complete message cards.
 class PikiActionButtons extends StatelessWidget {
   final Map<String, dynamic>? results;
+  final ValueChanged<String>? onSendPrompt;
 
-  const PikiActionButtons({super.key, this.results});
+  const PikiActionButtons({super.key, this.results, this.onSendPrompt});
 
   @override
   Widget build(BuildContext context) {
     final hasRestock = results?.containsKey('restockList') ?? false;
+    final hasLowStock = results?.containsKey('analyzeLowStock') ?? false;
     final hasReport = results?.containsKey('todaysSummary') ??
         results?.containsKey('salesReport') ??
         false;
     final hasPurchaseCreated = results?.containsKey('purchaseDraftConfirm') ?? false;
 
+    final canCreatePurchaseDraft = (hasRestock || hasLowStock) && !hasPurchaseCreated;
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
-        if (hasRestock)
+        if (canCreatePurchaseDraft)
           _ActionChip(
-            icon: Icons.description_outlined,
-            label: 'View Draft',
-            onTap: () => AppShell.selectIndex(12), // Stock List
-          ),
-        if (!hasPurchaseCreated)
-          _ActionChip(
-            icon: Icons.check_circle_outline,
-            label: 'Confirm',
+            icon: Icons.local_shipping_outlined,
+            label: 'Create Purchase Draft',
             filled: true,
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Tasks confirmed ✓'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              if (onSendPrompt != null) {
+                onSendPrompt!('Create a purchase draft for low stock items');
+              }
             },
           ),
         if (hasReport)

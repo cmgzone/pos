@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/services/speech_service.dart';
 import '../../app/app_shell.dart';
 import '../../sales/data/cart_provider.dart';
 import '../data/piki_models.dart';
@@ -21,23 +24,89 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
+  bool _isListening = false;
+  bool _voiceBusy = false;
+  bool _autoListening = false;
+  bool _autoLoopRunning = false;
+  int _autoListenToken = 0;
+
+  static const _autoListenWindow = Duration(seconds: 5);
+  static const _autoListenRestartDelay = Duration(milliseconds: 650);
 
   static const _quickActions = [
-    {'icon': Icons.inventory_2_outlined, 'label': 'Restock Items', 'prompt': 'Create a restock list for low stock items'},
-    {'icon': Icons.bar_chart_rounded, 'label': "Today's Summary", 'prompt': "Show today's sales summary"},
-    {'icon': Icons.description_outlined, 'label': 'Create Report', 'prompt': 'Show a sales report'},
-    {'icon': Icons.warning_amber_rounded, 'label': 'Low Stock', 'prompt': 'Check low stock items'},
-    {'icon': Icons.event_busy_rounded, 'label': 'Expiry Check', 'prompt': 'Check expiring products'},
-    {'icon': Icons.trending_up_rounded, 'label': 'Profit', 'prompt': 'Show profit summary'},
-    {'icon': Icons.people_alt_outlined, 'label': 'Top Debtors', 'prompt': 'Show top customers who owe money'},
-    {'icon': Icons.leaderboard_rounded, 'label': 'Top Products', 'prompt': 'Show top selling products'},
-    {'icon': Icons.money_off_rounded, 'label': 'Expenses', 'prompt': 'Show expense summary'},
-    {'icon': Icons.local_shipping_outlined, 'label': 'Stock In', 'prompt': 'Show recent purchase history'},
+    {
+      'icon': Icons.inventory_2_outlined,
+      'label': 'Restock Items',
+      'prompt': 'Create a restock list for low stock items',
+    },
+    {
+      'icon': Icons.bar_chart_rounded,
+      'label': "Today's Summary",
+      'prompt': "Show today's sales summary",
+    },
+    {
+      'icon': Icons.auto_awesome_rounded,
+      'label': 'Proactive Check',
+      'prompt': 'run proactive check',
+    },
+    {
+      'icon': Icons.description_outlined,
+      'label': 'Create Report',
+      'prompt': 'Show a sales report',
+    },
+    {
+      'icon': Icons.warning_amber_rounded,
+      'label': 'Low Stock',
+      'prompt': 'Check low stock items',
+    },
+    {
+      'icon': Icons.event_busy_rounded,
+      'label': 'Expiry Check',
+      'prompt': 'Check expiring products',
+    },
+    {
+      'icon': Icons.trending_up_rounded,
+      'label': 'Profit',
+      'prompt': 'Show profit summary',
+    },
+    {
+      'icon': Icons.people_alt_outlined,
+      'label': 'Top Debtors',
+      'prompt': 'Show top customers who owe money',
+    },
+    {
+      'icon': Icons.leaderboard_rounded,
+      'label': 'Top Products',
+      'prompt': 'Show top selling products',
+    },
+    {
+      'icon': Icons.money_off_rounded,
+      'label': 'Expenses',
+      'prompt': 'Show expense summary',
+    },
+    {
+      'icon': Icons.local_shipping_outlined,
+      'label': 'Stock In',
+      'prompt': 'Show recent purchase history',
+    },
   ];
 
   static const _sellQuickActions = [
-    {'icon': Icons.shopping_cart_checkout_rounded, 'label': 'Checkout', 'prompt': 'checkout'},
-    {'icon': Icons.delete_sweep_rounded, 'label': 'Clear Cart', 'prompt': 'clear cart'},
+    {
+      'icon': Icons.shopping_cart_checkout_rounded,
+      'label': 'Checkout',
+      'prompt': 'checkout',
+    },
+    {
+      'icon': Icons.delete_sweep_rounded,
+      'label': 'Clear Cart',
+      'prompt': 'clear cart',
+    },
+    {
+      'icon': Icons.pause_circle_outline,
+      'label': 'Hold Sale',
+      'prompt': 'hold sale',
+    },
     {'icon': Icons.search_rounded, 'label': 'Find Product', 'prompt': 'sell '},
   ];
 
@@ -56,6 +125,9 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
 
   @override
   void dispose() {
+    _autoListenToken++;
+    unawaited(SpeechService.stopListening());
+    unawaited(SpeechService.stopPlayback());
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -63,11 +135,216 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   }
 
   void _send() {
+    unawaited(_sendInternal());
+  }
+
+  Future<void> _sendInternal({bool speakResponse = false}) async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    final beforeIds = ref
+        .read(pikiMessagesProvider)
+        .map((message) => message.id)
+        .toSet();
     _controller.clear();
-    ref.read(pikiMessagesProvider.notifier).sendMessage(text);
+    await ref.read(pikiMessagesProvider.notifier).sendMessage(text);
     _scrollToBottom();
+    if (speakResponse) {
+      await _speakLatestAgentReply(beforeIds);
+    }
+  }
+
+  Future<void> _toggleListening() async {
+    if (_voiceBusy) return;
+    if (_autoListening) {
+      await _stopAutoListening();
+      return;
+    }
+    if (_isListening) {
+      setState(() {
+        _isListening = false;
+        _voiceBusy = true;
+      });
+      try {
+        final text = await SpeechService.stopAndTranscribe();
+        if (!mounted) return;
+        _controller.text = text;
+        if (_shouldSendVoiceText(text)) {
+          await _sendInternal(speakResponse: true);
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Piki voice failed: $error')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _voiceBusy = false);
+        }
+      }
+    } else {
+      setState(() => _isListening = true);
+      final started = await SpeechService.startRecording();
+      if (!started && mounted) {
+        setState(() => _isListening = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Microphone permission or recorder is unavailable.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleAutoListening() async {
+    if (_autoListening) {
+      await _stopAutoListening();
+      return;
+    }
+    final token = ++_autoListenToken;
+    setState(() => _autoListening = true);
+    unawaited(_startAutoListenLoopWhenReady(token));
+  }
+
+  Future<void> _startAutoListenLoopWhenReady(int token) async {
+    while (_autoLoopRunning && mounted && token == _autoListenToken) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted || !_autoListening || token != _autoListenToken) return;
+    await _runAutoListenLoop(token);
+  }
+
+  Future<void> _stopAutoListening({bool stopPlayback = true}) async {
+    _autoListenToken++;
+    if (mounted) {
+      setState(() {
+        _autoListening = false;
+        _isListening = false;
+        _voiceBusy = false;
+      });
+    }
+    await SpeechService.stopListening();
+    if (stopPlayback) {
+      await SpeechService.stopPlayback();
+    }
+  }
+
+  Future<void> _runAutoListenLoop(int token) async {
+    if (_autoLoopRunning) return;
+    _autoLoopRunning = true;
+    try {
+      while (mounted && _autoListening && token == _autoListenToken) {
+        setState(() {
+          _isListening = true;
+          _voiceBusy = false;
+        });
+
+        final started = await SpeechService.startRecording();
+        if (!started) {
+          if (mounted) {
+            setState(() {
+              _autoListening = false;
+              _isListening = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Microphone permission or recorder is unavailable.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+
+        await Future<void>.delayed(_autoListenWindow);
+        if (!mounted || !_autoListening || token != _autoListenToken) {
+          await SpeechService.stopListening();
+          break;
+        }
+
+        setState(() {
+          _isListening = false;
+          _voiceBusy = true;
+        });
+
+        try {
+          final text = await SpeechService.stopAndTranscribe();
+          if (!mounted || !_autoListening || token != _autoListenToken) {
+            break;
+          }
+          if (_isAutoStopCommand(text)) {
+            await SpeechService.speak('Auto listen is off.');
+            await _stopAutoListening(stopPlayback: false);
+            break;
+          }
+          if (_shouldSendVoiceText(text)) {
+            _controller.text = text;
+            await _sendInternal(speakResponse: true);
+          }
+        } catch (error) {
+          if (mounted && _autoListening && token == _autoListenToken) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Piki auto listen failed: $error')),
+            );
+          }
+        } finally {
+          if (mounted && token == _autoListenToken) {
+            setState(() => _voiceBusy = false);
+          }
+        }
+
+        await Future<void>.delayed(_autoListenRestartDelay);
+      }
+    } finally {
+      _autoLoopRunning = false;
+      if (mounted && token == _autoListenToken) {
+        setState(() {
+          _autoListening = false;
+          _isListening = false;
+          _voiceBusy = false;
+        });
+      }
+    }
+  }
+
+  bool _shouldSendVoiceText(String text) {
+    final normalized = text.trim();
+    if (normalized.length < 2) return false;
+    return normalized
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .isNotEmpty;
+  }
+
+  bool _isAutoStopCommand(String text) {
+    final normalized = text.toLowerCase().trim().replaceAll(
+      RegExp(r'[^\w\s]'),
+      '',
+    );
+    return normalized == 'stop listening' ||
+        normalized == 'piki stop listening' ||
+        normalized == 'pause listening' ||
+        normalized == 'piki pause listening' ||
+        normalized == 'auto listen off' ||
+        normalized == 'turn off auto listen' ||
+        normalized == 'stop auto listen';
+  }
+
+  Future<void> _speakLatestAgentReply(Set<String> beforeIds) async {
+    final replies = ref
+        .read(pikiMessagesProvider)
+        .where(
+          (message) =>
+              !beforeIds.contains(message.id) &&
+              message.sender == PikiSender.agent &&
+              message.messageType != PikiMessageType.thinking &&
+              message.messageType != PikiMessageType.working &&
+              message.content.trim().isNotEmpty,
+        )
+        .toList();
+    if (replies.isEmpty) return;
+    await SpeechService.speak(replies.last.content);
   }
 
   void _scrollToBottom() {
@@ -80,6 +357,68 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         );
       }
     });
+  }
+
+  void _showInsightDetails(BuildContext context, dynamic data) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.auto_awesome, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'AI Insight Details',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...data.details
+                  .map<Widget>(
+                    (detail) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '• ',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              detail,
+                              style: const TextStyle(fontSize: 14, height: 1.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -103,9 +442,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients &&
           _scrollController.position.maxScrollExtent > 0) {
-        _scrollController.jumpTo(
-          _scrollController.position.maxScrollExtent,
-        );
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
     });
 
@@ -125,9 +462,19 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         title: const Text('AI Agent'),
         actions: [
           _AiIndicator(status: status),
-          const SizedBox(width: 16),
+          Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.history_rounded),
+                tooltip: 'Chat History',
+                onPressed: () => Scaffold.of(context).openEndDrawer(),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
         ],
       ),
+      endDrawer: const _ChatHistoryDrawer(),
       body: Column(
         children: [
           // ── Chat area ──────────────────────────────────────────────
@@ -141,7 +488,9 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                     itemBuilder: (context, index) => PikiMessageBubble(
                       message: messages[index],
                       onSendPrompt: (prompt) {
-                        ref.read(pikiMessagesProvider.notifier).sendMessage(prompt);
+                        ref
+                            .read(pikiMessagesProvider.notifier)
+                            .sendMessage(prompt);
                         _scrollToBottom();
                       },
                     ),
@@ -156,9 +505,19 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                 ref.read(pikiMessagesProvider.notifier).sendMessage('checkout');
               },
             )
-          else if (insight != null && insight.isNotEmpty &&
+          else if (insight != null &&
+              insight.text.isNotEmpty &&
               mode != PikiMode.sell)
-            _InsightBar(insight: insight),
+            _InsightBar(
+              insight: insight.text,
+              onTap: () {
+                if (insight.details.isNotEmpty) {
+                  _showInsightDetails(context, insight);
+                } else {
+                  _scrollToBottom();
+                }
+              },
+            ),
 
           // ── Quick actions ───────────────────────────────────────
           _QuickActions(
@@ -174,9 +533,12 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
             controller: _controller,
             focusNode: _focusNode,
             mode: mode,
+            isListening: _isListening || _voiceBusy,
+            isAutoListening: _autoListening,
             onSend: _send,
-            onSelectMode: (m) =>
-                ref.read(pikiModeProvider.notifier).state = m,
+            onMicTap: _toggleListening,
+            onAutoListenTap: _toggleAutoListening,
+            onSelectMode: (m) => ref.read(pikiModeProvider.notifier).state = m,
           ),
         ],
       ),
@@ -198,6 +560,8 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                 gradient: LinearGradient(
                   colors: mode == PikiMode.sell
                       ? [const Color(0xFF00C896), const Color(0xFF00A8FF)]
+                      : mode == PikiMode.advice
+                      ? [const Color(0xFF9C27B0), const Color(0xFF651FFF)]
                       : [AppColors.primary, const Color(0xFFFF7E67)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -205,40 +569,44 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: (mode == PikiMode.sell
-                            ? const Color(0xFF00C896)
-                            : AppColors.primary)
-                        .withValues(alpha: 0.35),
+                    color:
+                        (mode == PikiMode.sell
+                                ? const Color(0xFF00C896)
+                                : mode == PikiMode.advice
+                                ? const Color(0xFF9C27B0)
+                                : AppColors.primary)
+                            .withValues(alpha: 0.35),
                     blurRadius: 30,
                     spreadRadius: 2,
                   ),
                 ],
               ),
-              child: Center(
-                child: Icon(
-                  mode == PikiMode.sell
-                      ? Icons.point_of_sale_rounded
-                      : null,
-                  color: Colors.white,
-                  size: 36,
-                  semanticLabel: mode == PikiMode.sell ? 'Sell' : null,
-                ),
-              ),
-            ),
-            if (mode != PikiMode.sell)
-              const Center(
-                child: Text(
-                  'P',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 36,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Center(
+                    child: Icon(
+                      mode == PikiMode.sell
+                          ? Icons.point_of_sale_rounded
+                          : mode == PikiMode.advice
+                          ? Icons.lightbulb_rounded
+                          : Icons.auto_awesome_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
                   ),
                 ),
               ),
+            ),
             const SizedBox(height: 24),
             Text(
-              mode == PikiMode.sell ? 'Sell Mode' : 'Piki AI Assistant',
+              mode == PikiMode.sell
+                  ? 'Sell Mode'
+                  : mode == PikiMode.advice
+                  ? 'Business Coach'
+                  : 'Piki AI Assistant',
               style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -249,6 +617,8 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
             Text(
               mode == PikiMode.sell
                   ? 'Say what to sell — e.g. "2 Fanta"\nThen say "checkout" to go to POS.'
+                  : mode == PikiMode.advice
+                  ? 'Ask me for strategic advice,\ninsights, or ways to improve profit.'
                   : 'AI can analyze, plan, and complete\ntasks for your business.',
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -258,50 +628,53 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: (mode == PikiMode.plan
-                        ? AppColors.secondary
-                        : AppColors.warning)
-                    .withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(100),
-                border: Border.all(
-                  color: (mode == PikiMode.plan
-                          ? AppColors.secondary
-                          : AppColors.warning)
-                      .withValues(alpha: 0.3),
+            if (mode != PikiMode.sell && mode != PikiMode.advice)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
                 ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    mode == PikiMode.plan
-                        ? Icons.route_rounded
-                        : Icons.bolt_rounded,
-                    size: 16,
-                    color: mode == PikiMode.plan
-                        ? AppColors.secondary
-                        : AppColors.warning,
+                decoration: BoxDecoration(
+                  color:
+                      (mode == PikiMode.plan
+                              ? AppColors.secondary
+                              : AppColors.warning)
+                          .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(
+                    color:
+                        (mode == PikiMode.plan
+                                ? AppColors.secondary
+                                : AppColors.warning)
+                            .withValues(alpha: 0.3),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    mode == PikiMode.plan ? 'Plan Mode' : 'Fast Mode',
-                    style: TextStyle(
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      mode == PikiMode.plan
+                          ? Icons.route_rounded
+                          : Icons.bolt_rounded,
+                      size: 16,
                       color: mode == PikiMode.plan
                           ? AppColors.secondary
                           : AppColors.warning,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Text(
+                      mode == PikiMode.plan ? 'Plan Mode' : 'Fast Mode',
+                      style: TextStyle(
+                        color: mode == PikiMode.plan
+                            ? AppColors.secondary
+                            : AppColors.warning,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -430,61 +803,77 @@ class _AiIndicator extends StatelessWidget {
 
 class _InsightBar extends StatelessWidget {
   final String insight;
-  const _InsightBar({required this.insight});
+  final VoidCallback? onTap;
+
+  const _InsightBar({required this.insight, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.surfaceHighlight,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(
-        children: [
-          ShaderMask(
-            shaderCallback: (bounds) => const LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryLight],
-            ).createShader(bounds),
-            child: const Icon(
-              Icons.auto_awesome,
-              size: 18,
-              color: Colors.white,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [AppColors.primary, AppColors.primaryLight],
+                  ).createShader(bounds),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Insight:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    insight,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Text(
+                  'View Details',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          const Text(
-            'Insight:',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              insight,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          Text(
-            'View Details',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const Icon(Icons.chevron_right, size: 16, color: AppColors.primary),
-        ],
+        ),
       ),
     );
   }
@@ -517,12 +906,16 @@ class _QuickActions extends StatelessWidget {
             ),
             label: Text(
               action['label'] as String,
-              style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textPrimary,
+              ),
             ),
             backgroundColor: AppColors.surfaceHighlight,
             side: const BorderSide(color: AppColors.border),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
             onPressed: () => onTap(action['prompt'] as String),
           );
         },
@@ -537,14 +930,22 @@ class _BottomBar extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final PikiMode mode;
+  final bool isListening;
+  final bool isAutoListening;
   final VoidCallback onSend;
+  final VoidCallback onMicTap;
+  final VoidCallback onAutoListenTap;
   final ValueChanged<PikiMode> onSelectMode;
 
   const _BottomBar({
     required this.controller,
     required this.focusNode,
     required this.mode,
+    required this.isListening,
+    required this.isAutoListening,
     required this.onSend,
+    required this.onMicTap,
+    required this.onAutoListenTap,
     required this.onSelectMode,
   });
 
@@ -562,44 +963,74 @@ class _BottomBar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Mode toggle row
-            Row(
-              children: [
-                _ModeToggle(
-                  label: 'Plan',
-                  icon: Icons.route_rounded,
-                  isActive: mode == PikiMode.plan,
-                  color: AppColors.secondary,
-                  onTap: () => onSelectMode(PikiMode.plan),
-                ),
-                const SizedBox(width: 8),
-                _ModeToggle(
-                  label: 'Fast',
-                  icon: Icons.bolt_rounded,
-                  isActive: mode == PikiMode.fast,
-                  color: AppColors.warning,
-                  onTap: () => onSelectMode(PikiMode.fast),
-                ),
-                const SizedBox(width: 8),
-                _ModeToggle(
-                  label: 'Sell',
-                  icon: Icons.point_of_sale_rounded,
-                  isActive: mode == PikiMode.sell,
-                  color: const Color(0xFF00C896),
-                  onTap: () => onSelectMode(PikiMode.sell),
-                ),
-                const Spacer(),
-                Text(
-                  mode == PikiMode.plan
-                      ? 'Plans step-by-step'
-                      : mode == PikiMode.fast
-                          ? 'Instant results'
-                          : 'Voice-to-cart POS',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 11,
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _ModeToggle(
+                    label: 'Plan',
+                    icon: Icons.route_rounded,
+                    isActive: mode == PikiMode.plan,
+                    color: AppColors.secondary,
+                    onTap: () => onSelectMode(PikiMode.plan),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  _ModeToggle(
+                    label: 'Fast',
+                    icon: Icons.bolt_rounded,
+                    isActive: mode == PikiMode.fast,
+                    color: AppColors.warning,
+                    onTap: () => onSelectMode(PikiMode.fast),
+                  ),
+                  const SizedBox(width: 8),
+                  _ModeToggle(
+                    label: 'Sell',
+                    icon: Icons.point_of_sale_rounded,
+                    isActive: mode == PikiMode.sell,
+                    color: const Color(0xFF00C896),
+                    onTap: () => onSelectMode(PikiMode.sell),
+                  ),
+                  const SizedBox(width: 8),
+                  _ModeToggle(
+                    label: 'Advice',
+                    icon: Icons.lightbulb_rounded,
+                    isActive: mode == PikiMode.advice,
+                    color: const Color(0xFF9C27B0),
+                    onTap: () => onSelectMode(PikiMode.advice),
+                  ),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: isAutoListening
+                        ? 'Stop auto listen'
+                        : 'Start auto listen',
+                    child: _ModeToggle(
+                      label: 'Auto',
+                      icon: isAutoListening
+                          ? Icons.hearing_rounded
+                          : Icons.hearing_outlined,
+                      isActive: isAutoListening,
+                      color: AppColors.primary,
+                      onTap: onAutoListenTap,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    isAutoListening
+                        ? 'Auto-listening'
+                        : mode == PikiMode.plan
+                        ? 'Plans step-by-step'
+                        : mode == PikiMode.fast
+                        ? 'Instant results'
+                        : mode == PikiMode.advice
+                        ? 'Business Coach'
+                        : 'Voice-to-cart POS',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
 
@@ -614,6 +1045,8 @@ class _BottomBar extends StatelessWidget {
                     decoration: InputDecoration(
                       hintText: mode == PikiMode.sell
                           ? 'Say "2 Fanta" or "checkout"...'
+                          : mode == PikiMode.advice
+                          ? 'Ask for business advice...'
                           : 'Ask Piki AI...',
                       hintStyle: TextStyle(
                         color: AppColors.textSecondary.withValues(alpha: 0.6),
@@ -629,11 +1062,15 @@ class _BottomBar extends StatelessWidget {
                         borderSide: BorderSide.none,
                       ),
                       suffixIcon: IconButton(
-                        icon: const Icon(
-                          Icons.mic_rounded,
-                          color: AppColors.textSecondary,
+                        icon: Icon(
+                          isListening
+                              ? Icons.stop_circle_rounded
+                              : Icons.mic_rounded,
+                          color: isListening
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
                         ),
-                        onPressed: () {},
+                        onPressed: onMicTap,
                       ),
                     ),
                     onSubmitted: (_) => onSend(),
@@ -707,7 +1144,11 @@ class _ModeToggle extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: isActive ? color : AppColors.textSecondary),
+            Icon(
+              icon,
+              size: 14,
+              color: isActive ? color : AppColors.textSecondary,
+            ),
             const SizedBox(width: 5),
             Text(
               label,
@@ -745,9 +1186,7 @@ class _SellCartBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: Color(0xFF003D2B),
-        border: Border(
-          top: BorderSide(color: Color(0xFF00C896), width: 1.5),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFF00C896), width: 1.5)),
       ),
       child: Row(
         children: [
@@ -760,30 +1199,37 @@ class _SellCartBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.shopping_cart_rounded,
-                    size: 14, color: Color(0xFF00C896)),
+                const Icon(
+                  Icons.shopping_cart_rounded,
+                  size: 14,
+                  color: Color(0xFF00C896),
+                ),
                 const SizedBox(width: 6),
                 Text(
                   '$countStr item${itemCount == 1 ? '' : 's'}',
                   style: const TextStyle(
                     color: Color(0xFF00C896),
                     fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    fontSize: 11,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            'Total: $currency${total.toStringAsFixed(2)}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
+          Expanded(
+            child: Text(
+              'Total: $currency${total.toStringAsFixed(2)}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 8),
           ElevatedButton.icon(
             onPressed: onCheckout,
             icon: const Icon(Icons.point_of_sale_rounded, size: 16),
@@ -791,18 +1237,133 @@ class _SellCartBar extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF00C896),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
               elevation: 0,
               textStyle: const TextStyle(
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
+                fontSize: 12,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ChatHistoryDrawer extends ConsumerWidget {
+  const _ChatHistoryDrawer();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionsAsync = ref.watch(pikiSessionsProvider);
+    final activeId = ref.watch(pikiActiveSessionIdProvider);
+
+    return Drawer(
+      backgroundColor: AppColors.surface,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  const Icon(Icons.history_rounded, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Chat History',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  ref.read(pikiActiveSessionIdProvider.notifier).state = null;
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('New Chat'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  foregroundColor: AppColors.primary,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: sessionsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: (sessions) {
+                  if (sessions.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No past chats yet.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: sessions.length,
+                    itemBuilder: (context, index) {
+                      final session = sessions[index];
+                      final isActive = session.id == activeId;
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 20,
+                        ),
+                        title: Text(
+                          session.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: isActive
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isActive ? AppColors.primary : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${session.updatedAt.day}/${session.updatedAt.month}/${session.updatedAt.year}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        selected: isActive,
+                        selectedTileColor: AppColors.primary.withValues(
+                          alpha: 0.05,
+                        ),
+                        onTap: () {
+                          ref.read(pikiActiveSessionIdProvider.notifier).state =
+                              session.id;
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,0 +1,1054 @@
+const crypto = require('crypto');
+
+const { config } = require('./config');
+const { query } = require('./db');
+
+const FEATURE_KEYS = Object.freeze({
+  pos: 'pos',
+  products: 'products',
+  categories: 'categories',
+  purchases: 'purchases',
+  sales: 'sales',
+  dashboard: 'dashboard',
+  kopesha: 'kopesha',
+  profitLoss: 'profit_loss',
+  reports: 'reports',
+  settings: 'settings',
+  shifts: 'shifts',
+  services: 'services',
+  agent: 'agent',
+  stockList: 'stock_list',
+  transfers: 'transfers',
+  branches: 'branches',
+  auditLogs: 'audit_logs',
+  proactivePiki: 'proactive_piki',
+});
+
+const BASE_FEATURES = [
+  FEATURE_KEYS.pos,
+  FEATURE_KEYS.products,
+  FEATURE_KEYS.sales,
+  FEATURE_KEYS.dashboard,
+  FEATURE_KEYS.settings,
+  FEATURE_KEYS.shifts,
+  FEATURE_KEYS.agent,
+];
+
+const STARTER_FEATURES = [
+  ...BASE_FEATURES,
+  FEATURE_KEYS.categories,
+  FEATURE_KEYS.stockList,
+  FEATURE_KEYS.reports,
+];
+
+const GROWTH_FEATURES = [
+  ...STARTER_FEATURES,
+  FEATURE_KEYS.purchases,
+  FEATURE_KEYS.transfers,
+  FEATURE_KEYS.branches,
+  FEATURE_KEYS.services,
+  FEATURE_KEYS.profitLoss,
+];
+
+const ALL_FEATURES = [
+  ...GROWTH_FEATURES,
+  FEATURE_KEYS.kopesha,
+  FEATURE_KEYS.auditLogs,
+  FEATURE_KEYS.proactivePiki,
+];
+
+const DEFAULT_PLANS = [
+  {
+    code: 'trial',
+    name: 'Trial',
+    description: 'Starter trial for a new shop.',
+    features: BASE_FEATURES,
+    maxBranches: 1,
+    maxEmployees: 2,
+    maxAiAgents: 1,
+    aiRateHourly: 20,
+    aiRateWeekly: 200,
+    aiRateMonthly: 500,
+    sortOrder: 10,
+  },
+  {
+    code: 'starter',
+    name: 'Starter',
+    description: 'One-branch retail operations.',
+    features: STARTER_FEATURES,
+    maxBranches: 1,
+    maxEmployees: 3,
+    maxAiAgents: 1,
+    aiRateHourly: 60,
+    aiRateWeekly: 1000,
+    aiRateMonthly: 3000,
+    sortOrder: 20,
+  },
+  {
+    code: 'growth',
+    name: 'Growth',
+    description: 'Multi-branch operations with transfers and services.',
+    features: GROWTH_FEATURES,
+    maxBranches: 3,
+    maxEmployees: 10,
+    maxAiAgents: 3,
+    aiRateHourly: 200,
+    aiRateWeekly: 5000,
+    aiRateMonthly: 15000,
+    sortOrder: 30,
+  },
+  {
+    code: 'pro',
+    name: 'Pro',
+    description: 'Full POS suite with advanced controls and Piki.',
+    features: ALL_FEATURES,
+    maxBranches: 10,
+    maxEmployees: 30,
+    maxAiAgents: 10,
+    aiRateHourly: 600,
+    aiRateWeekly: 20000,
+    aiRateMonthly: 60000,
+    sortOrder: 40,
+  },
+  {
+    code: 'enterprise',
+    name: 'Enterprise',
+    description: 'Custom limits and pricing for large teams.',
+    isActive: false,
+    features: ALL_FEATURES,
+    maxBranches: 999999,
+    maxEmployees: 999999,
+    maxAiAgents: 999999,
+    aiRateHourly: 999999,
+    aiRateWeekly: 9999999,
+    aiRateMonthly: 99999999,
+    sortOrder: 50,
+  },
+];
+
+const DEFAULT_PRICES = [
+  ['trial', 'KE', 'KES', 0, 'monthly', 'mpesa'],
+  ['trial', 'GLOBAL', 'USD', 0, 'monthly', 'google_pay'],
+  ['starter', 'KE', 'KES', 150000, 'monthly', 'mpesa'],
+  ['starter', 'GLOBAL', 'USD', 1500, 'monthly', 'google_pay'],
+  ['growth', 'KE', 'KES', 350000, 'monthly', 'mpesa'],
+  ['growth', 'GLOBAL', 'USD', 3500, 'monthly', 'google_pay'],
+  ['pro', 'KE', 'KES', 750000, 'monthly', 'mpesa'],
+  ['pro', 'GLOBAL', 'USD', 7500, 'monthly', 'google_pay'],
+  ['enterprise', 'KE', 'KES', 0, 'monthly', 'mpesa'],
+  ['enterprise', 'GLOBAL', 'USD', 0, 'monthly', 'google_pay'],
+];
+
+const SECRET_MASK_PREFIX = '********';
+
+let schemaReady = false;
+
+async function ensureSubscriptionSchema(target = query) {
+  const canUseCache = target === query;
+  if (canUseCache && schemaReady) {
+    return;
+  }
+
+  await runQuery(
+    target,
+    `
+    ALTER TABLE businesses
+      ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL'
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS subscription_plans (
+      code text PRIMARY KEY,
+      name text NOT NULL,
+      description text,
+      is_active boolean NOT NULL DEFAULT true,
+      features_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+      max_branches integer NOT NULL DEFAULT 1,
+      max_employees integer NOT NULL DEFAULT 1,
+      max_ai_agents integer NOT NULL DEFAULT 0,
+      ai_rate_hourly integer NOT NULL DEFAULT 0,
+      ai_rate_weekly integer NOT NULL DEFAULT 0,
+      ai_rate_monthly integer NOT NULL DEFAULT 0,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS platform_payment_gateways (
+      provider text PRIMARY KEY,
+      display_name text NOT NULL,
+      is_active boolean NOT NULL DEFAULT false,
+      countries_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+      public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+
+  await seedDefaultPaymentGateways(target);
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS subscription_plan_prices (
+      id text PRIMARY KEY,
+      plan_code text NOT NULL REFERENCES subscription_plans(code) ON DELETE CASCADE,
+      country_code text NOT NULL DEFAULT 'GLOBAL',
+      currency text NOT NULL DEFAULT 'USD',
+      amount_minor integer NOT NULL DEFAULT 0,
+      billing_period text NOT NULL DEFAULT 'monthly',
+      provider text NOT NULL DEFAULT 'google_pay',
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_plan_prices_unique
+      ON subscription_plan_prices(plan_code, country_code, provider, billing_period)
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS subscription_payments (
+      id text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      plan_code text NOT NULL REFERENCES subscription_plans(code),
+      price_id text REFERENCES subscription_plan_prices(id),
+      provider text NOT NULL,
+      country_code text NOT NULL,
+      currency text NOT NULL,
+      amount_minor integer NOT NULL,
+      billing_period text NOT NULL DEFAULT 'monthly',
+      status text NOT NULL DEFAULT 'pending',
+      phone_number text,
+      external_reference text,
+      checkout_request_id text,
+      google_pay_token_json jsonb,
+      metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      completed_at timestamptz
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE INDEX IF NOT EXISTS idx_subscription_payments_business
+      ON subscription_payments(business_id, created_at DESC)
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS ai_rate_limit_counters (
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      period text NOT NULL,
+      request_count integer NOT NULL DEFAULT 0,
+      window_start timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (business_id, period)
+    )
+    `,
+  );
+
+  for (const plan of DEFAULT_PLANS) {
+    await runQuery(
+      target,
+      `
+      INSERT INTO subscription_plans (
+        code,
+        name,
+        description,
+        is_active,
+        features_json,
+        max_branches,
+        max_employees,
+        max_ai_agents,
+        ai_rate_hourly,
+        ai_rate_weekly,
+        ai_rate_monthly,
+        sort_order
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (code) DO NOTHING
+      `,
+      [
+        plan.code,
+        plan.name,
+        plan.description,
+        plan.isActive !== false,
+        JSON.stringify(plan.features),
+        plan.maxBranches,
+        plan.maxEmployees,
+        plan.maxAiAgents,
+        plan.aiRateHourly,
+        plan.aiRateWeekly,
+        plan.aiRateMonthly,
+        plan.sortOrder,
+      ],
+    );
+  }
+
+  for (const price of DEFAULT_PRICES) {
+    const [planCode, countryCode, currency, amountMinor, billingPeriod, provider] =
+      price;
+    await runQuery(
+      target,
+      `
+      INSERT INTO subscription_plan_prices (
+        id,
+        plan_code,
+        country_code,
+        currency,
+        amount_minor,
+        billing_period,
+        provider
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (plan_code, country_code, provider, billing_period) DO NOTHING
+      `,
+      [
+        `price_${planCode}_${countryCode.toLowerCase()}_${provider}_${billingPeriod}`,
+        planCode,
+        countryCode,
+        currency,
+        amountMinor,
+        billingPeriod,
+        provider,
+      ],
+    );
+  }
+
+  if (canUseCache) {
+    schemaReady = true;
+  }
+}
+
+async function listPlans({ includeInactive = false } = {}, target = query) {
+  await ensureSubscriptionSchema(target);
+  const planResult = await runQuery(
+    target,
+    `
+    SELECT *
+    FROM subscription_plans
+    ${includeInactive ? '' : 'WHERE is_active = true'}
+    ORDER BY sort_order ASC, name ASC
+    `,
+  );
+  const priceResult = await runQuery(
+    target,
+    `
+    SELECT *
+    FROM subscription_plan_prices
+    ORDER BY plan_code ASC, country_code ASC, provider ASC, billing_period ASC
+    `,
+  );
+
+  const pricesByPlan = new Map();
+  for (const row of priceResult.rows) {
+    const items = pricesByPlan.get(row.plan_code) || [];
+    items.push(normalizePriceRow(row));
+    pricesByPlan.set(row.plan_code, items);
+  }
+
+  return planResult.rows.map((row) => ({
+    ...normalizePlanRow(row),
+    prices: pricesByPlan.get(row.code) || [],
+  }));
+}
+
+async function loadEntitlementsForPlan(planCode, target = query) {
+  await ensureSubscriptionSchema(target);
+  const normalizedCode = normalizeCode(planCode) || 'trial';
+  let result = await runQuery(
+    target,
+    'SELECT * FROM subscription_plans WHERE code = $1 LIMIT 1',
+    [normalizedCode],
+  );
+
+  if (!result.rows.length && normalizedCode !== 'trial') {
+    result = await runQuery(
+      target,
+      "SELECT * FROM subscription_plans WHERE code = 'trial' LIMIT 1",
+    );
+  }
+
+  const row = result.rows[0];
+  return row ? normalizeEntitlements(row) : defaultTrialEntitlements();
+}
+
+async function resolvePlanPrice({
+  planCode,
+  countryCode,
+  provider,
+  billingPeriod = 'monthly',
+} = {}, target = query) {
+  await ensureSubscriptionSchema(target);
+  const cleanPlanCode = normalizeCode(planCode) || 'trial';
+  const cleanProvider = normalizeText(provider) ? normalizeProvider(provider) : null;
+  const cleanCountry = normalizeCountryCode(countryCode);
+  const cleanBillingPeriod = normalizeBillingPeriod(billingPeriod);
+
+  const result = await runQuery(
+    target,
+    `
+    SELECT p.*
+    FROM subscription_plan_prices p
+    JOIN subscription_plans sp ON sp.code = p.plan_code AND sp.is_active = true
+    JOIN platform_payment_gateways g ON g.provider = p.provider AND g.is_active = true
+    WHERE p.plan_code = $1
+      AND ($2::text IS NULL OR p.provider = $2)
+      AND p.billing_period = $3
+      AND p.is_active = true
+      AND g.countries_json ? p.country_code
+      AND p.country_code IN ($4, 'GLOBAL')
+    ORDER BY CASE WHEN p.country_code = $4 THEN 0 ELSE 1 END
+    LIMIT 1
+    `,
+    [cleanPlanCode, cleanProvider, cleanBillingPeriod, cleanCountry],
+  );
+
+  return result.rows[0] ? normalizePriceRow(result.rows[0]) : null;
+}
+
+async function listPublicPlans({ countryCode } = {}, target = query) {
+  const hasCountry = normalizeText(countryCode) !== null;
+  const cleanCountry = hasCountry ? normalizeCountryCode(countryCode) : null;
+  const plans = await listPlans({ includeInactive: false }, target);
+  const gateways = await listPaymentGateways({}, target);
+  const gatewaysByProvider = new Map(
+    gateways.map((gateway) => [gateway.provider, gateway]),
+  );
+
+  return plans.map((plan) => {
+    const prices = plan.prices.filter(
+      (price) => {
+        const gateway = gatewaysByProvider.get(price.provider);
+        return (
+          price.isActive &&
+          gateway?.isActive &&
+          (gateway.countries || []).includes(price.countryCode) &&
+          (!cleanCountry ||
+            price.countryCode === cleanCountry ||
+            price.countryCode === 'GLOBAL')
+        );
+      },
+    );
+    const exactPrice = cleanCountry
+      ? prices.find((price) => price.countryCode === cleanCountry)
+      : prices[0];
+    const fallbackPrice = cleanCountry
+      ? prices.find((price) => price.countryCode === 'GLOBAL')
+      : null;
+    return {
+      ...plan,
+      prices,
+      price: exactPrice || fallbackPrice || null,
+      entitlements: plan.entitlements,
+    };
+  });
+}
+
+async function listPublicMarkets(target = query) {
+  await ensureSubscriptionSchema(target);
+  const result = await runQuery(
+    target,
+    `
+    SELECT
+      country_code,
+      currency,
+      provider,
+      display_name,
+      public_config_json
+    FROM (
+      SELECT DISTINCT
+        p.country_code,
+        p.currency,
+        p.provider,
+        g.display_name,
+        g.public_config_json,
+        CASE
+          WHEN p.country_code = 'KE' THEN 0
+          WHEN p.country_code = 'GLOBAL' THEN 2
+          ELSE 1
+        END AS sort_rank
+      FROM subscription_plan_prices p
+      JOIN subscription_plans sp ON sp.code = p.plan_code
+      JOIN platform_payment_gateways g ON g.provider = p.provider
+      WHERE p.is_active = true
+        AND sp.is_active = true
+        AND g.is_active = true
+        AND g.countries_json ? p.country_code
+    ) markets
+    ORDER BY sort_rank ASC, country_code ASC, provider ASC
+    `,
+  );
+
+  return result.rows.map((row) => ({
+    countryCode: normalizeCountryCode(row.country_code),
+    label: countryLabel(row.country_code),
+    currency: normalizeCurrency(row.currency),
+    provider: normalizeProvider(row.provider),
+    providerLabel: row.display_name || providerLabel(row.provider),
+    publicConfig: parseJsonValue(row.public_config_json, {}),
+  }));
+}
+
+async function listPaymentGateways({ includeSecrets = false } = {}, target = query) {
+  await ensureSubscriptionSchema(target);
+  const result = await runQuery(
+    target,
+    `
+    SELECT *
+    FROM platform_payment_gateways
+    ORDER BY CASE provider
+      WHEN 'mpesa' THEN 0
+      WHEN 'google_pay' THEN 1
+      ELSE 2
+    END, provider ASC
+    `,
+  );
+  return result.rows.map((row) =>
+    normalizePaymentGatewayRow(row, { includeSecrets }),
+  );
+}
+
+async function loadPaymentGateway(
+  provider,
+  target = query,
+  { includeSecrets = true } = {},
+) {
+  await ensureSubscriptionSchema(target);
+  const cleanProvider = normalizeProvider(provider);
+  const result = await runQuery(
+    target,
+    'SELECT * FROM platform_payment_gateways WHERE provider = $1 LIMIT 1',
+    [cleanProvider],
+  );
+  return result.rows[0]
+    ? normalizePaymentGatewayRow(result.rows[0], { includeSecrets })
+    : null;
+}
+
+async function savePaymentGateway(provider, input = {}, target = query) {
+  await ensureSubscriptionSchema(target);
+  const cleanProvider = normalizeProvider(provider || input.provider);
+  const existing = await loadPaymentGateway(cleanProvider, target, {
+    includeSecrets: true,
+  });
+  const normalized = normalizePaymentGatewayInput(input, {
+    ...(existing || {}),
+    provider: cleanProvider,
+  });
+
+  const result = await runQuery(
+    target,
+    `
+    INSERT INTO platform_payment_gateways (
+      provider,
+      display_name,
+      is_active,
+      countries_json,
+      public_config_json,
+      secret_config_json,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, NOW(), NOW())
+    ON CONFLICT (provider) DO UPDATE
+    SET display_name = EXCLUDED.display_name,
+        is_active = EXCLUDED.is_active,
+        countries_json = EXCLUDED.countries_json,
+        public_config_json = EXCLUDED.public_config_json,
+        secret_config_json = EXCLUDED.secret_config_json,
+        updated_at = NOW()
+    RETURNING *
+    `,
+    [
+      cleanProvider,
+      normalized.displayName,
+      normalized.isActive,
+      JSON.stringify(normalized.countries),
+      JSON.stringify(normalized.publicConfig),
+      JSON.stringify(normalized.secretConfig),
+    ],
+  );
+
+  return normalizePaymentGatewayRow(result.rows[0], { includeSecrets: false });
+}
+
+async function seedDefaultPaymentGateways(target = query) {
+  for (const gateway of defaultPaymentGateways()) {
+    await runQuery(
+      target,
+      `
+      INSERT INTO platform_payment_gateways (
+        provider,
+        display_name,
+        is_active,
+        countries_json,
+        public_config_json,
+        secret_config_json
+      )
+      VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb)
+      ON CONFLICT (provider) DO NOTHING
+      `,
+      [
+        gateway.provider,
+        gateway.displayName,
+        gateway.isActive,
+        JSON.stringify(gateway.countries),
+        JSON.stringify(gateway.publicConfig),
+        JSON.stringify(gateway.secretConfig),
+      ],
+    );
+  }
+}
+
+function defaultPaymentGateways() {
+  const mpesaPublicConfig = removeEmptyValues({
+    baseUrl: config.mpesaBaseUrl,
+    shortcode: config.mpesaShortcode,
+    callbackUrl: config.mpesaCallbackUrl,
+  });
+  const mpesaSecretConfig = removeEmptyValues({
+    consumerKey: config.mpesaConsumerKey,
+    consumerSecret: config.mpesaConsumerSecret,
+    passkey: config.mpesaPasskey,
+  });
+  const googlePublicConfig = removeEmptyValues({
+    environment: config.googlePayEnvironment,
+    merchantId: config.googlePayMerchantId,
+    merchantName: 'Velora POS',
+    gateway: config.googlePayGateway,
+    gatewayMerchantId: config.googlePayGatewayMerchantId,
+  });
+  const googleSecretConfig = removeEmptyValues({
+    gatewayChargeUrl: config.googlePayGatewayChargeUrl,
+    gatewayApiKey: config.googlePayGatewayApiKey,
+  });
+
+  return [
+    {
+      provider: 'mpesa',
+      displayName: 'M-Pesa',
+      isActive: Boolean(
+        config.mpesaConsumerKey &&
+          config.mpesaConsumerSecret &&
+          config.mpesaShortcode &&
+          config.mpesaPasskey &&
+          config.mpesaCallbackUrl,
+      ),
+      countries: ['KE'],
+      publicConfig: mpesaPublicConfig,
+      secretConfig: mpesaSecretConfig,
+    },
+    {
+      provider: 'google_pay',
+      displayName: 'Google Pay',
+      isActive: Boolean(
+        config.googlePayMerchantId &&
+          config.googlePayGatewayMerchantId &&
+          config.googlePayGateway &&
+          config.googlePayGateway !== 'example',
+      ),
+      countries: ['GLOBAL'],
+      publicConfig: googlePublicConfig,
+      secretConfig: googleSecretConfig,
+    },
+  ];
+}
+
+function normalizePaymentGatewayInput(input, existing = {}) {
+  const raw = input && typeof input === 'object' ? input : {};
+  const publicConfig = normalizeConfigObject(
+    raw.publicConfig ?? raw.public_config ?? {},
+    existing.publicConfig || {},
+    { secret: false },
+  );
+  const secretConfig = normalizeConfigObject(
+    raw.secretConfig ?? raw.secret_config ?? {},
+    existing.secretConfig || {},
+    { secret: true },
+  );
+  return {
+    provider: normalizeProvider(raw.provider ?? existing.provider),
+    displayName:
+      normalizeText(raw.displayName ?? raw.display_name) ||
+      existing.displayName ||
+      providerLabel(existing.provider),
+    isActive:
+      raw.isActive == null && raw.is_active == null
+        ? existing.isActive ?? false
+        : Boolean(raw.isActive ?? raw.is_active),
+    countries: normalizeCountryList(raw.countries ?? existing.countries ?? []),
+    publicConfig,
+    secretConfig,
+  };
+}
+
+function normalizePaymentGatewayRow(row, { includeSecrets = false } = {}) {
+  const secretConfig = parseJsonValue(row.secret_config_json, {});
+  return {
+    provider: normalizeProvider(row.provider),
+    displayName: row.display_name || providerLabel(row.provider),
+    isActive: Boolean(row.is_active),
+    countries: normalizeCountryList(parseJsonValue(row.countries_json, [])),
+    publicConfig: parseJsonValue(row.public_config_json, {}),
+    secretConfig: includeSecrets ? secretConfig : maskConfigObject(secretConfig),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function normalizeConfigObject(input, existing = {}, { secret = false } = {}) {
+  const raw = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const normalized = { ...existing };
+  for (const [key, value] of Object.entries(raw)) {
+    const cleanKey = normalizeText(key);
+    if (!cleanKey) {
+      continue;
+    }
+    const text = value == null ? '' : String(value).trim();
+    if (secret && (!text || text.startsWith(SECRET_MASK_PREFIX))) {
+      continue;
+    }
+    if (!secret && !text) {
+      delete normalized[cleanKey];
+      continue;
+    }
+    normalized[cleanKey] = text;
+  }
+  return normalized;
+}
+
+function maskConfigObject(configObject) {
+  const masked = {};
+  for (const [key, value] of Object.entries(configObject || {})) {
+    const text = value == null ? '' : String(value);
+    masked[key] = text ? `${SECRET_MASK_PREFIX}${text.slice(-4)}` : '';
+  }
+  return masked;
+}
+
+function removeEmptyValues(value) {
+  const result = {};
+  for (const [key, item] of Object.entries(value || {})) {
+    const text = item == null ? '' : String(item).trim();
+    if (text) {
+      result[key] = text;
+    }
+  }
+  return result;
+}
+
+function normalizeCountryList(value) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .split(',')
+        .map((item) => item.trim());
+  const countries = [];
+  for (const item of source) {
+    const country = normalizeCountryCode(item);
+    if (country && !countries.includes(country)) {
+      countries.push(country);
+    }
+  }
+  return countries;
+}
+
+function countryLabel(countryCode) {
+  const cleanCountry = normalizeCountryCode(countryCode);
+  if (cleanCountry === 'KE') return 'Kenya';
+  if (cleanCountry === 'GLOBAL') return 'Other Countries';
+  return cleanCountry;
+}
+
+function providerLabel(provider) {
+  switch (normalizeProvider(provider)) {
+    case 'mpesa':
+      return 'M-Pesa';
+    case 'google_pay':
+      return 'Google Pay';
+    default:
+      return normalizeProvider(provider).replace(/_/g, ' ');
+  }
+}
+
+function parseJsonValue(value, fallback) {
+  if (value == null) {
+    return fallback;
+  }
+  if (typeof value === 'object') {
+    return value;
+  }
+  try {
+    return JSON.parse(String(value));
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function findPublicPriceForCountry(prices, cleanCountry) {
+  const exactPrice = prices.find(
+    (price) =>
+      price.isActive &&
+      price.countryCode === cleanCountry,
+  );
+  return (
+    exactPrice ||
+    prices.find(
+      (price) => price.isActive && price.countryCode === 'GLOBAL',
+    ) ||
+    null
+  );
+}
+
+function normalizePlanInput(input, existing = {}) {
+  const raw = input && typeof input === 'object' ? input : {};
+  const code = normalizeCode(raw.code ?? existing.code);
+  const features = normalizeFeatureList(raw.features ?? existing.features);
+  return {
+    code,
+    name: normalizeText(raw.name) || existing.name || code,
+    description:
+      raw.description == null
+        ? existing.description || ''
+        : String(raw.description).trim(),
+    isActive:
+      raw.isActive == null && raw.is_active == null
+        ? existing.isActive ?? true
+        : Boolean(raw.isActive ?? raw.is_active),
+    features,
+    maxBranches: normalizeLimit(raw.maxBranches ?? raw.max_branches, existing.maxBranches ?? 1),
+    maxEmployees: normalizeLimit(
+      raw.maxEmployees ?? raw.max_employees,
+      existing.maxEmployees ?? 1,
+    ),
+    maxAiAgents: normalizeLimit(
+      raw.maxAiAgents ?? raw.max_ai_agents,
+      existing.maxAiAgents ?? 0,
+    ),
+    aiRateHourly: normalizeLimit(
+      raw.aiRateHourly ?? raw.ai_rate_hourly,
+      existing.aiRateHourly ?? 0,
+    ),
+    aiRateWeekly: normalizeLimit(
+      raw.aiRateWeekly ?? raw.ai_rate_weekly,
+      existing.aiRateWeekly ?? 0,
+    ),
+    aiRateMonthly: normalizeLimit(
+      raw.aiRateMonthly ?? raw.ai_rate_monthly,
+      existing.aiRateMonthly ?? 0,
+    ),
+    sortOrder: normalizeLimit(raw.sortOrder ?? raw.sort_order, existing.sortOrder ?? 0),
+    prices: normalizePrices(raw.prices ?? existing.prices ?? []),
+  };
+}
+
+function normalizePriceInput(input, planCode) {
+  const raw = input && typeof input === 'object' ? input : {};
+  return {
+    id: normalizeText(raw.id) || crypto.randomUUID(),
+    planCode: normalizeCode(raw.planCode ?? raw.plan_code ?? planCode),
+    countryCode: normalizeCountryCode(raw.countryCode ?? raw.country_code),
+    currency: normalizeCurrency(raw.currency),
+    amountMinor: normalizeLimit(raw.amountMinor ?? raw.amount_minor, 0),
+    billingPeriod: normalizeBillingPeriod(raw.billingPeriod ?? raw.billing_period),
+    provider: normalizeProvider(raw.provider),
+    isActive:
+      raw.isActive == null && raw.is_active == null
+        ? true
+        : Boolean(raw.isActive ?? raw.is_active),
+  };
+}
+
+function normalizePlanRow(row) {
+  const entitlements = normalizeEntitlements(row);
+  return {
+    code: row.code,
+    name: row.name,
+    description: row.description || '',
+    isActive: Boolean(row.is_active),
+    features: entitlements.features,
+    maxBranches: entitlements.maxBranches,
+    maxEmployees: entitlements.maxEmployees,
+    maxAiAgents: entitlements.maxAiAgents,
+    aiRateHourly: entitlements.aiRateLimits.hourly,
+    aiRateWeekly: entitlements.aiRateLimits.weekly,
+    aiRateMonthly: entitlements.aiRateLimits.monthly,
+    sortOrder: Number(row.sort_order || 0),
+    entitlements,
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function normalizePriceRow(row) {
+  return {
+    id: row.id,
+    planCode: row.plan_code,
+    countryCode: row.country_code,
+    currency: row.currency,
+    amountMinor: Number(row.amount_minor || 0),
+    billingPeriod: row.billing_period || 'monthly',
+    provider: row.provider || 'google_pay',
+    isActive: row.is_active !== false,
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function normalizeEntitlements(row) {
+  const features = normalizeFeatureList(row.features_json);
+  return {
+    features,
+    maxBranches: normalizeLimit(row.max_branches, 1),
+    maxEmployees: normalizeLimit(row.max_employees, 1),
+    maxAiAgents: normalizeLimit(row.max_ai_agents, 0),
+    aiRateLimits: {
+      hourly: normalizeLimit(row.ai_rate_hourly, 0),
+      weekly: normalizeLimit(row.ai_rate_weekly, 0),
+      monthly: normalizeLimit(row.ai_rate_monthly, 0),
+    },
+  };
+}
+
+function defaultTrialEntitlements() {
+  const trial = DEFAULT_PLANS[0];
+  return {
+    features: [...trial.features],
+    maxBranches: trial.maxBranches,
+    maxEmployees: trial.maxEmployees,
+    maxAiAgents: trial.maxAiAgents,
+    aiRateLimits: {
+      hourly: trial.aiRateHourly,
+      weekly: trial.aiRateWeekly,
+      monthly: trial.aiRateMonthly,
+    },
+  };
+}
+
+function providerForCountry(countryCode) {
+  return normalizeCountryCode(countryCode) === 'KE' ? 'mpesa' : 'google_pay';
+}
+
+function normalizePrices(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return values.map((value) => normalizePriceInput(value)).filter((price) => price.planCode);
+}
+
+function normalizeFeatureList(value) {
+  let source = value;
+  if (typeof value === 'string') {
+    try {
+      source = JSON.parse(value);
+    } catch (_) {
+      source = [];
+    }
+  }
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  const normalized = [];
+  for (const item of source) {
+    const feature = normalizeText(item);
+    if (feature && !normalized.includes(feature)) {
+      normalized.push(feature);
+    }
+  }
+  return normalized;
+}
+
+function normalizeCode(value) {
+  const text = normalizeText(value);
+  return text ? text.toLowerCase().replace(/[^a-z0-9_]+/g, '_') : null;
+}
+
+function normalizeText(value) {
+  const text = value == null ? '' : String(value).trim();
+  return text || null;
+}
+
+function normalizeCountryCode(value) {
+  const text = normalizeText(value);
+  if (!text) return 'GLOBAL';
+  return text.toUpperCase().slice(0, 8);
+}
+
+function normalizeCurrency(value) {
+  const text = normalizeText(value);
+  return (text || 'USD').toUpperCase().slice(0, 3);
+}
+
+function normalizeProvider(value) {
+  const text = normalizeText(value);
+  return (text || 'google_pay').toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+}
+
+function normalizeBillingPeriod(value) {
+  const text = normalizeText(value);
+  return (text || 'monthly').toLowerCase();
+}
+
+function normalizeLimit(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
+function toIsoString(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+async function runQuery(target, sql, params = []) {
+  if (typeof target === 'function') {
+    return target(sql, params);
+  }
+  return target.query(sql, params);
+}
+
+module.exports = {
+  ALL_FEATURES,
+  DEFAULT_PLANS,
+  FEATURE_KEYS,
+  ensureSubscriptionSchema,
+  listPaymentGateways,
+  listPlans,
+  listPublicPlans,
+  listPublicMarkets,
+  loadEntitlementsForPlan,
+  loadPaymentGateway,
+  normalizePlanInput,
+  normalizeCountryCode,
+  normalizePriceInput,
+  normalizePriceRow,
+  normalizeProvider,
+  providerForCountry,
+  resolvePlanPrice,
+  savePaymentGateway,
+};

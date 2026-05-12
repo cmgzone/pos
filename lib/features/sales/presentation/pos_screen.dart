@@ -1,15 +1,21 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/cash_drawer_service.dart';
+import '../../../core/services/speech_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/license_service.dart';
+import '../../../core/services/pos_payment_service.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/empty_state_widget.dart';
+import '../../agent/data/piki_models.dart';
+import '../../agent/data/piki_provider.dart';
 import '../../products/data/product_provider.dart';
 import '../../products/data/product_repository.dart';
 import '../../products/data/product_variant_repository.dart';
@@ -45,6 +51,17 @@ class PosScreen extends ConsumerWidget {
     final canOpenShifts = SessionService.canAccessFeature(
       UserAccessProfile.featureShifts,
     );
+
+    ref.listen(pikiNavigateProvider, (_, next) {
+      if (next != PikiNavTarget.pos || !isMobile) return;
+      ref.read(pikiNavigateProvider.notifier).state = PikiNavTarget.none;
+      if (ref.read(cartProvider).isEmpty) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          _showMobileCartSheet(context);
+        }
+      });
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -83,6 +100,8 @@ class PosScreen extends ConsumerWidget {
           ],
         ),
         actions: [
+          const _PikiPosVoiceAction(),
+          const SizedBox(width: 8),
           if (canOpenShifts && !isMobile) ...[
             _ShiftStatusChip(shiftAsync: currentShiftAsync),
             const SizedBox(width: 8),
@@ -221,6 +240,342 @@ class PosScreen extends ConsumerWidget {
               Expanded(child: _CartSide()),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PikiPosVoiceAction extends ConsumerStatefulWidget {
+  const _PikiPosVoiceAction();
+
+  @override
+  ConsumerState<_PikiPosVoiceAction> createState() =>
+      _PikiPosVoiceActionState();
+}
+
+class _PikiPosVoiceActionState extends ConsumerState<_PikiPosVoiceAction> {
+  bool _autoListening = false;
+  bool _recording = false;
+  bool _busy = false;
+  bool _loopRunning = false;
+  int _listenToken = 0;
+
+  static const _listenWindow = Duration(seconds: 5);
+  static const _restartDelay = Duration(milliseconds: 650);
+
+  @override
+  void dispose() {
+    _listenToken++;
+    unawaited(SpeechService.stopListening());
+    unawaited(SpeechService.stopPlayback());
+    super.dispose();
+  }
+
+  Future<void> _toggleAutoListen() async {
+    if (_autoListening) {
+      await _stopAutoListen();
+      return;
+    }
+    final token = ++_listenToken;
+    setState(() => _autoListening = true);
+    unawaited(_startLoopWhenReady(token));
+  }
+
+  Future<void> _startLoopWhenReady(int token) async {
+    while (_loopRunning && mounted && token == _listenToken) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted || !_autoListening || token != _listenToken) return;
+    await _runAutoListenLoop(token);
+  }
+
+  Future<void> _stopAutoListen({bool stopPlayback = true}) async {
+    _listenToken++;
+    if (mounted) {
+      setState(() {
+        _autoListening = false;
+        _recording = false;
+        _busy = false;
+      });
+    }
+    await SpeechService.stopListening();
+    if (stopPlayback) {
+      await SpeechService.stopPlayback();
+    }
+  }
+
+  Future<void> _runAutoListenLoop(int token) async {
+    if (_loopRunning) return;
+    _loopRunning = true;
+    try {
+      while (mounted && _autoListening && token == _listenToken) {
+        setState(() {
+          _recording = true;
+          _busy = false;
+        });
+
+        final started = await SpeechService.startRecording();
+        if (!started) {
+          if (mounted) {
+            setState(() {
+              _autoListening = false;
+              _recording = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Microphone permission or recorder is unavailable.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+
+        await Future<void>.delayed(_listenWindow);
+        if (!mounted || !_autoListening || token != _listenToken) {
+          await SpeechService.stopListening();
+          break;
+        }
+
+        setState(() {
+          _recording = false;
+          _busy = true;
+        });
+
+        try {
+          final text = await SpeechService.stopAndTranscribe();
+          if (!mounted || !_autoListening || token != _listenToken) {
+            break;
+          }
+          if (_isStopCommand(text)) {
+            await SpeechService.speak('Auto listen is off.');
+            await _stopAutoListen(stopPlayback: false);
+            break;
+          }
+          if (_shouldSend(text)) {
+            await _sendPikiCommand(text);
+          }
+        } catch (error) {
+          if (mounted && _autoListening && token == _listenToken) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Piki auto listen failed: $error')),
+            );
+          }
+        } finally {
+          if (mounted && token == _listenToken) {
+            setState(() => _busy = false);
+          }
+        }
+
+        await Future<void>.delayed(_restartDelay);
+      }
+    } finally {
+      _loopRunning = false;
+      if (mounted && token == _listenToken) {
+        setState(() {
+          _autoListening = false;
+          _recording = false;
+          _busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _sendPikiCommand(String text) async {
+    final previousMode = ref.read(pikiModeProvider);
+    final mode = await _resolvePosVoiceMode(text);
+    ref.read(pikiModeProvider.notifier).state = mode;
+    final beforeIds = ref
+        .read(pikiMessagesProvider)
+        .map((message) => message.id)
+        .toSet();
+    try {
+      await ref.read(pikiMessagesProvider.notifier).sendMessage(text.trim());
+      await _speakLatestAgentReply(beforeIds);
+    } finally {
+      ref.read(pikiModeProvider.notifier).state = previousMode;
+    }
+  }
+
+  Future<PikiMode> _resolvePosVoiceMode(String text) async {
+    final normalized = _normalizeVoiceText(text);
+    if (normalized.isEmpty) return PikiMode.plan;
+    if (_isAdviceRequest(normalized)) return PikiMode.advice;
+    if (_isExplicitCartCommand(normalized)) return PikiMode.sell;
+    if (_isGeneralPosQuestion(normalized)) return PikiMode.plan;
+    if (_isPlainProductPhrase(normalized)) {
+      final matches = await ProductRepository.searchForPos(normalized);
+      if (matches.isNotEmpty) return PikiMode.sell;
+    }
+    return PikiMode.plan;
+  }
+
+  Future<void> _speakLatestAgentReply(Set<String> beforeIds) async {
+    final replies = ref
+        .read(pikiMessagesProvider)
+        .where(
+          (message) =>
+              !beforeIds.contains(message.id) &&
+              message.sender == PikiSender.agent &&
+              message.messageType != PikiMessageType.thinking &&
+              message.messageType != PikiMessageType.working &&
+              message.content.trim().isNotEmpty,
+        )
+        .toList();
+    if (replies.isEmpty) return;
+    await SpeechService.speak(replies.last.content);
+  }
+
+  bool _shouldSend(String text) => text.trim().length >= 2;
+
+  String _normalizeVoiceText(String text) {
+    return text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[,;.!?]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceFirst(RegExp(r'^(please|piki|hey piki|okay piki)\s+'), '')
+        .trim();
+  }
+
+  bool _isAdviceRequest(String text) {
+    return _containsAny(text, const [
+      'advice',
+      'advise',
+      'recommend',
+      'suggest',
+      'strategy',
+      'coach',
+      'improve',
+      'what should',
+      'should i',
+      'how can i',
+      'how do i improve',
+    ]);
+  }
+
+  bool _isExplicitCartCommand(String text) {
+    if (_containsAny(text, const [
+      'checkout',
+      'check out',
+      'process sale',
+      'pay now',
+      'complete sale',
+      'finish sale',
+      'done selling',
+      'charge customer',
+      'clear cart',
+      'empty cart',
+      'remove all',
+      'clear all',
+      'reset cart',
+      'cancel cart',
+      'hold sale',
+      'hold this sale',
+      'park sale',
+      'save sale',
+      'suspend sale',
+      'same again',
+      'add another',
+      'another one',
+      'one more',
+      'add one more',
+    ])) {
+      return true;
+    }
+
+    return RegExp(
+          r'^(?:sell|add|ring up|give me|scan|get|put|cart)\s+.+$',
+        ).hasMatch(text) ||
+        RegExp(
+          r'^(?:remove|delete|void|take off|take out)\s+.+$',
+        ).hasMatch(text) ||
+        RegExp(r'^(?:set|change|make)\s+.+\s+\d+(?:\.\d+)?$').hasMatch(text) ||
+        RegExp(r'^(.+?)\s+x\s*\d+(?:\.\d+)?$').hasMatch(text) ||
+        RegExp(
+          r'^(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen|\d+(?:\.\d+)?)\s+.+$',
+        ).hasMatch(text);
+  }
+
+  bool _isGeneralPosQuestion(String text) {
+    return text.endsWith('?') ||
+        _containsAny(text, const [
+          'what ',
+          'why ',
+          'how ',
+          'when ',
+          'where ',
+          'who ',
+          'show ',
+          'tell ',
+          'check ',
+          'list ',
+          'report',
+          'summary',
+          'sales',
+          'stock',
+          'inventory',
+          'profit',
+          'expense',
+          'debtor',
+          'customer',
+          'supplier',
+          'purchase',
+          'restock',
+          'low stock',
+          'expiry',
+          'expired',
+          'shift',
+          'cash',
+          'debt',
+          'due',
+          'payment',
+          'today',
+          'yesterday',
+          'week',
+          'month',
+          'alert',
+        ]);
+  }
+
+  bool _isPlainProductPhrase(String text) {
+    if (text.isEmpty || text.length > 60) return false;
+    final words = text.split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    if (words.isEmpty || words.length > 4) return false;
+    return !RegExp(r'[^a-z0-9\s._-]').hasMatch(text);
+  }
+
+  bool _containsAny(String text, List<String> needles) {
+    return needles.any(text.contains);
+  }
+
+  bool _isStopCommand(String text) {
+    final normalized = _normalizeVoiceText(
+      text,
+    ).replaceAll(RegExp(r'[^\w\s]'), '');
+    return normalized == 'stop listening' ||
+        normalized == 'piki stop listening' ||
+        normalized == 'pause listening' ||
+        normalized == 'piki pause listening' ||
+        normalized == 'auto listen off' ||
+        normalized == 'turn off auto listen' ||
+        normalized == 'stop auto listen';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _autoListening || _recording || _busy;
+    return Tooltip(
+      message: _autoListening
+          ? 'Stop Piki auto listen'
+          : 'Start Piki auto listen',
+      child: IconButton(
+        onPressed: _toggleAutoListen,
+        icon: Icon(
+          active ? Icons.hearing_rounded : Icons.hearing_outlined,
+          color: active ? AppColors.primaryLight : null,
         ),
       ),
     );
@@ -424,6 +779,31 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   bool _isVariantProduct(Map<String, dynamic> product) =>
       ((product['has_variants'] as num?) ?? 0) == 1;
 
+  Map<String, dynamic>? _matchedVariantFromSearchResult(
+    Map<String, dynamic> product,
+  ) {
+    if (product['result_type'] != 'variant') {
+      return null;
+    }
+
+    final variantId = product['matched_variant_id'] as String?;
+    if (variantId == null || variantId.trim().isEmpty) {
+      return null;
+    }
+
+    return {
+      'id': variantId,
+      'product_id': product['id'],
+      'name': product['matched_variant_name'],
+      'sku': product['matched_variant_sku'],
+      'barcode': product['matched_variant_barcode'],
+      'price': product['matched_variant_price'],
+      'cost': product['matched_variant_cost'],
+      'stock': product['matched_variant_stock'],
+      'low_stock': product['matched_variant_low_stock'],
+    };
+  }
+
   @override
   void initState() {
     super.initState();
@@ -588,6 +968,12 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   }
 
   Future<void> _handleProductSelection(Map<String, dynamic> product) async {
+    final matchedVariant = _matchedVariantFromSearchResult(product);
+    if (matchedVariant != null) {
+      _addProductToCart(product, variant: matchedVariant);
+      return;
+    }
+
     if (!_isVariantProduct(product)) {
       _addProductToCart(product);
       return;
@@ -761,7 +1147,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                               !lower.startsWith('http') &&
                               !lower.startsWith('www.') &&
                               !lower.contains('://') &&
-                              RegExp(r'^[A-Za-z0-9\\-\\.]+$').hasMatch(code)) {
+                              RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(code)) {
                             _handleBarcodeScan(code);
                           } else {
                             WidgetsBinding.instance.addPostFrameCallback(
@@ -1014,6 +1400,17 @@ class _CartSide extends ConsumerWidget {
     final cashCheckoutBlocked =
         currentShiftAsync.isLoading ||
         (hasOpenShift && currentSummaryAsync.isLoading);
+
+    ref.listen(pikiNavigateProvider, (_, next) {
+      if (next != PikiNavTarget.pos) return;
+      ref.read(pikiNavigateProvider.notifier).state = PikiNavTarget.none;
+      if (ref.read(cartProvider).isEmpty) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          _processCheckout(context, ref);
+        }
+      });
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2054,6 +2451,22 @@ class _CartSide extends ConsumerWidget {
         customerName: customer['name'] as String?,
         dueDate: dueDate,
       );
+    } else if (type == 'mpesa') {
+      final phoneNumber = checkoutResult['phoneNumber'] as String?;
+      if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+        _showSnackBar(
+          context,
+          'M-Pesa phone number is required',
+          backgroundColor: AppColors.error,
+        );
+        return;
+      }
+      await _completeMpesaCheckout(
+        context,
+        ref,
+        phoneNumber: phoneNumber,
+        customer: customer,
+      );
     } else {
       // Other payment methods
       final paymentMethod =
@@ -2101,7 +2514,121 @@ class _CartSide extends ConsumerWidget {
     }
   }
 
-  Future<void> _completeSale(
+  Future<void> _completeMpesaCheckout(
+    BuildContext context,
+    WidgetRef ref, {
+    required String phoneNumber,
+    Map<String, dynamic>? customer,
+  }) async {
+    final total = ref.read(cartTotalProvider);
+    try {
+      _showSnackBar(
+        context,
+        'Sending M-Pesa STK push...',
+        backgroundColor: AppColors.primary,
+      );
+      final started = await PosPaymentService.startMpesaCheckout(
+        amount: total,
+        phoneNumber: phoneNumber,
+        metadata: {
+          'cashierId': SessionService.currentUserId,
+          'cashierName': SessionService.currentUserName,
+          'source': 'pos',
+        },
+      );
+      if (!context.mounted) return;
+
+      final payment = await _waitForMpesaPayment(context, started.id);
+      if (!context.mounted) return;
+
+      if (payment == null || !payment.isPaid) {
+        _showSnackBar(
+          context,
+          payment?.isFailed == true
+              ? 'M-Pesa payment failed or was cancelled.'
+              : 'M-Pesa payment is still pending. Sale was not saved.',
+          backgroundColor: AppColors.warning,
+        );
+        return;
+      }
+
+      final saleId = await _completeSale(
+        context,
+        ref,
+        paymentType: 'M-Pesa',
+        isCashDrawer: false,
+        isCredit: false,
+        customerId: customer?['id'] as String?,
+        customerName: customer?['name'] as String?,
+        paymentProvider: 'mpesa',
+        paymentReference:
+            payment.receiptNumber ?? payment.externalReference ?? payment.id,
+        paymentStatus: 'paid',
+        paymentMetadata: payment.metadata,
+      );
+
+      if (saleId != null) {
+        try {
+          await PosPaymentService.linkSale(
+            paymentId: payment.id,
+            saleId: saleId,
+          );
+        } catch (error) {
+          if (context.mounted) {
+            _showSnackBar(
+              context,
+              'Sale saved, but payment link sync failed: $error',
+              backgroundColor: AppColors.warning,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      if (context.mounted) {
+        _showSnackBar(
+          context,
+          'M-Pesa checkout failed: $error',
+          backgroundColor: AppColors.error,
+        );
+      }
+    }
+  }
+
+  Future<PosPayment?> _waitForMpesaPayment(
+    BuildContext context,
+    String paymentId,
+  ) async {
+    PosPayment? latest;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 18),
+            Expanded(child: Text('Waiting for M-Pesa confirmation...')),
+          ],
+        ),
+      ),
+    );
+    try {
+      for (var attempt = 0; attempt < 30; attempt += 1) {
+        await Future.delayed(const Duration(seconds: 3));
+        latest = await PosPaymentService.fetchPayment(paymentId);
+        if (latest.isPaid || latest.isFailed) {
+          return latest;
+        }
+      }
+      return latest;
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
+  Future<String?> _completeSale(
     BuildContext context,
     WidgetRef ref, {
     required String paymentType,
@@ -2113,6 +2640,10 @@ class _CartSide extends ConsumerWidget {
     String? customerId,
     String? customerName,
     String? dueDate,
+    String? paymentProvider,
+    String? paymentReference,
+    String? paymentStatus,
+    Map<String, dynamic>? paymentMetadata,
   }) async {
     final cart = ref.read(cartProvider);
     final subtotal = ref.read(cartSubtotalProvider);
@@ -2150,6 +2681,10 @@ class _CartSide extends ConsumerWidget {
         customerId: customerId,
         customerName: customerName,
         dueDate: dueDate,
+        paymentProvider: paymentProvider,
+        paymentReference: paymentReference,
+        paymentStatus: paymentStatus,
+        paymentMetadata: paymentMetadata,
       );
 
       _clearCurrentSale(ref);
@@ -2194,10 +2729,12 @@ class _CartSide extends ConsumerWidget {
           cashierName: SessionService.currentUserName,
         );
       }
+      return saleId;
     } catch (e) {
       if (context.mounted) {
         _showSnackBar(context, 'Error: $e', backgroundColor: AppColors.error);
       }
+      return null;
     }
   }
 
@@ -3342,7 +3879,7 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends StatefulWidget {
   final Map<String, dynamic> product;
   final String? categoryName;
   final VoidCallback onTap;
@@ -3354,9 +3891,36 @@ class _ProductCard extends StatelessWidget {
   });
 
   @override
+  State<_ProductCard> createState() => _ProductCardState();
+}
+
+class _ProductCardState extends State<_ProductCard> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final stock = (product['stock'] as num? ?? 0).toDouble();
-    final lowStock = (product['low_stock'] as num? ?? 5).toDouble();
+    final product = widget.product;
+    final isVariantResult =
+        product['result_type'] == 'variant' &&
+        product['matched_variant_id'] != null;
+    final variantName = product['matched_variant_name'] as String?;
+    final displayName =
+        isVariantResult && variantName?.trim().isNotEmpty == true
+        ? '${product['name']} - ${variantName!.trim()}'
+        : product['name'] as String? ?? '';
+    final displayPrice = isVariantResult
+        ? (product['matched_variant_price'] as num? ??
+                  product['price'] as num? ??
+                  0)
+              .toDouble()
+        : (product['price'] as num? ?? 0).toDouble();
+    final stock = isVariantResult
+        ? (product['matched_variant_stock'] as num? ?? 0).toDouble()
+        : (product['stock'] as num? ?? 0).toDouble();
+    final lowStock = isVariantResult
+        ? (product['matched_variant_low_stock'] as num? ?? 5).toDouble()
+        : (product['low_stock'] as num? ?? 5).toDouble();
     final saleUnit = UnitUtils.saleUnitForProduct(product);
     final stockUnit = UnitUtils.stockUnitForProduct(product);
     final saleToStockFactor = UnitUtils.saleToStockFactor(product);
@@ -3367,190 +3931,263 @@ class _ProductCard extends StatelessWidget {
     final usesConversion = saleUnit != stockUnit;
     final isLowStock = tracksStock && stock <= lowStock;
     final isOutOfStock = tracksStock && stock <= 0;
+
+    // Aesthetic Colors based on Velvet Night Theme
     final stockBadgeColor = isOutOfStock
         ? AppColors.error
         : isLowStock
         ? AppColors.warning
         : AppColors.success;
+
     final stockLabel = !tracksStock
         ? 'No stock limit'
         : isOutOfStock
         ? 'Out of stock'
         : UnitUtils.formatWithUnit(saleStock, saleUnit);
+
     final imagePath = product['image_url'] as String?;
     final hasImage =
         imagePath != null &&
         imagePath.isNotEmpty &&
         File(imagePath).existsSync();
 
-    return Opacity(
-      opacity: isOutOfStock ? 0.72 : 1,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: isOutOfStock ? null : onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: AppColors.surface.withValues(
-                alpha: isOutOfStock ? 0.82 : 0.96,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 26,
-                  offset: const Offset(0, 12),
+    final scale = _isPressed ? 0.96 : (_isHovered ? 1.02 : 1.0);
+
+    return AnimatedScale(
+      scale: scale,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOutCubic,
+      child: Opacity(
+        opacity: isOutOfStock ? 0.72 : 1,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            onTapDown: (_) => setState(() => _isPressed = true),
+            onTapUp: (_) => setState(() => _isPressed = false),
+            onTapCancel: () => setState(() => _isPressed = false),
+            onTap: isOutOfStock ? null : widget.onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                // Glassmorphism background
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.surface.withValues(alpha: 0.9),
+                    AppColors.surfaceHighlight.withValues(alpha: 0.7),
+                  ],
                 ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: hasImage
-                                  ? Colors.transparent
-                                  : AppColors.surfaceHighlight.withValues(
-                                      alpha: 0.82,
-                                    ),
-                              borderRadius: BorderRadius.circular(16),
-                              gradient: hasImage
-                                  ? null
-                                  : LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        AppColors.surfaceHighlight,
-                                        AppColors.background.withValues(
-                                          alpha: 0.88,
+                boxShadow: [
+                  if (_isHovered)
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    )
+                  else
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                ],
+                border: Border.all(
+                  color: _isHovered
+                      ? AppColors.primary.withValues(alpha: 0.3)
+                      : AppColors.border.withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Image Section with Glass Badge
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: hasImage
+                                      ? Colors.transparent
+                                      : AppColors.background.withValues(
+                                          alpha: 0.5,
                                         ),
-                                      ],
-                                    ),
-                            ),
-                            child: hasImage
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: Image.file(
-                                      File(imagePath),
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      fit: BoxFit.contain,
-                                      alignment: Alignment.center,
-                                      filterQuality: FilterQuality.high,
-                                    ),
-                                  )
-                                : Center(
-                                    child: Container(
-                                      width: 64,
-                                      height: 64,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.surface.withValues(
-                                          alpha: 0.7,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: hasImage
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: Image.file(
+                                          File(imagePath),
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit
+                                              .cover, // Better for modern cards
+                                          alignment: Alignment.center,
+                                          filterQuality: FilterQuality.high,
                                         ),
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      child: Icon(
-                                        CategoryIconUtils.iconFor(categoryName),
-                                        size: 32,
-                                        color: isOutOfStock
-                                            ? AppColors.textSecondary
-                                                  .withValues(alpha: 0.4)
-                                            : AppColors.primaryLight.withValues(
-                                                alpha: 0.82,
+                                      )
+                                    : Center(
+                                        child: Container(
+                                          width: 64,
+                                          height: 64,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.surfaceHighlight
+                                                .withValues(alpha: 0.8),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.2,
+                                                ),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 4),
                                               ),
+                                            ],
+                                          ),
+                                          child: Icon(
+                                            CategoryIconUtils.iconFor(
+                                              widget.categoryName,
+                                            ),
+                                            size: 32,
+                                            color: isOutOfStock
+                                                ? AppColors.textSecondary
+                                                      .withValues(alpha: 0.4)
+                                                : AppColors.primaryLight
+                                                      .withValues(alpha: 0.9),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            // Glass badge
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: BackdropFilter(
+                                  filter: ui.ImageFilter.blur(
+                                    sigmaX: 10,
+                                    sigmaY: 10,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: stockBadgeColor.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: stockBadgeColor.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      stockLabel,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: stockBadgeColor,
+                                        letterSpacing: 0,
                                       ),
                                     ),
                                   ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Text Section
+                      if (product['brand'] != null &&
+                          (product['brand'] as String).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            (product['brand'] as String).toUpperCase(),
+                            style: const TextStyle(
+                              color: AppColors.primaryLight,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10,
+                              letterSpacing: 0,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
+                      Text(
+                        displayName,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          height: 1.2,
+                          letterSpacing: 0,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color:
+                                  AppColors.secondary, // Cyber mint for price
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              letterSpacing: 0,
                             ),
-                            decoration: BoxDecoration(
-                              color: stockBadgeColor.withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
                             child: Text(
-                              stockLabel,
-                              style: TextStyle(
+                              '/${UnitUtils.priceLabel(saleUnit)}',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: stockBadgeColor,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
+                        ],
+                      ),
+                      if (usesConversion) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Stocked: ${UnitUtils.formatWithUnit(stock, stockUnit)}',
+                          style: TextStyle(
+                            color: AppColors.textSecondary.withValues(
+                              alpha: 0.7,
+                            ),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                  if (product['brand'] != null &&
-                      (product['brand'] as String).isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        (product['brand'] as String).toUpperCase(),
-                        style: const TextStyle(
-                          color: AppColors.primaryLight,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 10,
-                          letterSpacing: 0.5,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  Text(
-                    product['name'] as String? ?? '',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      height: 1.2,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    UnitUtils.priceLabel(saleUnit),
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${ShopSettings.currency}${(product['price'] as num? ?? 0).toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: AppColors.primaryLight,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  if (usesConversion) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Stocked as ${UnitUtils.formatWithUnit(stock, stockUnit)}',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),

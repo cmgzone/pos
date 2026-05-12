@@ -27,7 +27,7 @@ export default function Login({ onLogin }) {
       } else {
         setError(data.error || 'Login failed')
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Could not reach backend.')
     } finally {
       setLoading(false)
