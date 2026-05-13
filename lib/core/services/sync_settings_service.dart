@@ -16,14 +16,33 @@ class SyncSettingsService {
   }
 
   static String get backendUrl {
-    final savedUrl = _normalizeUrl(_prefs?.getString(_keyBackendUrl) ?? '');
+    final savedUrl = savedBackendUrl;
     if (savedUrl.isNotEmpty) {
       return savedUrl;
     }
     return suggestedBackendUrl;
   }
 
+  static String get savedBackendUrl =>
+      _normalizeUrl(_prefs?.getString(_keyBackendUrl) ?? '');
+
   static String get suggestedBackendUrl => AppConstants.apiBaseUrl;
+
+  static List<String> get backendUrlCandidates {
+    final urls = <String>[];
+    void add(String value) {
+      final normalized = _normalizeUrl(value);
+      if (normalized.isNotEmpty && !urls.contains(normalized)) {
+        urls.add(normalized);
+      }
+    }
+
+    add(savedBackendUrl);
+    add(suggestedBackendUrl);
+    add(AppConstants.productionApiBaseUrl);
+    add(AppConstants.debugApiBaseUrl);
+    return urls;
+  }
 
   static bool get isConfigured => backendUrl.isNotEmpty;
 

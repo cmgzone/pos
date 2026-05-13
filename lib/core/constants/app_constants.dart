@@ -1,12 +1,10 @@
-import 'package:flutter/foundation.dart';
-
 class AppConstants {
   static const String appName = 'Devis POS';
   static const String appVersion = '1.0.0';
-  static const String _defaultApiBaseUrl = 'https://pos-e0hs.onrender.com/api';
-  static const String _defaultDebugApiBaseUrl = 'http://127.0.0.1:3000/api';
+  static const String productionApiBaseUrl =
+      'https://pos-e0hs.onrender.com/api';
+  static const String debugApiBaseUrl = 'http://127.0.0.1:3000/api';
   static const String _defaultSocketUrl = 'https://pos-e0hs.onrender.com';
-  static const String _defaultDebugSocketUrl = 'http://127.0.0.1:3000';
   static const String _defaultLicenseSigningSecret =
       'velora-pos-dev-license-secret-change-me';
 
@@ -16,7 +14,7 @@ class AppConstants {
     if (explicit.isNotEmpty) {
       return explicit;
     }
-    return kDebugMode ? _defaultDebugApiBaseUrl : _defaultApiBaseUrl;
+    return productionApiBaseUrl;
   }
 
   static String get socketUrl {
@@ -34,7 +32,7 @@ class AppConstants {
       final port = uri.hasPort ? ':${uri.port}' : '';
       return '${uri.scheme}://${uri.host}$port';
     }
-    return kDebugMode ? _defaultDebugSocketUrl : _defaultSocketUrl;
+    return _defaultSocketUrl;
   }
 
   static String get licenseSigningSecret => const String.fromEnvironment(

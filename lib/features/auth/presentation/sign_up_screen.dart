@@ -9,6 +9,7 @@ import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
+import '../../settings/presentation/subscription_screen.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -197,7 +198,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     try {
       await SyncSettingsService.init();
-      final backendUrl = SyncSettingsService.backendUrl;
+      final backendUrl =
+          _catalog?.backendUrl ??
+          await SubscriptionService.resolveReachableBackendUrl();
 
       if (backendUrl.isEmpty) {
         throw Exception(
@@ -220,6 +223,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         sellingMode: sellingMode ?? 'products',
         provider: market?.provider,
       );
+
+      if (backendUrl != SyncSettingsService.backendUrl) {
+        await SyncSettingsService.setBackendUrl(backendUrl);
+      }
 
       final incomingBusinessId = ((response.business['id'] as String?) ?? '')
           .trim();
@@ -288,9 +295,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (!mounted) return;
 
+      final destination = _isBusinessSetupFlow
+          ? SubscriptionScreen(
+              afterSignup: true,
+              initialCountryCode: market?.countryCode,
+              initialProvider: market?.provider,
+              initialPlanCode: plan?.code,
+            )
+          : AppShell(key: AppShell.shellKey);
+
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => AppShell(key: AppShell.shellKey)),
+        MaterialPageRoute(builder: (_) => destination),
         (route) => false,
       );
     } catch (error) {

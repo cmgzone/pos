@@ -65,7 +65,7 @@ class CloudAuthResponse {
 /// Account creation requires an internet connection. Once registered, the
 /// credentials are stored locally for offline access.
 class CloudAuthService {
-  static const _timeout = Duration(seconds: 30);
+  static const _timeout = Duration(seconds: 75);
 
   /// Register a new business account on the cloud backend.
   ///

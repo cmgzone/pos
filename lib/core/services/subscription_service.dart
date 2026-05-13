@@ -132,6 +132,7 @@ class SubscriptionPlanSummary {
 }
 
 class SubscriptionCatalog {
+  final String backendUrl;
   final String? countryCode;
   final String? provider;
   final SubscriptionMarket? selectedMarket;
@@ -140,6 +141,7 @@ class SubscriptionCatalog {
   final Map<String, dynamic>? googlePayConfig;
 
   const SubscriptionCatalog({
+    required this.backendUrl,
     required this.countryCode,
     required this.provider,
     required this.selectedMarket,
@@ -183,9 +185,9 @@ class SubscriptionCheckoutResult {
 class SubscriptionService {
   static final Dio _dio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(seconds: 30),
-      sendTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 75),
+      receiveTimeout: const Duration(seconds: 75),
+      sendTimeout: const Duration(seconds: 75),
     ),
   );
 
@@ -194,19 +196,20 @@ class SubscriptionService {
     String? provider,
   }) async {
     await SyncSettingsService.init();
-    final response = await _dio.get<Map<String, dynamic>>(
-      _url('subscription/plans'),
-      queryParameters: {
-        if (countryCode != null && countryCode.trim().isNotEmpty)
-          'countryCode': countryCode,
-        if (provider != null && provider.trim().isNotEmpty)
-          'provider': provider,
-      },
+    final queryParameters = {
+      if (countryCode != null && countryCode.trim().isNotEmpty)
+        'countryCode': countryCode,
+      if (provider != null && provider.trim().isNotEmpty) 'provider': provider,
+    };
+    final response = await _getWithFallback(
+      'subscription/plans',
+      queryParameters: queryParameters,
     );
     final body = _requireOk(response);
     final rawPlans = body['plans'];
     final rawMarkets = body['markets'];
     return SubscriptionCatalog(
+      backendUrl: _sourceBackendUrl(response),
       countryCode: body['countryCode']?.toString(),
       provider: body['provider']?.toString(),
       selectedMarket: body['selectedMarket'] is Map<String, dynamic>
@@ -237,8 +240,8 @@ class SubscriptionService {
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
-    final response = await _dio.get<Map<String, dynamic>>(
-      _url('subscription/current'),
+    final response = await _getWithFallback(
+      'subscription/current',
       queryParameters: {
         if (countryCode != null && countryCode.trim().isNotEmpty)
           'countryCode': countryCode,
@@ -257,8 +260,8 @@ class SubscriptionService {
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
-    final response = await _dio.post<Map<String, dynamic>>(
-      _url('subscription/checkout'),
+    final response = await _postWithFallback(
+      'subscription/checkout',
       data: {
         'deviceId': deviceId,
         'planCode': planCode,
@@ -278,8 +281,8 @@ class SubscriptionService {
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
-    final response = await _dio.post<Map<String, dynamic>>(
-      _url('subscription/google-pay/confirm'),
+    final response = await _postWithFallback(
+      'subscription/google-pay/confirm',
       data: {
         'deviceId': deviceId,
         'paymentId': paymentId,
@@ -290,12 +293,103 @@ class SubscriptionService {
     return _requireOk(response)['data'] as Map<String, dynamic>;
   }
 
-  static String _url(String path) {
-    final base = SyncSettingsService.backendUrl.replaceFirst(
+  static Future<String> resolveReachableBackendUrl() async {
+    final catalog = await fetchPlans();
+    return catalog.backendUrl;
+  }
+
+  static String _urlFor(String backendUrl, String path) {
+    final base = backendUrl.replaceFirst(
       RegExp(r'/+$'),
       '',
     );
     return '$base/$path';
+  }
+
+  static Future<Response<Map<String, dynamic>>> _getWithFallback(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    return _requestWithFallback(
+      (backendUrl) => _dio.get<Map<String, dynamic>>(
+        _urlFor(backendUrl, path),
+        queryParameters: queryParameters,
+        options: _withSourceBackend(options, backendUrl),
+      ),
+    );
+  }
+
+  static Future<Response<Map<String, dynamic>>> _postWithFallback(
+    String path, {
+    Object? data,
+    Options? options,
+  }) async {
+    return _requestWithFallback(
+      (backendUrl) => _dio.post<Map<String, dynamic>>(
+        _urlFor(backendUrl, path),
+        data: data,
+        options: _withSourceBackend(options, backendUrl),
+      ),
+    );
+  }
+
+  static Future<Response<Map<String, dynamic>>> _requestWithFallback(
+    Future<Response<Map<String, dynamic>>> Function(String backendUrl) request,
+  ) async {
+    Object? lastError;
+    final candidates = SyncSettingsService.backendUrlCandidates;
+    for (final backendUrl in candidates) {
+      try {
+        return await request(backendUrl);
+      } catch (error) {
+        lastError = error;
+        if (!_isRetryableConnectionError(error)) {
+          rethrow;
+        }
+      }
+    }
+    throw Exception(_connectionErrorMessage(lastError, candidates));
+  }
+
+  static Options _withSourceBackend(Options? options, String backendUrl) {
+    final base = options ?? Options();
+    final extra = Map<String, dynamic>.from(base.extra ?? const {});
+    extra['sourceBackendUrl'] = backendUrl;
+    return base.copyWith(extra: extra);
+  }
+
+  static String _sourceBackendUrl(Response response) {
+    return response.requestOptions.extra['sourceBackendUrl']?.toString() ??
+        SyncSettingsService.backendUrl;
+  }
+
+  static bool _isRetryableConnectionError(Object error) {
+    if (error is! DioException) {
+      return false;
+    }
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return true;
+      case DioExceptionType.unknown:
+        return error.response == null;
+      case DioExceptionType.badCertificate:
+      case DioExceptionType.badResponse:
+      case DioExceptionType.cancel:
+        return false;
+    }
+  }
+
+  static String _connectionErrorMessage(Object? error, List<String> urls) {
+    final tried = urls.isEmpty ? '' : ' Tried: ${urls.join(', ')}.';
+    if (error is DioException) {
+      final message = error.message?.trim();
+      return 'Could not reach the subscription backend.${message == null || message.isEmpty ? '' : ' $message'}$tried';
+    }
+    return 'Could not reach the subscription backend.$tried';
   }
 
   static Future<Map<String, String>> _authHeaders() async {
