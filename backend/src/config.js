@@ -5,6 +5,8 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const DEFAULT_LICENSE_SIGNING_SECRET =
   'velora-pos-dev-license-secret-change-me';
+const DEFAULT_PLATFORM_ADMIN_PASSWORD = 'superadmin123';
+const DEFAULT_PLATFORM_JWT_SECRET = 'velora-platform-jwt-super-secret-dev';
 
 function requireAnyEnv(names) {
   for (const name of names) {
@@ -33,8 +35,10 @@ const config = {
     process.env.LICENSE_SIGNING_SECRET?.trim() ||
     DEFAULT_LICENSE_SIGNING_SECRET,
   platformAdminEmail: process.env.PLATFORM_ADMIN_EMAIL?.trim() || 'superadmin@velora.pos',
-  platformAdminPassword: process.env.PLATFORM_ADMIN_PASSWORD || 'superadmin123',
-  platformJwtSecret: process.env.PLATFORM_JWT_SECRET?.trim() || 'velora-platform-jwt-super-secret-dev',
+  platformAdminPassword:
+    process.env.PLATFORM_ADMIN_PASSWORD || DEFAULT_PLATFORM_ADMIN_PASSWORD,
+  platformJwtSecret:
+    process.env.PLATFORM_JWT_SECRET?.trim() || DEFAULT_PLATFORM_JWT_SECRET,
   googlePayEnvironment:
     process.env.GOOGLE_PAY_ENVIRONMENT?.trim().toUpperCase() || 'TEST',
   googlePayMerchantId: process.env.GOOGLE_PAY_MERCHANT_ID?.trim() || '',
@@ -51,6 +55,36 @@ const config = {
   mpesaShortcode: process.env.MPESA_SHORTCODE?.trim() || '',
   mpesaPasskey: process.env.MPESA_PASSKEY?.trim() || '',
   mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL?.trim() || '',
+  serpApiKey:
+    process.env.SERPAPI_API_KEY?.trim() ||
+    process.env.SERP_API_KEY?.trim() ||
+    '',
+  serpApiBaseUrl:
+    process.env.SERPAPI_BASE_URL?.trim() || 'https://serpapi.com/search.json',
 };
+
+if (config.nodeEnv === 'production') {
+  assertNonDefaultSecret(
+    'LICENSE_SIGNING_SECRET',
+    config.licenseSigningSecret,
+    DEFAULT_LICENSE_SIGNING_SECRET,
+  );
+  assertNonDefaultSecret(
+    'PLATFORM_ADMIN_PASSWORD',
+    config.platformAdminPassword,
+    DEFAULT_PLATFORM_ADMIN_PASSWORD,
+  );
+  assertNonDefaultSecret(
+    'PLATFORM_JWT_SECRET',
+    config.platformJwtSecret,
+    DEFAULT_PLATFORM_JWT_SECRET,
+  );
+}
+
+function assertNonDefaultSecret(name, value, defaultValue) {
+  if (!value || value === defaultValue) {
+    throw new Error(`${name} must be set to a non-default value in production`);
+  }
+}
 
 module.exports = { config };

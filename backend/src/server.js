@@ -22,6 +22,12 @@ const {
   resolveSubscriptionState,
 } = require('./licenseTokens');
 const {
+  hashPassword,
+  needsPasswordRehash,
+  normalizePasswordForStorage,
+  verifyPassword,
+} = require('./passwords');
+const {
   ensurePikiProactiveSchema,
   refreshBusinessInsights,
   startPikiProactiveWorker,
@@ -64,6 +70,7 @@ const {
   linkPosPaymentToSale,
   handlePosMpesaCallback,
 } = require('./posPayments');
+const { searchWithSerpApi } = require('./serpApi');
 
 const app = express();
 
@@ -175,6 +182,7 @@ app.post('/api/auth/register', async (req, res, next) => {
     if (!requestedCountry) {
       throw createHttpError(400, 'Country is required');
     }
+    const passwordForStorage = normalizePasswordForStorage(password);
 
     await ensureSubscriptionSchema();
     const markets = await listPublicMarkets();
@@ -304,7 +312,15 @@ app.post('/api/auth/register', async (req, res, next) => {
            $7, $7, $7, 'synced',
            nextval('sync_revision_seq')
          )`,
-        [userId, businessId, ownerName, ownerEmail.toLowerCase(), phone, password, now.toISOString()],
+        [
+          userId,
+          businessId,
+          ownerName,
+          ownerEmail.toLowerCase(),
+          phone,
+          passwordForStorage,
+          now.toISOString(),
+        ],
       );
 
       // Load context for license
@@ -418,15 +434,13 @@ app.post('/api/auth/login', async (req, res, next) => {
 
       const user = userResult.rows[0];
 
-      // Password verification — the client sends the password pre-hashed
-      // using the same velora.v1 scheme, so we compare directly.
-      // If the password doesn't match, reject.
-      if (user.password !== password) {
+      if (!verifyPassword(user.password, password)) {
         throw createHttpError(401, 'Invalid email or password');
       }
 
       const businessId = user.business_id;
       const now = new Date();
+      const passwordNeedsRehash = needsPasswordRehash(user.password);
 
       // Ensure device is linked to this business
       await client.query(
@@ -458,10 +472,19 @@ app.post('/api/auth/login', async (req, res, next) => {
         );
       }
 
-      // Update last seen
+      // Update last seen and migrate older client-side hashes after a valid
+      // plaintext login.
       await client.query(
-        `UPDATE users SET last_seen_at = $2 WHERE id = $1`,
-        [user.id, now.toISOString()],
+        passwordNeedsRehash
+          ? `UPDATE users
+             SET last_seen_at = $2,
+                 password = $3,
+                 server_revision = nextval('sync_revision_seq')
+             WHERE id = $1`
+          : `UPDATE users SET last_seen_at = $2 WHERE id = $1`,
+        passwordNeedsRehash
+          ? [user.id, now.toISOString(), hashPassword(password)]
+          : [user.id, now.toISOString()],
       );
 
       // Refresh subscription verification
@@ -548,17 +571,19 @@ app.post('/api/users/upsert', async (req, res, next) => {
       throw createHttpError(400, prepared.error.message);
     }
 
+    const userRecord = normalizeUserRecordForStorage(prepared.record);
+
     const result = await withTransaction(async (client) => {
       const validation = await validatePlanWrite(
         client,
         'users',
-        prepared.record,
+        userRecord,
         businessContext,
       );
       if (!validation.ok) {
         return { status: 'invalid', error: validation.error };
       }
-      return upsertRow(client, 'users', prepared.record, businessContext.businessId);
+      return upsertRow(client, 'users', userRecord, businessContext.businessId);
     });
 
     if (result.status === 'conflict') {
@@ -582,7 +607,7 @@ app.post('/api/users/upsert', async (req, res, next) => {
       status: result.status,
       user: canonicalizeRecord(
         'users',
-        result.row ?? prepared.record,
+        result.row ?? userRecord,
         { forceSyncedStatus: true },
       ),
     });
@@ -866,10 +891,14 @@ app.post('/api/sync/push', async (req, res, next) => {
             prepared.record.branch_id = rowBranchId || branchId;
           }
 
+          const storageRecord = table.name === 'users'
+            ? normalizeUserRecordForStorage(prepared.record)
+            : prepared.record;
+
           const validation = await validatePlanWrite(
             client,
             table.name,
-            prepared.record,
+            storageRecord,
             businessContext,
           );
           if (!validation.ok) {
@@ -884,7 +913,7 @@ app.post('/api/sync/push', async (req, res, next) => {
           const result = await upsertRow(
             client,
             table.name,
-            prepared.record,
+            storageRecord,
             businessContext.businessId,
           );
 
@@ -1216,12 +1245,13 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
   try {
     await ensureAiVoiceColumns();
     const result = await query(
-      `SELECT api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at
+      `SELECT api_key, serp_api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at
        FROM platform_ai_config
        WHERE id = 1`
     );
     const row = result.rows[0] || {
       api_key: '',
+      serp_api_key: '',
       model: 'openai/gpt-4o-mini',
       stt_model: DEFAULT_STT_MODEL,
       tts_model: DEFAULT_TTS_MODEL,
@@ -1229,6 +1259,8 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
       enabled: false,
     };
     const hasKey = Boolean(row.api_key && row.api_key.length > 0);
+    const effectiveSerpApiKey = row.serp_api_key || config.serpApiKey || '';
+    const hasSerpApiKey = Boolean(effectiveSerpApiKey);
     // Mask the API key for security — only show last 4 chars
     const maskedKey = row.api_key
       ? `${'•'.repeat(Math.max(0, row.api_key.length - 4))}${row.api_key.slice(-4)}`
@@ -1238,6 +1270,11 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
       data: {
         apiKey: maskedKey,
         hasKey,
+        serpApiKey: maskSecret(effectiveSerpApiKey),
+        hasSerpApiKey,
+        serpApiKeySource: row.serp_api_key
+          ? 'database'
+          : (config.serpApiKey ? 'environment' : 'none'),
         model: row.model,
         sttModel: row.stt_model || DEFAULT_STT_MODEL,
         ttsModel: row.tts_model || DEFAULT_TTS_MODEL,
@@ -1260,15 +1297,19 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
     const ttsVoice = normalizeOptionalText(req.body?.ttsVoice) || DEFAULT_TTS_VOICE;
     const enabled = Boolean(req.body?.enabled);
     const rawApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+    const rawSerpApiKey = typeof req.body?.serpApiKey === 'string' ? req.body.serpApiKey.trim() : '';
     const currentResult = await query(
-      'SELECT api_key FROM platform_ai_config WHERE id = 1'
+      'SELECT api_key, serp_api_key FROM platform_ai_config WHERE id = 1'
     );
     const currentApiKey = currentResult.rows[0]?.api_key || '';
+    const currentSerpApiKey = currentResult.rows[0]?.serp_api_key || '';
 
     // Only update the API key if a new one was explicitly provided
     // (not the masked version echoed back)
     const hasNewKey = rawApiKey.length > 0 && !rawApiKey.startsWith('•');
     const nextApiKey = hasNewKey ? rawApiKey : currentApiKey;
+    const hasNewSerpApiKey = rawSerpApiKey.length > 0 && !rawSerpApiKey.startsWith('â€¢') && !rawSerpApiKey.startsWith('*');
+    const nextSerpApiKey = hasNewSerpApiKey ? rawSerpApiKey : currentSerpApiKey;
 
     if (enabled && !nextApiKey) {
       throw createHttpError(400, 'Add a valid OpenRouter API key before enabling AI');
@@ -1276,30 +1317,32 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
 
     if (hasNewKey) {
       await query(
-        `INSERT INTO platform_ai_config (id, api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+        `INSERT INTO platform_ai_config (id, api_key, serp_api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
          ON CONFLICT (id) DO UPDATE
          SET api_key = $1,
+             serp_api_key = $2,
+             model = $3,
+             stt_model = $4,
+             tts_model = $5,
+             tts_voice = $6,
+             enabled = $7,
+             updated_at = NOW()`,
+        [rawApiKey, nextSerpApiKey, model, sttModel, ttsModel, ttsVoice, enabled]
+      );
+    } else {
+      await query(
+        `INSERT INTO platform_ai_config (id, serp_api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET serp_api_key = $1,
              model = $2,
              stt_model = $3,
              tts_model = $4,
              tts_voice = $5,
              enabled = $6,
              updated_at = NOW()`,
-        [rawApiKey, model, sttModel, ttsModel, ttsVoice, enabled]
-      );
-    } else {
-      await query(
-        `INSERT INTO platform_ai_config (id, model, stt_model, tts_model, tts_voice, enabled, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (id) DO UPDATE
-         SET model = $1,
-             stt_model = $2,
-             tts_model = $3,
-             tts_voice = $4,
-             enabled = $5,
-             updated_at = NOW()`,
-        [model, sttModel, ttsModel, ttsVoice, enabled]
+        [nextSerpApiKey, model, sttModel, ttsModel, ttsVoice, enabled]
       );
     }
 
@@ -1822,18 +1865,23 @@ async function ensureAiVoiceColumns() {
     `ALTER TABLE platform_ai_config
      ADD COLUMN IF NOT EXISTS tts_voice text NOT NULL DEFAULT '${DEFAULT_TTS_VOICE}'`,
   );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS serp_api_key text NOT NULL DEFAULT ''`,
+  );
 }
 
 async function loadPlatformAiConfig() {
   await ensureAiVoiceColumns();
   const result = await query(
-    `SELECT api_key, model, stt_model, tts_model, tts_voice, enabled
+    `SELECT api_key, serp_api_key, model, stt_model, tts_model, tts_voice, enabled
      FROM platform_ai_config
      WHERE id = 1`,
   );
   return (
     result.rows[0] || {
       api_key: '',
+      serp_api_key: '',
       model: 'openai/gpt-4o-mini',
       stt_model: DEFAULT_STT_MODEL,
       tts_model: DEFAULT_TTS_MODEL,
@@ -1851,6 +1899,7 @@ app.get('/api/ai/config', async (req, res, next) => {
     res.json({
       ok: true,
       aiEnabled: Boolean(row.enabled && row.api_key && hasAiEntitlement),
+      webSearchEnabled: Boolean((row.serp_api_key || config.serpApiKey) && hasAiEntitlement),
       aiModel: row.model,
       sttModel: row.stt_model || DEFAULT_STT_MODEL,
       ttsModel: row.tts_model || DEFAULT_TTS_MODEL,
@@ -1927,6 +1976,51 @@ app.post('/api/ai/chat', async (req, res, next) => {
         promptTokens: usage.prompt_tokens || 0,
         completionTokens: usage.completion_tokens || 0,
       },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/web-search', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+
+    const aiConfig = await loadPlatformAiConfig();
+    const serpApiKey = aiConfig.serp_api_key || config.serpApiKey;
+    if (!serpApiKey) {
+      throw createHttpError(403, 'Web search is not configured by the platform administrator');
+    }
+    if (!normalizeOptionalText(req.body?.query || req.body?.q)) {
+      throw createHttpError(400, 'Search query is required');
+    }
+
+    const rateCheck = await checkAiRateLimit(businessContext);
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    let result;
+    try {
+      result = await searchWithSerpApi({
+        apiKey: serpApiKey,
+        fetchImpl: fetch,
+        baseUrl: config.serpApiBaseUrl,
+        input: req.body || {},
+      });
+    } catch (error) {
+      throw createHttpError(502, error.message || 'Web search failed');
+    }
+
+    res.json({
+      ok: true,
+      data: result,
       remaining: rateCheck.remaining,
     });
   } catch (error) {
@@ -3335,6 +3429,14 @@ function normalizeOptionalText(value) {
   return normalized === '' ? null : normalized;
 }
 
+function maskSecret(value) {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) {
+    return '';
+  }
+  return `${'*'.repeat(Math.max(0, normalized.length - 4))}${normalized.slice(-4)}`;
+}
+
 function normalizeReportDate(value) {
   const normalized = normalizeOptionalText(value);
   if (!normalized) {
@@ -3693,4 +3795,12 @@ async function upsertRow(client, tableName, row, businessId) {
   }
 
   return buildRejectedWriteResult(tableName, row, existingRow);
+}
+
+function normalizeUserRecordForStorage(record) {
+  const normalized = { ...record };
+  if (Object.prototype.hasOwnProperty.call(normalized, 'password')) {
+    normalized.password = normalizePasswordForStorage(normalized.password);
+  }
+  return normalized;
 }

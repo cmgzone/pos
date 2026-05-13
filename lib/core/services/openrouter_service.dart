@@ -200,6 +200,8 @@ Rules:
 - Use create_customer and create_supplier when the user wants to add a new contact.
 - Use reconcile_stock when the user provides a physical count that differs from the system (e.g., "I counted 50 milks").
 - Use customer_search and supplier_search to look up contact details.
+- Use web_search for current external information that is not in the POS database, such as market prices, supplier websites, regulations, tax/news context, weather, or competitor/public information.
+- Do not use web_search for local POS facts like stock, sales, customers, suppliers, or expenses when a local tool can answer.
 - Use add_to_cart to add an item to the POS cart when the user asks to "sell", "add", or "buy" items in Sell Mode.
 - Use remove_from_cart when the cashier asks to remove, void, undo, or take an item off the cart.
 - Use set_cart_quantity when the cashier asks to make a cart line an exact quantity.
@@ -231,6 +233,66 @@ $userMessage
       includeBusinessContext: includeBusinessContext,
     );
     return _extractJsonObject(response);
+  }
+
+  /// Runs a web search through the backend SerpAPI proxy.
+  static Future<Map<String, dynamic>> webSearch({
+    required String query,
+    String? location,
+    String? countryCode,
+    String? language,
+    int limit = 5,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final client = http.Client();
+
+    try {
+      final response = await client
+          .post(
+            _buildUri(backendUrl, 'ai/web-search'),
+            headers: {
+              ..._authHeaders(license),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'query': query,
+              if (location != null && location.trim().isNotEmpty)
+                'location': location.trim(),
+              if (countryCode != null && countryCode.trim().isNotEmpty)
+                'countryCode': countryCode.trim(),
+              if (language != null && language.trim().isNotEmpty)
+                'language': language.trim(),
+              'limit': limit,
+            }),
+          )
+          .timeout(_timeout);
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 429) {
+        throw Exception(
+          body['error'] as String? ?? 'AI rate limit reached. Try again later.',
+        );
+      }
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        throw Exception(
+          body['error'] as String? ??
+              'Web search failed (${response.statusCode})',
+        );
+      }
+
+      return Map<String, dynamic>.from(body['data'] as Map? ?? {});
+    } finally {
+      client.close();
+    }
   }
 
   // ─── System prompt builder ────────────────────────────────────────────

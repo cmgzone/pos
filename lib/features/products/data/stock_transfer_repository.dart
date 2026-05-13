@@ -15,8 +15,8 @@ class StockTransferRepository {
     String status = 'all',
   }) async {
     final clauses = <String>[
-      'deleted_at IS NULL',
-      '(from_branch_id = ? OR to_branch_id = ?)',
+      'st.deleted_at IS NULL',
+      '(st.from_branch_id = ? OR st.to_branch_id = ?)',
     ];
     final args = <dynamic>[
       DatabaseService.currentBranchId,
@@ -24,7 +24,7 @@ class StockTransferRepository {
     ];
     final cleanStatus = status.trim();
     if (cleanStatus.isNotEmpty && cleanStatus != 'all') {
-      clauses.add('status = ?');
+      clauses.add('st.status = ?');
       args.add(cleanStatus);
     }
 
@@ -409,7 +409,8 @@ class StockTransferRepository {
       final available = (row['quantity_remaining'] as num? ?? 0).toDouble();
       if (available <= 0) continue;
       final take = available < remaining ? available : remaining;
-      final unitCost = (row['unit_cost'] as num? ?? fallbackUnitCost).toDouble();
+      final unitCost = (row['unit_cost'] as num? ?? fallbackUnitCost)
+          .toDouble();
       consumedCost += take * unitCost;
       remaining -= take;
       await txn.rawUpdate(

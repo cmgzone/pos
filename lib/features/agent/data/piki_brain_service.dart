@@ -17,6 +17,7 @@ import 'piki_models.dart';
 import 'piki_pos_command_engine.dart';
 import 'piki_proactive_service.dart';
 import 'piki_provider.dart';
+import 'piki_work_notes.dart';
 
 final pikiBrainProvider = Provider<PikiBrainService>((ref) {
   return PikiBrainService(ref);
@@ -252,32 +253,129 @@ class PikiBrainService {
     return (calls: normalized, skipped: skipped);
   }
 
-  List<String> _collectCitations(List<Map<String, dynamic>> allResults) {
-    final citations = <String>[];
+  List<Map<String, dynamic>> _collectCitations(
+    List<Map<String, dynamic>> allResults,
+  ) {
+    final citations = <Map<String, dynamic>>[];
+    final seen = <String>{};
+
+    void addCitation(String label, String detail) {
+      final cleanLabel = label.trim();
+      final cleanDetail = detail.trim();
+      if (cleanLabel.isEmpty) return;
+      final key = '$cleanLabel|$cleanDetail';
+      if (!seen.add(key)) return;
+      citations.add({
+        'index': citations.length + 1,
+        'label': cleanLabel,
+        'detail': cleanDetail,
+      });
+    }
+
     for (final r in allResults) {
+      final toolCitations = r['citations'];
+      if (toolCitations is List) {
+        for (final citation in toolCitations) {
+          if (citation is Map) {
+            addCitation(
+              citation['label']?.toString() ?? 'Source',
+              citation['detail']?.toString() ?? '',
+            );
+          }
+        }
+      }
+
       final items = r['items'];
       if (items is List) {
         for (final item in items) {
           if (item is Map) {
             final name =
                 item['name'] as String? ?? item['product_name'] as String?;
-            if (name != null && !citations.contains(name)) {
-              citations.add(name);
+            final link = item['link'] as String?;
+            if (name != null) {
+              addCitation(name, link ?? 'Source row from tool result.');
+            } else if ((item['title'] as String?)?.isNotEmpty == true) {
+              addCitation(
+                item['title'] as String,
+                link ?? item['snippet']?.toString() ?? '',
+              );
             }
           }
         }
       }
       if (r['type'] == 'sales_report') {
-        citations.add('Sales Data');
+        addCitation('Sales Data', 'Recorded sales in the local POS database.');
       }
       if (r['type'] == 'today_summary') {
-        citations.add(
-          'Today'
-          's Summary',
-        );
+        addCitation("Today's Summary", 'Local POS summary data.');
       }
     }
     return citations;
+  }
+
+  Map<String, dynamic> _workNotesAttachedData(
+    List<PikiWorkNote> notes, {
+    PikiRunState? runState,
+    String? type,
+  }) {
+    final data = <String, dynamic>{
+      'work_notes': notes.map((note) => note.toJson()).toList(),
+    };
+    if (type != null) {
+      data['type'] = type;
+    }
+    if (runState != null) {
+      data['run_state'] = runState.toJson();
+    }
+    return data;
+  }
+
+  void _addWorkNote(
+    List<PikiWorkNote> notes, {
+    required String stage,
+    required String title,
+    required String detail,
+    int? loop,
+  }) {
+    final cleanDetail = detail.trim();
+    notes.add(
+      PikiWorkNote(
+        stage: stage,
+        title: title,
+        detail: cleanDetail.length > 220
+            ? '${cleanDetail.substring(0, 217)}...'
+            : cleanDetail,
+        loop: loop,
+      ),
+    );
+  }
+
+  String _describeToolCalls(List<Map<String, dynamic>> toolCalls) {
+    return toolCalls
+        .map((call) {
+          final tool = call['tool']?.toString() ?? 'tool';
+          final reason = call['reason']?.toString().trim() ?? '';
+          return reason.isEmpty ? tool : '$tool: $reason';
+        })
+        .join('; ');
+  }
+
+  String _resultSummary(Map<String, dynamic> result) {
+    return PikiLoopSummary.resultSummary(result);
+  }
+
+  String _bestEffortAnswerFromResults({
+    required List<Map<String, dynamic>> results,
+    required String stopReason,
+  }) {
+    return PikiLoopSummary.bestEffortAnswerFromResults(
+      results: results,
+      stopReason: stopReason,
+    );
+  }
+
+  bool _looksLikeUserInputRequest(String answer) {
+    return PikiAnswerClassifier.needsUserInput(answer);
   }
 
   void _resetStatusAfterDelay(StateController<AgentStatus> statusNotifier) {
@@ -500,10 +598,20 @@ class PikiBrainService {
     final statusNotifier = _ref.read(pikiStatusProvider.notifier);
     statusNotifier.state = AgentStatus.thinking;
 
+    final workNotes = <PikiWorkNote>[];
+    _addWorkNote(
+      workNotes,
+      stage: 'planning',
+      title: 'Planning request',
+      detail:
+          'Piki is deciding which grounded POS checks or actions are needed.',
+    );
+
     var thinkingMsg = PikiMessage(
       content: 'Planning grounded steps...',
       sender: PikiSender.agent,
       messageType: PikiMessageType.thinking,
+      attachedData: _workNotesAttachedData(workNotes),
     );
     _messagesNotifier.addMessage(thinkingMsg);
 
@@ -514,11 +622,15 @@ class PikiBrainService {
               ? '[SELL MODE]: $text\nYou are acting as a cashier assistant. Your priority is to add items to the cart, adjust quantities, or checkout. Use the add_to_cart tool whenever the user mentions products or services.'
               : text);
     int loopCount = 0;
-    const maxLoops = 4;
+    int totalToolCalls = 0;
+    final loopGuard = PikiAutoLoopGuard();
     final allResults = <Map<String, dynamic>>[];
     String finalAnswer = '';
     final List<String> suggestions = [];
     String? planSummary;
+    String stopReason = 'completed';
+    bool completed = false;
+    bool needsUserInput = false;
 
     final plannerConversation = _conversationForPlanner();
 
@@ -531,7 +643,7 @@ class PikiBrainService {
     }
 
     try {
-      while (loopCount < maxLoops) {
+      while (loopGuard.canStartPlannerTurn(loopCount + 1)) {
         loopCount++;
 
         Map<String, dynamic> plan = {};
@@ -542,7 +654,28 @@ class PikiBrainService {
         if (preSeededTools != null && loopCount == 1) {
           toolCalls = preSeededTools;
           modeValue = 'tool';
+          _addWorkNote(
+            workNotes,
+            stage: 'planning',
+            title: 'Recognized sell command',
+            detail: _describeToolCalls(toolCalls),
+            loop: loopCount,
+          );
         } else {
+          _addWorkNote(
+            workNotes,
+            stage: 'planning',
+            title: 'Planning next step',
+            detail:
+                'Checking whether more POS data or local actions are needed.',
+            loop: loopCount,
+          );
+          thinkingMsg = thinkingMsg.copyWith(
+            content: 'Planning grounded steps...',
+            attachedData: _workNotesAttachedData(workNotes),
+          );
+          _messagesNotifier.replaceMessage(thinkingMsg.id, thinkingMsg);
+
           plan = await OpenRouterService.planToolUse(
             userMessage: currentPrompt,
             conversation: plannerConversation,
@@ -558,12 +691,23 @@ class PikiBrainService {
           final normalized = _normalizeToolCalls(plan['tool_calls']);
           toolCalls = normalized.calls;
           plannerAnswer = (plan['answer'] as String?)?.trim();
-          planSummary ??= plan['summary'] as String?;
+          final currentPlanSummary = (plan['summary'] as String?)?.trim();
+          planSummary ??= currentPlanSummary;
 
           if (toolCalls.isEmpty && normalized.skipped.isNotEmpty) {
             _lastPlannerError =
                 'Tried to use invalid tools: ${normalized.skipped.join(', ')}';
             throw Exception(_lastPlannerError);
+          }
+
+          if (currentPlanSummary?.isNotEmpty == true) {
+            _addWorkNote(
+              workNotes,
+              stage: 'planning',
+              title: 'Plan summary',
+              detail: currentPlanSummary!,
+              loop: loopCount,
+            );
           }
 
           if (plan.containsKey('suggestions')) {
@@ -581,8 +725,52 @@ class PikiBrainService {
               : (allResults.isNotEmpty
                     ? 'I have completed the tasks.'
                     : 'I do not need a data lookup for that one.');
+          needsUserInput =
+              plannerAnswer != null &&
+              _looksLikeUserInputRequest(plannerAnswer);
+          completed = !needsUserInput;
+          stopReason = needsUserInput ? 'needs_user_input' : 'completed';
+          _addWorkNote(
+            workNotes,
+            stage: needsUserInput ? 'blocked' : 'done',
+            title: needsUserInput ? 'Needs your input' : 'Final answer ready',
+            detail: needsUserInput
+                ? 'Piki needs more details before it can safely continue.'
+                : 'Piki has enough information to answer.',
+            loop: loopCount,
+          );
           break;
         }
+
+        final guardDecision = loopGuard.checkToolBatch(
+          loopCount: loopCount,
+          totalToolCalls: totalToolCalls,
+          toolCalls: toolCalls,
+        );
+        if (guardDecision.shouldStop) {
+          stopReason = guardDecision.reason ?? 'stopped_safely';
+          _addWorkNote(
+            workNotes,
+            stage: 'blocked',
+            title: 'Paused safely',
+            detail:
+                guardDecision.detail ?? 'Piki paused before repeating work.',
+            loop: loopCount,
+          );
+          finalAnswer = _bestEffortAnswerFromResults(
+            results: allResults,
+            stopReason: guardDecision.detail ?? stopReason,
+          );
+          break;
+        }
+
+        _addWorkNote(
+          workNotes,
+          stage: 'tool',
+          title: 'Running local tools',
+          detail: _describeToolCalls(toolCalls),
+          loop: loopCount,
+        );
 
         final steps = toolCalls
             .map(
@@ -591,7 +779,10 @@ class PikiBrainService {
             )
             .toList();
 
-        thinkingMsg = thinkingMsg.copyWith(steps: steps);
+        thinkingMsg = thinkingMsg.copyWith(
+          steps: steps,
+          attachedData: _workNotesAttachedData(workNotes),
+        );
         _messagesNotifier.replaceMessage(thinkingMsg.id, thinkingMsg);
 
         statusNotifier.state = AgentStatus.working;
@@ -600,10 +791,12 @@ class PikiBrainService {
           sender: PikiSender.agent,
           messageType: PikiMessageType.working,
           steps: List<PikiStep>.from(steps),
+          attachedData: _workNotesAttachedData(workNotes),
         );
         _messagesNotifier.addMessage(workingMsg);
 
         final loopResults = <Map<String, dynamic>>[];
+        var stopAfterToolError = false;
         for (int i = 0; i < toolCalls.length; i++) {
           final updatedSteps = _cloneSteps(workingMsg.steps!);
           for (int j = 0; j < i; j++) {
@@ -619,6 +812,7 @@ class PikiBrainService {
             workingMsg.copyWith(
               steps: updatedSteps,
               content: 'Running local tools... ${i + 1} of ${toolCalls.length}',
+              attachedData: _workNotesAttachedData(workNotes),
             ),
           );
 
@@ -640,13 +834,33 @@ class PikiBrainService {
               toolName == PikiAgentService.toolHoldSale ||
               toolName == PikiAgentService.toolTeachAlias;
 
-          final result = await (isCartTool
-              ? _executeCartTool(toolName, args)
-              : PikiAgentService.executeAgentTool(
-                  toolName,
-                  args: args,
-                  memory: _lastToolResults,
-                ));
+          Map<String, dynamic> result;
+          totalToolCalls++;
+          try {
+            result = await (isCartTool
+                ? _executeCartTool(toolName, args)
+                : PikiAgentService.executeAgentTool(
+                    toolName,
+                    args: args,
+                    memory: _lastToolResults,
+                  ));
+          } catch (e) {
+            stopAfterToolError = true;
+            stopReason = 'tool_error';
+            result = {
+              'tool': toolName,
+              'success': false,
+              'error': e.toString().replaceFirst('Exception: ', ''),
+              'summary': 'Could not complete $toolName.',
+            };
+            _addWorkNote(
+              workNotes,
+              stage: 'error',
+              title: 'Tool failed',
+              detail: result['error'] as String,
+              loop: loopCount,
+            );
+          }
           loopResults.add(result);
 
           if (result['action'] == 'checkout' || result['action'] == 'pos') {
@@ -659,9 +873,22 @@ class PikiBrainService {
           );
           _messagesNotifier.replaceMessage(
             workingMsg.id,
-            workingMsg.copyWith(steps: updatedSteps),
+            workingMsg.copyWith(
+              steps: updatedSteps,
+              attachedData: _workNotesAttachedData(workNotes),
+            ),
+          );
+          _addWorkNote(
+            workNotes,
+            stage: result['error'] == null ? 'result' : 'error',
+            title: result['error'] == null ? 'Tool finished' : 'Tool issue',
+            detail: _resultSummary(result),
+            loop: loopCount,
           );
           await Future<void>.delayed(const Duration(milliseconds: 250));
+          if (stopAfterToolError) {
+            break;
+          }
         }
         allResults.addAll(loopResults);
 
@@ -670,10 +897,20 @@ class PikiBrainService {
               .map((step) => step.copyWith(status: PikiStepStatus.done))
               .toList(),
           content: 'Analyzing results...',
+          attachedData: _workNotesAttachedData(workNotes),
         );
         _messagesNotifier.replaceMessage(thinkingMsg.id, thinkingMsg);
 
         _messagesNotifier.removeMessagesWhere((m) => m.id == workingMsg!.id);
+        workingMsg = null;
+
+        if (stopAfterToolError) {
+          finalAnswer = _bestEffortAnswerFromResults(
+            results: allResults,
+            stopReason: 'a local tool failed',
+          );
+          break;
+        }
 
         plannerConversation.add({'role': 'user', 'content': currentPrompt});
         plannerConversation.add({
@@ -685,6 +922,15 @@ class PikiBrainService {
           final result = loopResults.last;
           if (result['error'] == null) {
             finalAnswer = result['summary'] as String? ?? 'Done.';
+            completed = true;
+            stopReason = 'completed';
+            _addWorkNote(
+              workNotes,
+              stage: 'done',
+              title: 'Sell command completed',
+              detail: _resultSummary(result),
+              loop: loopCount,
+            );
             break;
           } else {
             final errStr = result['error'].toString();
@@ -692,12 +938,22 @@ class PikiBrainService {
               'Could not find product or service matching',
             )) {
               finalAnswer = errStr;
+              stopReason = 'tool_error';
               break;
             }
             // If it couldn't find the product, it might be a conversational query.
             // Let the loop continue so the LLM planner can handle it.
           }
         }
+
+        _addWorkNote(
+          workNotes,
+          stage: 'analysis',
+          title: 'Analyzing results',
+          detail:
+              'Piki is checking whether the request is complete or needs another action.',
+          loop: loopCount,
+        );
 
         currentPrompt =
             '''
@@ -709,6 +965,21 @@ ${jsonEncode(loopResults)}
 Analyze these results. If you have fully answered the original request, return mode="answer" and provide your final paragraph-style synthesis and business recommendations. If you need to perform more actions based on these results, return mode="tool" and provide the next tool_calls.
 ''';
         statusNotifier.state = AgentStatus.thinking;
+      }
+
+      if (finalAnswer.trim().isEmpty) {
+        stopReason = 'max_planner_turns';
+        finalAnswer = _bestEffortAnswerFromResults(
+          results: allResults,
+          stopReason: 'Piki reached the planning safety limit',
+        );
+        _addWorkNote(
+          workNotes,
+          stage: 'blocked',
+          title: 'Paused safely',
+          detail: 'Piki reached the planning safety limit.',
+          loop: loopCount,
+        );
       }
 
       if (finalAnswer.trim().isEmpty) {
@@ -739,6 +1010,14 @@ Analyze these results. If you have fully answered the original request, return m
         finalType = PikiMessageType.chart;
       }
 
+      final runState = PikiRunState(
+        loopCount: loopCount,
+        toolCount: totalToolCalls,
+        stopReason: stopReason,
+        completed: completed || stopReason == 'completed',
+        needsUserInput: needsUserInput,
+      );
+
       _messagesNotifier.addMessage(
         PikiMessage(
           content: finalAnswer,
@@ -752,6 +1031,8 @@ Analyze these results. If you have fully answered the original request, return m
             'citations': citations,
             'tool_results': allResults,
             'plan_summary': planSummary,
+            'work_notes': workNotes.map((note) => note.toJson()).toList(),
+            'run_state': runState.toJson(),
           },
           suggestions: suggestions.isNotEmpty ? suggestions : null,
         ),
@@ -778,12 +1059,36 @@ Analyze these results. If you have fully answered the original request, return m
       return true;
     } catch (e) {
       _lastPlannerError = e.toString().replaceFirst('Exception: ', '');
+      _addWorkNote(
+        workNotes,
+        stage: 'error',
+        title: 'Piki stopped',
+        detail: _lastPlannerError!,
+        loop: loopCount == 0 ? null : loopCount,
+      );
       _messagesNotifier.removeMessagesWhere(
         (message) =>
             message.id == thinkingMsg.id || message.id == workingMsg?.id,
       );
+      _messagesNotifier.addMessage(
+        PikiMessage(
+          content: 'I could not complete that request. $_lastPlannerError',
+          sender: PikiSender.agent,
+          messageType: PikiMessageType.error,
+          attachedData: _workNotesAttachedData(
+            workNotes,
+            runState: PikiRunState(
+              loopCount: loopCount,
+              toolCount: totalToolCalls,
+              stopReason: 'error',
+              completed: false,
+            ),
+            type: 'error',
+          ),
+        ),
+      );
       statusNotifier.state = AgentStatus.idle;
-      return false;
+      return true;
     }
   }
 

@@ -454,8 +454,11 @@ class SyncService {
       return const _ApplyOutcome(applied: false, resolvedConflict: false);
     }
 
-    final normalizedRemote = _canonicalizeForLocalStore(remoteRow, 'synced');
     final localRow = await _getRowById(txn, table, id);
+    final normalizedRemote = _canonicalizeForLocalStore(remoteRow, 'synced');
+    if (table == 'users' && !normalizedRemote.containsKey('password')) {
+      normalizedRemote['password'] = localRow?['password'] ?? '';
+    }
     if (localRow == null) {
       // Before inserting, check for unique-key conflicts on non-PK columns
       // (e.g., users.email). If a local row already holds this unique value

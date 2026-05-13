@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppConstants {
   static const String appName = 'Devis POS';
   static const String appVersion = '1.0.0';
@@ -35,10 +37,21 @@ class AppConstants {
     return _defaultSocketUrl;
   }
 
-  static String get licenseSigningSecret => const String.fromEnvironment(
-    'LICENSE_SIGNING_SECRET',
-    defaultValue: _defaultLicenseSigningSecret,
-  );
+  static String get licenseSigningSecret {
+    const explicit = String.fromEnvironment(
+      'LICENSE_SIGNING_SECRET',
+      defaultValue: '',
+    );
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+    if (kReleaseMode) {
+      throw StateError(
+        'LICENSE_SIGNING_SECRET must be provided for release builds.',
+      );
+    }
+    return _defaultLicenseSigningSecret;
+  }
 
   // Shared Preferences Keys
   static const String keyToken = 'auth_token';

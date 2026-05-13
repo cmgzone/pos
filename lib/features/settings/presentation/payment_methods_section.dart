@@ -162,6 +162,10 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           title: Text(isEditing ? 'Edit Payment Method' : 'Add Payment Method'),
           content: SizedBox(
             width: 400,
@@ -293,6 +297,8 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text('Delete Payment Method?'),
         content: const Text(
           'Are you sure you want to delete this payment method? This cannot be undone.',
@@ -335,7 +341,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
@@ -388,7 +394,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                       border: Border.all(color: AppColors.border),
                       borderRadius: BorderRadius.circular(8),
                       color: isActive
-                          ? Colors.transparent
+                          ? AppColors.surfaceHighlight.withValues(alpha: 0.25)
                           : AppColors.surfaceHighlight.withValues(alpha: 0.5),
                     ),
                     child: ListTile(
@@ -457,7 +463,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 1),
+        const Divider(height: 1, color: AppColors.border),
         const SizedBox(height: 20),
         Row(
           children: [

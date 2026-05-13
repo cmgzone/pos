@@ -9,6 +9,7 @@ import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
+import '../data/auth_password_service.dart';
 import '../../settings/presentation/subscription_screen.dart';
 import 'login_screen.dart';
 
@@ -210,8 +211,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'name': (user['name'] as String?) ?? name,
           'email': (user['email'] as String?) ?? email,
           'phone': (user['phone'] as String?) ?? phone,
-          'password':
-              '', // Password is hashed on the server; local login will re-verify online
+          'password': AuthPasswordService.hashPassword(password),
           'role': (user['role'] as String?) ?? 'ADMIN',
           'feature_access_json': user['feature_access_json'] as String?,
           'allowed_service_ids_json':

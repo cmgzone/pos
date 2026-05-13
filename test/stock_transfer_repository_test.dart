@@ -112,6 +112,54 @@ void main() {
     expect(transfer?['status'], 'received');
     expect(transfer?['received_at'], isNotNull);
   });
+
+  test(
+    'list for current branch joins branch names without ambiguous columns',
+    () async {
+      final now = DateTime.now().toIso8601String();
+
+      await DatabaseService.db.insert('branches', {
+        'id': 'branch-b',
+        'name': 'Branch B',
+        'is_active': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+      await _insertProduct(
+        id: 'source-product',
+        branchId: DatabaseService.defaultBranchId,
+        stock: 10,
+        cost: 40,
+        now: now,
+      );
+
+      final transferId = await StockTransferRepository.requestTransfer(
+        toBranchId: 'branch-b',
+        productId: 'source-product',
+        quantity: 2,
+      );
+      await StockTransferRepository.updateStatus(
+        transferId,
+        status: 'approved',
+      );
+
+      final transfers = await StockTransferRepository.getForCurrentBranch();
+      final requestedTransfers =
+          await StockTransferRepository.getForCurrentBranch(
+            status: 'requested',
+          );
+      final approvedTransfers =
+          await StockTransferRepository.getForCurrentBranch(status: 'approved');
+
+      expect(transfers, hasLength(1));
+      expect(transfers.single['id'], transferId);
+      expect(transfers.single['from_branch_name'], isNotEmpty);
+      expect(transfers.single['to_branch_name'], 'Branch B');
+      expect(requestedTransfers, isEmpty);
+      expect(approvedTransfers.single['id'], transferId);
+    },
+  );
 }
 
 Future<void> _insertProduct({

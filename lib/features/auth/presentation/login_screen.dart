@@ -11,7 +11,7 @@ import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
 import '../data/auth_service.dart';
-import '../data/user_repository.dart';
+import '../data/auth_password_service.dart';
 import 'sign_up_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -154,40 +154,17 @@ class _LoginScreenState extends State<LoginScreen> {
     required String email,
     required String password,
   }) async {
-    // Find the local user to get their stored password hash for cloud comparison.
-    // The cloud stores the hashed password, so we need to hash it the same way.
-    final localUser = await UserRepository.findByEmail(email);
-    String hashedPassword;
-
-    if (localUser != null) {
-      // Use the stored hash — the cloud has the same hash
-      final storedPassword = localUser['password'] as String? ?? '';
-      // Verify locally first to get the right hash
-      if (storedPassword.isNotEmpty) {
-        // We need to use the same hash that was sent during registration
-        // The cloud stores the hashed password, so we send the hash
-        hashedPassword = storedPassword;
-      } else {
-        // No local hash stored; this user was created via cloud
-        // Hash the plain password to compare against cloud
-        hashedPassword = _hashPasswordForCloud(password);
-      }
-    } else {
-      // User not found locally — hash the password for cloud lookup
-      hashedPassword = _hashPasswordForCloud(password);
-    }
-
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
 
     final response = await CloudAuthService.loginOnline(
       backendUrl: backendUrl,
       email: email,
-      hashedPassword: hashedPassword,
+      password: password,
       deviceId: deviceId,
     );
 
     _cloudAuthResponse = response;
-    _cloudPasswordForLocalLogin = hashedPassword;
+    _cloudPasswordForLocalLogin = AuthPasswordService.hashPassword(password);
 
     final incomingBusinessId = ((response.business['id'] as String?) ?? '')
         .trim();
@@ -203,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return _upsertCloudUser(
       cloudUser: response.user,
       email: email,
-      passwordForLocalLogin: hashedPassword,
+      passwordForLocalLogin: _cloudPasswordForLocalLogin,
     );
   }
 
@@ -222,11 +199,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     return user;
-  }
-
-  String _hashPasswordForCloud(String password) {
-    // Use the same hashing as AuthPasswordService
-    return password; // The cloud login endpoint will handle comparison
   }
 
   Future<Map<String, dynamic>> _upsertCloudUser({

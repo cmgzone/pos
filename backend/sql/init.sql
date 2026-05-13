@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE TABLE IF NOT EXISTS platform_ai_config (
   id integer PRIMARY KEY DEFAULT 1,
   api_key text NOT NULL DEFAULT '',
+  serp_api_key text NOT NULL DEFAULT '',
   model text NOT NULL DEFAULT 'openai/gpt-4o-mini',
   stt_model text NOT NULL DEFAULT 'openai/whisper-1',
   tts_model text NOT NULL DEFAULT 'openai/tts-1',

@@ -456,6 +456,15 @@ class UserAccessProfile {
     return indices;
   }
 
+  static String? featureForNavigationIndex(int index) {
+    for (final entry in _featureToNavigationIndex.entries) {
+      if (entry.value == index) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
   static String encodeStringList(Iterable<String> values) {
     final normalized = <String>[];
     for (final value in values) {

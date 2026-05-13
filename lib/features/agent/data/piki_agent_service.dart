@@ -110,6 +110,7 @@ class PikiAgentService {
   static const toolAddServiceField = 'add_service_field';
   static const toolCustomerSearch = 'customer_search';
   static const toolSupplierSearch = 'supplier_search';
+  static const toolWebSearch = 'web_search';
   static const toolAddToCart = 'add_to_cart';
   static const toolRemoveFromCart = 'remove_from_cart';
   static const toolSetCartQuantity = 'set_cart_quantity';
@@ -251,6 +252,7 @@ class PikiAgentService {
     toolAddServiceField: 'Add service field',
     toolCustomerSearch: 'Search customers',
     toolSupplierSearch: 'Search suppliers',
+    toolWebSearch: 'Search the web',
     toolAddToCart: 'Add to cart',
     toolRemoveFromCart: 'Remove from cart',
     toolSetCartQuantity: 'Set cart quantity',
@@ -293,6 +295,8 @@ class PikiAgentService {
     toolAddServiceField: 'Add a custom field to an existing service template.',
     toolCustomerSearch: 'Look up customers by name, phone, or email.',
     toolSupplierSearch: 'Look up suppliers by name, phone, or email.',
+    toolWebSearch:
+        'Search live web results for current prices, market context, regulations, supplier information, or other external facts not stored in the POS.',
     toolAddToCart: 'Add products, variants, or services to the live POS cart.',
     toolRemoveFromCart: 'Remove a line or quantity from the live POS cart.',
     toolSetCartQuantity: 'Set an existing POS cart line to an exact quantity.',
@@ -341,6 +345,8 @@ class PikiAgentService {
         'service_name/query(string, required), field_label/label(string, required), field_type(string), options(list/string), is_required(bool)',
     toolCustomerSearch: 'query(string), limit(int)',
     toolSupplierSearch: 'query(string), limit(int)',
+    toolWebSearch:
+        'query(string, required), location(string), countryCode(string), language(string), limit(int)',
     toolAddToCart: 'query(string, required), qty(number)',
     toolRemoveFromCart: 'query(string), qty(number)',
     toolSetCartQuantity: 'query(string), qty/quantity(number, required)',
@@ -864,6 +870,7 @@ Example: ["detergent", "soap", "laundry"]
       description: _toolDescriptions[tool] ?? 'Preparing a grounded response',
       icon: switch (tool) {
         toolPurchaseDraft => Icons.note_alt_rounded,
+        toolWebSearch => Icons.public_rounded,
         _ => Icons.auto_awesome_rounded,
       },
     );
@@ -934,6 +941,8 @@ Example: ["detergent", "soap", "laundry"]
         return _searchCustomers(args ?? const <String, dynamic>{});
       case toolSupplierSearch:
         return _searchSuppliers(args ?? const <String, dynamic>{});
+      case toolWebSearch:
+        return _webSearch(args ?? const <String, dynamic>{});
       default:
         throw Exception('Unknown agent tool: $tool');
     }
@@ -2207,6 +2216,53 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
     }, args: args);
   }
 
+  static Future<Map<String, dynamic>> _webSearch(
+    Map<String, dynamic> args,
+  ) async {
+    final query = (args['query'] ?? args['q'] ?? '').toString().trim();
+    if (query.isEmpty) {
+      throw Exception('Web search query is required.');
+    }
+
+    final result = await OpenRouterService.webSearch(
+      query: query,
+      location: (args['location'] as String?)?.trim(),
+      countryCode:
+          (args['countryCode'] as String?)?.trim() ??
+          (args['gl'] as String?)?.trim(),
+      language:
+          (args['language'] as String?)?.trim() ??
+          (args['hl'] as String?)?.trim(),
+      limit: _coercePositiveInt(args['limit'], 5).clamp(1, 10),
+    );
+    final results =
+        (result['results'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+
+    final citations = results
+        .where((item) => (item['link'] as String? ?? '').isNotEmpty)
+        .take(5)
+        .map(
+          (item) => {
+            'label': item['title'] as String? ?? 'Web result',
+            'detail': item['link'] as String? ?? '',
+          },
+        )
+        .toList();
+
+    return _enrichToolResult(toolWebSearch, {
+      ...result,
+      'items': results,
+      'citations': citations,
+      'summary':
+          result['summary'] as String? ??
+          '${results.length} web result(s) found for "$query"',
+    }, args: args);
+  }
+
   static Map<String, dynamic> _enrichToolResult(
     String tool,
     Map<String, dynamic> result, {
@@ -2215,7 +2271,15 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
     final enriched = Map<String, dynamic>.from(result);
     enriched['tool'] = tool;
     enriched['title'] = _toolLabels[tool] ?? enriched['title'] ?? tool;
-    enriched['citations'] = _citationsForTool(tool, result, args: args);
+    final existingCitations =
+        (enriched['citations'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    enriched['citations'] = existingCitations.isNotEmpty
+        ? existingCitations
+        : _citationsForTool(tool, result, args: args);
     return enriched;
   }
 
@@ -2323,6 +2387,14 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
         {
           'label': 'Supplier records',
           'detail': 'Read from local supplier records in the current branch.',
+        },
+      ],
+      toolWebSearch => [
+        {
+          'label': 'Web search',
+          'detail': query == null || query.isEmpty
+              ? 'Searched live Google results through the backend SerpAPI proxy.'
+              : 'Searched live Google results for "$query" through the backend SerpAPI proxy.',
         },
       ],
       toolCreateProduct ||

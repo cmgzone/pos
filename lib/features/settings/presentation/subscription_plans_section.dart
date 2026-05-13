@@ -271,49 +271,84 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   }
 
   Widget _buildFullPage(BuildContext context) {
-    return Container(
-      color: _premiumBackground,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
-                    child: _loading
-                        ? _loadingPanel()
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _premiumHeader(context),
-                              const SizedBox(height: 22),
-                              _heroPanel(context),
-                              const SizedBox(height: 16),
-                              _marketSelector(),
-                              const SizedBox(height: 14),
-                              _billingToggle(),
-                              const SizedBox(height: 14),
-                              _sellingModeSelector(),
-                              const SizedBox(height: 16),
-                              _planList(),
-                              if (_message != null) ...[
-                                const SizedBox(height: 14),
-                                _messageCard(_message!),
-                              ],
-                              const SizedBox(height: 14),
-                              _safeDataPanel(),
-                            ],
-                          ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 900;
+        final maxWidth = desktop ? 1180.0 : 520.0;
+        final pagePadding = desktop
+            ? const EdgeInsets.fromLTRB(28, 22, 28, 24)
+            : const EdgeInsets.fromLTRB(18, 18, 18, 18);
+        return Container(
+          color: _premiumBackground,
+          child: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: pagePadding,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxWidth),
+                        child: _loading
+                            ? _loadingPanel()
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _premiumHeader(context),
+                                  const SizedBox(height: 22),
+                                  if (desktop)
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          flex: 5,
+                                          child: _heroPanel(context),
+                                        ),
+                                        const SizedBox(width: 18),
+                                        Expanded(
+                                          flex: 4,
+                                          child: Column(
+                                            children: [
+                                              _marketSelector(),
+                                              const SizedBox(height: 14),
+                                              _billingToggle(),
+                                              const SizedBox(height: 14),
+                                              _sellingModeSelector(),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  else ...[
+                                    _heroPanel(context),
+                                    const SizedBox(height: 16),
+                                    _marketSelector(),
+                                    const SizedBox(height: 14),
+                                    _billingToggle(),
+                                    const SizedBox(height: 14),
+                                    _sellingModeSelector(),
+                                  ],
+                                  const SizedBox(height: 18),
+                                  _planList(),
+                                  if (_message != null) ...[
+                                    const SizedBox(height: 14),
+                                    _messageCard(_message!),
+                                  ],
+                                  const SizedBox(height: 14),
+                                  _safeDataPanel(),
+                                ],
+                              ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                if (!_loading) _stickyFooter(),
+              ],
             ),
-            if (!_loading) _stickyFooter(),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -673,14 +708,36 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       );
     }
 
-    return Column(
-      children: plans.map((plan) {
-        final selected = plan.code == _selectedPlanCode;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _planCard(plan, market, billingPeriod, selected),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final canGrid = widget.fullPage && constraints.maxWidth >= 760;
+        if (!canGrid) {
+          return Column(
+            children: plans.map((plan) {
+              final selected = plan.code == _selectedPlanCode;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _planCard(plan, market, billingPeriod, selected),
+              );
+            }).toList(),
+          );
+        }
+        final columns = constraints.maxWidth >= 1080 ? 3 : 2;
+        const gap = 12.0;
+        final cardWidth =
+            (constraints.maxWidth - (gap * (columns - 1))) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: plans.map((plan) {
+            final selected = plan.code == _selectedPlanCode;
+            return SizedBox(
+              width: cardWidth,
+              child: _planCard(plan, market, billingPeriod, selected),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 
@@ -979,6 +1036,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   }
 
   Widget _stickyFooter() {
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -990,7 +1048,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
+          constraints: BoxConstraints(maxWidth: desktop ? 1180 : 520),
           child: _footerContent(),
         ),
       ),
@@ -1020,69 +1078,70 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         plan.sellingModes.contains(selectedMode) &&
         !_busy &&
         !(isCurrent && isFree);
+    final desktop = widget.fullPage && MediaQuery.sizeOf(context).width >= 900;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (showSummary)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
+    final summary = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _sellingModeLabel(selectedMode ?? ''),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        plan?.name ?? 'Choose plan',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
+                Text(
+                  _sellingModeLabel(selectedMode ?? ''),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      price?.displayAmount ?? '-',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      '/${_periodShortLabel(billingPeriod ?? 'monthly')}',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.52),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 2),
+                Text(
+                  plan?.name ?? 'Choose plan',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ],
             ),
           ),
-        if (market?.provider == 'mpesa' && !isFree) ...[
-          const SizedBox(height: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                price?.displayAmount ?? '-',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                '/${_periodShortLabel(billingPeriod ?? 'monthly')}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.52),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final paymentControls = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showSummary && !desktop) const SizedBox(height: 10),
+        if (market?.provider == 'mpesa' && !isFree)
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
@@ -1092,8 +1151,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               Icons.phone_android_outlined,
             ),
           ),
-        ],
-        const SizedBox(height: 10),
+        if (market?.provider == 'mpesa' && !isFree) const SizedBox(height: 10),
         if (market?.provider == 'google_pay' &&
             !isFree &&
             _checkout != null &&
@@ -1130,6 +1188,23 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           ),
       ],
     );
+
+    if (desktop && showSummary) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: summary),
+          const SizedBox(width: 16),
+          SizedBox(width: 380, child: paymentControls),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [if (showSummary) summary, paymentControls],
+    );
   }
 
   Widget _googlePayButton(
@@ -1144,20 +1219,30 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     if (config is! Map<String, dynamic> || price == null) {
       return _messageCard('Google Pay is not configured for this plan.');
     }
-    return GooglePayButton(
-      paymentConfiguration: PaymentConfiguration.fromJsonString(
-        jsonEncode(config),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(18),
       ),
-      paymentItems: [
-        PaymentItem(
-          label: plan.name,
-          amount: (price.amountMinor / 100).toStringAsFixed(2),
-          status: PaymentItemStatus.final_price,
+      clipBehavior: Clip.antiAlias,
+      child: GooglePayButton(
+        paymentConfiguration: PaymentConfiguration.fromJsonString(
+          jsonEncode(config),
         ),
-      ],
-      type: GooglePayButtonType.pay,
-      onPaymentResult: _confirmGooglePay,
-      loadingIndicator: const Center(child: CircularProgressIndicator()),
+        paymentItems: [
+          PaymentItem(
+            label: plan.name,
+            amount: (price.amountMinor / 100).toStringAsFixed(2),
+            status: PaymentItemStatus.final_price,
+          ),
+        ],
+        theme: GooglePayButtonTheme.dark,
+        type: GooglePayButtonType.pay,
+        onPaymentResult: _confirmGooglePay,
+        loadingIndicator: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      ),
     );
   }
 

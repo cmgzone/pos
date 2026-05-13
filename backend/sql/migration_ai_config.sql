@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS platform_ai_config (
   id         INTEGER PRIMARY KEY DEFAULT 1,
   api_key    TEXT NOT NULL DEFAULT '',
+  serp_api_key TEXT NOT NULL DEFAULT '',
   model      TEXT NOT NULL DEFAULT 'openai/gpt-4o-mini',
   enabled    BOOLEAN NOT NULL DEFAULT false,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

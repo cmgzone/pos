@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
-import '../../features/auth/data/auth_password_service.dart';
 import 'license_service.dart';
 import 'sync_settings_service.dart';
 
@@ -90,9 +89,6 @@ class CloudAuthService {
       throw Exception('Cloud backend URL is not configured.');
     }
 
-    // Hash the password before sending to the server
-    final hashedPassword = AuthPasswordService.hashPassword(password);
-
     final client = http.Client();
     try {
       final response = await client
@@ -104,7 +100,7 @@ class CloudAuthService {
               'ownerName': ownerName.trim(),
               'ownerEmail': ownerEmail.trim().toLowerCase(),
               'phone': phone.trim(),
-              'password': hashedPassword,
+              'password': password,
               'deviceId': deviceId,
               'deviceName': _deviceName,
               'countryCode': countryCode,
@@ -157,13 +153,13 @@ class CloudAuthService {
 
   /// Authenticate an existing user against the cloud backend.
   ///
-  /// Sends the hashed password to the server for verification. Returns
+  /// Sends the typed password to the server for verification. Returns
   /// the full access response on success. Throws on network failure or
   /// invalid credentials (401).
   static Future<CloudAuthResponse> loginOnline({
     required String backendUrl,
     required String email,
-    required String hashedPassword,
+    required String password,
     required String deviceId,
   }) async {
     final normalizedUrl = backendUrl.trim();
@@ -179,7 +175,7 @@ class CloudAuthService {
             headers: const {HttpHeaders.contentTypeHeader: 'application/json'},
             body: jsonEncode({
               'email': email.trim().toLowerCase(),
-              'password': hashedPassword,
+              'password': password,
               'deviceId': deviceId,
               'deviceName': _deviceName,
             }),

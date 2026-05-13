@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigator.dart';
+import '../../../core/services/license_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../app/app_shell.dart';
 import '../../customers/presentation/customer_account_screen.dart';
@@ -38,8 +39,34 @@ class TrainingController extends ChangeNotifier {
   bool get isActive => _activeModuleId != null;
   bool get canGoBack => _stepIndex > 0;
 
-  List<TrainingModule> get availableModules =>
-      availableTrainingModules(_currentRole);
+  List<TrainingModule> get availableModules {
+    final modules = <TrainingModule>[];
+    for (final module in availableTrainingModules(_currentRole)) {
+      if (!_canAccessTrainingModule(module)) {
+        continue;
+      }
+      final steps = module.steps
+          .where(
+            (step) =>
+                step.isVisibleFor(_currentRole) && _canAccessTrainingStep(step),
+          )
+          .toList(growable: false);
+      if (steps.isEmpty) {
+        continue;
+      }
+      modules.add(
+        TrainingModule(
+          id: module.id,
+          title: module.title,
+          description: module.description,
+          icon: module.icon,
+          steps: steps,
+          allowedRoles: module.allowedRoles,
+        ),
+      );
+    }
+    return modules;
+  }
 
   int get completedModuleCount => availableModules
       .where((module) => _completedModuleIds.contains(module.id))
@@ -134,7 +161,9 @@ class TrainingController extends ChangeNotifier {
   Future<void> startFullTour() async {
     await ensureLoadedForCurrentUser();
     final availableIds = fullTrainingOrder
-        .where((moduleId) => availableModules.any((module) => module.id == moduleId))
+        .where(
+          (moduleId) => availableModules.any((module) => module.id == moduleId),
+        )
         .toList(growable: false);
     if (availableIds.isEmpty) {
       return;
@@ -334,6 +363,67 @@ class TrainingController extends ChangeNotifier {
     }
     navigator.popUntil((route) => route.isFirst);
     await Future<void>.delayed(const Duration(milliseconds: 120));
+  }
+
+  bool _canAccessTrainingModule(TrainingModule module) {
+    final feature = _featureForModule(module.id);
+    return feature == null || _canUseFeature(feature);
+  }
+
+  bool _canAccessTrainingStep(TrainingStep step) {
+    final shellIndex = step.shellIndex;
+    if (shellIndex != null) {
+      if (!SessionService.canAccessNavigationIndex(shellIndex)) {
+        return false;
+      }
+      final feature = UserAccessProfile.featureForNavigationIndex(shellIndex);
+      if (feature != null && !_canUseFeature(feature)) {
+        return false;
+      }
+    }
+
+    switch (step.action) {
+      case TrainingStepAction.openProductForm:
+        return _canUseFeature(UserAccessProfile.featureProducts);
+      case TrainingStepAction.openCustomerAccount:
+        return _canUseFeature(UserAccessProfile.featureKopesha);
+      case TrainingStepAction.none:
+        return true;
+    }
+  }
+
+  bool _canUseFeature(String feature) {
+    return SessionService.canAccessFeature(feature) &&
+        LicenseService.currentSnapshot.allowsFeature(feature);
+  }
+
+  String? _featureForModule(String moduleId) {
+    switch (moduleId) {
+      case 'pos':
+        return UserAccessProfile.featurePos;
+      case 'dashboard':
+        return UserAccessProfile.featureDashboard;
+      case 'products':
+        return UserAccessProfile.featureProducts;
+      case 'categories':
+        return UserAccessProfile.featureCategories;
+      case 'purchases':
+        return UserAccessProfile.featurePurchases;
+      case 'sales':
+        return UserAccessProfile.featureSales;
+      case 'kopesha':
+        return UserAccessProfile.featureKopesha;
+      case 'profit-loss':
+        return UserAccessProfile.featureProfitLoss;
+      case 'reports':
+        return UserAccessProfile.featureReports;
+      case 'settings':
+        return UserAccessProfile.featureSettings;
+      case 'services':
+        return UserAccessProfile.featureServices;
+      default:
+        return null;
+    }
   }
 
   String _normalizeUserId(String userId) {

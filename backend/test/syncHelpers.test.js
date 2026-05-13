@@ -145,6 +145,26 @@ test('canonicalizeRecord can force synced output for pulled rows', () => {
   assert.equal(normalized.sync_status, SERVER_SYNC_STATUS);
 });
 
+test('canonicalizeRecord redacts user passwords from client output', () => {
+  const normalized = canonicalizeRecord(
+    'users',
+    {
+      id: 'user-1',
+      name: 'Cashier',
+      email: 'cashier@example.com',
+      password: 'velora.server.v1$210000$salt$digest',
+      role: 'CASHIER',
+      created_at: '2026-04-17T19:00:00.000Z',
+      updated_at: '2026-04-17T19:00:00.000Z',
+      sync_status: 'synced',
+    },
+    { forceSyncedStatus: true },
+  );
+
+  assert.equal(Object.hasOwn(normalized, 'password'), false);
+  assert.equal(normalized.sync_status, SERVER_SYNC_STATUS);
+});
+
 test('compareTimestamps handles equal instants across time zones', () => {
   assert.equal(
     compareTimestamps('2026-04-17T12:00:00-07:00', '2026-04-17T19:00:00.000Z'),

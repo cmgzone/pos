@@ -37,6 +37,7 @@ LICENSE_SIGNING_SECRET=replace-with-a-long-random-secret
 PLATFORM_ADMIN_EMAIL=superadmin@velora.pos
 PLATFORM_ADMIN_PASSWORD=change-me
 PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
+SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
 ```
 
 ## Local Setup
@@ -62,6 +63,7 @@ This now creates the core sync tables and the platform AI tables used by:
 - `POST /api/platform/ai-test`
 - `GET /api/ai/config`
 - `POST /api/ai/chat`
+- `POST /api/ai/web-search`
 
 5. Verify the connection
 
@@ -108,6 +110,7 @@ Use `SOCKET_URL` too if you later add real-time features on a separate origin.
 - `POST /api/platform/ai-test`
 - `GET /api/ai/config`
 - `POST /api/ai/chat`
+- `POST /api/ai/web-search`
 
 Legacy timestamp sync is also still supported through `since=<ISO timestamp>`.
 

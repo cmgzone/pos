@@ -221,50 +221,9 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   bool _isAllowedBySubscription(int index) {
-    final feature = _planFeatureForIndex(index);
+    final feature = UserAccessProfile.featureForNavigationIndex(index);
     return feature == null ||
         LicenseService.currentSnapshot.allowsFeature(feature);
-  }
-
-  String? _planFeatureForIndex(int index) {
-    switch (index) {
-      case 0:
-        return UserAccessProfile.featurePos;
-      case 1:
-        return UserAccessProfile.featureProducts;
-      case 2:
-        return UserAccessProfile.featureCategories;
-      case 3:
-        return UserAccessProfile.featurePurchases;
-      case 4:
-        return UserAccessProfile.featureSales;
-      case 5:
-        return UserAccessProfile.featureDashboard;
-      case 6:
-        return UserAccessProfile.featureKopesha;
-      case 7:
-        return UserAccessProfile.featureProfitLoss;
-      case 8:
-        return UserAccessProfile.featureReports;
-      case 9:
-        return UserAccessProfile.featureSettings;
-      case 10:
-        return UserAccessProfile.featureShifts;
-      case 11:
-        return UserAccessProfile.featureServices;
-      case 12:
-        return UserAccessProfile.featureStockList;
-      case 13:
-        return UserAccessProfile.featureBranches;
-      case 14:
-        return UserAccessProfile.featureAuditLogs;
-      case 15:
-        return UserAccessProfile.featureTransfers;
-      case 16:
-        return UserAccessProfile.featureAgent;
-      default:
-        return null;
-    }
   }
 
   int get _currentIndex => _allowedIndices.contains(_selectedIndex)
@@ -331,27 +290,95 @@ class AppShellState extends ConsumerState<AppShell> {
 
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => Dialog(
         backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text('Start App Training'),
-        content: const Text(
-          'Walk through the real POS app with animated guidance, page switching, and progress saved for this user.',
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.school_outlined,
+                        color: AppColors.primaryLight,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Training Hub',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Later',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => Navigator.pop(ctx, 'later'),
+                      icon: const Icon(Icons.close, size: 18),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Guided tours only show modules for enabled features.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, 'later'),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      child: const Text('Later'),
+                    ),
+                    const Spacer(),
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, 'hub'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      child: const Text('Modules'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, 'tour'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                      ),
+                      child: const Text('Start'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'later'),
-            child: const Text('Later'),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, 'hub'),
-            child: const Text('Browse Modules'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'tour'),
-            child: const Text('Start Full Tour'),
-          ),
-        ],
       ),
     );
 

@@ -144,6 +144,10 @@ function canonicalizeRecord(
   }
 
   for (const column of config.columns) {
+    if (tableName === 'users' && column === 'password') {
+      continue;
+    }
+
     if (column === 'sync_status') {
       if (
         forceSyncedStatus ||

@@ -22,6 +22,8 @@ import 'package:pos_app/features/services/data/service_repository.dart';
 import 'package:pos_app/features/training/application/training_controller.dart';
 import 'package:pos_app/features/training/presentation/training_hub_screen.dart';
 import 'package:pos_app/features/training/widgets/training_anchor.dart';
+import 'package:pos_app/features/settings/presentation/audit_log_screen.dart';
+import 'package:pos_app/features/settings/presentation/branch_management_screen.dart';
 import 'package:pos_app/features/settings/presentation/payment_methods_section.dart';
 import 'package:pos_app/features/settings/presentation/communication_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
@@ -1833,6 +1835,176 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  void _openSettingsMiniPage({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            _SettingsMiniPage(title: title, icon: icon, child: child),
+      ),
+    );
+  }
+
+  Widget _buildManagementPagesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          Icons.dashboard_customize_outlined,
+          'Management Pages',
+        ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final twoColumns = constraints.maxWidth >= 560;
+            final cardWidth = twoColumns
+                ? (constraints.maxWidth - 12) / 2
+                : constraints.maxWidth;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.workspace_premium_outlined,
+                    title: 'Subscription',
+                    subtitle: 'Plans, billing, limits, and business type.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Subscription',
+                      icon: Icons.workspace_premium_outlined,
+                      child: const SubscriptionPlansSection(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.payment_outlined,
+                    title: 'Payments',
+                    subtitle: 'Checkout methods and business M-Pesa.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Payments',
+                      icon: Icons.payment_outlined,
+                      child: const PaymentMethodsSection(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.message_outlined,
+                    title: 'Messaging',
+                    subtitle: 'WhatsApp and SMS business defaults.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Messaging',
+                      icon: Icons.message_outlined,
+                      child: const CommunicationSettingsSection(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.store_mall_directory_outlined,
+                    title: 'Branches',
+                    subtitle: 'Branch list, access, and locations.',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const BranchManagementScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.manage_search_outlined,
+                    title: 'Audit Logs',
+                    subtitle: 'Review staff and system activity.',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AuditLogScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeaturePageCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: AppColors.primaryLight, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncState = ref.watch(syncControllerProvider);
@@ -1840,6 +2012,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final progressPercent = (training.completionRatio * 100).round();
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         title: const Text('Settings'),
@@ -1988,6 +2161,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   const SizedBox(height: 32),
                 ] else ...[
+                  _buildManagementPagesSection(),
+                  const SizedBox(height: 32),
                   _buildSectionHeader(Icons.store, 'Shop Information'),
                   const SizedBox(height: 4),
                   const Text(
@@ -2087,21 +2262,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ]),
                   const SizedBox(height: 32),
                   _buildSectionHeader(
-                    Icons.message_outlined,
-                    'Customer Messaging',
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Set business contact defaults for WhatsApp and SMS provider sends.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const CommunicationSettingsSection(),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(
                     Icons.garage_outlined,
                     'Operational Settings',
                   ),
@@ -2121,21 +2281,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ],
                   ]),
                   const SizedBox(height: 32),
-                  _buildSectionHeader(
-                    Icons.payment_outlined,
-                    'Payment Methods',
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Define custom payment options available during checkout.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const PaymentMethodsSection(),
-                  const SizedBox(height: 32),
                   _buildSectionHeader(Icons.cloud_sync_outlined, 'Cloud Sync'),
                   const SizedBox(height: 4),
                   const Text(
@@ -2150,8 +2295,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     id: 'settings.sync',
                     child: _buildSyncCard(syncState),
                   ),
-                  const SizedBox(height: 16),
-                  const SubscriptionPlansSection(),
                   const SizedBox(height: 32),
                   _buildSectionHeader(
                     Icons.backup_outlined,
@@ -2662,6 +2805,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SettingsMiniPage extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _SettingsMiniPage({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        title: Row(
+          children: [
+            Icon(icon, color: AppColors.primaryLight, size: 20),
+            const SizedBox(width: 10),
+            Text(title),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 840),
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }

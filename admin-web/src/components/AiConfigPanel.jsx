@@ -31,12 +31,16 @@ export default function AiConfigPanel({ token }) {
   
   const [apiKey, setApiKey] = useState('')
   const [hasKey, setHasKey] = useState(false)
+  const [serpApiKey, setSerpApiKey] = useState('')
+  const [hasSerpApiKey, setHasSerpApiKey] = useState(false)
+  const [serpApiKeySource, setSerpApiKeySource] = useState('none')
   const [model, setModel] = useState('openai/gpt-4o-mini')
   const [sttModel, setSttModel] = useState('openai/whisper-1')
   const [ttsModel, setTtsModel] = useState('openai/tts-1')
   const [ttsVoice, setTtsVoice] = useState('alloy')
   const [enabled, setEnabled] = useState(false)
   const [showKey, setShowKey] = useState(false)
+  const [showSerpApiKey, setShowSerpApiKey] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
 
   const authHeaders = useCallback(() => ({ 'Authorization': `Bearer ${token}` }), [token])
@@ -45,6 +49,12 @@ export default function AiConfigPanel({ token }) {
     if (hasKey) return true
     const trimmed = apiKey.trim()
     return trimmed.length > 0 && !trimmed.startsWith('•')
+  }
+
+  const hasUsableSerpApiKey = () => {
+    if (hasSerpApiKey) return true
+    const trimmed = serpApiKey.trim()
+    return trimmed.length > 0 && !trimmed.startsWith('â€¢') && !trimmed.startsWith('*')
   }
 
   const fetchConfig = useCallback(async () => {
@@ -56,6 +66,9 @@ export default function AiConfigPanel({ token }) {
         if (data.ok) {
           setApiKey(data.data.apiKey || '')
           setHasKey(data.data.hasKey)
+          setSerpApiKey(data.data.serpApiKey || '')
+          setHasSerpApiKey(Boolean(data.data.hasSerpApiKey))
+          setSerpApiKeySource(data.data.serpApiKeySource || 'none')
           setModel(data.data.model || 'openai/gpt-4o-mini')
           setSttModel(data.data.sttModel || 'openai/whisper-1')
           setTtsModel(data.data.ttsModel || 'openai/tts-1')
@@ -87,7 +100,7 @@ export default function AiConfigPanel({ token }) {
       const res = await fetch('/api/platform/ai-config', {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, model, sttModel, ttsModel, ttsVoice, enabled }),
+        body: JSON.stringify({ apiKey, serpApiKey, model, sttModel, ttsModel, ttsVoice, enabled }),
       })
       const data = await res.json()
       if (data.ok) {
@@ -236,6 +249,37 @@ export default function AiConfigPanel({ token }) {
         </div>
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
           Get your key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-secondary)' }}>openrouter.ai/keys</a>
+        </span>
+      </div>
+
+      {/* Web Search Key */}
+      <div className="form-group">
+        <label className="form-label">
+          SerpAPI Key for Web Search
+          {hasUsableSerpApiKey() && <span style={{ color: 'var(--accent-success)', marginLeft: '0.5rem', fontSize: '0.75rem' }}>Configured</span>}
+        </label>
+        <div style={{ position: 'relative' }}>
+          <input
+            type={showSerpApiKey ? 'text' : 'password'}
+            className="form-input"
+            placeholder="serpapi-key..."
+            value={serpApiKey}
+            onChange={(e) => setSerpApiKey(e.target.value)}
+            style={{ paddingRight: '3rem' }}
+          />
+          <button
+            onClick={() => setShowSerpApiKey(!showSerpApiKey)}
+            style={{
+              position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+              fontSize: '0.875rem',
+            }}
+          >
+            {showSerpApiKey ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+          Lets Piki use live web search for current outside facts. Source: {serpApiKeySource === 'environment' ? 'server environment' : serpApiKeySource === 'database' ? 'admin setting' : 'not configured'}.
         </span>
       </div>
 
