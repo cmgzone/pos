@@ -36,8 +36,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _showConfirmPassword = false;
   SubscriptionCatalog? _catalog;
   String? _selectedMarketKey;
-  String? _selectedPlanCode;
-  String? _selectedSellingMode;
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
@@ -49,15 +47,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
     return catalog.selectedMarket ??
         (catalog.markets.isEmpty ? null : catalog.markets.first);
-  }
-
-  SubscriptionPlanSummary? get _selectedPlan {
-    final catalog = _catalog;
-    if (catalog == null) return null;
-    for (final plan in catalog.plans) {
-      if (plan.code == _selectedPlanCode) return plan;
-    }
-    return null;
   }
 
   @override
@@ -76,16 +65,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final market =
           catalog.selectedMarket ??
           (catalog.markets.isNotEmpty ? catalog.markets.first : null);
-      final plan = market == null ? null : _firstPlanForMarket(catalog, market);
-      final catalogMessage = market == null || plan == null
-          ? 'No subscription plans are active yet. In Super Admin, enable at least the Trial price or activate a payment gateway.'
+      final catalogMessage = market == null
+          ? 'No subscription markets are active yet. In Super Admin, enable at least one country price or payment gateway.'
           : null;
       if (!mounted) return;
       setState(() {
         _catalog = catalog;
         _selectedMarketKey = market?.key;
-        _selectedPlanCode = plan?.code;
-        _selectedSellingMode = _firstSellingMode(plan);
         _error = catalogMessage;
         _isLoadingCatalog = false;
       });
@@ -98,34 +84,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  SubscriptionPlanSummary? _firstPlanForMarket(
-    SubscriptionCatalog catalog,
-    SubscriptionMarket market,
-  ) {
-    for (final plan in catalog.plans) {
-      if (plan.priceFor(market) != null) return plan;
-    }
-    return null;
-  }
-
-  String? _firstSellingMode(SubscriptionPlanSummary? plan) {
-    if (plan == null || plan.sellingModes.isEmpty) return null;
-    if (plan.sellingModes.contains('products')) return 'products';
-    return plan.sellingModes.first;
-  }
-
   void _selectMarket(String? key) {
     final catalog = _catalog;
     if (catalog == null || key == null) return;
-    final market = catalog.markets.firstWhere(
-      (item) => item.key == key,
-      orElse: () => catalog.markets.first,
-    );
-    final plan = _firstPlanForMarket(catalog, market);
     setState(() {
       _selectedMarketKey = key;
-      _selectedPlanCode = plan?.code;
-      _selectedSellingMode = _firstSellingMode(plan);
     });
   }
 
@@ -180,14 +143,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     final market = _selectedMarket;
-    final plan = _selectedPlan;
-    final sellingMode = _selectedSellingMode;
-    if (_isBusinessSetupFlow &&
-        (market == null || plan == null || sellingMode == null)) {
-      setState(
-        () => _error =
-            'Choose your country, subscription plan, and what you sell.',
-      );
+    if (_isBusinessSetupFlow && market == null) {
+      setState(() => _error = 'Choose your country.');
       return;
     }
 
@@ -219,8 +176,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         password: password,
         deviceId: deviceId,
         countryCode: market?.countryCode ?? 'GLOBAL',
-        requestedPlanCode: plan?.code ?? 'trial',
-        sellingMode: sellingMode ?? 'products',
         provider: market?.provider,
       );
 
@@ -277,10 +232,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         await SyncSettingsService.setLocalBusinessId(incomingBusinessId);
       }
 
-      if (response.checkoutRequired && response.checkoutContext != null) {
-        await _startRegistrationCheckout(response, phone);
-      }
-
       if (_isBusinessSetupFlow) {
         await ShopSettings.init();
         await ShopSettings.setShopName(
@@ -300,7 +251,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
               afterSignup: true,
               initialCountryCode: market?.countryCode,
               initialProvider: market?.provider,
-              initialPlanCode: plan?.code,
             )
           : AppShell(key: AppShell.shellKey);
 
@@ -318,46 +268,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  Future<void> _startRegistrationCheckout(
-    CloudAuthResponse response,
-    String phone,
-  ) async {
-    final checkoutContext =
-        response.checkoutContext ?? const <String, dynamic>{};
-    final planCode = checkoutContext['planCode']?.toString() ?? '';
-    final countryCode = checkoutContext['countryCode']?.toString() ?? '';
-    final provider = checkoutContext['provider']?.toString() ?? '';
-    if (planCode.isEmpty || countryCode.isEmpty || provider.isEmpty) return;
-
-    try {
-      final checkout = await SubscriptionService.startCheckout(
-        planCode: planCode,
-        countryCode: countryCode,
-        provider: provider,
-        phoneNumber: provider == 'mpesa' ? phone : null,
-      );
-      if (!mounted) return;
-      final message =
-          checkout.message ??
-          (provider == 'mpesa'
-              ? 'M-Pesa checkout started. Paid features unlock after confirmation.'
-              : 'Checkout started. Complete payment from Subscription settings.');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Account created, but checkout could not start: $error',
-          ),
-          backgroundColor: AppColors.warning,
-        ),
-      );
-    }
-  }
-
   Widget _buildSubscriptionChooser() {
     if (_isLoadingCatalog) {
       return const Column(
@@ -366,7 +276,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           LinearProgressIndicator(minHeight: 2),
           SizedBox(height: 12),
           Text(
-            'Loading available countries and plans...',
+            'Loading available countries...',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
         ],
@@ -395,9 +305,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     final market = _selectedMarket;
-    final visiblePlans = market == null
-        ? <SubscriptionPlanSummary>[]
-        : catalog.plans.where((plan) => plan.priceFor(market) != null).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -423,100 +330,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
           onChanged: _isLoading ? null : _selectMarket,
         ),
         const SizedBox(height: 20),
-        const Text(
-          'Plan',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        Text(
+          market == null
+              ? 'Plans and business type will be selected after account creation.'
+              : 'You will choose products, services, or combo and pick a plan after creating the account.',
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+            height: 1.4,
+          ),
         ),
-        const SizedBox(height: 8),
-        if (visiblePlans.isEmpty)
-          const Text(
-            'No active plans are configured for this country.',
-            style: TextStyle(color: AppColors.error, fontSize: 12),
-          )
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: visiblePlans.map((plan) {
-              final price = market == null ? null : plan.priceFor(market);
-              final selected = plan.code == _selectedPlanCode;
-              return ChoiceChip(
-                selected: selected,
-                label: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(plan.name),
-                    Text(
-                      price?.displayAmount ?? 'No price',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: selected
-                            ? Colors.white70
-                            : AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                onSelected: _isLoading
-                    ? null
-                    : (_) => setState(() {
-                        _selectedPlanCode = plan.code;
-                        _selectedSellingMode = _firstSellingMode(plan);
-                      }),
-              );
-            }).toList(),
-          ),
-        if (_selectedPlan != null &&
-            _selectedPlan!.sellingModes.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          const Text(
-            'What do you sell?',
-            style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _selectedPlan!.sellingModes.map((mode) {
-              final selected = mode == _selectedSellingMode;
-              return ChoiceChip(
-                selected: selected,
-                avatar: Icon(switch (mode) {
-                  'services' => Icons.design_services_outlined,
-                  'combo' => Icons.all_inclusive_outlined,
-                  _ => Icons.inventory_2_outlined,
-                }, size: 18),
-                label: Text(switch (mode) {
-                  'services' => 'Services only',
-                  'combo' => 'Products + Services',
-                  _ => 'Products only',
-                }),
-                onSelected: _isLoading
-                    ? null
-                    : (_) => setState(() => _selectedSellingMode = mode),
-              );
-            }).toList(),
-          ),
-        ] else if (_selectedPlan != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            'This plan is not available for product or service selling yet.',
-            style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
-          ),
-        ],
-        if (_selectedPlan != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            '${_selectedPlan!.entitlements.maxBranches} branch(es), '
-            '${_selectedPlan!.entitlements.maxEmployees} employee(s), '
-            '${_selectedPlan!.entitlements.maxAiAgents} AI seat(s)',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
-          ),
-        ],
       ],
     );
   }

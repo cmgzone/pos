@@ -34,8 +34,26 @@ class SubscriptionPlanPrice {
     );
   }
 
-  String get displayAmount =>
-      '$currency ${(amountMinor / 100).toStringAsFixed(currency == 'KES' ? 0 : 2)}';
+  String get displayAmount {
+    final major = amountMinor / 100;
+    final decimals = currency == 'KES' ? 0 : 2;
+    final value = major.toStringAsFixed(decimals);
+    final parts = value.split('.');
+    final whole = _withThousands(parts.first);
+    return '$currency $whole${parts.length > 1 ? '.${parts.last}' : ''}';
+  }
+
+  static String _withThousands(String value) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < value.length; i++) {
+      final remaining = value.length - i;
+      buffer.write(value[i]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return buffer.toString();
+  }
 }
 
 class SubscriptionMarket {
@@ -118,16 +136,46 @@ class SubscriptionPlanSummary {
     );
   }
 
-  SubscriptionPlanPrice? priceFor(SubscriptionMarket market) {
-    return prices.where((price) {
-          return price.countryCode == market.countryCode &&
-              price.provider == market.provider;
-        }).firstOrNull ??
-        prices.where((price) {
-          return price.countryCode == 'GLOBAL' &&
-              price.provider == market.provider;
-        }).firstOrNull ??
-        price;
+  SubscriptionPlanPrice? priceFor(
+    SubscriptionMarket market, {
+    String? billingPeriod,
+  }) {
+    bool matches(SubscriptionPlanPrice price, String countryCode) {
+      return price.countryCode == countryCode &&
+          price.provider == market.provider &&
+          (billingPeriod == null || price.billingPeriod == billingPeriod);
+    }
+
+    return prices
+            .where((price) => matches(price, market.countryCode))
+            .firstOrNull ??
+        prices.where((price) => matches(price, 'GLOBAL')).firstOrNull ??
+        (billingPeriod == null || price?.billingPeriod == billingPeriod
+            ? price
+            : null);
+  }
+
+  List<String> billingPeriodsFor(SubscriptionMarket market) {
+    final periods = <String>[];
+    for (final item in prices) {
+      final matchesMarket =
+          item.provider == market.provider &&
+          (item.countryCode == market.countryCode ||
+              item.countryCode == 'GLOBAL');
+      if (matchesMarket && !periods.contains(item.billingPeriod)) {
+        periods.add(item.billingPeriod);
+      }
+    }
+    if (periods.isEmpty &&
+        price != null &&
+        price!.provider == market.provider) {
+      periods.add(price!.billingPeriod);
+    }
+    periods.sort((a, b) {
+      const order = {'monthly': 0, 'yearly': 1, 'weekly': 2};
+      return (order[a] ?? 99).compareTo(order[b] ?? 99);
+    });
+    return periods;
   }
 }
 
@@ -256,6 +304,8 @@ class SubscriptionService {
     required String planCode,
     required String countryCode,
     required String provider,
+    required String billingPeriod,
+    required String sellingMode,
     String? phoneNumber,
   }) async {
     final headers = await _authHeaders();
@@ -267,6 +317,8 @@ class SubscriptionService {
         'planCode': planCode,
         'countryCode': countryCode,
         'provider': provider,
+        'billingPeriod': billingPeriod,
+        'sellingMode': sellingMode,
         ...?(phoneNumber == null ? null : {'phoneNumber': phoneNumber}),
       },
       options: Options(headers: headers),
@@ -299,10 +351,7 @@ class SubscriptionService {
   }
 
   static String _urlFor(String backendUrl, String path) {
-    final base = backendUrl.replaceFirst(
-      RegExp(r'/+$'),
-      '',
-    );
+    final base = backendUrl.replaceFirst(RegExp(r'/+$'), '');
     return '$base/$path';
   }
 

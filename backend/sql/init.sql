@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS subscription_payments (
   currency text NOT NULL,
   amount_minor integer NOT NULL,
   billing_period text NOT NULL DEFAULT 'monthly',
+  selling_mode text NOT NULL DEFAULT 'products',
   status text NOT NULL DEFAULT 'pending',
   phone_number text,
   external_reference text,
@@ -93,6 +94,9 @@ CREATE TABLE IF NOT EXISTS subscription_payments (
   updated_at timestamptz NOT NULL DEFAULT NOW(),
   completed_at timestamptz
 );
+
+ALTER TABLE subscription_payments
+  ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'products';
 
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_business
   ON subscription_payments(business_id, created_at DESC);

@@ -266,6 +266,7 @@ async function ensureSubscriptionSchema(target = query) {
       currency text NOT NULL,
       amount_minor integer NOT NULL,
       billing_period text NOT NULL DEFAULT 'monthly',
+      selling_mode text NOT NULL DEFAULT 'products',
       status text NOT NULL DEFAULT 'pending',
       phone_number text,
       external_reference text,
@@ -276,6 +277,14 @@ async function ensureSubscriptionSchema(target = query) {
       updated_at timestamptz NOT NULL DEFAULT NOW(),
       completed_at timestamptz
     )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    ALTER TABLE subscription_payments
+      ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'products'
     `,
   );
 

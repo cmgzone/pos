@@ -155,7 +155,7 @@ app.post('/api/auth/register', async (req, res, next) => {
     );
     const requestedSellingMode = normalizeSellingMode(
       req.body?.sellingMode || req.body?.businessType || req.body?.saleMode,
-    ) || 'products';
+    );
 
     if (!businessName) {
       throw createHttpError(400, 'Business name is required');
@@ -175,9 +175,6 @@ app.post('/api/auth/register', async (req, res, next) => {
     if (!requestedCountry) {
       throw createHttpError(400, 'Country is required');
     }
-    if (!requestedPlanCode) {
-      throw createHttpError(400, 'Subscription plan is required');
-    }
 
     await ensureSubscriptionSchema();
     const markets = await listPublicMarkets();
@@ -190,29 +187,32 @@ app.post('/api/auth/register', async (req, res, next) => {
     }
     const countryCode = normalizeCountryCode(market.countryCode || requestedCountry);
     const provider = normalizeProvider(market.provider || requestedProvider);
-    const selectedPrice = await resolvePlanPrice({
-      planCode: requestedPlanCode,
+    const registrationSelection = await resolveRegistrationPlanSelection({
+      requestedPlanCode,
       countryCode,
       provider,
     });
-    if (!selectedPrice) {
-      throw createHttpError(404, 'No active price is configured for the selected plan');
+    if (!registrationSelection) {
+      throw createHttpError(
+        404,
+        requestedPlanCode
+          ? 'No active price is configured for the selected plan'
+          : 'No free trial plan is configured for this country',
+      );
     }
-    const planEntitlements = await loadEntitlementsForPlan(requestedPlanCode);
-    const sellingModeValidation = validateSellingModeEntitlement(
+    const selectedPlanCode = registrationSelection.planCode;
+    const selectedPrice = registrationSelection.price;
+    const planEntitlements = await loadEntitlementsForPlan(selectedPlanCode);
+    const sellingMode = selectSellingModeForPlan(
       planEntitlements,
       requestedSellingMode,
     );
-    if (!sellingModeValidation.ok) {
-      throw createHttpError(400, sellingModeValidation.message);
-    }
-    const sellingMode = sellingModeValidation.mode;
     const selectedEntitlements = applySellingModeToEntitlements(
       planEntitlements,
       sellingMode,
     );
     const startsPaid = Number(selectedPrice.amountMinor || 0) === 0;
-    const initialPlan = startsPaid ? requestedPlanCode : 'trial';
+    const initialPlan = startsPaid ? selectedPlanCode : 'trial';
 
     const result = await withTransaction(async (client) => {
       // Check for existing user with same email across all businesses
@@ -360,7 +360,7 @@ app.post('/api/auth/register', async (req, res, next) => {
           updated_at: now.toISOString(),
         },
         selectedPlan: {
-          code: requestedPlanCode,
+          code: selectedPlanCode,
           entitlements: selectedEntitlements,
           price: selectedPrice,
         },
@@ -368,7 +368,7 @@ app.post('/api/auth/register', async (req, res, next) => {
         checkoutRequired: !startsPaid,
         checkoutContext: !startsPaid
           ? {
-              planCode: requestedPlanCode,
+              planCode: selectedPlanCode,
               countryCode,
               provider,
               price: selectedPrice,
@@ -1409,6 +1409,10 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
     const planCode = normalizeOptionalText(req.body?.planCode || req.body?.plan);
+    const billingPeriod = normalizeOptionalText(req.body?.billingPeriod) || 'monthly';
+    const requestedSellingMode = normalizeSellingMode(
+      req.body?.sellingMode || req.body?.businessType || req.body?.saleMode,
+    );
     const requestedCountry =
       normalizeOptionalText(req.body?.countryCode) ||
       businessContext.countryCode ||
@@ -1432,11 +1436,17 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
       planCode,
       countryCode,
       provider,
-      billingPeriod: req.body?.billingPeriod || 'monthly',
+      billingPeriod,
     });
     if (!price) {
       throw createHttpError(404, 'No active price is configured for this plan');
     }
+    const planEntitlements = await loadEntitlementsForPlan(planCode);
+    const sellingMode = selectSellingModeForPlan(
+      planEntitlements,
+      requestedSellingMode,
+      businessContext.sellingMode,
+    );
 
     const gateway = await loadPaymentGateway(provider);
     const isFreePlan = Number(price.amountMinor || 0) === 0;
@@ -1454,6 +1464,7 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
         price,
         provider,
         countryCode,
+        sellingMode,
         phoneNumber,
         googlePayToken: req.body?.googlePayToken || req.body?.paymentData,
       });
@@ -2494,7 +2505,16 @@ async function getBusinessUsage(businessId, target = query) {
 
 async function createSubscriptionPayment(
   client,
-  { businessId, planCode, price, provider, countryCode, phoneNumber, googlePayToken },
+  {
+    businessId,
+    planCode,
+    price,
+    provider,
+    countryCode,
+    sellingMode,
+    phoneNumber,
+    googlePayToken,
+  },
 ) {
   await ensureSubscriptionSchema(client);
   const paymentId = crypto.randomUUID();
@@ -2512,6 +2532,7 @@ async function createSubscriptionPayment(
       currency,
       amount_minor,
       billing_period,
+      selling_mode,
       status,
       phone_number,
       external_reference,
@@ -2519,7 +2540,7 @@ async function createSubscriptionPayment(
       created_at,
       updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, $11, $12::jsonb, $13, $13)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13::jsonb, $14, $14)
     RETURNING *
     `,
     [
@@ -2532,6 +2553,7 @@ async function createSubscriptionPayment(
       price.currency,
       price.amountMinor,
       price.billingPeriod,
+      normalizeSellingMode(sellingMode) || 'products',
       phoneNumber,
       externalReference,
       googlePayToken ? JSON.stringify(googlePayToken) : null,
@@ -2552,8 +2574,22 @@ async function activateSubscriptionFromPayment(client, paymentId) {
   }
 
   const now = new Date();
+  const planEntitlements = await loadEntitlementsForPlan(payment.plan_code, client);
+  const sellingMode = selectSellingModeForPlan(
+    planEntitlements,
+    normalizeSellingMode(payment.selling_mode),
+  );
   const expiresAt = addDays(now, billingPeriodDays(payment.billing_period));
   const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
+  await client.query(
+    `
+    UPDATE businesses
+    SET selling_mode = $2,
+        updated_at = $3
+    WHERE id = $1
+    `,
+    [payment.business_id, sellingMode, now.toISOString()],
+  );
   await client.query(
     `
     INSERT INTO subscriptions (
@@ -2804,6 +2840,7 @@ async function chargeGooglePayGateway(payment, paymentData, gateway) {
       externalReference: payment.external_reference,
       amountMinor: Number(payment.amount_minor || 0),
       currency: payment.currency,
+      sellingMode: payment.selling_mode,
       paymentData,
     }),
   });
@@ -3046,6 +3083,95 @@ function selectSubscriptionMarket(markets, { countryCode, provider } = {}) {
   return markets[0] || null;
 }
 
+async function resolveRegistrationPlanSelection({
+  requestedPlanCode,
+  countryCode,
+  provider,
+}) {
+  if (requestedPlanCode) {
+    const price = await resolvePlanPrice({
+      planCode: requestedPlanCode,
+      countryCode,
+      provider,
+    });
+    return price ? { planCode: requestedPlanCode, price } : null;
+  }
+
+  const trialPrice = await resolvePlanPrice({
+    planCode: 'trial',
+    countryCode,
+    provider,
+  });
+  if (trialPrice && Number(trialPrice.amountMinor || 0) === 0) {
+    return { planCode: 'trial', price: trialPrice };
+  }
+
+  const syntheticTrialPrice = {
+    id: null,
+    planCode: 'trial',
+    countryCode: normalizeCountryCode(countryCode),
+    currency: normalizeCountryCode(countryCode) === 'KE' ? 'KES' : 'USD',
+    amountMinor: 0,
+    billingPeriod: 'monthly',
+    provider: normalizeProvider(provider),
+  };
+
+  const cleanCountry = normalizeCountryCode(countryCode);
+  const cleanProvider = normalizeProvider(provider);
+  const plans = await listPublicPlans({ countryCode: cleanCountry });
+  for (const plan of plans) {
+    const freePrice =
+      (plan.prices || []).find((price) => {
+        return (
+          price.provider === cleanProvider &&
+          Number(price.amountMinor || 0) === 0 &&
+          (price.countryCode === cleanCountry || price.countryCode === 'GLOBAL')
+        );
+      }) ||
+      (plan.price &&
+      plan.price.provider === cleanProvider &&
+      Number(plan.price.amountMinor || 0) === 0
+        ? plan.price
+        : null);
+    if (freePrice) {
+      return { planCode: plan.code, price: freePrice };
+    }
+  }
+
+  return { planCode: 'trial', price: syntheticTrialPrice };
+}
+
+function selectSellingModeForPlan(entitlements, requestedMode, fallbackMode = null) {
+  const requested = normalizeSellingMode(requestedMode);
+  if (requested) {
+    const validation = validateSellingModeEntitlement(entitlements, requested);
+    if (!validation.ok) {
+      throw createHttpError(400, validation.message);
+    }
+    return validation.mode;
+  }
+
+  const fallback = normalizeSellingMode(fallbackMode);
+  if (fallback) {
+    const validation = validateSellingModeEntitlement(entitlements, fallback);
+    if (validation.ok) {
+      return validation.mode;
+    }
+  }
+
+  for (const mode of ['products', 'services', 'combo']) {
+    const validation = validateSellingModeEntitlement(entitlements, mode);
+    if (validation.ok) {
+      return validation.mode;
+    }
+  }
+
+  throw createHttpError(
+    400,
+    'This plan is not available for product or service selling yet.',
+  );
+}
+
 function resolveMpesaGatewayConfig(gateway) {
   const publicConfig = gateway?.publicConfig || {};
   const secretConfig = gateway?.secretConfig || {};
@@ -3134,6 +3260,7 @@ function normalizePaymentRow(row) {
     currency: row.currency,
     amountMinor: Number(row.amount_minor || 0),
     billingPeriod: row.billing_period || 'monthly',
+    sellingMode: row.selling_mode || 'products',
     status: row.status,
     phoneNumber: row.phone_number,
     externalReference: row.external_reference,
