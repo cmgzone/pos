@@ -78,6 +78,11 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 dependency_overrides:
+  # flutter_sound 9.30.0 publishes a broken Windows plugin target name
+  # (taudio_plugin vs flutter_sound_plugin). Keep the requested version, but
+  # use a local patch so Windows desktop builds can generate correctly.
+  flutter_sound:
+    path: third_party/flutter_sound_windows_fix
   # sqflite_android 2.4.2+2/+3 reference newer Android/Java APIs than this
   # project currently compiles against, which breaks release builds on SDK 35.
   sqflite_android: 2.4.1
