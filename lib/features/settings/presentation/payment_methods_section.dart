@@ -87,6 +87,29 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   }
 
   Future<void> _saveMpesaSettings() async {
+    if (_mpesaActive) {
+      final missing = <String>[];
+      if (_mpesaShortcodeController.text.trim().isEmpty) {
+        missing.add('Till or PayBill number');
+      }
+      if (_mpesaConsumerKeyController.text.trim().isEmpty) {
+        missing.add('consumer key');
+      }
+      if (_mpesaConsumerSecretController.text.trim().isEmpty) {
+        missing.add('consumer secret');
+      }
+      if (_mpesaPasskeyController.text.trim().isEmpty) {
+        missing.add('passkey');
+      }
+      if (missing.isNotEmpty) {
+        setState(() {
+          _mpesaMessage =
+              'Complete M-Pesa settings before enabling: ${missing.join(', ')}.';
+        });
+        return;
+      }
+    }
+
     setState(() {
       _savingMpesa = true;
       _mpesaMessage = '';
@@ -523,6 +546,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               child: TextField(
                 controller: _mpesaConsumerKeyController,
                 decoration: const InputDecoration(labelText: 'Consumer key'),
+                obscureText: true,
               ),
             ),
             SizedBox(
@@ -530,6 +554,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               child: TextField(
                 controller: _mpesaConsumerSecretController,
                 decoration: const InputDecoration(labelText: 'Consumer secret'),
+                obscureText: true,
               ),
             ),
             SizedBox(
@@ -537,6 +562,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               child: TextField(
                 controller: _mpesaPasskeyController,
                 decoration: const InputDecoration(labelText: 'Passkey'),
+                obscureText: true,
               ),
             ),
           ],

@@ -8,6 +8,10 @@ const {
 } = require('./subscriptionPlans');
 
 const SECRET_MASK_PREFIX = '********';
+const MPESA_TRANSACTION_TYPES = new Set([
+  'CustomerPayBillOnline',
+  'CustomerBuyGoodsOnline',
+]);
 
 let schemaReady = false;
 
@@ -138,6 +142,10 @@ async function saveBusinessPaymentGateway(
     ...existing,
     provider: cleanProvider,
   });
+  const platformGateway = cleanProvider === 'mpesa'
+    ? await loadPaymentGateway('mpesa')
+    : null;
+  validateBusinessPaymentGatewayConfiguration(normalized, platformGateway);
 
   const result = await runQuery(
     target,
@@ -384,6 +392,25 @@ async function handlePosMpesaCallback({
     if (!payment) {
       return false;
     }
+    if (payment.status === 'paid' && Number(resultCode) !== 0) {
+      await client.query(
+        `
+        UPDATE pos_payment_requests
+        SET metadata_json = metadata_json || $2::jsonb,
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [
+          payment.id,
+          JSON.stringify({
+            duplicateResultCode: resultCode,
+            duplicateResultDescription: resultDescription,
+            duplicateMetadata: metadata,
+          }),
+        ],
+      );
+      return true;
+    }
     const status = Number(resultCode) === 0 ? 'paid' : 'failed';
     const nextMetadata = {
       resultCode,
@@ -556,8 +583,9 @@ function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
       businessPublicConfig.callbackUrl ||
       platformPublicConfig.callbackUrl ||
       config.mpesaCallbackUrl,
-    transactionType:
-      businessPublicConfig.transactionType || 'CustomerPayBillOnline',
+    transactionType: normalizeMpesaTransactionType(
+      businessPublicConfig.transactionType,
+    ),
     accountReference: businessPublicConfig.accountReference || '',
     consumerKey: businessSecretConfig.consumerKey || '',
     consumerSecret: businessSecretConfig.consumerSecret || '',
@@ -567,7 +595,8 @@ function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
 
 function normalizeBusinessPaymentGatewayInput(input, existing = {}) {
   const raw = input && typeof input === 'object' ? input : {};
-  return {
+  const provider = normalizeProvider(raw.provider ?? existing.provider);
+  const normalized = {
     provider: normalizeProvider(raw.provider ?? existing.provider),
     displayName:
       normalizeText(raw.displayName ?? raw.display_name) ||
@@ -588,6 +617,43 @@ function normalizeBusinessPaymentGatewayInput(input, existing = {}) {
       { secret: true },
     ),
   };
+  if (provider === 'mpesa') {
+    normalized.publicConfig.transactionType = normalizeMpesaTransactionType(
+      normalized.publicConfig.transactionType,
+    );
+    if (normalized.publicConfig.shortcode) {
+      normalized.publicConfig.shortcode = String(
+        normalized.publicConfig.shortcode,
+      ).replace(/\s+/g, '');
+    }
+  }
+  return normalized;
+}
+
+function validateBusinessPaymentGatewayConfiguration(gateway, platformGateway) {
+  if (!gateway?.isActive || gateway.provider !== 'mpesa') {
+    return;
+  }
+  const config = resolveMpesaGatewayConfig(platformGateway, gateway);
+  const missing = [];
+  if (!config.shortcode) missing.push('Till or PayBill number');
+  if (!config.consumerKey) missing.push('consumer key');
+  if (!config.consumerSecret) missing.push('consumer secret');
+  if (!config.passkey) missing.push('passkey');
+  if (!config.callbackUrl) {
+    missing.push('callback URL from super admin or business settings');
+  }
+  if (missing.length > 0) {
+    throw createError(
+      400,
+      `Complete M-Pesa settings before enabling: ${missing.join(', ')}.`,
+    );
+  }
+}
+
+function normalizeMpesaTransactionType(value) {
+  const text = normalizeText(value) || 'CustomerPayBillOnline';
+  return MPESA_TRANSACTION_TYPES.has(text) ? text : 'CustomerPayBillOnline';
 }
 
 function normalizeBusinessPaymentGatewayRow(row, { includeSecrets = false } = {}) {
@@ -760,4 +826,5 @@ module.exports = {
   linkPosPaymentToSale,
   handlePosMpesaCallback,
   resolveMpesaGatewayConfig,
+  validateBusinessPaymentGatewayConfiguration,
 };

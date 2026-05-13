@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveMpesaGatewayConfig } = require('../src/posPayments');
+const {
+  resolveMpesaGatewayConfig,
+  validateBusinessPaymentGatewayConfiguration,
+} = require('../src/posPayments');
 
 test('POS M-Pesa config uses business merchant credentials', () => {
   const config = resolveMpesaGatewayConfig(
@@ -62,4 +65,38 @@ test('POS M-Pesa config does not fall back to platform merchant credentials', ()
   assert.equal(config.consumerSecret, '');
   assert.equal(config.passkey, '');
   assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
+});
+
+test('active business M-Pesa settings require merchant credentials', () => {
+  assert.throws(
+    () =>
+      validateBusinessPaymentGatewayConfiguration(
+        {
+          provider: 'mpesa',
+          isActive: true,
+          publicConfig: { shortcode: '123456' },
+          secretConfig: { consumerKey: 'key' },
+        },
+        {
+          publicConfig: {
+            callbackUrl: 'https://platform.example/mpesa/callback',
+          },
+        },
+      ),
+    /consumer secret, passkey/,
+  );
+});
+
+test('inactive business M-Pesa settings can be saved incomplete', () => {
+  assert.doesNotThrow(() =>
+    validateBusinessPaymentGatewayConfiguration(
+      {
+        provider: 'mpesa',
+        isActive: false,
+        publicConfig: {},
+        secretConfig: {},
+      },
+      null,
+    ),
+  );
 });
