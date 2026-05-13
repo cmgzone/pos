@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   applySellingModeToEntitlements,
+  isPriceAvailableForPublicCatalog,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
 
@@ -54,4 +55,51 @@ test('selling mode validation requires the selected plan to support the mode', (
     ok: true,
     mode: 'combo',
   });
+});
+
+test('public catalog keeps free plans visible without an active payment gateway', () => {
+  assert.equal(
+    isPriceAvailableForPublicCatalog(
+      {
+        isActive: true,
+        amountMinor: 0,
+        countryCode: 'KE',
+      },
+      {
+        isActive: false,
+        countries: ['KE'],
+      },
+    ),
+    true,
+  );
+
+  assert.equal(
+    isPriceAvailableForPublicCatalog(
+      {
+        isActive: true,
+        amountMinor: 150000,
+        countryCode: 'KE',
+      },
+      {
+        isActive: false,
+        countries: ['KE'],
+      },
+    ),
+    false,
+  );
+
+  assert.equal(
+    isPriceAvailableForPublicCatalog(
+      {
+        isActive: true,
+        amountMinor: 150000,
+        countryCode: 'KE',
+      },
+      {
+        isActive: true,
+        countries: ['KE'],
+      },
+    ),
+    true,
+  );
 });

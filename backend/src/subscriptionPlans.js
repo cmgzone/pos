@@ -447,12 +447,18 @@ async function resolvePlanPrice({
     SELECT p.*
     FROM subscription_plan_prices p
     JOIN subscription_plans sp ON sp.code = p.plan_code AND sp.is_active = true
-    JOIN platform_payment_gateways g ON g.provider = p.provider AND g.is_active = true
+    JOIN platform_payment_gateways g ON g.provider = p.provider
     WHERE p.plan_code = $1
       AND ($2::text IS NULL OR p.provider = $2)
       AND p.billing_period = $3
       AND p.is_active = true
-      AND g.countries_json ? p.country_code
+      AND (
+        p.amount_minor = 0
+        OR (
+          g.is_active = true
+          AND g.countries_json ? p.country_code
+        )
+      )
       AND p.country_code IN ($4, 'GLOBAL')
     ORDER BY CASE WHEN p.country_code = $4 THEN 0 ELSE 1 END
     LIMIT 1
@@ -478,8 +484,7 @@ async function listPublicPlans({ countryCode } = {}, target = query) {
         const gateway = gatewaysByProvider.get(price.provider);
         return (
           price.isActive &&
-          gateway?.isActive &&
-          (gateway.countries || []).includes(price.countryCode) &&
+          isPriceAvailableForPublicCatalog(price, gateway) &&
           (!cleanCountry ||
             price.countryCode === cleanCountry ||
             price.countryCode === 'GLOBAL')
@@ -530,8 +535,13 @@ async function listPublicMarkets(target = query) {
       JOIN platform_payment_gateways g ON g.provider = p.provider
       WHERE p.is_active = true
         AND sp.is_active = true
-        AND g.is_active = true
-        AND g.countries_json ? p.country_code
+        AND (
+          p.amount_minor = 0
+          OR (
+            g.is_active = true
+            AND g.countries_json ? p.country_code
+          )
+        )
     ) markets
     ORDER BY sort_rank ASC, country_code ASC, provider ASC
     `,
@@ -854,6 +864,19 @@ function findPublicPriceForCountry(prices, cleanCountry) {
       (price) => price.isActive && price.countryCode === 'GLOBAL',
     ) ||
     null
+  );
+}
+
+function isPriceAvailableForPublicCatalog(price, gateway) {
+  if (!price?.isActive) {
+    return false;
+  }
+  if (Number(price.amountMinor || 0) === 0) {
+    return true;
+  }
+  return Boolean(
+    gateway?.isActive &&
+      (gateway.countries || []).includes(price.countryCode),
   );
 }
 
@@ -1212,6 +1235,7 @@ module.exports = {
   listPublicMarkets,
   loadEntitlementsForPlan,
   loadPaymentGateway,
+  isPriceAvailableForPublicCatalog,
   normalizePlanInput,
   normalizeCountryCode,
   normalizePriceInput,

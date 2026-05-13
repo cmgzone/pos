@@ -1428,14 +1428,6 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
     if (!market) {
       throw createHttpError(400, 'No active subscription payment gateway is configured for this market');
     }
-    const gateway = await loadPaymentGateway(provider);
-    if (!gateway || !gateway.isActive) {
-      throw createHttpError(400, 'This payment gateway is not active');
-    }
-    if (provider === 'mpesa' && !phoneNumber) {
-      throw createHttpError(400, 'phoneNumber is required for M-Pesa checkout');
-    }
-
     const price = await resolvePlanPrice({
       planCode,
       countryCode,
@@ -1444,6 +1436,15 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
     });
     if (!price) {
       throw createHttpError(404, 'No active price is configured for this plan');
+    }
+
+    const gateway = await loadPaymentGateway(provider);
+    const isFreePlan = Number(price.amountMinor || 0) === 0;
+    if (!isFreePlan && (!gateway || !gateway.isActive)) {
+      throw createHttpError(400, 'This payment gateway is not active');
+    }
+    if (!isFreePlan && provider === 'mpesa' && !phoneNumber) {
+      throw createHttpError(400, 'phoneNumber is required for M-Pesa checkout');
     }
 
     const checkout = await withTransaction(async (client) => {
@@ -1464,6 +1465,16 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
 
       return payment;
     });
+
+    if (checkout.activated || isFreePlan) {
+      return res.json({
+        ok: true,
+        data: {
+          ...checkout,
+          message: 'Subscription activated.',
+        },
+      });
+    }
 
     if (provider === 'mpesa') {
       const mpesa = await initiateMpesaCheckout(checkout, gateway);

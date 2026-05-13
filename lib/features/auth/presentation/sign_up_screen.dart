@@ -76,12 +76,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
           catalog.selectedMarket ??
           (catalog.markets.isNotEmpty ? catalog.markets.first : null);
       final plan = market == null ? null : _firstPlanForMarket(catalog, market);
+      final catalogMessage = market == null || plan == null
+          ? 'No subscription plans are active yet. In Super Admin, enable at least the Trial price or activate a payment gateway.'
+          : null;
       if (!mounted) return;
       setState(() {
         _catalog = catalog;
         _selectedMarketKey = market?.key;
         _selectedPlanCode = plan?.code;
         _selectedSellingMode = _firstSellingMode(plan);
+        _error = catalogMessage;
         _isLoadingCatalog = false;
       });
     } catch (error) {
@@ -355,10 +359,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     final catalog = _catalog;
     if (catalog == null || catalog.markets.isEmpty) {
-      return OutlinedButton.icon(
-        onPressed: _loadSubscriptionCatalog,
-        icon: const Icon(Icons.refresh),
-        label: const Text('Load subscription plans'),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (catalog != null && catalog.markets.isEmpty) ...[
+            const Text(
+              'No subscription markets are active.',
+              style: TextStyle(color: AppColors.error, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+          ],
+          OutlinedButton.icon(
+            onPressed: _loadSubscriptionCatalog,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Load subscription plans'),
+          ),
+        ],
       );
     }
 
