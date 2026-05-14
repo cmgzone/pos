@@ -419,6 +419,7 @@ class PikiBrainService {
 
       final response = await OpenRouterService.chat(
         messages: messages,
+        consumeQuota: true,
         includeBusinessContext:
             mode == PikiMode.plan ||
             mode == PikiMode.advice ||
@@ -681,6 +682,7 @@ class PikiBrainService {
             conversation: plannerConversation,
             toolCatalog: PikiAgentService.toolCatalogPrompt(),
             memorySummary: _memorySummary(),
+            consumeQuota: loopCount == 1,
             includeBusinessContext:
                 mode == PikiMode.plan ||
                 mode == PikiMode.advice ||

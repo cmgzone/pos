@@ -1757,7 +1757,7 @@ const DEFAULT_STT_MODEL = 'openai/whisper-1';
 const DEFAULT_TTS_MODEL = 'openai/tts-1';
 const DEFAULT_TTS_VOICE = 'alloy';
 
-async function checkAiRateLimit(businessContext) {
+async function checkAiRateLimit(businessContext, { consumeQuota = true } = {}) {
   await ensureSubscriptionSchema();
   const entitlements =
     businessContext.entitlements ||
@@ -1819,34 +1819,36 @@ async function checkAiRateLimit(businessContext) {
       checks.push({ ...period, requestCount, windowStart });
     }
 
-    for (const check of checks) {
-      await client.query(
-        `
-        INSERT INTO ai_rate_limit_counters (
-          business_id,
-          period,
-          request_count,
-          window_start,
-          updated_at
-        )
-        VALUES ($1, $2, 1, $3, $4)
-        ON CONFLICT (business_id, period) DO UPDATE
-        SET request_count = $5,
-            window_start = $3,
-            updated_at = $4
-        `,
-        [
-          businessContext.businessId,
-          check.key,
-          check.windowStart.toISOString(),
-          now.toISOString(),
-          check.requestCount + 1,
-        ],
-      );
+    if (consumeQuota) {
+      for (const check of checks) {
+        await client.query(
+          `
+          INSERT INTO ai_rate_limit_counters (
+            business_id,
+            period,
+            request_count,
+            window_start,
+            updated_at
+          )
+          VALUES ($1, $2, 1, $3, $4)
+          ON CONFLICT (business_id, period) DO UPDATE
+          SET request_count = $5,
+              window_start = $3,
+              updated_at = $4
+          `,
+          [
+            businessContext.businessId,
+            check.key,
+            check.windowStart.toISOString(),
+            now.toISOString(),
+            check.requestCount + 1,
+          ],
+        );
+      }
     }
 
     const remaining = Math.min(
-      ...checks.map((check) => Math.max(0, check.limit - check.requestCount - 1)),
+      ...checks.map((check) => Math.max(0, check.limit - check.requestCount - (consumeQuota ? 1 : 0))),
     );
     return { allowed: true, remaining };
   });
@@ -1920,8 +1922,10 @@ app.post('/api/ai/chat', async (req, res, next) => {
     }
     ensureAiFeatureAllowed(businessContext);
 
+    const consumeQuota = req.body?.consumeQuota !== false;
+
     // Rate limiting
-    const rateCheck = await checkAiRateLimit(businessContext);
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
     if (!rateCheck.allowed) {
       throw createHttpError(
         429,
@@ -1997,7 +2001,9 @@ app.post('/api/ai/web-search', async (req, res, next) => {
       throw createHttpError(400, 'Search query is required');
     }
 
-    const rateCheck = await checkAiRateLimit(businessContext);
+    const consumeQuota = req.body?.consumeQuota !== false;
+
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
     if (!rateCheck.allowed) {
       throw createHttpError(
         429,
@@ -2037,7 +2043,9 @@ app.post('/api/ai/transcribe', async (req, res, next) => {
     }
     ensureAiFeatureAllowed(businessContext);
 
-    const rateCheck = await checkAiRateLimit(businessContext);
+    const consumeQuota = req.body?.consumeQuota !== false;
+
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
     if (!rateCheck.allowed) {
       throw createHttpError(
         429,
@@ -2076,7 +2084,9 @@ app.post('/api/ai/tts', async (req, res, next) => {
     }
     ensureAiFeatureAllowed(businessContext);
 
-    const rateCheck = await checkAiRateLimit(businessContext);
+    const consumeQuota = req.body?.consumeQuota !== false;
+
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
     if (!rateCheck.allowed) {
       throw createHttpError(
         429,

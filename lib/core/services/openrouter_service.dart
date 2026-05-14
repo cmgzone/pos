@@ -93,6 +93,7 @@ class OpenRouterService {
   static Future<String> chat({
     required List<Map<String, String>> messages,
     bool includeBusinessContext = true,
+    bool consumeQuota = false,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isEmpty) {
@@ -122,6 +123,7 @@ class OpenRouterService {
               'deviceId': deviceId,
               'messages': messages,
               'systemPrompt': systemPrompt,
+              'consumeQuota': consumeQuota,
             }),
           )
           .timeout(const Duration(seconds: 45));
@@ -160,8 +162,10 @@ class OpenRouterService {
     required String toolCatalog,
     required String memorySummary,
     bool includeBusinessContext = true,
+    bool consumeQuota = false,
   }) async {
     final response = await chat(
+      consumeQuota: consumeQuota,
       messages: [
         {
           'role': 'user',
@@ -242,6 +246,7 @@ $userMessage
     String? countryCode,
     String? language,
     int limit = 5,
+    bool consumeQuota = false,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isEmpty) {
@@ -270,6 +275,7 @@ $userMessage
               if (language != null && language.trim().isNotEmpty)
                 'language': language.trim(),
               'limit': limit,
+              'consumeQuota': consumeQuota,
             }),
           )
           .timeout(_timeout);
