@@ -60,7 +60,7 @@ const config = {
     process.env.SERP_API_KEY?.trim() ||
     '',
   serpApiBaseUrl:
-    process.env.SERPAPI_BASE_URL?.trim() || 'https://serpapi.com/search.json',
+    process.env.SERPAPI_BASE_URL?.trim() || 'https://google.serper.dev/search',
 };
 
 if (config.nodeEnv === 'production') {

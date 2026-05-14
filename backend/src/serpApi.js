@@ -11,11 +11,11 @@ function normalizeWebSearchInput(input = {}) {
 async function searchWithSerpApi({
   apiKey,
   fetchImpl,
-  baseUrl = 'https://serpapi.com/search.json',
+  baseUrl = 'https://google.serper.dev/search',
   input,
 }) {
   if (!apiKey || !apiKey.trim()) {
-    throw new Error('SerpAPI key is not configured');
+    throw new Error('Serper API key is not configured');
   }
 
   const request = normalizeWebSearchInput(input);
@@ -23,40 +23,47 @@ async function searchWithSerpApi({
     throw new Error('Search query is required');
   }
 
-  const url = new URL(baseUrl);
-  url.searchParams.set('engine', 'google');
-  url.searchParams.set('q', request.query);
-  url.searchParams.set('api_key', apiKey);
-  url.searchParams.set('num', String(request.limit));
+  const payload = {
+    q: request.query,
+    num: request.limit,
+  };
   if (request.location) {
-    url.searchParams.set('location', request.location);
+    payload.location = request.location;
   }
   if (request.gl) {
-    url.searchParams.set('gl', request.gl.toLowerCase());
+    payload.gl = request.gl.toLowerCase();
   }
   if (request.hl) {
-    url.searchParams.set('hl', request.hl.toLowerCase());
+    payload.hl = request.hl.toLowerCase();
   }
 
-  const response = await fetchImpl(url);
+  const response = await fetchImpl(baseUrl, {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
   const body = await response.json();
 
   if (!response.ok) {
     throw new Error(
-      body?.error || body?.message || `SerpAPI request failed (${response.status})`,
+      body?.message || body?.error || `Serper request failed (${response.status})`,
     );
   }
-  if (body?.error) {
-    throw new Error(body.error);
+  if (body?.message && response.status !== 200) {
+    throw new Error(body.message);
   }
 
   return normalizeSerpApiResponse(body, request);
 }
 
 function normalizeSerpApiResponse(body, request) {
-  const organicResults = Array.isArray(body?.organic_results)
-    ? body.organic_results
-    : [];
+  const organicResults = Array.isArray(body?.organic)
+    ? body.organic
+    : (Array.isArray(body?.organic_results) ? body.organic_results : []);
+    
   const results = organicResults.slice(0, request.limit).map((item, index) => ({
     position: Number(item.position || index + 1),
     title: normalizeText(item.title) || 'Result',
@@ -66,23 +73,25 @@ function normalizeSerpApiResponse(body, request) {
     displayedLink: normalizeText(item.displayed_link),
   }));
 
-  const answerBox = body?.answer_box
+  const answerBox = body?.answerBox || body?.answer_box
     ? {
-        title: normalizeText(body.answer_box.title),
+        title: normalizeText(body.answerBox?.title || body.answer_box?.title),
         answer:
-          normalizeText(body.answer_box.answer) ||
-          normalizeText(body.answer_box.snippet),
-        link: normalizeText(body.answer_box.link),
+          normalizeText(body.answerBox?.answer || body.answer_box?.answer) ||
+          normalizeText(body.answerBox?.snippet || body.answer_box?.snippet),
+        link: normalizeText(body.answerBox?.link || body.answer_box?.link),
       }
     : null;
 
-  const relatedQuestions = Array.isArray(body?.related_questions)
-    ? body.related_questions.slice(0, 3).map((item) => ({
+  const relatedQuestionsSource = Array.isArray(body?.peopleAlsoAsk) 
+    ? body.peopleAlsoAsk 
+    : (Array.isArray(body?.related_questions) ? body.related_questions : []);
+    
+  const relatedQuestions = relatedQuestionsSource.slice(0, 3).map((item) => ({
         question: normalizeText(item.question),
         answer: normalizeText(item.snippet) || normalizeText(item.answer),
         link: normalizeText(item.link),
-      }))
-    : [];
+      }));
 
   return {
     type: 'web_search',
