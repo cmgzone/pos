@@ -100,7 +100,7 @@ flutter run
 ### Option 3: Clear Database (Nuclear Option)
 ```bash
 # This will delete all data and recreate from scratch
-rm .dart_tool/sqflite_common_ffi/databases/velora_pos.db*
+rm .dart_tool/sqflite_common_ffi/databases/Piki_pos.db*
 flutter run
 # App will create fresh database with all tables
 ```
@@ -143,13 +143,13 @@ Payment Dialog
 
 1. **Check if payment methods exist:**
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT * FROM payment_methods WHERE is_credit = 1;"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT * FROM payment_methods WHERE is_credit = 1;"
 ```
 Should show Kopesha with is_credit = 1
 
 2. **Check if table exists:**
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db ".tables"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db ".tables"
 ```
 Should include payment_methods
 
@@ -170,7 +170,7 @@ Look for any errors related to payment_methods or database
 
 2. **Check database constraints:**
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "PRAGMA table_info(payment_methods);"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "PRAGMA table_info(payment_methods);"
 ```
 
 3. **Check console logs:**

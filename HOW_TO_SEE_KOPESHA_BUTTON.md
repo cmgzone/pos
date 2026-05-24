@@ -97,7 +97,7 @@ INSERT INTO payment_methods VALUES
 
 Check if payment methods exist:
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT name, is_credit FROM payment_methods;"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT name, is_credit FROM payment_methods;"
 ```
 
 Should show:
@@ -125,7 +125,7 @@ flutter run
 
 ### Option 3: Check Database
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT * FROM payment_methods WHERE name = 'Kopesha';"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT * FROM payment_methods WHERE name = 'Kopesha';"
 ```
 
 Should show Kopesha with is_credit = 1

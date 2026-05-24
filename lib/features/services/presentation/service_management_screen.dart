@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../sales/data/sale_repository.dart';
@@ -679,7 +680,10 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
-        child: Text('$error', style: const TextStyle(color: AppColors.error)),
+        child: Text(
+          AppErrorMessage.from(error, fallback: AppErrorMessage.loadFailed),
+          style: const TextStyle(color: AppColors.error),
+        ),
       ),
     );
   }
@@ -776,7 +780,10 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Error: $error',
+                    AppErrorMessage.from(
+                      error,
+                      fallback: AppErrorMessage.loadFailed,
+                    ),
                     style: const TextStyle(color: AppColors.error),
                     textAlign: TextAlign.center,
                   ),
@@ -1265,7 +1272,11 @@ class _CatalogTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('$error')),
+      error: (error, _) => Center(
+        child: Text(
+          AppErrorMessage.from(error, fallback: AppErrorMessage.loadFailed),
+        ),
+      ),
     );
   }
 }
@@ -1341,7 +1352,14 @@ class _OrdersTab extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('$error')),
+            error: (error, _) => Center(
+              child: Text(
+                AppErrorMessage.from(
+                  error,
+                  fallback: AppErrorMessage.loadFailed,
+                ),
+              ),
+            ),
           ),
         ),
       ],
@@ -1581,7 +1599,14 @@ Future<void> showServiceOrderDetailsDialog(
             if (snapshot.hasError) {
               return SizedBox(
                 height: 220,
-                child: Center(child: Text('${snapshot.error}')),
+                child: Center(
+                  child: Text(
+                    AppErrorMessage.from(
+                      snapshot.error,
+                      fallback: AppErrorMessage.loadFailed,
+                    ),
+                  ),
+                ),
               );
             }
 
@@ -1959,7 +1984,16 @@ Future<void> deleteServiceOrderWithConfirmation(
   } catch (error) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$error'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              error,
+              fallback:
+                  'Could not delete this service order. Please try again.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
       );
     }
   }
@@ -2434,7 +2468,11 @@ Future<void> _completeServiceOrderPayment(
     if (context.mounted) {
       _showServicePaymentSnackBar(
         context,
-        'Could not complete service payment: $error',
+        AppErrorMessage.withContext(
+          error,
+          prefix: 'Could not complete service payment.',
+          fallback: AppErrorMessage.paymentFailed,
+        ),
         backgroundColor: AppColors.error,
       );
     }
@@ -2751,7 +2789,13 @@ Future<void> showServiceEditorDialog(
                       }
                     } catch (error) {
                       if (context.mounted) {
-                        _showServiceDialogSnackBar(context, '$error');
+                        _showServiceDialogSnackBar(
+                          context,
+                          AppErrorMessage.from(
+                            error,
+                            fallback: AppErrorMessage.saveFailed,
+                          ),
+                        );
                       }
                       setDialogState(() => isSaving = false);
                     }
@@ -3127,7 +3171,13 @@ Future<bool> showCreateServiceOrderDialog(
                         }
                       } catch (error) {
                         if (context.mounted) {
-                          _showServiceDialogSnackBar(context, '$error');
+                          _showServiceDialogSnackBar(
+                            context,
+                            AppErrorMessage.from(
+                              error,
+                              fallback: AppErrorMessage.saveFailed,
+                            ),
+                          );
                         }
                         setDialogState(() => isSaving = false);
                       }
@@ -3914,7 +3964,11 @@ class _ServiceReportsTab extends ConsumerWidget {
     final salesByDateAsync = ref.watch(serviceSalesByDateProvider);
     return statsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('$e')),
+      error: (e, _) => Center(
+        child: Text(
+          AppErrorMessage.from(e, fallback: AppErrorMessage.loadFailed),
+        ),
+      ),
       data: (stats) {
         final totalOrders = (stats['total_orders'] as num? ?? 0).toInt();
         final activeCount = (stats['active_count'] as num? ?? 0).toInt();
@@ -4202,7 +4256,7 @@ class _ServiceSalesByDateSection extends StatelessWidget {
           ),
           error: (error, _) => _ReportCard(
             child: Text(
-              '$error',
+              AppErrorMessage.from(error, fallback: AppErrorMessage.loadFailed),
               style: const TextStyle(color: AppColors.error),
             ),
           ),

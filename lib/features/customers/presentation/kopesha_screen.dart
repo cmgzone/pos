@@ -3,6 +3,7 @@ import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/customer_repository.dart';
 import 'customer_account_screen.dart';
@@ -228,7 +229,12 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('$e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -364,8 +370,19 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
     );
   }
 
+  String _contactLine(Map<String, dynamic> customer) {
+    final parts = [
+      customer['phone'] as String?,
+      customer['email'] as String?,
+    ].where((value) => value != null && value.isNotEmpty).cast<String>();
+
+    final contact = parts.join(' | ');
+    return contact.ifEmpty('No contact details');
+  }
+
   Widget _stat(String label, String value, Color color) {
     return Container(
+      constraints: const BoxConstraints(minWidth: 138),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
@@ -383,6 +400,143 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
           Text(
             value,
             style: TextStyle(color: color, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterBar(bool isMobile) {
+    final filters = [
+      _filterButton('All Open', 'all'),
+      _filterButton('Due Today', 'due_today'),
+      _filterButton('Overdue', 'overdue'),
+      _filterButton('Risky', 'risky'),
+    ];
+
+    if (!isMobile) {
+      return Wrap(spacing: 10, runSpacing: 10, children: filters);
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < filters.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            filters[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _statsSummary({
+    required bool isMobile,
+    required double outstanding,
+    required int dueToday,
+    required int overdue,
+    required int risky,
+  }) {
+    if (!isMobile) {
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          _stat(
+            'Outstanding',
+            '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
+            AppColors.warning,
+          ),
+          _stat('Due Today', '$dueToday customers', AppColors.primary),
+          _stat('Overdue', '$overdue customers', AppColors.error),
+          _stat('High Risk', '$risky customers', AppColors.error),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Outstanding',
+                      style: TextStyle(
+                        color: AppColors.textSecondary.withValues(alpha: 0.9),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: AppColors.warning,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _CompactStat(
+                  label: 'Due Today',
+                  value: '$dueToday',
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _CompactStat(
+                  label: 'Overdue',
+                  value: '$overdue',
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _CompactStat(
+                  label: 'Risky',
+                  value: '$risky',
+                  color: AppColors.warning,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -419,6 +573,396 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
     );
   }
 
+  Widget _customerCard(Map<String, dynamic> c, bool isMobile) {
+    final risk = _risk(c);
+    final riskColor = _riskColor(c);
+    final overdueCount = _count(c['overdue_count']);
+    final dueTodayCount = _count(c['due_today_count']);
+
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 14 : 18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(isMobile ? 16 : 18),
+        border: Border.all(
+          color: overdueCount > 0
+              ? AppColors.error.withValues(alpha: 0.45)
+              : AppColors.border,
+        ),
+      ),
+      child: isMobile
+          ? _mobileCustomerCard(c, risk, riskColor, overdueCount, dueTodayCount)
+          : _desktopCustomerCard(
+              c,
+              risk,
+              riskColor,
+              overdueCount,
+              dueTodayCount,
+            ),
+    );
+  }
+
+  Widget _mobileCustomerCard(
+    Map<String, dynamic> c,
+    String risk,
+    Color riskColor,
+    int overdueCount,
+    int dueTodayCount,
+  ) {
+    final nextDue = c['next_due_date'] as String?;
+    final pastDue = _isPastDue(nextDue);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: riskColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                overdueCount > 0
+                    ? Icons.warning_amber_rounded
+                    : Icons.person_outline_rounded,
+                color: riskColor,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c['name'] as String? ?? 'Customer',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _contactLine(c),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _RiskBadge(label: risk, color: riskColor),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Outstanding',
+          style: TextStyle(
+            color: AppColors.textSecondary.withValues(alpha: 0.9),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 25,
+            fontWeight: FontWeight.w900,
+            color: AppColors.warning,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              pastDue ? Icons.event_busy_outlined : Icons.event_available,
+              size: 16,
+              color: pastDue ? AppColors.error : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Next due: ${_shortDate(nextDue)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: pastDue ? AppColors.error : AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: pastDue ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (dueTodayCount > 0 || overdueCount > 0) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (dueTodayCount > 0)
+                const _RiskBadge(label: 'Due Today', color: AppColors.primary),
+              if (overdueCount > 0)
+                _RiskBadge(
+                  label: '$overdueCount Overdue',
+                  color: AppColors.error,
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final tileWidth = (constraints.maxWidth - 8) / 2;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: tileWidth,
+                  child: _MetricPill(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Open',
+                    value: '${_count(c['open_credit_count'])}',
+                    color: AppColors.primaryLight,
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  child: _MetricPill(
+                    icon: Icons.report_problem_outlined,
+                    label: 'Overdue',
+                    value:
+                        '${ShopSettings.currency}${_money(c['overdue_amount']).toStringAsFixed(2)}',
+                    color: AppColors.error,
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  child: _MetricPill(
+                    icon: Icons.today_outlined,
+                    label: 'Today',
+                    value:
+                        '${ShopSettings.currency}${_money(c['due_today_amount']).toStringAsFixed(2)}',
+                    color: AppColors.warning,
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  child: _MetricPill(
+                    icon: Icons.trending_up_outlined,
+                    label: 'Risk',
+                    value: risk,
+                    color: riskColor,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _recordPayment(c),
+            icon: const Icon(Icons.payments_rounded, size: 18),
+            label: const Text('Record Payment'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _openStatement(c),
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+                label: const Text('Statement'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _messageCustomer(c),
+                icon: const Icon(Icons.message_outlined, size: 18),
+                label: const Text('Message'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _desktopCustomerCard(
+    Map<String, dynamic> c,
+    String risk,
+    Color riskColor,
+    int overdueCount,
+    int dueTodayCount,
+  ) {
+    final nextDue = c['next_due_date'] as String?;
+    final pastDue = _isPastDue(nextDue);
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: riskColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                overdueCount > 0
+                    ? Icons.warning_amber_rounded
+                    : Icons.person_outline_rounded,
+                color: riskColor,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c['name'] as String? ?? 'Customer',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _contactLine(c),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _RiskBadge(label: risk, color: riskColor),
+                      if (dueTodayCount > 0)
+                        const _RiskBadge(
+                          label: 'Due Today',
+                          color: AppColors.primary,
+                        ),
+                      if (overdueCount > 0)
+                        _RiskBadge(
+                          label: '$overdueCount Overdue',
+                          color: AppColors.error,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.warning,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Next due: ${_shortDate(nextDue)}',
+                  style: TextStyle(
+                    color: pastDue ? AppColors.error : AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: pastDue ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _Info(
+                label: 'Open Sales',
+                value: '${_count(c['open_credit_count'])}',
+              ),
+            ),
+            Expanded(
+              child: _Info(
+                label: 'Overdue Amount',
+                value:
+                    '${ShopSettings.currency}${_money(c['overdue_amount']).toStringAsFixed(2)}',
+              ),
+            ),
+            Expanded(
+              child: _Info(
+                label: 'Due Today',
+                value:
+                    '${ShopSettings.currency}${_money(c['due_today_amount']).toStringAsFixed(2)}',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _openStatement(c),
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+                label: const Text('View Statement'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _messageCustomer(c),
+                icon: const Icon(Icons.message_outlined, size: 18),
+                label: const Text('Message'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _recordPayment(c),
+                icon: const Icon(Icons.payments_rounded, size: 18),
+                label: const Text('Record Payment'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final outstanding = _customers.fold<double>(
@@ -433,310 +977,153 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
         .length;
     final risky = _customers.where((c) => _risk(c) == 'High Risk').length;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Kopesha'),
-        actions: [
-          TrainingAnchor(
-            id: 'kopesha.createAccount',
-            child: FilledButton.icon(
-              onPressed: _openCreateAccountScreen,
-              icon: const Icon(Icons.person_add_alt_1, size: 18),
-              label: const Text('Create Account'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: Column(
-        children: [
-          TrainingAnchor(
-            id: 'kopesha.search',
-            child: Container(
-              color: AppColors.surface,
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _searchController,
-                    onChanged: (_) => _load(),
-                    decoration: InputDecoration(
-                      hintText: 'Search customer name, phone, or email...',
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: AppColors.textSecondary,
-                      ),
-                      suffixIcon: _searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _searchController.clear();
-                                _load();
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                            ),
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth <= 640;
+        final horizontalPadding = isMobile ? 14.0 : 24.0;
+
+        return Scaffold(
+          appBar: AppBar(
+            backgroundColor: AppColors.surface,
+            title: const Text('Kopesha'),
+            actions: [
+              if (!isMobile) ...[
+                TrainingAnchor(
+                  id: 'kopesha.createAccount',
+                  child: FilledButton.icon(
+                    onPressed: _openCreateAccountScreen,
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text('Create Account'),
                   ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                ),
+                const SizedBox(width: 8),
+              ],
+              IconButton(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+              ),
+              SizedBox(width: isMobile ? 4 : 12),
+            ],
+          ),
+          floatingActionButton: isMobile
+              ? TrainingAnchor(
+                  id: 'kopesha.createAccount',
+                  child: FloatingActionButton.extended(
+                    onPressed: _openCreateAccountScreen,
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('New Account'),
+                  ),
+                )
+              : null,
+          body: Column(
+            children: [
+              TrainingAnchor(
+                id: 'kopesha.search',
+                child: Container(
+                  color: AppColors.surface,
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    isMobile ? 14 : 16,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _filterButton('All Open', 'all'),
-                      _filterButton('Due Today', 'due_today'),
-                      _filterButton('Overdue', 'overdue'),
-                      _filterButton('Risky', 'risky'),
+                      TextField(
+                        controller: _searchController,
+                        onChanged: (_) => _load(),
+                        decoration: InputDecoration(
+                          hintText: isMobile
+                              ? 'Search customers...'
+                              : 'Search customer name, phone, or email...',
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: AppColors.textSecondary,
+                          ),
+                          suffixIcon: _searchController.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _load();
+                                  },
+                                  icon: const Icon(Icons.clear, size: 18),
+                                ),
+                        ),
+                      ),
+                      SizedBox(height: isMobile ? 12 : 14),
+                      _filterBar(isMobile),
+                      SizedBox(height: isMobile ? 14 : 16),
+                      TrainingAnchor(
+                        id: 'kopesha.stats',
+                        child: _statsSummary(
+                          isMobile: isMobile,
+                          outstanding: outstanding,
+                          dueToday: dueToday,
+                          overdue: overdue,
+                          risky: risky,
+                        ),
+                      ),
+                      if (!isMobile) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Risk flag: 2+ overdue sales, overdue amount above ${ShopSettings.currency}250, overdue for 7+ days, or balance above ${ShopSettings.currency}750.',
+                          style: TextStyle(
+                            color: AppColors.textSecondary.withValues(
+                              alpha: 0.9,
+                            ),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  TrainingAnchor(
-                    id: 'kopesha.stats',
-                    child: Wrap(
-                      spacing: 14,
-                      runSpacing: 14,
-                      children: [
-                        _stat(
-                          'Outstanding',
-                          '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
-                          AppColors.warning,
-                        ),
-                        _stat(
-                          'Due Today',
-                          '$dueToday customers',
-                          AppColors.primary,
-                        ),
-                        _stat('Overdue', '$overdue customers', AppColors.error),
-                        _stat('High Risk', '$risky customers', AppColors.error),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Risk flag: 2+ overdue sales, overdue amount above ${ShopSettings.currency}250, overdue for 7+ days, or balance above ${ShopSettings.currency}750.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.9),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: TrainingAnchor(
-              id: 'kopesha.list',
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _customers.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No customers match this Kopesha filter right now.',
-                        style: TextStyle(
-                          color: AppColors.textSecondary.withValues(alpha: 0.9),
+              const Divider(height: 1),
+              Expanded(
+                child: TrainingAnchor(
+                  id: 'kopesha.list',
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _customers.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'No customers match this Kopesha filter right now.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppColors.textSecondary.withValues(
+                                  alpha: 0.9,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: EdgeInsets.fromLTRB(
+                            horizontalPadding,
+                            isMobile ? 12 : 24,
+                            horizontalPadding,
+                            isMobile ? 92 : 24,
+                          ),
+                          itemCount: _customers.length,
+                          separatorBuilder: (_, _) =>
+                              SizedBox(height: isMobile ? 10 : 12),
+                          itemBuilder: (context, index) =>
+                              _customerCard(_customers[index], isMobile),
                         ),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(24),
-                      itemCount: _customers.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final c = _customers[index];
-                        final risk = _risk(c);
-                        final riskColor = _riskColor(c);
-                        final overdueCount = _count(c['overdue_count']);
-                        final dueTodayCount = _count(c['due_today_count']);
-                        return Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 50,
-                                    height: 50,
-                                    decoration: BoxDecoration(
-                                      color: riskColor.withValues(alpha: 0.14),
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: Icon(
-                                      overdueCount > 0
-                                          ? Icons.warning_amber_rounded
-                                          : Icons.person_outline_rounded,
-                                      color: riskColor,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          c['name'] as String? ?? 'Customer',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          [
-                                                c['phone'] as String?,
-                                                c['email'] as String?,
-                                              ]
-                                              .where(
-                                                (value) =>
-                                                    value != null &&
-                                                    value.isNotEmpty,
-                                              )
-                                              .join(' | ')
-                                              .ifEmpty('No contact details'),
-                                          style: const TextStyle(
-                                            color: AppColors.textSecondary,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children: [
-                                            _RiskBadge(
-                                              label: risk,
-                                              color: riskColor,
-                                            ),
-                                            if (dueTodayCount > 0)
-                                              const _RiskBadge(
-                                                label: 'Due Today',
-                                                color: AppColors.primary,
-                                              ),
-                                            if (overdueCount > 0)
-                                              _RiskBadge(
-                                                label: '$overdueCount Overdue',
-                                                color: AppColors.error,
-                                              ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
-                                        style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.warning,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Next due: ${_shortDate(c['next_due_date'] as String?)}',
-                                        style: TextStyle(
-                                          color:
-                                              _isPastDue(
-                                                c['next_due_date'] as String?,
-                                              )
-                                              ? AppColors.error
-                                              : AppColors.textSecondary,
-                                          fontSize: 12,
-                                          fontWeight:
-                                              _isPastDue(
-                                                c['next_due_date'] as String?,
-                                              )
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _Info(
-                                      label: 'Open Sales',
-                                      value:
-                                          '${_count(c['open_credit_count'])}',
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: _Info(
-                                      label: 'Overdue Amount',
-                                      value:
-                                          '${ShopSettings.currency}${_money(c['overdue_amount']).toStringAsFixed(2)}',
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: _Info(
-                                      label: 'Due Today',
-                                      value:
-                                          '${ShopSettings.currency}${_money(c['due_today_amount']).toStringAsFixed(2)}',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: () => _openStatement(c),
-                                      icon: const Icon(
-                                        Icons.visibility_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('View Statement'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: () => _messageCustomer(c),
-                                      icon: const Icon(
-                                        Icons.message_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Message'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      onPressed: () => _recordPayment(c),
-                                      icon: const Icon(
-                                        Icons.payments_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Record Payment'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-            ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -758,6 +1145,110 @@ class _Info extends StatelessWidget {
         const SizedBox(height: 4),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
       ],
+    );
+  }
+}
+
+class _CompactStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _CompactStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color.withValues(alpha: 0.78),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MetricPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.78),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

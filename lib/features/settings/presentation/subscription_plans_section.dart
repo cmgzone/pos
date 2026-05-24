@@ -8,6 +8,7 @@ import '../../../core/services/session_service.dart';
 import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 
 class SubscriptionPlansSection extends StatefulWidget {
   final bool fullPage;
@@ -45,6 +46,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   String? _selectedSellingMode;
   bool _loading = true;
   bool _busy = false;
+  bool _featuresExpanded = false;
   String? _message;
   SubscriptionCatalog? _catalog;
   Map<String, dynamic>? _current;
@@ -125,7 +127,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _message = '$error';
+        _message = AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.loadFailed,
+        );
         _loading = false;
       });
     }
@@ -200,7 +205,12 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       }
     } catch (error) {
       if (!mounted) return;
-      setState(() => _message = '$error');
+      setState(
+        () => _message = AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.paymentFailed,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -237,7 +247,12 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       }
     } catch (error) {
       if (!mounted) return;
-      setState(() => _message = '$error');
+      setState(
+        () => _message = AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.paymentFailed,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -613,6 +628,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                             nextPlan,
                             _selectedSellingMode,
                           );
+                          _featuresExpanded = false;
                           _checkout = null;
                           _message = null;
                         });
@@ -749,9 +765,6 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   ) {
     final price = plan.priceFor(market, billingPeriod: billingPeriod);
     final isCurrent = plan.code == _currentPlanCode();
-    final featureLabels = plan.features
-        .map(UserAccessProfile.featureLabel)
-        .toList(growable: false);
 
     return InkWell(
       borderRadius: BorderRadius.circular(28),
@@ -763,6 +776,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                 plan,
                 _selectedSellingMode,
               );
+              _featuresExpanded = false;
               _checkout = null;
               _message = null;
             }),
@@ -771,25 +785,50 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected
-              ? _pink.withValues(alpha: 0.16)
-              : Colors.white.withValues(alpha: 0.045),
+          gradient: selected
+              ? LinearGradient(
+                  colors: [
+                    _pink.withValues(alpha: 0.22),
+                    _fuchsia.withValues(alpha: 0.08),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : LinearGradient(
+                  colors: [
+                    Colors.white.withValues(alpha: 0.05),
+                    Colors.white.withValues(alpha: 0.01),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
             color: selected
-                ? Colors.white.withValues(alpha: 0.40)
-                : Colors.white.withValues(alpha: 0.10),
-            width: selected ? 1.4 : 1,
+                ? Colors.white.withValues(alpha: 0.45)
+                : Colors.white.withValues(alpha: 0.08),
+            width: selected ? 1.5 : 1,
           ),
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: _pink.withValues(alpha: 0.22),
-                    blurRadius: 24,
-                    offset: const Offset(0, 14),
+                    color: _pink.withValues(alpha: 0.18),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
+                  ),
+                  BoxShadow(
+                    color: _fuchsia.withValues(alpha: 0.08),
+                    blurRadius: 30,
+                    offset: const Offset(0, -10),
                   ),
                 ]
-              : null,
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -830,7 +869,12 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                               ),
                             ),
                           ),
-                          if (isCurrent) _tinyBadge('Current'),
+                          if (isCurrent) ...[
+                            _tinyBadge('Current', color: AppColors.success),
+                            const SizedBox(width: 6),
+                          ],
+                          if (plan.code == 'pro')
+                            _tinyBadge('Popular', color: AppColors.warning),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -873,27 +917,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               ],
             ),
             if (selected) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               _limitsGrid(plan),
-              const SizedBox(height: 12),
-              if (featureLabels.isEmpty)
-                const Text(
-                  'No features configured.',
-                  style: TextStyle(color: Color(0xB8F9DDF0), fontSize: 12),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: plan.features
-                      .map(
-                        (feature) => _featurePill(
-                          UserAccessProfile.featureLabel(feature),
-                          _featureIcon(feature),
-                        ),
-                      )
-                      .toList(),
-                ),
+              const SizedBox(height: 16),
+              _featuresList(plan),
             ],
           ],
         ),
@@ -903,54 +930,82 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
 
   Widget _limitsGrid(SubscriptionPlanSummary plan) {
     final rates = plan.entitlements.aiRateLimits;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _limitPill(
-          Icons.storefront_outlined,
-          'Branches',
-          _limitText(plan.entitlements.maxBranches),
-        ),
-        _limitPill(
-          Icons.badge_outlined,
-          'Employees',
-          _limitText(plan.entitlements.maxEmployees),
-        ),
-        _limitPill(
-          Icons.auto_awesome_outlined,
-          'AI Seats',
-          _limitText(plan.entitlements.maxAiAgents),
-        ),
-        _limitPill(
-          Icons.bolt_outlined,
-          'AI / Hour',
-          _limitText(rates['hourly'] ?? 0),
-        ),
-        _limitPill(
-          Icons.calendar_month_outlined,
-          'AI / Month',
-          _limitText(rates['monthly'] ?? 0),
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Limits & Quotas',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _limitRowItem(
+                  Icons.storefront_outlined,
+                  'Max Branches',
+                  _limitText(plan.entitlements.maxBranches),
+                ),
+              ),
+              Expanded(
+                child: _limitRowItem(
+                  Icons.badge_outlined,
+                  'Max Employees',
+                  _limitText(plan.entitlements.maxEmployees),
+                ),
+              ),
+            ],
+          ),
+          const Divider(color: Colors.white10, height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _limitRowItem(
+                  Icons.auto_awesome_outlined,
+                  'AI Seats',
+                  _limitText(plan.entitlements.maxAiAgents),
+                ),
+              ),
+              Expanded(
+                child: _limitRowItem(
+                  Icons.bolt_outlined,
+                  'AI Limits',
+                  '${_limitText(rates['hourly'] ?? 0)}/hr • ${_limitText(rates['monthly'] ?? 0)}/mo',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _limitPill(IconData icon, String label, String value) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 130),
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: const Color(0xFFFFB6D1)),
-          const SizedBox(width: 8),
-          Column(
+  Widget _limitRowItem(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: _pink.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: const Color(0xFFFFB6D1)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -961,43 +1016,118 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 value,
                 style: const TextStyle(
                   color: Colors.white,
+                  fontSize: 12,
                   fontWeight: FontWeight.w900,
                 ),
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _featurePill(String label, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFFFFB6D1)),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+  Widget _featuresList(SubscriptionPlanSummary plan) {
+    final features = plan.features;
+    if (features.isEmpty) {
+      return const Text(
+        'No features configured.',
+        style: TextStyle(color: Color(0xB8F9DDF0), fontSize: 12),
+      );
+    }
+
+    final displayedFeatures = _featuresExpanded
+        ? features
+        : features.take(4).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Included Features',
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...displayedFeatures.map((feature) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _featureIcon(feature),
+                    size: 12,
+                    color: const Color(0xFFFFB6D1),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    UserAccessProfile.featureLabel(feature),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+        if (features.length > 4) ...[
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _featuresExpanded = !_featuresExpanded;
+              });
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _featuresExpanded
+                        ? 'See less'
+                        : 'See all ${features.length} features',
+                    style: const TextStyle(
+                      color: _pink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _featuresExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: _pink,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
@@ -1180,9 +1310,12 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                       ),
                     )
                   : const Icon(Icons.arrow_forward_rounded),
-              label: Text(
-                _actionLabel(market, plan, isFree, isCurrent),
-                style: const TextStyle(fontWeight: FontWeight.w900),
+              label: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _actionLabel(market, plan, isFree, isCurrent),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
               ),
             ),
           ),
@@ -1288,19 +1421,21 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     );
   }
 
-  Widget _tinyBadge(String label) {
+  Widget _tinyBadge(String label, {Color color = AppColors.success}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.success.withValues(alpha: 0.18),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.success,
-          fontSize: 10,
+        label.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
           fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
         ),
       ),
     );

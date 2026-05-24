@@ -1,4 +1,4 @@
-# ✅ Velora POS - Quick Status
+# ✅ Piki POS - Quick Status
 
 ## 🎉 ALL TASKS COMPLETE
 

@@ -1,4 +1,4 @@
-# Velora POS Implementation Plan
+# Piki POS Implementation Plan
 
 This roadmap tracks the remaining work to move the current app from a strong local MVP into a production-ready POS.
 

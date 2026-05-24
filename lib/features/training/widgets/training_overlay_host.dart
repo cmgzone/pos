@@ -27,7 +27,7 @@ class _TrainingOverlayHostState extends ConsumerState<TrainingOverlayHost>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
+    );
   }
 
   @override
@@ -43,7 +43,14 @@ class _TrainingOverlayHostState extends ConsumerState<TrainingOverlayHost>
     final module = training.activeModule;
 
     if (!training.isActive || step == null || module == null) {
+      if (_pulseController.isAnimating) {
+        _pulseController.stop();
+      }
       return widget.child;
+    }
+
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
     }
 
     return Stack(

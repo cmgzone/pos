@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../data/product_variant_repository.dart';
 
@@ -56,7 +57,9 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
       text: variant != null ? ((variant['price'] as num?) ?? 0).toString() : '',
     );
     final costController = TextEditingController(
-      text: variant?['cost'] != null ? (variant!['cost'] as num).toString() : '',
+      text: variant?['cost'] != null
+          ? (variant!['cost'] as num).toString()
+          : '',
     );
     final skuController = TextEditingController(
       text: variant?['sku'] as String? ?? '',
@@ -65,7 +68,9 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
       text: variant?['barcode'] as String? ?? '',
     );
     final stockController = TextEditingController(
-      text: variant != null ? ((variant['stock'] as num?) ?? 0).toString() : '0',
+      text: variant != null
+          ? ((variant['stock'] as num?) ?? 0).toString()
+          : '0',
     );
     final lowStockController = TextEditingController(
       text: variant != null
@@ -111,7 +116,8 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                         labelText: 'Variant Name',
                         hintText: 'e.g. Red / Large',
                       ),
-                      validator: (value) => value == null || value.trim().isEmpty
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
                           ? 'Variant name is required'
                           : null,
                     ),
@@ -225,24 +231,18 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: skuController,
-                      decoration: const InputDecoration(
-                        labelText: 'SKU',
-                      ),
+                      decoration: const InputDecoration(labelText: 'SKU'),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: barcodeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Barcode',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Barcode'),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: sortOrderController,
                       keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: const InputDecoration(
                         labelText: 'Sort Order',
                       ),
@@ -295,7 +295,9 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                         'sku': _normalizedText(skuController.text),
                         'barcode': _normalizedText(barcodeController.text),
                         'stock': double.parse(stockController.text.trim()),
-                        'low_stock': double.parse(lowStockController.text.trim()),
+                        'low_stock': double.parse(
+                          lowStockController.text.trim(),
+                        ),
                         'sort_order':
                             int.tryParse(sortOrderController.text.trim()) ?? 0,
                       };
@@ -334,7 +336,13 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                         if (dialogContext.mounted) {
                           ScaffoldMessenger.of(dialogContext).showSnackBar(
                             SnackBar(
-                              content: Text('Could not save variant: $error'),
+                              content: Text(
+                                AppErrorMessage.withContext(
+                                  error,
+                                  prefix: 'Could not save variant.',
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -368,7 +376,9 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              isEditing ? 'Variant updated.' : 'Variant added to $_productName.',
+              isEditing
+                  ? 'Variant updated.'
+                  : 'Variant added to $_productName.',
             ),
             backgroundColor: AppColors.success,
           ),
@@ -384,9 +394,7 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete Variant'),
-        content: Text(
-          'Delete "${variant['name']}" from $_productName?',
-        ),
+        content: Text('Delete "${variant['name']}" from $_productName?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -423,7 +431,13 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not delete variant: $error'),
+            content: Text(
+              AppErrorMessage.withContext(
+                error,
+                prefix: 'Could not delete variant.',
+                fallback: 'Could not delete this variant. Please try again.',
+              ),
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -500,7 +514,8 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                       ),
                       _InfoChip(
                         icon: Icons.layers_outlined,
-                        label: '${_variants.length} variant${_variants.length == 1 ? '' : 's'}',
+                        label:
+                            '${_variants.length} variant${_variants.length == 1 ? '' : 's'}',
                       ),
                     ],
                   ),
@@ -554,10 +569,10 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final variant = _variants[index];
-                          final stock =
-                              (variant['stock'] as num? ?? 0).toDouble();
-                          final lowStock =
-                              (variant['low_stock'] as num? ?? 0).toDouble();
+                          final stock = (variant['stock'] as num? ?? 0)
+                              .toDouble();
+                          final lowStock = (variant['low_stock'] as num? ?? 0)
+                              .toDouble();
                           final isLow = stock <= lowStock && stock > 0;
                           final isOut = stock <= 0;
                           final stockColor = isOut
@@ -599,8 +614,7 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                                               Text(
                                                 '${ShopSettings.currency}${((variant['price'] as num?) ?? 0).toStringAsFixed(2)} / $_saleUnitLabel',
                                                 style: const TextStyle(
-                                                  color:
-                                                      AppColors.primaryLight,
+                                                  color: AppColors.primaryLight,
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
@@ -608,8 +622,8 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                                                 Text(
                                                   'Cost ${ShopSettings.currency}${(variant['cost'] as num).toStringAsFixed(2)} / $_stockUnitLabel',
                                                   style: const TextStyle(
-                                                    color: AppColors
-                                                        .textSecondary,
+                                                    color:
+                                                        AppColors.textSecondary,
                                                   ),
                                                 ),
                                             ],
@@ -626,8 +640,9 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
                                         color: stockColor.withValues(
                                           alpha: 0.12,
                                         ),
-                                        borderRadius:
-                                            BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                       child: Text(
                                         isOut
@@ -744,10 +759,7 @@ class _InfoChip extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: AppColors.primaryLight),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );

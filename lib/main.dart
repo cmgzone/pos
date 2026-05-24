@@ -10,13 +10,17 @@ import 'core/services/preferences_recovery_service.dart';
 import 'core/services/session_service.dart';
 import 'core/services/shop_settings.dart';
 import 'core/services/sync_settings_service.dart';
+import 'core/services/background_tasks_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/error_messages.dart';
 import 'features/app/app_shell.dart';
 import 'features/auth/presentation/login_screen.dart';
+import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/training/widgets/training_overlay_host.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  ErrorWidget.builder = (_) => const _AppErrorFallback();
   runApp(const ProviderScope(child: PosApp()));
 }
 
@@ -27,12 +31,61 @@ class PosApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: AppNavigator.navigatorKey,
-      title: 'Devis POS',
+      title: 'Piki POS',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
       builder: (context, child) =>
           TrainingOverlayHost(child: child ?? const SizedBox.shrink()),
       home: const SplashScreen(),
+    );
+  }
+}
+
+class _AppErrorFallback extends StatelessWidget {
+  const _AppErrorFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Directionality(
+      textDirection: TextDirection.ltr,
+      child: Material(
+        color: Color(0xFF09090E),
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: Color(0xFFFF3B30),
+                  size: 36,
+                ),
+                SizedBox(height: 14),
+                Text(
+                  'Something went wrong',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFF9F9FB),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Please close Piki POS and open it again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFA0A0B0),
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -62,6 +115,7 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeIn = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     _controller.forward();
     _startInitialization();
+    _startBackgroundTasksAfterFirstFrame();
   }
 
   Future<void> _startInitialization() async {
@@ -80,18 +134,36 @@ class _SplashScreenState extends State<SplashScreen>
         return;
       }
 
-      final Widget destination = SessionService.isLoggedIn
-          ? AppShell(key: AppShell.shellKey)
-          : const LoginScreen();
+      // Already logged in — skip onboarding entirely
+      if (SessionService.isLoggedIn) {
+        _navigateTo(AppShell(key: AppShell.shellKey));
+        return;
+      }
 
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (_, animation, _) => destination,
-          transitionsBuilder: (_, animation, _, child) =>
-              FadeTransition(opacity: animation, child: child),
-          transitionDuration: const Duration(milliseconds: 500),
-        ),
-      );
+      // First-time user — check if onboarding is needed
+      final onboarded = await hasCompletedOnboarding();
+      if (!mounted || attempt != _startupAttempt) {
+        return;
+      }
+
+      if (onboarded) {
+        _navigateTo(const LoginScreen());
+      } else {
+        _navigateTo(
+          OnboardingScreen(
+            onComplete: (onboardingContext) async {
+              Navigator.of(onboardingContext).pushReplacement(
+                PageRouteBuilder(
+                  pageBuilder: (_, animation, _) => const LoginScreen(),
+                  transitionsBuilder: (_, animation, _, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                  transitionDuration: const Duration(milliseconds: 500),
+                ),
+              );
+            },
+          ),
+        );
+      }
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(
@@ -113,6 +185,17 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
+  void _navigateTo(Widget destination) {
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, animation, _) => destination,
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
+  }
+
   Future<void> _initializeAppServices() async {
     await PreferencesRecoveryService.repairIfNeeded();
     await DatabaseService.initialize();
@@ -126,13 +209,32 @@ class _SplashScreenState extends State<SplashScreen>
     OpenRouterService.refreshConfig().ignore();
   }
 
+  void _startBackgroundTasksAfterFirstFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      BackgroundTasksService.init().catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'background tasks',
+            context: ErrorDescription(
+              'while initializing Android background tasks',
+            ),
+          ),
+        );
+      }).ignore();
+    });
+  }
+
   String _formatStartupError(Object error) {
-    final message = error.toString().trim();
-    const prefix = 'Exception: ';
-    if (message.startsWith(prefix)) {
-      return message.substring(prefix.length).trim();
-    }
-    return message;
+    return AppErrorMessage.from(
+      error,
+      fallback:
+          'Piki POS could not start correctly. Please restart the app and try again.',
+    );
   }
 
   @override
@@ -192,7 +294,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               const SizedBox(height: 32),
               Text(
-                'Devis POS',
+                'Piki POS',
                 style: theme.textTheme.displayMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   letterSpacing: 2,

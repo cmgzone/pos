@@ -1,4 +1,4 @@
-# Velora POS - Context Transfer Summary
+# Piki POS - Context Transfer Summary
 
 ## Current Status: ✅ ALL TASKS COMPLETE
 

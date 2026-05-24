@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { friendlyError } from '../utils/errors'
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('superadmin@velora.pos')
@@ -25,10 +26,10 @@ export default function Login({ onLogin }) {
       if (res.ok && data.ok) {
         onLogin(data.token)
       } else {
-        setError(data.error || 'Login failed')
+        setError(friendlyError(data.error, 'Login failed.'))
       }
-    } catch {
-      setError('Network error. Could not reach backend.')
+    } catch (error) {
+      setError(friendlyError(error, 'Network error. Could not reach backend.'))
     } finally {
       setLoading(false)
     }

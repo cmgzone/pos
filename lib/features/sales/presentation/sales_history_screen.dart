@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../shifts/data/shift_provider.dart';
 import '../../shifts/data/shift_preferences_service.dart';
@@ -584,7 +585,13 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         if (dialogContext.mounted) {
           messenger.showSnackBar(
             SnackBar(
-              content: Text('Could not record sale: $error'),
+              content: Text(
+                AppErrorMessage.withContext(
+                  error,
+                  prefix: 'Could not record sale.',
+                  fallback: AppErrorMessage.saveFailed,
+                ),
+              ),
               backgroundColor: AppColors.error,
             ),
           );
@@ -1419,7 +1426,13 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not delete sale: $error'),
+          content: Text(
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Could not delete sale.',
+              fallback: 'Could not delete this sale. Please try again.',
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1720,7 +1733,12 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('$e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );

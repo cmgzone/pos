@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/speech_service.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../../sales/data/cart_provider.dart';
 import '../data/piki_models.dart';
@@ -173,9 +175,17 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         }
       } catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Piki voice failed: $error')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppErrorMessage.withContext(
+                  error,
+                  prefix: 'Piki voice failed.',
+                  fallback: AppErrorMessage.pikiFailed,
+                ),
+              ),
+            ),
+          );
         }
       } finally {
         if (mounted) {
@@ -285,7 +295,15 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         } catch (error) {
           if (mounted && _autoListening && token == _autoListenToken) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Piki auto listen failed: $error')),
+              SnackBar(
+                content: Text(
+                  AppErrorMessage.withContext(
+                    error,
+                    prefix: 'Piki auto listen failed.',
+                    fallback: AppErrorMessage.pikiFailed,
+                  ),
+                ),
+              ),
             );
           }
         } finally {
@@ -459,9 +477,11 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               )
             : null,
         automaticallyImplyLeading: false,
-        title: const Text('AI Agent'),
+        title: isMobile
+            ? _AiIndicator(status: status, compact: true)
+            : const Text('AI Agent'),
         actions: [
-          _AiIndicator(status: status),
+          if (!isMobile) _AiIndicator(status: status),
           Builder(
             builder: (context) {
               return IconButton(
@@ -741,8 +761,9 @@ class _StatusBadge extends StatelessWidget {
 
 class _AiIndicator extends StatelessWidget {
   final AgentStatus status;
+  final bool compact;
 
-  const _AiIndicator({required this.status});
+  const _AiIndicator({required this.status, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -752,49 +773,66 @@ class _AiIndicator extends StatelessWidget {
         ? modelName.split('/').last
         : modelName;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _StatusBadge(status: status),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: aiEnabled
-                ? const Color(0xFF6B4EE6).withValues(alpha: 0.12)
-                : AppColors.surfaceHighlight,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: aiEnabled
-                  ? const Color(0xFF6B4EE6).withValues(alpha: 0.35)
-                  : AppColors.border,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                aiEnabled ? Icons.auto_awesome_rounded : Icons.offline_bolt,
-                size: 14,
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxWidth = compact
+        ? math.max(screenWidth - 140.0, 180.0)
+        : math.min(screenWidth * 0.55, 360.0);
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StatusBadge(status: status),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
                 color: aiEnabled
-                    ? const Color(0xFF8B6CFF)
-                    : AppColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                aiEnabled ? 'AI ${shortModel.toUpperCase()}' : 'Local Only',
-                style: TextStyle(
+                    ? const Color(0xFF6B4EE6).withValues(alpha: 0.12)
+                    : AppColors.surfaceHighlight,
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(
                   color: aiEnabled
-                      ? const Color(0xFF8B6CFF)
-                      : AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                      ? const Color(0xFF6B4EE6).withValues(alpha: 0.35)
+                      : AppColors.border,
                 ),
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    aiEnabled ? Icons.auto_awesome_rounded : Icons.offline_bolt,
+                    size: 14,
+                    color: aiEnabled
+                        ? const Color(0xFF8B6CFF)
+                        : AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      aiEnabled
+                          ? 'AI ${shortModel.toUpperCase()}'
+                          : 'Local Only',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: TextStyle(
+                        color: aiEnabled
+                            ? const Color(0xFF8B6CFF)
+                            : AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1312,7 +1350,14 @@ class _ChatHistoryDrawer extends ConsumerWidget {
             Expanded(
               child: sessionsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Error: $e')),
+                error: (e, _) => Center(
+                  child: Text(
+                    AppErrorMessage.from(
+                      e,
+                      fallback: AppErrorMessage.loadFailed,
+                    ),
+                  ),
+                ),
                 data: (sessions) {
                   if (sessions.isEmpty) {
                     return const Center(

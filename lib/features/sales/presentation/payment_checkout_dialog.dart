@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/pos_payment_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
 import '../../settings/data/payment_method_provider.dart';
@@ -40,6 +41,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   PosMpesaConfig? _mpesaConfig;
   bool _isLoadingMpesa = true;
   DateTime _selectedDueDate = DateTime.now().add(const Duration(days: 14));
+  Map<String, dynamic>? _selectedMethod;
 
   @override
   void initState() {
@@ -204,11 +206,50 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     });
   }
 
+  IconData _getPaymentIcon(Map<String, dynamic> method) {
+    final name = (method['name'] as String).toLowerCase();
+    if (method['is_credit'] == 1 || name.contains('kopesha')) {
+      return Icons.account_balance_wallet_outlined;
+    }
+    if (method['is_cash_drawer'] == 1 || name.contains('cash')) {
+      return Icons.payments_outlined;
+    }
+    if (name.contains('mpesa') || name.contains('m-pesa')) {
+      return Icons.phone_android_outlined;
+    }
+    if (name.contains('card')) {
+      return Icons.credit_card_outlined;
+    }
+    if (name.contains('bank') || name.contains('transfer')) {
+      return Icons.account_balance_outlined;
+    }
+    return Icons.payment_outlined;
+  }
+
+  Color _getPaymentColor(Map<String, dynamic> method) {
+    final name = (method['name'] as String).toLowerCase();
+    if (method['is_credit'] == 1 || name.contains('kopesha')) {
+      return AppColors.warning;
+    }
+    if (method['is_cash_drawer'] == 1 || name.contains('cash')) {
+      return AppColors.success;
+    }
+    if (name.contains('mpesa') || name.contains('m-pesa')) {
+      return AppColors.secondary;
+    }
+    if (name.contains('card')) {
+      return AppColors.primaryLight;
+    }
+    if (name.contains('bank') || name.contains('transfer')) {
+      return AppColors.primary;
+    }
+    return AppColors.primary;
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentBalance =
         (_selectedCustomer?['balance'] as num?)?.toDouble() ?? 0;
-    final dialogHeight = MediaQuery.of(context).size.height * 0.75;
     final paymentMethodsAsync = ref.watch(activePaymentMethodsProvider);
 
     return AlertDialog(
@@ -252,402 +293,469 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       ),
       content: SizedBox(
         width: 600,
-        height: dialogHeight > 600 ? 600 : dialogHeight,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.22),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.shopping_cart_outlined,
-                    color: AppColors.primaryLight,
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Sale Total',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        '${ShopSettings.currency}${widget.total.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Payment Methods',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            if (_isLoadingMpesa)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 12),
-                child: LinearProgressIndicator(minHeight: 2),
-              )
-            else if (_mpesaConfig?.active == true) ...[
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Container(
-                padding: const EdgeInsets.all(14),
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.08),
+                  color: AppColors.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.2),
+                    color: AppColors.primary.withValues(alpha: 0.22),
                   ),
                 ),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _mpesaPhoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                          labelText: '${_mpesaConfig!.providerLabel} phone',
-                          prefixIcon: const Icon(Icons.phone_android_outlined),
-                        ),
-                      ),
+                    const Icon(
+                      Icons.shopping_cart_outlined,
+                      color: AppColors.primaryLight,
                     ),
                     const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: _handleMpesaCheckout,
-                      icon: const Icon(Icons.mobile_friendly_outlined),
-                      label: Text(_mpesaConfig!.providerLabel),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Sale Total',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          '${ShopSettings.currency}${widget.total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
+              const Text(
+                'Payment Methods',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
               const SizedBox(height: 12),
-            ],
-            paymentMethodsAsync.when(
-              data: (methods) {
-                if (methods.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'No active payment methods. Please configure payment methods in Settings.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
+              if (_isLoadingMpesa)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              paymentMethodsAsync.when(
+                data: (methods) {
+                  if (methods.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'No active payment methods. Please configure payment methods in Settings.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    );
+                  }
+
+                  // Initialize default selection to Cash or first method
+                  _selectedMethod ??= methods.firstWhere(
+                    (m) => m['is_cash_drawer'] == 1,
+                    orElse: () => methods.first,
                   );
-                }
 
-                // Separate credit methods from others
-                final creditMethods = methods
-                    .where((m) => m['is_credit'] == 1)
-                    .toList();
-                final otherMethods = methods
-                    .where((m) => m['is_credit'] != 1)
-                    .toList();
+                  final isKopeshaSelected = _selectedMethod?['is_credit'] == 1;
+                  final isMpesaSelected = _selectedMethod != null &&
+                      (_selectedMethod!['name'] as String)
+                          .toLowerCase()
+                          .contains('mpesa');
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Other payment methods
-                    if (otherMethods.isNotEmpty) ...[
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: otherMethods.map((method) {
-                          final isCashDrawer = method['is_cash_drawer'] == 1;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: 3.4,
+                        children: methods.map((method) {
+                          final isSelected =
+                              _selectedMethod?['id'] == method['id'];
+                          final icon = _getPaymentIcon(method);
+                          final color = _getPaymentColor(method);
                           return _PaymentMethodButton(
                             name: method['name'],
-                            icon: isCashDrawer
-                                ? Icons.payments
-                                : Icons.credit_card,
-                            color: AppColors.primary,
-                            onTap: () => _handleOtherPaymentCheckout(method),
+                            icon: icon,
+                            color: color,
+                            isSelected: isSelected,
+                            onTap: () {
+                              setState(() {
+                                _selectedMethod = method;
+                              });
+                            },
                           );
                         }).toList(),
                       ),
-                    ],
-
-                    // Kopesha section
-                    if (creditMethods.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      const Divider(),
                       const SizedBox(height: 16),
-                      const Text(
-                        'Credit Payment (Kopesha)',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _KopeshaSection(
-                        selectedDueDate: _selectedDueDate,
-                        onSetDueInDays: _setDueInDays,
-                        onPickCustomDueDate: _pickCustomDueDate,
-                        matchesPreset: _matchesPreset,
-                        dueDateLabel: _dueDateLabel,
-                      ),
-                    ],
-                  ],
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) => Text('Error loading payment methods: $e'),
-            ),
-            const SizedBox(height: 20),
-            const Divider(),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Text(
-                  'Customer (Optional for most payments, Required for Kopesha)',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: _openCreateAccountScreen,
-                  icon: const Icon(Icons.person_add_alt_1, size: 18),
-                  label: const Text('Add Customer'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _searchController,
-              onChanged: _loadCustomers,
-              decoration: InputDecoration(
-                hintText: 'Search customer by name, phone, or email',
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: AppColors.textSecondary,
-                ),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadCustomers();
-                        },
-                      ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            if (_selectedCustomer != null)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.24),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle, color: AppColors.success),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Selected: ${_selectedCustomer!['name']}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Current balance: ${ShopSettings.currency}${currentBalance.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () => setState(() => _selectedCustomer = null),
-                      tooltip: 'Clear selection',
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: _isLoading
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    : _customers.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.people_outline,
-                                size: 40,
-                                color: AppColors.textSecondary.withValues(
-                                  alpha: 0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              const Text('No customers found'),
-                            ],
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _customers.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final customer = _customers[index];
-                          final isSelected =
-                              customer['id'] == _selectedCustomer?['id'];
-                          final balance =
-                              (customer['balance'] as num?)?.toDouble() ?? 0;
 
-                          return Material(
-                            color: isSelected
-                                ? AppColors.primary.withValues(alpha: 0.12)
-                                : AppColors.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            child: InkWell(
-                              onTap: () => setState(() {
-                                _selectedCustomer = customer;
-                                final phone = customer['phone'] as String?;
-                                if (_mpesaPhoneController.text.trim().isEmpty &&
-                                    phone != null &&
-                                    phone.trim().isNotEmpty) {
-                                  _mpesaPhoneController.text = phone.trim();
-                                }
-                              }),
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? AppColors.primaryLight
-                                        : AppColors.border,
-                                    width: isSelected ? 1.4 : 1,
+                      // M-Pesa dynamic phone field
+                      if (isMpesaSelected) ...[
+                        if (_mpesaConfig?.active == true)
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppColors.secondary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color:
+                                    AppColors.secondary.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: TextField(
+                              controller: _mpesaPhoneController,
+                              keyboardType: TextInputType.phone,
+                              decoration: InputDecoration(
+                                labelText:
+                                    '${_mpesaConfig!.providerLabel} phone',
+                                prefixIcon:
+                                    const Icon(Icons.phone_android_outlined),
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: AppColors.error.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline,
+                                    color: AppColors.error),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _mpesaConfig?.message ??
+                                        'M-Pesa integration is not active.',
+                                    style: const TextStyle(
+                                        color: AppColors.error, fontSize: 13),
                                   ),
                                 ),
-                                child: Row(
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Kopesha dynamic due date picker
+                      if (isKopeshaSelected) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppColors.warning.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: _KopeshaSection(
+                            selectedDueDate: _selectedDueDate,
+                            onSetDueInDays: _setDueInDays,
+                            onPickCustomDueDate: _pickCustomDueDate,
+                            matchesPreset: _matchesPreset,
+                            dueDateLabel: _dueDateLabel,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ],
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, st) => Text(
+                  AppErrorMessage.from(e, fallback: AppErrorMessage.loadFailed),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 16),
+
+              // Customer Header
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _selectedMethod?['is_credit'] == 1
+                          ? 'Customer (Required for Kopesha)'
+                          : 'Customer (Optional)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: _selectedMethod?['is_credit'] == 1
+                            ? AppColors.warning
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _openCreateAccountScreen,
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text('Add Customer'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // If selected: show selected customer card. Else: show search field and search results list.
+              if (_selectedCustomer != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.success.withValues(alpha: 0.24),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: AppColors.success),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Selected: ${_selectedCustomer!['name']}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Current balance: ${ShopSettings.currency}${currentBalance.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () =>
+                            setState(() => _selectedCustomer = null),
+                        tooltip: 'Clear selection',
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                TextField(
+                  controller: _searchController,
+                  onChanged: _loadCustomers,
+                  decoration: InputDecoration(
+                    hintText: 'Search customer by name, phone, or email',
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              _loadCustomers();
+                            },
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  height: 220,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHighlight,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _customers.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Container(
-                                      width: 42,
-                                      height: 42,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary.withValues(
-                                          alpha: 0.18,
-                                        ),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Icon(
-                                        Icons.person,
-                                        color: AppColors.primaryLight,
-                                      ),
+                                    Icon(
+                                      Icons.people_outline,
+                                      size: 32,
+                                      color: AppColors.textSecondary
+                                          .withValues(alpha: 0.5),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            customer['name'] as String? ??
-                                                'Unnamed Customer',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            [
-                                                  customer['phone'] as String?,
-                                                  customer['email'] as String?,
-                                                ]
-                                                .where(
-                                                  (value) =>
-                                                      value != null &&
-                                                      value.isNotEmpty,
-                                                )
-                                                .join(' | ')
-                                                .ifEmpty('No contact added'),
-                                            style: const TextStyle(
-                                              color: AppColors.textSecondary,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'No customers found',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 13,
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        const Text(
-                                          'Balance',
-                                          style: TextStyle(
-                                            color: AppColors.textSecondary,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            color: balance > 0
-                                                ? AppColors.warning
-                                                : AppColors.success,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ],
                                     ),
                                   ],
                                 ),
                               ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              physics: const ClampingScrollPhysics(),
+                              padding: const EdgeInsets.all(12),
+                              itemCount: _customers.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final customer = _customers[index];
+                                final isSelected = customer['id'] ==
+                                    _selectedCustomer?['id'];
+                                final balance =
+                                    (customer['balance'] as num?)?.toDouble() ??
+                                        0;
+
+                                return Material(
+                                  color: isSelected
+                                      ? AppColors.primary
+                                          .withValues(alpha: 0.12)
+                                      : AppColors.surface,
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: InkWell(
+                                    onTap: () => setState(() {
+                                      _selectedCustomer = customer;
+                                      final phone =
+                                          customer['phone'] as String?;
+                                      if (_mpesaPhoneController.text
+                                              .trim()
+                                              .isEmpty &&
+                                          phone != null &&
+                                          phone.trim().isNotEmpty) {
+                                        _mpesaPhoneController.text =
+                                            phone.trim();
+                                      }
+                                    }),
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? AppColors.primaryLight
+                                              : AppColors.border,
+                                          width: isSelected ? 1.4 : 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary
+                                                  .withValues(alpha: 0.18),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: const Icon(
+                                              Icons.person,
+                                              color: AppColors.primaryLight,
+                                              size: 20,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  customer['name'] as String? ??
+                                                      'Unnamed Customer',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  [
+                                                    customer['phone']
+                                                        as String?,
+                                                    customer['email']
+                                                        as String?,
+                                                  ]
+                                                      .where((value) =>
+                                                          value != null &&
+                                                          value.isNotEmpty)
+                                                      .join(' | ')
+                                                      .ifEmpty(
+                                                          'No contact added'),
+                                                  style: const TextStyle(
+                                                    color:
+                                                        AppColors.textSecondary,
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              const Text(
+                                                'Balance',
+                                                style: TextStyle(
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
+                                                style: TextStyle(
+                                                  color: balance > 0
+                                                      ? AppColors.warning
+                                                      : AppColors.success,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-              ),
-            ),
-          ],
+                ),
+              ],
+            ],
+          ),
         ),
       ),
       actions: [
@@ -655,24 +763,32 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        // Kopesha button
-        paymentMethodsAsync.maybeWhen(
-          data: (methods) {
-            final hasKopesha = methods.any((m) => m['is_credit'] == 1);
-            if (!hasKopesha) return const SizedBox.shrink();
-
-            return ElevatedButton.icon(
-              onPressed: _handleKopeshaCheckout,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.warning,
-                foregroundColor: Colors.white,
+        if (_selectedMethod != null)
+          ElevatedButton.icon(
+            onPressed: () {
+              final isKopesha = _selectedMethod!['is_credit'] == 1;
+              final isMpesa = (_selectedMethod!['name'] as String)
+                  .toLowerCase()
+                  .contains('mpesa');
+              if (isKopesha) {
+                _handleKopeshaCheckout();
+              } else if (isMpesa) {
+                _handleMpesaCheckout();
+              } else {
+                _handleOtherPaymentCheckout(_selectedMethod!);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _getPaymentColor(_selectedMethod!),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              icon: const Icon(Icons.account_balance_wallet, size: 18),
-              label: const Text('Pay with Kopesha'),
-            );
-          },
-          orElse: () => const SizedBox.shrink(),
-        ),
+            ),
+            icon: Icon(_getPaymentIcon(_selectedMethod!), size: 18),
+            label: Text('Pay with ${_selectedMethod!['name']}'),
+          ),
       ],
     );
   }
@@ -686,12 +802,14 @@ class _PaymentMethodButton extends StatelessWidget {
   final String name;
   final IconData icon;
   final Color color;
+  final bool isSelected;
   final VoidCallback onTap;
 
   const _PaymentMethodButton({
     required this.name,
     required this.icon,
     required this.color,
+    required this.isSelected,
     required this.onTap,
   });
 
@@ -700,26 +818,48 @@ class _PaymentMethodButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+          color: isSelected
+              ? color.withValues(alpha: 0.12)
+              : AppColors.surfaceHighlight,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          border: Border.all(
+            color: isSelected ? color : AppColors.border,
+            width: isSelected ? 2 : 1.2,
+          ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(width: 12),
-            Text(
-              name,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
+            Icon(
+              icon,
+              color: isSelected ? color : AppColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                name,
+                style: TextStyle(
+                  color: isSelected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 14,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: color,
+                size: 16,
+              ),
           ],
         ),
       ),

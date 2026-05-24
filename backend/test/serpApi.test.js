@@ -62,7 +62,7 @@ test('searchWithSerpApi calls the Google engine with protected key', async () =>
   let requestedOptions;
   const result = await searchWithSerpApi({
     apiKey: 'secret-key',
-    baseUrl: 'https://google.serper.dev/search',
+    baseUrl: 'https://serpapi.com/search.json',
     input: {
       query: 'VAT Kenya 2026',
       countryCode: 'KE',
@@ -89,12 +89,14 @@ test('searchWithSerpApi calls the Google engine with protected key', async () =>
     },
   });
 
-  const body = JSON.parse(requestedOptions.body);
-  assert.equal(requestedOptions.method, 'POST');
-  assert.equal(requestedOptions.headers['X-API-KEY'], 'secret-key');
-  assert.equal(body.q, 'VAT Kenya 2026');
-  assert.equal(body.gl, 'ke');
-  assert.equal(body.hl, 'en');
-  assert.equal(body.num, 3);
+  const url = new URL(requestedUrl);
+  assert.equal(requestedOptions.method, 'GET');
+  assert.equal(url.origin + url.pathname, 'https://serpapi.com/search.json');
+  assert.equal(url.searchParams.get('engine'), 'google');
+  assert.equal(url.searchParams.get('api_key'), 'secret-key');
+  assert.equal(url.searchParams.get('q'), 'VAT Kenya 2026');
+  assert.equal(url.searchParams.get('gl'), 'ke');
+  assert.equal(url.searchParams.get('hl'), 'en');
+  assert.equal(url.searchParams.get('num'), '3');
   assert.equal(result.results.length, 1);
 });

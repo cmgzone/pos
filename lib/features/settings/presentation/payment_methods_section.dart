@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:pos_app/core/services/pos_payment_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
+import 'package:pos_app/core/utils/error_messages.dart';
 import '../data/payment_method_provider.dart';
 import '../data/payment_method_repository.dart';
 
@@ -81,7 +82,11 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       if (!mounted) return;
       setState(() {
         _loadingMpesa = false;
-        _mpesaMessage = 'M-Pesa settings unavailable: $error';
+        _mpesaMessage = AppErrorMessage.withContext(
+          error,
+          prefix: 'M-Pesa settings unavailable.',
+          fallback: AppErrorMessage.loadFailed,
+        );
       });
     }
   }
@@ -139,7 +144,13 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _mpesaMessage = 'M-Pesa save failed: $error');
+      setState(
+        () => _mpesaMessage = AppErrorMessage.withContext(
+          error,
+          prefix: 'M-Pesa save failed.',
+          fallback: AppErrorMessage.saveFailed,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _savingMpesa = false);
@@ -242,7 +253,12 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Error: $e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -286,7 +302,9 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error toggling status: $e'),
+          content: Text(
+            AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -325,7 +343,13 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error deleting: $e'),
+            content: Text(
+              AppErrorMessage.from(
+                e,
+                fallback:
+                    'Could not delete this payment method. Please try again.',
+              ),
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -446,7 +470,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, stack) => Text(
-              'Error: $err',
+              AppErrorMessage.from(err, fallback: AppErrorMessage.loadFailed),
               style: const TextStyle(color: AppColors.error),
             ),
           ),

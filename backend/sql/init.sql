@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS platform_ai_config (
   api_key text NOT NULL DEFAULT '',
   serp_api_key text NOT NULL DEFAULT '',
   model text NOT NULL DEFAULT 'openai/gpt-4o-mini',
+  image_model text NOT NULL DEFAULT 'google/gemini-2.5-flash-image',
   stt_model text NOT NULL DEFAULT 'openai/whisper-1',
   tts_model text NOT NULL DEFAULT 'openai/tts-1',
   tts_voice text NOT NULL DEFAULT 'alloy',

@@ -97,6 +97,8 @@ class PikiAgentService {
   static const toolPurchaseDraft = 'purchase_draft';
   static const toolDailyBrief = 'daily_brief';
   static const toolCreateProduct = 'create_product';
+  static const toolDraftProduct = 'draft_product';
+  static const toolEnhanceProductImage = 'enhance_product_image';
   static const toolCreateService = 'create_service';
   static const toolEditProduct = 'edit_product';
   static const toolAddVariant = 'add_variant';
@@ -239,6 +241,8 @@ class PikiAgentService {
     toolPurchaseHistory: 'Review purchase history',
     toolPurchaseDraft: 'Create purchase draft',
     toolCreateProduct: 'Create product',
+    toolDraftProduct: 'Draft a product from the web',
+    toolEnhanceProductImage: 'Enhance product image',
     toolCreateService: 'Create service',
     toolEditProduct: 'Edit product',
     toolAddVariant: 'Add variant',
@@ -279,6 +283,10 @@ class PikiAgentService {
     toolPurchaseDraft:
         'Build a purchase draft from low stock and recent supplier history.',
     toolCreateProduct: 'Create a product when name and price are known.',
+    toolDraftProduct:
+        'Prepare a product with a web image for user approval before saving.',
+    toolEnhanceProductImage:
+        'Enhance an existing product photo and save the improved image on the product.',
     toolCreateService:
         'Create a service template when name and price are known.',
     toolEditProduct:
@@ -324,6 +332,10 @@ class PikiAgentService {
     toolPurchaseDraft: 'limit(int)',
     toolCreateProduct:
         'name(string, required), price(number, required), cost(number), stock(number), unit(string), category_id(string), category(string), sku(string), barcode(string), brand(string)',
+    toolDraftProduct:
+        'name(string, required), price(number, required), image_url(string), cost(number), stock(number), unit(string), category_id(string), category(string), sku(string), barcode(string), brand(string)',
+    toolEnhanceProductImage:
+        'query/product_name/name(string, required), prompt(string, optional)',
     toolCreateService:
         'name(string, required), price/base_price(number, required), category(string), description(string), duration_minutes(int)',
     toolEditProduct:
@@ -358,6 +370,9 @@ class PikiAgentService {
   static String toolCatalogPrompt() {
     final buffer = StringBuffer();
     for (final entry in _toolLabels.entries) {
+      if (entry.key == toolWebSearch && !OpenRouterService.webSearchEnabled) {
+        continue;
+      }
       buffer.writeln(
         '- ${entry.key}: ${entry.value}. ${_toolDescriptions[entry.key]} '
         'Arguments: ${_toolArguments[entry.key] ?? 'none'}.',
@@ -711,6 +726,13 @@ Example: ["detergent", "soap", "laundry"]
           'count': products.length,
           'searched_query': query,
           'used_semantic_search': usedSemanticSearch,
+          'details': limited
+              .take(6)
+              .map(
+                (p) =>
+                    '${p['name']}: ${((p['image_url'] as String?)?.trim().isNotEmpty ?? false) ? 'has image' : 'missing image'}',
+              )
+              .toList(),
           'summary': query != null && query.isNotEmpty
               ? products.isEmpty
                     ? 'No products found for "$query"'
@@ -870,6 +892,7 @@ Example: ["detergent", "soap", "laundry"]
       description: _toolDescriptions[tool] ?? 'Preparing a grounded response',
       icon: switch (tool) {
         toolPurchaseDraft => Icons.note_alt_rounded,
+        toolEnhanceProductImage => Icons.auto_fix_high_rounded,
         toolWebSearch => Icons.public_rounded,
         _ => Icons.auto_awesome_rounded,
       },
@@ -915,6 +938,10 @@ Example: ["detergent", "soap", "laundry"]
         );
       case toolCreateProduct:
         return _createProduct(args ?? const <String, dynamic>{});
+      case toolDraftProduct:
+        return _draftProduct(args ?? const <String, dynamic>{});
+      case toolEnhanceProductImage:
+        return _enhanceProductImage(args ?? const <String, dynamic>{});
       case toolCreateService:
         return _createService(args ?? const <String, dynamic>{});
       case toolEditProduct:
@@ -1819,6 +1846,79 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       'stock': stock,
       'summary':
           'Created product "$name" at ${ShopSettings.currency}${price.toStringAsFixed(2)}',
+    }, args: args);
+  }
+
+  static Future<Map<String, dynamic>> _draftProduct(
+    Map<String, dynamic> args,
+  ) async {
+    final name = _requiredStringArg(args, [
+      'name',
+      'product_name',
+    ], 'Product name');
+    final price = _requiredPositiveDoubleArg(args, [
+      'price',
+      'unit_price',
+      'selling_price',
+    ], 'Product price');
+    final imageUrl = _stringArg(args, ['image_url', 'imageUrl']);
+    final cost = _doubleArg(args, ['cost', 'unit_cost']);
+    final stock = _nonNegativeDoubleArg(args, ['stock', 'initial_stock'], 0);
+
+    return _enrichToolResult(toolDraftProduct, {
+      'type': toolDraftProduct,
+      'success': true,
+      'name': name,
+      'price': price,
+      'cost': cost,
+      'stock': stock,
+      'image_url': imageUrl,
+      'draft_args': args,
+      'summary': 'Drafted product "$name" for user review.',
+    }, args: args);
+  }
+
+  static Future<Map<String, dynamic>> _enhanceProductImage(
+    Map<String, dynamic> args,
+  ) async {
+    final query = _requiredStringArg(args, [
+      'query',
+      'product_name',
+      'name',
+    ], 'Product query');
+    final product = await findProductForSale(query);
+    if (product == null) {
+      throw Exception('Could not find product matching "$query".');
+    }
+
+    final imageSource = (product['image_url'] as String?)?.trim();
+    if (imageSource == null || imageSource.isEmpty) {
+      throw Exception(
+        'Product "${product['name']}" does not have an image yet. Add or capture a product image first.',
+      );
+    }
+
+    final enhancedPath = await OpenRouterService.enhanceProductImage(
+      imageSource: imageSource,
+      productName: product['name'] as String? ?? query,
+      prompt: _stringArg(args, ['prompt', 'instruction', 'description']),
+    );
+
+    await ProductRepository.update(product['id'] as String, {
+      'image_url': enhancedPath,
+      'updated_at': DateTime.now().toIso8601String(),
+      'sync_status': 'pending',
+    });
+
+    return _enrichToolResult(toolEnhanceProductImage, {
+      'type': toolEnhanceProductImage,
+      'success': true,
+      'product_id': product['id'],
+      'name': product['name'],
+      'image_url': enhancedPath,
+      'image_model': OpenRouterService.imageModelName,
+      'summary':
+          'Enhanced product image for "${product['name']}" using ${OpenRouterService.imageModelName}.',
     }, args: args);
   }
 

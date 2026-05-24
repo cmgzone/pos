@@ -4,8 +4,12 @@ import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/error_messages.dart';
 import '../data/piki_models.dart';
 import '../data/piki_work_notes.dart';
+import '../../products/data/product_repository.dart';
+import '../../products/data/category_repository.dart';
+import '../../../core/services/background_tasks_service.dart';
 import 'piki_action_buttons.dart';
 import 'piki_step_indicator.dart';
 import 'piki_summary_card.dart';
@@ -44,6 +48,9 @@ class PikiMessageBubble extends StatelessWidget {
         break;
       case PikiMessageType.productCard:
         child = _buildProductCard();
+        break;
+      case PikiMessageType.productDraftCard:
+        child = _buildProductDraftCard(context);
         break;
       case PikiMessageType.error:
         child = _buildErrorBubble();
@@ -172,12 +179,16 @@ class PikiMessageBubble extends StatelessWidget {
                   size: 18,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ],
@@ -416,6 +427,24 @@ class PikiMessageBubble extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (onSendPrompt != null)
+                  InkWell(
+                    onTap: () => onSendPrompt?.call(message.content),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        right: 8.0,
+                        top: 2,
+                        bottom: 2,
+                        left: 2,
+                      ),
+                      child: Icon(
+                        Icons.refresh_rounded,
+                        size: 14,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
                 Text(
                   _timeLabel,
                   style: TextStyle(
@@ -636,9 +665,13 @@ class PikiMessageBubble extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
-                  'Tasks completed',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                const Expanded(
+                  child: Text(
+                    'Tasks completed',
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
                 ),
                 const Spacer(),
                 Text(
@@ -684,6 +717,200 @@ class PikiMessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // ── Product draft card ──────────────────────────────────────────────────
+
+  Widget _buildProductDraftCard(BuildContext context) {
+    final data = message.attachedData ?? {};
+    final name = data['name'] as String? ?? 'Draft Product';
+    final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+    final cost = (data['cost'] as num?)?.toDouble() ?? 0.0;
+    final stock = (data['stock'] as num?)?.toDouble() ?? 0.0;
+    final imageUrl = data['image_url'] as String?;
+    final draftArgs = data['draft_args'] as Map<String, dynamic>? ?? {};
+
+    return _AgentRow(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 340),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.rate_review_rounded,
+                  color: AppColors.primary,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Product Draft',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  imageUrl,
+                  height: 120,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    height: 120,
+                    width: double.infinity,
+                    color: AppColors.surface,
+                    child: const Center(
+                      child: Icon(
+                        Icons.broken_image,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Price: ${ShopSettings.currency}${price.toStringAsFixed(2)}',
+              style: const TextStyle(
+                color: AppColors.success,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (cost > 0)
+              Text(
+                'Cost: ${ShopSettings.currency}${cost.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            Text(
+              'Initial Stock: $stock',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  // Dispatch product creation and WorkManager task
+                  _approveAndSaveDraft(context, draftArgs, imageUrl);
+                },
+                icon: const Icon(Icons.check),
+                label: const Text('Approve & Save'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'By saving, you verify you have the right to use this image.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _approveAndSaveDraft(
+    BuildContext context,
+    Map<String, dynamic> args,
+    String? imageUrl,
+  ) async {
+    try {
+      // Show loading
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Saving product...')));
+
+      // Create product
+      final productId = await _createProductFromDraft(args);
+
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        BackgroundTasksService.scheduleImageDownload(productId, imageUrl);
+      }
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product saved successfully!')),
+      );
+      // Tell AI we completed it
+      onSendPrompt?.call('I have approved and saved $args["name"].');
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<String> _createProductFromDraft(Map<String, dynamic> args) async {
+    // Fallback simple parsing
+    final name = args['name'] ?? args['product_name'] ?? 'Product';
+    final price = (args['price'] ?? args['unit_price'] ?? 0).toDouble();
+    final cost = (args['cost'] ?? args['unit_cost'] ?? 0).toDouble();
+    final stock = (args['stock'] ?? args['initial_stock'] ?? 0).toDouble();
+    final unit = args['unit'] ?? args['sale_unit'] ?? 'pcs';
+    final lowStock = (args['low_stock'] ?? args['lowStock'] ?? 5).toDouble();
+
+    String? categoryId = args['category_id'];
+    if (categoryId == null && args['category'] != null) {
+      final categories = await CategoryRepository.getAll();
+      final normalized = args['category'].toString().toLowerCase();
+      for (final category in categories) {
+        if ((category['name'] as String? ?? '').trim().toLowerCase() ==
+            normalized) {
+          categoryId = category['id'] as String?;
+          break;
+        }
+      }
+    }
+
+    final id = await ProductRepository.create(
+      name: name,
+      price: price,
+      cost: cost,
+      brand: args['brand'],
+      sku: args['sku'],
+      barcode: args['barcode'],
+      stock: stock,
+      lowStock: lowStock,
+      unit: unit,
+      stockUnit: args['stock_unit'] ?? args['stockUnit'],
+      saleUnit: args['sale_unit'] ?? args['saleUnit'],
+      purchaseUnit: args['purchase_unit'] ?? args['purchaseUnit'],
+      categoryId: categoryId,
+      trackStock: args['track_stock'] ?? args['trackStock'] ?? true,
+      imageUrl: args['image_url'], // Will be temporarily set to web link
+    );
+    return id;
   }
 
   // ── Product card ───────────────────────────────────────────────────────
@@ -952,11 +1179,15 @@ class PikiMessageBubble extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (shortModel.isNotEmpty)
-                  Text(
-                    shortModel,
-                    style: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.7),
-                      fontSize: 10,
+                  Flexible(
+                    child: Text(
+                      shortModel,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                        fontSize: 10,
+                      ),
                     ),
                   ),
                 const Spacer(),

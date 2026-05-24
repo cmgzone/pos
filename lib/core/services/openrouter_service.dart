@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'database_service.dart';
@@ -20,11 +22,15 @@ import '../../features/shifts/data/shift_repository.dart';
 class OpenRouterService {
   static const _keyCachedAiEnabled = 'ai_enabled';
   static const _keyCachedAiModel = 'ai_model';
+  static const _keyCachedImageModel = 'ai_image_model';
+  static const _keyCachedWebSearchEnabled = 'web_search_enabled';
   static const _timeout = Duration(seconds: 30);
 
   static SharedPreferences? _prefs;
   static bool? _cachedEnabled;
   static String? _cachedModel;
+  static String? _cachedImageModel;
+  static bool? _cachedWebSearchEnabled;
 
   // ─── Initialization ───────────────────────────────────────────────────
 
@@ -32,6 +38,8 @@ class OpenRouterService {
     _prefs ??= await SharedPreferences.getInstance();
     _cachedEnabled = _prefs?.getBool(_keyCachedAiEnabled);
     _cachedModel = _prefs?.getString(_keyCachedAiModel);
+    _cachedImageModel = _prefs?.getString(_keyCachedImageModel);
+    _cachedWebSearchEnabled = _prefs?.getBool(_keyCachedWebSearchEnabled);
   }
 
   /// Whether AI is enabled (cached from last server fetch).
@@ -39,6 +47,13 @@ class OpenRouterService {
 
   /// Current model name (cached from last server fetch).
   static String get modelName => _cachedModel ?? 'openai/gpt-4o-mini';
+
+  /// Current product image model name (cached from last server fetch).
+  static String get imageModelName =>
+      _cachedImageModel ?? 'google/gemini-2.5-flash-image';
+
+  /// Whether backend web search is configured and available to Piki.
+  static bool get webSearchEnabled => _cachedWebSearchEnabled ?? false;
 
   // ─── Fetch AI config from backend ─────────────────────────────────────
 
@@ -48,6 +63,8 @@ class OpenRouterService {
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isEmpty) {
       _cachedEnabled = false;
+      _cachedWebSearchEnabled = false;
+      await _prefs?.setBool(_keyCachedWebSearchEnabled, false);
       return false;
     }
 
@@ -71,11 +88,18 @@ class OpenRouterService {
         final body = jsonDecode(utf8.decode(response.bodyBytes));
         final enabled = body['aiEnabled'] == true;
         final model = body['aiModel'] as String? ?? 'openai/gpt-4o-mini';
+        final imageModel =
+            body['imageModel'] as String? ?? 'google/gemini-2.5-flash-image';
+        final webSearchEnabled = body['webSearchEnabled'] == true;
 
         _cachedEnabled = enabled;
         _cachedModel = model;
+        _cachedImageModel = imageModel;
+        _cachedWebSearchEnabled = webSearchEnabled;
         await _prefs?.setBool(_keyCachedAiEnabled, enabled);
         await _prefs?.setString(_keyCachedAiModel, model);
+        await _prefs?.setString(_keyCachedImageModel, imageModel);
+        await _prefs?.setBool(_keyCachedWebSearchEnabled, webSearchEnabled);
 
         return enabled;
       } finally {
@@ -164,6 +188,9 @@ class OpenRouterService {
     bool includeBusinessContext = true,
     bool consumeQuota = false,
   }) async {
+    final webSearchRule = webSearchEnabled
+        ? '- Use web_search for current external information that is not in the POS database, such as market prices, supplier websites, regulations, tax/news context, weather, or competitor/public information.'
+        : '- Web search is currently not configured. Do not call web_search; answer from local POS data or ask the user to enable web search if current external information is required.';
     final response = await chat(
       consumeQuota: consumeQuota,
       messages: [
@@ -174,6 +201,8 @@ class OpenRouterService {
 Plan the next grounded POS response.
 
 Return JSON only. Do not wrap it in markdown.
+The first character of your response must be { and the final character must be }.
+Use valid JSON with double-quoted keys and strings. Do not add commentary before or after the JSON.
 
 JSON schema:
 {
@@ -204,7 +233,8 @@ Rules:
 - Use create_customer and create_supplier when the user wants to add a new contact.
 - Use reconcile_stock when the user provides a physical count that differs from the system (e.g., "I counted 50 milks").
 - Use customer_search and supplier_search to look up contact details.
-- Use web_search for current external information that is not in the POS database, such as market prices, supplier websites, regulations, tax/news context, weather, or competitor/public information.
+- Use enhance_product_image when the user asks to improve, enhance, clean up, upscale, or make a better product photo for an existing product. If the product has no image, explain that they need to add or capture one first.
+$webSearchRule
 - Do not use web_search for local POS facts like stock, sales, customers, suppliers, or expenses when a local tool can answer.
 - Use add_to_cart to add an item to the POS cart when the user asks to "sell", "add", or "buy" items in Sell Mode.
 - Use remove_from_cart when the cashier asks to remove, void, undo, or take an item off the cart.
@@ -236,7 +266,7 @@ $userMessage
       ],
       includeBusinessContext: includeBusinessContext,
     );
-    return _extractJsonObject(response);
+    return _extractPlannerResponse(response);
   }
 
   /// Runs a web search through the backend SerpAPI proxy.
@@ -288,6 +318,11 @@ $userMessage
         );
       }
 
+      if (response.statusCode == 403) {
+        _cachedWebSearchEnabled = false;
+        await _prefs?.setBool(_keyCachedWebSearchEnabled, false);
+      }
+
       if (response.statusCode != 200 || body['ok'] != true) {
         throw Exception(
           body['error'] as String? ??
@@ -301,18 +336,102 @@ $userMessage
     }
   }
 
+  /// Enhances a local or remote product image through the backend OpenRouter
+  /// proxy and saves the generated image into the app's product image folder.
+  static Future<String> enhanceProductImage({
+    required String imageSource,
+    String? productName,
+    String? prompt,
+    bool consumeQuota = true,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+
+    final imageDataUrl = await _imageSourceToDataUrl(imageSource);
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final client = http.Client();
+
+    try {
+      final response = await client
+          .post(
+            _buildUri(backendUrl, 'ai/product-image/enhance'),
+            headers: {
+              ..._authHeaders(license),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'imageDataUrl': imageDataUrl,
+              if (productName != null && productName.trim().isNotEmpty)
+                'productName': productName.trim(),
+              if (prompt != null && prompt.trim().isNotEmpty)
+                'prompt': prompt.trim(),
+              'consumeQuota': consumeQuota,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 429) {
+        throw Exception(
+          body['error'] as String? ?? 'AI rate limit reached. Try again later.',
+        );
+      }
+
+      if (response.statusCode == 403) {
+        throw Exception(
+          'AI image enhancement is not enabled by the platform administrator.',
+        );
+      }
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        throw Exception(
+          body['error'] as String? ??
+              'AI image enhancement failed (${response.statusCode})',
+        );
+      }
+
+      final generatedUrl =
+          body['imageDataUrl'] as String? ?? body['imageUrl'] as String?;
+      if (generatedUrl == null || generatedUrl.trim().isEmpty) {
+        throw Exception('AI image enhancement did not return an image');
+      }
+
+      final model = body['model'] as String?;
+      if (model != null && model.trim().isNotEmpty) {
+        _cachedImageModel = model.trim();
+        await _prefs?.setString(_keyCachedImageModel, model.trim());
+      }
+
+      return _saveGeneratedProductImage(generatedUrl.trim());
+    } finally {
+      client.close();
+    }
+  }
+
   // ─── System prompt builder ────────────────────────────────────────────
 
   static String _buildSystemPrompt() {
     final shopName = ShopSettings.shopName;
     final currency = ShopSettings.currency;
     final userName = SessionService.currentUserName;
+    final now = DateTime.now();
+    final todayDate =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final currentTime =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    return '''You are Piki, an AI assistant for "$shopName" — a business that uses the Devis POS system.
-You help with sales analysis, inventory management, customer insights, business decisions, and helping users understand how to use the Devis POS app.
+    return '''You are Piki, an AI assistant for "$shopName" — a business that uses the Piki POS system.
+You help with sales analysis, inventory management, customer insights, business decisions, and helping users understand how to use the Piki POS app.
 The current user is "$userName". The currency is "$currency".
+The current system date is $todayDate, and the current local time is $currentTime. This is your live concept of time.
 
-APP USAGE CONTEXT (How to use Devis POS):
+
+APP USAGE CONTEXT (How to use Piki POS):
 • Navigation: The app has a main side navigation bar (or bottom bar on mobile) with: Dashboard, POS, Products, Services, Reports, and Settings.
 • Selling (POS Screen): Go to the "POS" screen to ring up customers. Click products/services to add to the cart. Click "Charge" or "Checkout" to process payments. You can switch payment methods (Cash, Card, Mobile Money).
 • Adding Products: Go to the "Products" screen, click the "+" or "Add" button. You can manage stock, prices, categories, and barcodes here.
@@ -331,6 +450,8 @@ WRITE ACTIONS YOU CAN PERFORM:
 • hold_sale: Save the current POS cart as a held sale and clear the cart.
 • teach_alias: Learn that an alias phrase means a target product query.
 • create_product: Create a new product. Extract name, price (number, required), cost (number, optional), stock (number, optional), unit (string, optional), category_id (string, optional), sku (string, optional), barcode (string, optional), brand (string, optional).
+• draft_product: Safely draft a new product with an image from the web. ALWAYS use this instead of create_product when you are retrieving an image from the web. Extract name, price, image_url (MUST be a direct, raw http/https URL from the web search results' "imageUrl" field, never descriptive text), cost, stock.
+• enhance_product_image: Improve an existing product image using the configured OpenRouter image model. Use this when the user asks to enhance, clean up, improve, or make a better catalog photo for a product that already has an image.
 • edit_product: Edit an existing product or variant. Extract query/product name and changed fields such as price, cost, new_name, low_stock, or barcode.
 • add_variant: Add a sellable variant to an existing product. Extract query/product_name, variant_name, price, cost, stock, low_stock, sku, and barcode when provided.
 • create_service: Create a new service type (e.g., "Car Wash", "Haircut"). Extract name, price, category (optional), description (optional).
@@ -411,6 +532,16 @@ Guidelines:
         'INVENTORY: $cnt total products, $vCnt product variations/variants, across $cCnt categories',
       );
 
+      final productImageCount = await DatabaseService.rawQuery(
+        "SELECT COUNT(*) as cnt FROM products WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? AND image_url IS NOT NULL AND TRIM(image_url) <> ''",
+        [DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
+      );
+      final withImages = (productImageCount.firstOrNull?['cnt'] as num? ?? 0)
+          .toInt();
+      parts.add(
+        'PRODUCT IMAGES: $withImages products have catalog images, ${cnt - withImages} are missing images. Product image enhancement uses $imageModelName.',
+      );
+
       // Service count
       final serviceCount = await DatabaseService.rawQuery(
         "SELECT COUNT(*) as cnt FROM services WHERE is_active = 1 AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?",
@@ -488,61 +619,308 @@ Guidelines:
     }
   }
 
-  static Map<String, dynamic> _extractJsonObject(String raw) {
-    try {
-      final parsed = jsonDecode(raw);
-      if (parsed is Map<String, dynamic>) {
+  static Map<String, dynamic> extractPlannerResponseForTesting(String raw) {
+    return _extractPlannerResponse(raw);
+  }
+
+  static Map<String, dynamic> _extractPlannerResponse(String raw) {
+    for (final candidate in _jsonCandidates(raw)) {
+      final parsed =
+          _decodeJsonMap(candidate) ??
+          _decodeJsonMap(_repairCommonJsonIssues(candidate));
+      if (parsed != null) {
         return parsed;
       }
-    } catch (_) {}
+    }
 
     // Fallback 1: Extract XML <tool_call> tags used by some models (like Gemini)
+    final xmlToolCalls = _extractXmlToolCalls(raw);
+    if (xmlToolCalls != null) {
+      return xmlToolCalls;
+    }
+
+    // Fallback 2: Do not crash the chat if a model returns prose instead of
+    // planner JSON. This lets Piki show the useful answer and continue.
+    final textAnswer =
+        _extractMalformedJsonText(raw, 'answer') ??
+        (_looksLikeMalformedPlannerJson(raw)
+            ? 'I had trouble reading the AI plan. Please try again with one specific POS request.'
+            : _cleanPlainTextFallback(raw));
+    if (textAnswer.trim().isNotEmpty) {
+      return {
+        'mode': 'answer',
+        'summary': 'Model returned text instead of planner JSON',
+        'answer': textAnswer.trim(),
+        'suggestions': const <String>[],
+        'tool_calls': const <Map<String, dynamic>>[],
+      };
+    }
+
+    throw const FormatException('AI planner did not return valid JSON');
+  }
+
+  static Iterable<String> _jsonCandidates(String raw) sync* {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return;
+
+    yield trimmed;
+
+    final unfenced = _stripMarkdownFence(trimmed);
+    if (unfenced != trimmed) {
+      yield unfenced;
+    }
+
+    for (final candidate in _balancedJsonObjects(trimmed)) {
+      yield candidate;
+    }
+  }
+
+  static Map<String, dynamic>? _decodeJsonMap(String raw) {
+    try {
+      final parsed = jsonDecode(raw);
+      if (parsed is Map) {
+        return Map<String, dynamic>.from(parsed);
+      }
+      if (parsed is List) {
+        final toolCalls = parsed
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+        if (toolCalls.isNotEmpty) {
+          return {
+            'mode': 'tool',
+            'summary': 'Converted planner array into tool calls',
+            'tool_calls': toolCalls,
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static String _stripMarkdownFence(String raw) {
+    final match = RegExp(
+      r'^```(?:json)?\s*([\s\S]*?)\s*```$',
+      caseSensitive: false,
+    ).firstMatch(raw.trim());
+    return match?.group(1)?.trim() ?? raw;
+  }
+
+  static Iterable<String> _balancedJsonObjects(String raw) sync* {
+    var depth = 0;
+    var start = -1;
+    var inString = false;
+    var escaped = false;
+
+    for (var i = 0; i < raw.length; i++) {
+      final char = raw[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char == '\\') {
+          escaped = true;
+        } else if (char == '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char == '"') {
+        inString = true;
+      } else if (char == '{') {
+        if (depth == 0) {
+          start = i;
+        }
+        depth++;
+      } else if (char == '}' && depth > 0) {
+        depth--;
+        if (depth == 0 && start >= 0) {
+          yield raw.substring(start, i + 1);
+          start = -1;
+        }
+      }
+    }
+  }
+
+  static String _repairCommonJsonIssues(String raw) {
+    final normalized = _stripMarkdownFence(raw)
+        .replaceAll('\uFEFF', '')
+        .replaceAll('\u201c', '"')
+        .replaceAll('\u201d', '"')
+        .trim();
+    return normalized
+        .replaceAllMapped(RegExp(r',\s*([}\]])'), (match) => match.group(1)!)
+        .replaceAllMapped(
+          RegExp(r'([{\[,]\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*:'),
+          (match) => '${match.group(1)}"${match.group(2)}":',
+        );
+  }
+
+  static Map<String, dynamic>? _extractXmlToolCalls(String raw) {
     final toolCallExp = RegExp(
       r'<tool_call>\s*([a-zA-Z0-9_]+)\s*(.*?)<\/tool_call>',
       dotAll: true,
     );
     final matches = toolCallExp.allMatches(raw);
-    if (matches.isNotEmpty) {
-      final toolCalls = <Map<String, dynamic>>[];
-      for (final m in matches) {
-        final tool = m.group(1);
-        if (tool == null) continue;
-        final argsText = m.group(2) ?? '';
-        final args = <String, dynamic>{};
-        final argExp = RegExp(
-          r'<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>',
-          dotAll: true,
-        );
-        for (final am in argExp.allMatches(argsText)) {
-          final key = am.group(1)?.trim();
-          final val = am.group(2)?.trim();
-          if (key != null && val != null) {
-            args[key] = num.tryParse(val) ?? val;
-          }
-        }
-        toolCalls.add({'tool': tool, 'arguments': args});
-      }
-      return {
-        'mode': 'tool',
-        'summary': 'Extracted tool calls',
-        'tool_calls': toolCalls,
-      };
-    }
+    if (matches.isEmpty) return null;
 
-    // Fallback 2: Brace extraction
-    final start = raw.indexOf('{');
-    final end = raw.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      final candidate = raw.substring(start, end + 1);
-      final parsed = jsonDecode(candidate);
-      if (parsed is Map<String, dynamic>) {
-        return parsed;
+    final toolCalls = <Map<String, dynamic>>[];
+    for (final m in matches) {
+      final tool = m.group(1);
+      if (tool == null) continue;
+      final argsText = m.group(2) ?? '';
+      final args = <String, dynamic>{};
+      final argExp = RegExp(
+        r'<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>',
+        dotAll: true,
+      );
+      for (final am in argExp.allMatches(argsText)) {
+        final key = am.group(1)?.trim();
+        final val = am.group(2)?.trim();
+        if (key != null && val != null) {
+          args[key] = num.tryParse(val) ?? val;
+        }
       }
+      toolCalls.add({'tool': tool, 'arguments': args});
     }
-    throw const FormatException('AI planner did not return valid JSON');
+    return {
+      'mode': 'tool',
+      'summary': 'Extracted tool calls',
+      'tool_calls': toolCalls,
+    };
+  }
+
+  static String? _extractMalformedJsonText(String raw, String key) {
+    final match = RegExp(
+      '(?:"$key"|$key)\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"',
+      dotAll: true,
+    ).firstMatch(raw);
+    final encoded = match?.group(1);
+    if (encoded == null) return null;
+    try {
+      return jsonDecode('"$encoded"') as String;
+    } catch (_) {
+      return encoded;
+    }
+  }
+
+  static bool _looksLikeMalformedPlannerJson(String raw) {
+    final trimmed = _stripMarkdownFence(raw).trimLeft();
+    return trimmed.startsWith('{') ||
+        trimmed.contains('"mode"') ||
+        trimmed.contains('mode:') ||
+        trimmed.contains('"tool_calls"') ||
+        trimmed.contains('tool_calls:');
+  }
+
+  static String _cleanPlainTextFallback(String raw) {
+    final cleaned = _stripMarkdownFence(
+      raw,
+    ).replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (cleaned.length <= 2000) {
+      return cleaned;
+    }
+    return '${cleaned.substring(0, 1997)}...';
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
+
+  static Future<String> _imageSourceToDataUrl(String source) async {
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) {
+      throw Exception('Choose a product image first');
+    }
+    if (trimmed.startsWith('data:image/')) {
+      return trimmed;
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      final response = await http.get(uri).timeout(_timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Could not download the product image');
+      }
+      final mimeType =
+          response.headers['content-type']
+              ?.split(';')
+              .first
+              .trim()
+              .toLowerCase() ??
+          _mimeTypeForPath(uri.path);
+      return 'data:$mimeType;base64,${base64Encode(response.bodyBytes)}';
+    }
+
+    final filePath = trimmed.startsWith('file://')
+        ? Uri.parse(trimmed).toFilePath()
+        : trimmed;
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw Exception('Choose a product image first');
+    }
+    final bytes = await file.readAsBytes();
+    return 'data:${_mimeTypeForPath(file.path)};base64,${base64Encode(bytes)}';
+  }
+
+  static Future<String> _saveGeneratedProductImage(String imageUrl) async {
+    List<int> bytes;
+    String mimeType;
+
+    if (imageUrl.startsWith('data:image/')) {
+      final comma = imageUrl.indexOf(',');
+      if (comma < 0) {
+        throw Exception('AI returned an invalid image');
+      }
+      final header = imageUrl.substring(0, comma);
+      mimeType = header
+          .replaceFirst('data:', '')
+          .replaceFirst(RegExp(r';base64.*$'), '');
+      bytes = base64Decode(imageUrl.substring(comma + 1));
+    } else {
+      final uri = Uri.tryParse(imageUrl);
+      if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+        throw Exception('AI returned an unsupported image format');
+      }
+      final response = await http.get(uri).timeout(_timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Could not download the enhanced image');
+      }
+      mimeType =
+          response.headers['content-type']
+              ?.split(';')
+              .first
+              .trim()
+              .toLowerCase() ??
+          _mimeTypeForPath(uri.path);
+      bytes = response.bodyBytes;
+    }
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final imagesDir = Directory('${appDir.path}/product_images');
+    if (!await imagesDir.exists()) {
+      await imagesDir.create(recursive: true);
+    }
+
+    final ext = _extensionForMimeType(mimeType);
+    final fileName = 'product_ai_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final file = File('${imagesDir.path}/$fileName');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  static String _mimeTypeForPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  static String _extensionForMimeType(String mimeType) {
+    final normalized = mimeType.toLowerCase();
+    if (normalized.contains('png')) return 'png';
+    if (normalized.contains('webp')) return 'webp';
+    return 'jpg';
+  }
 
   static Future<LicenseSnapshot> _ensureAccess(
     String backendUrl,

@@ -16,6 +16,7 @@ import 'package:pos_app/core/services/shop_settings.dart';
 import 'package:pos_app/core/services/sync_controller.dart';
 import 'package:pos_app/core/services/sync_settings_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
+import 'package:pos_app/core/utils/error_messages.dart';
 import 'package:pos_app/features/auth/data/user_repository.dart';
 import 'package:pos_app/features/auth/presentation/login_screen.dart';
 import 'package:pos_app/features/services/data/service_repository.dart';
@@ -166,7 +167,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saving: $e'),
+          content: Text(
+            AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -305,7 +308,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('$e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -365,7 +373,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          ),
+          backgroundColor: AppColors.error,
+        ),
       );
     }
   }
@@ -760,7 +773,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('$e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -1129,7 +1147,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             SnackBar(
-                              content: Text('$e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback:
+                                      'Could not update the password. Please try again.',
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -1199,7 +1223,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Backup failed: $e'),
+          content: Text(
+            AppErrorMessage.withContext(
+              e,
+              prefix: 'Backup failed.',
+              fallback: 'Backup could not be created. Please try again.',
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1296,7 +1326,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Restore failed: $e'),
+          content: Text(
+            AppErrorMessage.withContext(
+              e,
+              prefix: 'Restore failed.',
+              fallback: 'Backup could not be restored. Please try again.',
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1377,7 +1413,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Restore failed: $e'),
+          content: Text(
+            AppErrorMessage.withContext(
+              e,
+              prefix: 'Restore failed.',
+              fallback: 'Backup could not be restored. Please try again.',
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );

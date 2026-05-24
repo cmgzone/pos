@@ -126,7 +126,7 @@ flutter run
 ### Option 4: Check Database
 ```bash
 # Verify payment methods exist
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT name, is_credit FROM payment_methods ORDER BY sort_order;"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT name, is_credit FROM payment_methods ORDER BY sort_order;"
 
 # Should show:
 # Cash|0

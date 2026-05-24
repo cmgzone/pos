@@ -1,6 +1,6 @@
-# Velora POS
+# Piki POS
 
-Velora POS is a Flutter point-of-sale app with:
+Piki POS is a Flutter point-of-sale app with:
 
 - local-first SQLite storage for offline use
 - a Node.js sync/auth backend

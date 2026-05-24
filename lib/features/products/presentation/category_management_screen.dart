@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/category_icon_utils.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/category_repository.dart';
 
@@ -339,7 +340,14 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                 if (mounted) {
                   messenger.showSnackBar(
                     SnackBar(
-                      content: Text('Could not delete category: $error'),
+                      content: Text(
+                        AppErrorMessage.withContext(
+                          error,
+                          prefix: 'Could not delete category.',
+                          fallback:
+                              'Could not delete this category. Please try again.',
+                        ),
+                      ),
                       backgroundColor: AppColors.error,
                     ),
                   );

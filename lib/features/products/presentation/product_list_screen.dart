@@ -1141,16 +1141,45 @@ class _ProductRow extends StatelessWidget {
   }
 
   Widget _buildProductImage(String? imagePath) {
-    if (imagePath != null &&
-        imagePath.isNotEmpty &&
-        File(imagePath).existsSync()) {
+    if (imagePath == null || imagePath.isEmpty) {
+      return Icon(
+        CategoryIconUtils.iconFor(categoryName),
+        color: AppColors.primaryLight,
+        size: 22,
+      );
+    }
+
+    // Handle web URLs (http/https)
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return Image.network(
+        imagePath,
+        width: 48,
+        height: 48,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Icon(
+          CategoryIconUtils.iconFor(categoryName),
+          color: AppColors.primaryLight,
+          size: 22,
+        ),
+      );
+    }
+
+    // Handle file:// URIs
+    String filePath = imagePath;
+    if (imagePath.startsWith('file://')) {
+      filePath = Uri.parse(imagePath).toFilePath();
+    }
+
+    // Handle local file paths
+    if (File(filePath).existsSync()) {
       return Image.file(
-        File(imagePath),
+        File(filePath),
         width: 48,
         height: 48,
         fit: BoxFit.cover,
       );
     }
+
     return Icon(
       CategoryIconUtils.iconFor(categoryName),
       color: AppColors.primaryLight,

@@ -2,7 +2,7 @@
 
 ## Problem Identified
 
-The Velora POS app had a **custom payment methods table** but the entire codebase was **hardcoded to only recognize two payment types**: `'cash'` and `'kopesha'`. This meant:
+The Piki POS app had a **custom payment methods table** but the entire codebase was **hardcoded to only recognize two payment types**: `'cash'` and `'kopesha'`. This meant:
 
 - Custom payment methods (M-Pesa, Card, Bank Transfer, etc.) were **invisible in all reports**
 - Shift calculations only counted 'cash' and 'kopesha' sales

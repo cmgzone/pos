@@ -1,8 +1,8 @@
 {
-  "name": "velora-pos-sync-backend",
+  "name": "piki-pos-sync-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Node.js + Neon sync backend for Velora POS",
+  "description": "Node.js + Neon sync backend for Piki POS",
   "main": "src/server.js",
   "scripts": {
     "db:check": "node src/checkDb.js",

@@ -7,6 +7,9 @@ import 'sync_settings_service.dart';
 enum CustomerMessageChannel { whatsapp, sms }
 
 class MessagingService {
+  /// Cached flag — updated by fetchSettings / saveSettings.
+  static bool allowApiSend = false;
+
   static final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 20),
@@ -71,7 +74,9 @@ class MessagingService {
       queryParameters: {'deviceId': deviceId},
       options: Options(headers: headers),
     );
-    return _requireOk(response)['data'] as Map<String, dynamic>;
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    allowApiSend = data['allowApiSend'] == true;
+    return data;
   }
 
   static Future<Map<String, dynamic>> saveSettings({
@@ -91,7 +96,9 @@ class MessagingService {
       },
       options: Options(headers: headers),
     );
-    return _requireOk(response)['data'] as Map<String, dynamic>;
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    allowApiSend = allowApiSend; // preserve the value just saved
+    return data;
   }
 
   static String receiptMessage({

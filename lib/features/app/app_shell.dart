@@ -30,8 +30,11 @@ import 'dashboard_screen.dart';
 import '../../widgets/beautiful_icon.dart';
 
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key});
+  final int initialIndex;
 
+  const AppShell({super.key, this.initialIndex = defaultInitialIndex});
+
+  static const int defaultInitialIndex = 5;
   static final GlobalKey<ScaffoldState> scaffoldKey =
       GlobalKey<ScaffoldState>();
   static final GlobalKey<AppShellState> shellKey = GlobalKey<AppShellState>();
@@ -45,7 +48,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class AppShellState extends ConsumerState<AppShell> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
   String _trainingPromptUserId = '';
 
   final _destinations = const [
@@ -205,6 +208,7 @@ class AppShellState extends ConsumerState<AppShell> {
   ];
 
   static const _mobileBottomDefaults = [0, 11, 4, 5];
+  static const _fallbackNavigationIndex = 9;
 
   List<int> get _allowedIndices {
     final indices = [...SessionService.currentNavigationIndices];
@@ -217,7 +221,11 @@ class AppShellState extends ConsumerState<AppShell> {
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
       indices.add(15);
     }
-    return indices.where(_isAllowedBySubscription).toList();
+    final allowed = indices.where(_isAllowedBySubscription).toSet().toList();
+    if (allowed.isEmpty) {
+      return const [_fallbackNavigationIndex];
+    }
+    return allowed;
   }
 
   bool _isAllowedBySubscription(int index) {
@@ -263,9 +271,18 @@ class AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowTrainingPrompt();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialIndex != widget.initialIndex) {
+      _selectedIndex = widget.initialIndex;
+    }
   }
 
   void _selectIndex(int index) {
@@ -414,6 +431,7 @@ class AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       key: AppShell.scaffoldKey,
+      backgroundColor: AppColors.background,
       drawer: !isWide ? _buildDrawer(context, currentIndex) : null,
       body: Row(
         children: [
@@ -498,7 +516,12 @@ class AppShellState extends ConsumerState<AppShell> {
               ),
             ),
           if (isWide) const VerticalDivider(width: 1, color: AppColors.border),
-          Expanded(child: _buildScreen(currentIndex)),
+          Expanded(
+            child: ColoredBox(
+              color: AppColors.background,
+              child: _buildScreen(currentIndex),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: !isWide
@@ -679,7 +702,7 @@ class AppShellState extends ConsumerState<AppShell> {
             Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Devis POS v1.0.0',
+                'Piki POS v1.0.0',
                 style: TextStyle(
                   color: AppColors.textSecondary.withValues(alpha: 0.5),
                   fontSize: 12,

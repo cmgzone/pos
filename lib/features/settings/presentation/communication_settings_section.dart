@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 
 class CommunicationSettingsSection extends StatefulWidget {
   const CommunicationSettingsSection({super.key});
@@ -50,7 +51,10 @@ class _CommunicationSettingsSectionState
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _message = '$error';
+        _message = AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.loadFailed,
+        );
         _loading = false;
       });
     }
@@ -71,7 +75,12 @@ class _CommunicationSettingsSectionState
       setState(() => _message = 'Messaging settings saved');
     } catch (error) {
       if (!mounted) return;
-      setState(() => _message = '$error');
+      setState(
+        () => _message = AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.saveFailed,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _saving = false);

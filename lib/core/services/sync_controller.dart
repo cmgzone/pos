@@ -10,6 +10,7 @@ import 'license_service.dart';
 import 'session_service.dart';
 import 'sync_service.dart';
 import 'sync_settings_service.dart';
+import '../utils/error_messages.dart';
 
 final syncControllerProvider = NotifierProvider<SyncController, SyncState>(
   SyncController.new,
@@ -287,7 +288,10 @@ class SyncController extends Notifier<SyncState> {
     } catch (error) {
       state = state.copyWith(
         licenseSnapshot: LicenseService.currentSnapshot,
-        lastError: '$error',
+        lastError: AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.syncFailed,
+        ),
       );
     }
   }
@@ -340,7 +344,10 @@ class SyncController extends Notifier<SyncState> {
       state = state.copyWith(
         isSyncing: false,
         licenseSnapshot: LicenseService.currentSnapshot,
-        lastError: '$error',
+        lastError: AppErrorMessage.from(
+          error,
+          fallback: AppErrorMessage.syncFailed,
+        ),
       );
       return false;
     } finally {

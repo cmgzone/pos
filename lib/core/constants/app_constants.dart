@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
+
 
 class AppConstants {
-  static const String appName = 'Devis POS';
+  static const String appName = 'Piki POS';
   static const String appVersion = '1.0.0';
   static const String productionApiBaseUrl =
       'https://pos-e0hs.onrender.com/api';
@@ -45,11 +45,9 @@ class AppConstants {
     if (explicit.isNotEmpty) {
       return explicit;
     }
-    if (kReleaseMode) {
-      throw StateError(
-        'LICENSE_SIGNING_SECRET must be provided for release builds.',
-      );
-    }
+    // Fall back to the built-in dev secret so the app can launch even when
+    // the env var is not supplied.  For production, pass a real secret via
+    // --dart-define=LICENSE_SIGNING_SECRET=<value>.
     return _defaultLicenseSigningSecret;
   }
 

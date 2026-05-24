@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../data/product_repository.dart';
 import '../data/stock_transfer_repository.dart';
 
@@ -31,7 +32,10 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
     try {
       _transfers = await StockTransferRepository.getForCurrentBranch();
     } catch (error) {
-      _loadError = '$error';
+      _loadError = AppErrorMessage.from(
+        error,
+        fallback: AppErrorMessage.loadFailed,
+      );
     }
     if (mounted) {
       setState(() => _isLoading = false);
@@ -163,7 +167,12 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(error.toString()),
+                                content: Text(
+                                  AppErrorMessage.from(
+                                    error,
+                                    fallback: AppErrorMessage.saveFailed,
+                                  ),
+                                ),
                                 backgroundColor: AppColors.error,
                               ),
                             );
@@ -206,7 +215,15 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$error'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              error,
+              fallback: 'Could not update the transfer. Please try again.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
       );
     }
   }

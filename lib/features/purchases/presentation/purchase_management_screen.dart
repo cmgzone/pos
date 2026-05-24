@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../training/widgets/training_anchor.dart';
@@ -145,7 +146,12 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('$e'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  e,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );
@@ -770,7 +776,12 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('$e'),
+                                content: Text(
+                                  AppErrorMessage.from(
+                                    e,
+                                    fallback: AppErrorMessage.saveFailed,
+                                  ),
+                                ),
                                 backgroundColor: AppColors.error,
                               ),
                             );

@@ -30,6 +30,7 @@ migrate_working_dir/
 .env.local
 .dart_tool/
 .flutter-plugins-dependencies
+.gradle/
 .gradle-user-home/
 .pub-cache/
 .pub/
@@ -49,3 +50,6 @@ app.*.map.json
 
 # Node
 node_modules/
+
+# Local diagnostics
+window.xml

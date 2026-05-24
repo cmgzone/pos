@@ -166,7 +166,7 @@ If you have too many payment methods:
 
 Check payment methods in database:
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT name, is_credit FROM payment_methods WHERE is_active = 1 ORDER BY sort_order;"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT name, is_credit FROM payment_methods WHERE is_active = 1 ORDER BY sort_order;"
 ```
 
 Should show at least one with `is_credit = 1`:

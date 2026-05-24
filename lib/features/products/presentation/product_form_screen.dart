@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../sales/presentation/barcode_scanner.dart';
@@ -50,6 +52,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   DateTime? _initialExpiryDate;
   bool _useUnitConversion = false;
   bool _isLoading = false;
+  bool _isEnhancingImage = false;
   bool _isTotalCostMode = false;
   bool _trackStock = true;
   bool _hasVariants = false;
@@ -191,7 +194,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           widget.product!['id'] as String,
           payload,
         );
-        updatedProduct = await ProductRepository.getById(widget.product!['id'] as String);
+        updatedProduct = await ProductRepository.getById(
+          widget.product!['id'] as String,
+        );
       } else {
         final id = await ProductRepository.create(
           name: payload['name'] as String,
@@ -218,7 +223,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       }
 
       ref.invalidate(filteredProductsProvider);
-      
+
       if (!mounted) return;
 
       if (openVariants && updatedProduct != null) {
@@ -234,7 +239,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          ),
+          backgroundColor: AppColors.error,
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -260,6 +270,52 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       picked.path,
     ).copy('${imagesDir.path}/$fileName');
     setState(() => _imagePath = savedFile.path);
+  }
+
+  Future<void> _enhanceImage() async {
+    final imagePath = _imagePath;
+    if (imagePath == null || imagePath.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Choose or capture a product image first.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isEnhancingImage = true);
+    try {
+      final enhancedPath = await OpenRouterService.enhanceProductImage(
+        imageSource: imagePath,
+        productName: _nameController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _imagePath = enhancedPath);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Image enhanced using ${OpenRouterService.imageModelName}.',
+          ),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              e,
+              fallback: 'Could not enhance this product image.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isEnhancingImage = false);
+    }
   }
 
   void _toggleConversion(bool enabled) {
@@ -295,8 +351,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           : saleUnit;
     });
   }
-
-
 
   Widget _buildImagePicker() {
     final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
@@ -334,6 +388,28 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _isEnhancingImage || _isLoading ? null : _enhanceImage,
+              icon: _isEnhancingImage
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.auto_fix_high_rounded, size: 18),
+              label: Text(
+                _isEnhancingImage
+                    ? 'Enhancing image...'
+                    : 'Enhance with Piki AI',
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -645,7 +721,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           TrainingAnchor(
             id: 'productForm.save',
             child: FilledButton.icon(
-              onPressed: _isLoading ? null : _save,
+              onPressed: _isLoading || _isEnhancingImage ? null : _save,
               icon: _isLoading
                   ? const SizedBox(
                       width: 16,
@@ -1025,7 +1101,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                   ],
                                   validator: (v) {
                                     if (v == null || v.isEmpty) {
-                                      return _hasVariants ? null : 'Price is required';
+                                      return _hasVariants
+                                          ? null
+                                          : 'Price is required';
                                     }
                                     if (double.tryParse(v) == null) {
                                       return 'Invalid price';
@@ -1139,7 +1217,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                     ],
                                     validator: (v) {
                                       if (v == null || v.isEmpty) {
-                                        return _hasVariants ? null : 'Price is required';
+                                        return _hasVariants
+                                            ? null
+                                            : 'Price is required';
                                       }
                                       if (double.tryParse(v) == null) {
                                         return 'Invalid price';
@@ -1525,7 +1605,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       if (_hasVariants) ...[
                         const SizedBox(height: 16),
                         FilledButton.icon(
-                          onPressed: _isLoading ? null : () => _save(openVariants: true),
+                          onPressed: _isLoading || _isEnhancingImage
+                              ? null
+                              : () => _save(openVariants: true),
                           icon: const Icon(Icons.tune_outlined, size: 18),
                           label: const Text('Save & Manage Variants'),
                           style: FilledButton.styleFrom(

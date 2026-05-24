@@ -691,7 +691,7 @@ function defaultPaymentGateways() {
   const googlePublicConfig = removeEmptyValues({
     environment: config.googlePayEnvironment,
     merchantId: config.googlePayMerchantId,
-    merchantName: 'Velora POS',
+    merchantName: 'Piki POS',
     gateway: config.googlePayGateway,
     gatewayMerchantId: config.googlePayGatewayMerchantId,
   });

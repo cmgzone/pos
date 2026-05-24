@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers migrating the Velora POS database schema to Neon PostgreSQL to include the new payment methods system.
+This guide covers migrating the Piki POS database schema to Neon PostgreSQL to include the new payment methods system.
 
 ## Changes Made
 

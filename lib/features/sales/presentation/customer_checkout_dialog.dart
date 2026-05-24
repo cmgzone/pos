@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
 import '../../settings/data/payment_method_provider.dart';
@@ -24,10 +25,12 @@ class CustomerCheckoutDialog extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<CustomerCheckoutDialog> createState() => _CustomerCheckoutDialogState();
+  ConsumerState<CustomerCheckoutDialog> createState() =>
+      _CustomerCheckoutDialogState();
 }
 
-class _CustomerCheckoutDialogState extends ConsumerState<CustomerCheckoutDialog> {
+class _CustomerCheckoutDialogState
+    extends ConsumerState<CustomerCheckoutDialog> {
   final _searchController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -114,7 +117,13 @@ class _CustomerCheckoutDialogState extends ConsumerState<CustomerCheckoutDialog>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not create customer: $e'),
+          content: Text(
+            AppErrorMessage.withContext(
+              e,
+              prefix: 'Could not create customer.',
+              fallback: AppErrorMessage.saveFailed,
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -187,10 +196,9 @@ class _CustomerCheckoutDialogState extends ConsumerState<CustomerCheckoutDialog>
         (_selectedCustomer?['balance'] as num?)?.toDouble() ?? 0;
     final projectedBalance = currentBalance + widget.total;
     final viewportHeight = MediaQuery.of(context).size.height;
-    final contentHeight = math.max(
-      320,
-      math.min(520, viewportHeight - 240),
-    ).toDouble();
+    final contentHeight = math
+        .max(320, math.min(520, viewportHeight - 240))
+        .toDouble();
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
@@ -331,8 +339,12 @@ class _CustomerCheckoutDialogState extends ConsumerState<CustomerCheckoutDialog>
                             );
                           },
                           loading: () => const CircularProgressIndicator(),
-                          error: (e, st) =>
-                              Text('Error loading payment methods: $e'),
+                          error: (e, st) => Text(
+                            AppErrorMessage.from(
+                              e,
+                              fallback: AppErrorMessage.loadFailed,
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -434,9 +446,7 @@ class _CustomerCheckoutDialogState extends ConsumerState<CustomerCheckoutDialog>
                                     controller: _phoneController,
                                     decoration: const InputDecoration(
                                       labelText: 'Phone',
-                                      prefixIcon: Icon(
-                                        Icons.phone_outlined,
-                                      ),
+                                      prefixIcon: Icon(Icons.phone_outlined),
                                     ),
                                   ),
                                 ),

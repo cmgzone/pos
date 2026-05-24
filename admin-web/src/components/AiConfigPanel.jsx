@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { friendlyError } from '../utils/errors'
 
 const MODELS = [
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', tier: 'Budget' },
@@ -21,12 +22,21 @@ const TTS_MODELS = [
   { id: 'openai/tts-1-hd', name: 'TTS 1 HD', provider: 'OpenAI', tier: 'Premium' },
 ]
 
+const IMAGE_MODELS = [
+  { id: 'google/gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', provider: 'Google', tier: 'Image' },
+  { id: 'google/gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image Preview', provider: 'Google', tier: 'Image' },
+  { id: 'black-forest-labs/flux.2-pro', name: 'Flux 2 Pro', provider: 'Black Forest Labs', tier: 'Image' },
+  { id: 'black-forest-labs/flux.2-flex', name: 'Flux 2 Flex', provider: 'Black Forest Labs', tier: 'Image' },
+  { id: 'recraft/recraft-v3', name: 'Recraft V3', provider: 'Recraft', tier: 'Image' },
+]
+
 const TTS_VOICES = ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer']
 
 export default function AiConfigPanel({ token }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [testingWebSearch, setTestingWebSearch] = useState(false)
   const [testResult, setTestResult] = useState(null)
   
   const [apiKey, setApiKey] = useState('')
@@ -35,6 +45,7 @@ export default function AiConfigPanel({ token }) {
   const [hasSerpApiKey, setHasSerpApiKey] = useState(false)
   const [serpApiKeySource, setSerpApiKeySource] = useState('none')
   const [model, setModel] = useState('openai/gpt-4o-mini')
+  const [imageModel, setImageModel] = useState('google/gemini-2.5-flash-image')
   const [sttModel, setSttModel] = useState('openai/whisper-1')
   const [ttsModel, setTtsModel] = useState('openai/tts-1')
   const [ttsVoice, setTtsVoice] = useState('alloy')
@@ -54,7 +65,7 @@ export default function AiConfigPanel({ token }) {
   const hasUsableSerpApiKey = () => {
     if (hasSerpApiKey) return true
     const trimmed = serpApiKey.trim()
-    return trimmed.length > 0 && !trimmed.startsWith('â€¢') && !trimmed.startsWith('*')
+    return trimmed.length > 0 && !trimmed.startsWith('*')
   }
 
   const fetchConfig = useCallback(async () => {
@@ -70,6 +81,7 @@ export default function AiConfigPanel({ token }) {
           setHasSerpApiKey(Boolean(data.data.hasSerpApiKey))
           setSerpApiKeySource(data.data.serpApiKeySource || 'none')
           setModel(data.data.model || 'openai/gpt-4o-mini')
+          setImageModel(data.data.imageModel || 'google/gemini-2.5-flash-image')
           setSttModel(data.data.sttModel || 'openai/whisper-1')
           setTtsModel(data.data.ttsModel || 'openai/tts-1')
           setTtsVoice(data.data.ttsVoice || 'alloy')
@@ -100,17 +112,17 @@ export default function AiConfigPanel({ token }) {
       const res = await fetch('/api/platform/ai-config', {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, serpApiKey, model, sttModel, ttsModel, ttsVoice, enabled }),
+        body: JSON.stringify({ apiKey, serpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice, enabled }),
       })
       const data = await res.json()
       if (data.ok) {
         setTestResult({ type: 'success', message: 'Configuration saved successfully!' })
         await fetchConfig()
       } else {
-        setTestResult({ type: 'error', message: data.error || 'Failed to save' })
+        setTestResult({ type: 'error', message: friendlyError(data.error, 'Failed to save configuration.') })
       }
-    } catch {
-      setTestResult({ type: 'error', message: 'Network error saving config' })
+    } catch (error) {
+      setTestResult({ type: 'error', message: friendlyError(error, 'Network error saving config.') })
     } finally {
       setSaving(false)
     }
@@ -131,12 +143,36 @@ export default function AiConfigPanel({ token }) {
           message: `✅ ${data.response} (Model: ${data.model})`,
         })
       } else {
-        setTestResult({ type: 'error', message: `❌ ${data.error}` })
+        setTestResult({ type: 'error', message: friendlyError(data.error, 'AI test failed.') })
       }
-    } catch {
-      setTestResult({ type: 'error', message: '❌ Network error — is the backend running?' })
+    } catch (error) {
+      setTestResult({ type: 'error', message: friendlyError(error, 'Network error. Is the backend running?') })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const testWebSearch = async () => {
+    setTestingWebSearch(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/platform/web-search-test', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setTestResult({
+          type: 'success',
+          message: `Web search connected. Found ${data.resultCount} result(s) for "${data.query}".`,
+        })
+      } else {
+        setTestResult({ type: 'error', message: friendlyError(data.error, 'Web search test failed.') })
+      }
+    } catch (error) {
+      setTestResult({ type: 'error', message: friendlyError(error, 'Network error testing web search.') })
+    } finally {
+      setTestingWebSearch(false)
     }
   }
 
@@ -303,6 +339,28 @@ export default function AiConfigPanel({ token }) {
         {renderModelBadges(MODELS, model)}
       </div>
 
+      <div className="form-group">
+        <label className="form-label">Product Image Model</label>
+        <input
+          list="image-models-list"
+          className="form-input"
+          value={imageModel}
+          onChange={(e) => setImageModel(e.target.value)}
+          placeholder="google/gemini-2.5-flash-image"
+        />
+        <datalist id="image-models-list">
+          {IMAGE_MODELS.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.name} - {m.provider}
+            </option>
+          ))}
+        </datalist>
+        {renderModelBadges(IMAGE_MODELS, imageModel)}
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+          Used when Piki enhances product photos and saves the improved catalog image.
+        </span>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
         <div className="form-group">
           <label className="form-label">Speech-to-Text Model</label>
@@ -379,12 +437,12 @@ export default function AiConfigPanel({ token }) {
       )}
 
       {/* Action buttons */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <button
           className="btn btn-primary"
           onClick={saveConfig}
           disabled={saving}
-          style={{ flex: 1 }}
+          style={{ flex: '1 1 12rem' }}
         >
           {saving ? 'Saving...' : '💾 Save Configuration'}
         </button>
@@ -392,9 +450,17 @@ export default function AiConfigPanel({ token }) {
           className="btn btn-secondary"
           onClick={testConnection}
           disabled={testing || !hasKey}
-          style={{ flex: 1 }}
+          style={{ flex: '1 1 12rem' }}
         >
           {testing ? 'Testing...' : '🧪 Test Connection'}
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={testWebSearch}
+          disabled={testingWebSearch || !hasUsableSerpApiKey()}
+          style={{ flex: '1 1 12rem' }}
+        >
+          {testingWebSearch ? 'Testing web...' : 'Test Web Search'}
         </button>
       </div>
 

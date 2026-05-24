@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import AiConfigPanel from './AiConfigPanel'
 import SubscriptionPlansPanel from './SubscriptionPlansPanel'
+import { friendlyError } from '../utils/errors'
 
 const sellingModeLabels = {
   products: 'Products only',
@@ -49,14 +50,14 @@ export default function Dashboard({ token, onLogout }) {
 
       const failures = [statsResult, bizResult, usersResult, plansResult]
         .filter((item) => item.status === 'rejected')
-        .map((item) => item.reason?.message)
+        .map((item) => friendlyError(item.reason, 'Could not load dashboard data.'))
         .filter(Boolean)
       if (failures.length > 0) {
         setLoadMessage(failures.join(' | '))
       }
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err)
-      setLoadMessage(err.message || 'Could not load dashboard data')
+      setLoadMessage(friendlyError(err, 'Could not load dashboard data.'))
     } finally {
       setLoading(false)
     }
@@ -143,7 +144,7 @@ export default function Dashboard({ token, onLogout }) {
         [business.id]: {
           saving: false,
           message: '',
-          error: error.message || 'Could not update subscription',
+          error: friendlyError(error, 'Could not update subscription.'),
         },
       }))
     }

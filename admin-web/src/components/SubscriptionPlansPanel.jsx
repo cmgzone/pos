@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { friendlyError } from '../utils/errors'
 
 const FEATURE_LABELS = {
   pos: 'POS',
@@ -185,13 +186,13 @@ export default function SubscriptionPlansPanel({ token }) {
       }
       const failures = [gatewayResult, messageGatewayResult]
         .filter((item) => item.status === 'rejected')
-        .map((item) => item.reason?.message)
+        .map((item) => friendlyError(item.reason, 'Some settings could not be loaded.'))
         .filter(Boolean)
       if (failures.length > 0) {
         setMessage(failures.join(' | '))
       }
     } catch (error) {
-      setMessage(error.message)
+      setMessage(friendlyError(error, 'Could not load subscription plans.'))
     } finally {
       setLoading(false)
     }
@@ -272,7 +273,7 @@ export default function SubscriptionPlansPanel({ token }) {
       setDraft(clonePlan(body.data))
       setMessage('Plan saved')
     } catch (error) {
-      setMessage(error.message)
+      setMessage(friendlyError(error, 'Could not save subscription plan.'))
     } finally {
       setSaving(false)
     }
@@ -343,7 +344,7 @@ export default function SubscriptionPlansPanel({ token }) {
       }))
       setMessage('Payment gateway saved')
     } catch (error) {
-      setMessage(error.message)
+      setMessage(friendlyError(error, 'Could not save payment gateway.'))
     } finally {
       setSavingGateway('')
     }
@@ -414,7 +415,7 @@ export default function SubscriptionPlansPanel({ token }) {
       }))
       setMessage('Message gateway saved')
     } catch (error) {
-      setMessage(error.message)
+      setMessage(friendlyError(error, 'Could not save message gateway.'))
     } finally {
       setSavingMessageGateway('')
     }

@@ -11,6 +11,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/pos_payment_service.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/empty_state_widget.dart';
@@ -360,7 +361,15 @@ class _PikiPosVoiceActionState extends ConsumerState<_PikiPosVoiceAction> {
         } catch (error) {
           if (mounted && _autoListening && token == _listenToken) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Piki auto listen failed: $error')),
+              SnackBar(
+                content: Text(
+                  AppErrorMessage.withContext(
+                    error,
+                    prefix: 'Piki auto listen failed.',
+                    fallback: AppErrorMessage.pikiFailed,
+                  ),
+                ),
+              ),
             );
           }
         } finally {
@@ -1245,7 +1254,9 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                 height: 40,
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               ),
-              error: (e, _) => Text('Error: $e'),
+              error: (e, _) => Text(
+                AppErrorMessage.from(e, fallback: AppErrorMessage.loadFailed),
+              ),
             ),
           ),
           SizedBox(height: compact ? 14 : 20),
@@ -1309,8 +1320,14 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                     ),
                   ),
                 ),
-                error: (e, _) =>
-                    Center(child: Text('Error loading products: $e')),
+                error: (e, _) => Center(
+                  child: Text(
+                    AppErrorMessage.from(
+                      e,
+                      fallback: AppErrorMessage.loadFailed,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -2024,7 +2041,10 @@ class _CartSide extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '$error',
+                                  AppErrorMessage.from(
+                                    error,
+                                    fallback: AppErrorMessage.loadFailed,
+                                  ),
                                   style: const TextStyle(
                                     color: AppColors.textSecondary,
                                   ),
@@ -2096,7 +2116,13 @@ class _CartSide extends ConsumerWidget {
                                     if (parentContext.mounted) {
                                       _showSnackBar(
                                         parentContext,
-                                        'Could not discard held sale: $error',
+                                        AppErrorMessage.withContext(
+                                          error,
+                                          prefix:
+                                              'Could not discard held sale.',
+                                          fallback:
+                                              'Could not discard this held sale. Please try again.',
+                                        ),
                                         backgroundColor: AppColors.error,
                                       );
                                     }
@@ -2161,7 +2187,11 @@ class _CartSide extends ConsumerWidget {
       if (context.mounted) {
         _showSnackBar(
           context,
-          'Could not hold this sale: $error',
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'Could not hold this sale.',
+            fallback: 'Could not hold this sale. Please try again.',
+          ),
           backgroundColor: AppColors.error,
         );
       }
@@ -2238,7 +2268,11 @@ class _CartSide extends ConsumerWidget {
       if (context.mounted) {
         _showSnackBar(
           context,
-          'Could not resume held sale: $error',
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'Could not resume held sale.',
+            fallback: 'Could not resume this held sale. Please try again.',
+          ),
           backgroundColor: AppColors.error,
         );
       }
@@ -2577,7 +2611,12 @@ class _CartSide extends ConsumerWidget {
           if (context.mounted) {
             _showSnackBar(
               context,
-              'Sale saved, but payment link sync failed: $error',
+              AppErrorMessage.withContext(
+                error,
+                prefix: 'Sale saved, but payment link sync failed.',
+                fallback:
+                    'Sale saved, but the payment link could not be synced.',
+              ),
               backgroundColor: AppColors.warning,
             );
           }
@@ -2587,7 +2626,11 @@ class _CartSide extends ConsumerWidget {
       if (context.mounted) {
         _showSnackBar(
           context,
-          'M-Pesa checkout failed: $error',
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'M-Pesa checkout failed.',
+            fallback: AppErrorMessage.paymentFailed,
+          ),
           backgroundColor: AppColors.error,
         );
       }
@@ -2732,7 +2775,11 @@ class _CartSide extends ConsumerWidget {
       return saleId;
     } catch (e) {
       if (context.mounted) {
-        _showSnackBar(context, 'Error: $e', backgroundColor: AppColors.error);
+        _showSnackBar(
+          context,
+          AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          backgroundColor: AppColors.error,
+        );
       }
       return null;
     }

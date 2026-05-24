@@ -8,6 +8,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../data/auth_password_service.dart';
 import '../../settings/presentation/subscription_screen.dart';
@@ -79,7 +80,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load subscription plans: $error';
+        _error = AppErrorMessage.withContext(
+          error,
+          prefix: 'Could not load subscription plans.',
+          fallback: AppErrorMessage.loadFailed,
+        );
         _isLoadingCatalog = false;
       });
     }
@@ -260,7 +265,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         (route) => false,
       );
     } catch (error) {
-      setState(() => _error = '$error');
+      setState(
+        () => _error = AppErrorMessage.from(
+          error,
+          fallback: 'Could not create your account. Please try again.',
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -414,7 +424,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             const SizedBox(height: 8),
             Text(
               _isBusinessSetupFlow
-                  ? 'Register your business online to start using Devis POS'
+                  ? 'Register your business online to start using Piki POS'
                   : 'Create a new team member account',
               style: Theme.of(context).textTheme.bodyMedium,
             ),

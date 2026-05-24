@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../data/shift_provider.dart';
 import '../data/shift_preferences_service.dart';
@@ -244,7 +245,10 @@ class ShiftManagementScreen extends ConsumerWidget {
                         if (context.mounted) {
                           setState(() {
                             isSaving = false;
-                            errorText = '$error';
+                            errorText = AppErrorMessage.from(
+                              error,
+                              fallback: AppErrorMessage.saveFailed,
+                            );
                           });
                         }
                       }
@@ -364,7 +368,10 @@ class ShiftManagementScreen extends ConsumerWidget {
                         if (context.mounted) {
                           setState(() {
                             isSaving = false;
-                            errorText = '$error';
+                            errorText = AppErrorMessage.from(
+                              error,
+                              fallback: AppErrorMessage.saveFailed,
+                            );
                           });
                         }
                       }
@@ -488,7 +495,10 @@ class ShiftManagementScreen extends ConsumerWidget {
                         if (context.mounted) {
                           setState(() {
                             isSaving = false;
-                            errorText = '$error';
+                            errorText = AppErrorMessage.from(
+                              error,
+                              fallback: AppErrorMessage.saveFailed,
+                            );
                           });
                         }
                       }

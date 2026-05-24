@@ -161,6 +161,11 @@ class LicenseSnapshot {
       accessStatus == LicenseAccessStatus.grace;
 
   bool allowsFeature(String featureKey) {
+    // Settings must stay reachable so a signed-in user can refresh subscription
+    // details, adjust sync, or sign out even if the cached license is partial.
+    if (featureKey == 'settings') {
+      return true;
+    }
     if (accessStatus == LicenseAccessStatus.localOnly) {
       return true;
     }
@@ -739,9 +744,9 @@ class LicenseService {
 
   static String get _deviceName {
     try {
-      return 'Velora ${Platform.operatingSystem}';
+      return 'Piki ${Platform.operatingSystem}';
     } catch (_) {
-      return 'Velora device';
+      return 'Piki device';
     }
   }
 }

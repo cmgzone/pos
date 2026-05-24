@@ -1245,7 +1245,7 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
   try {
     await ensureAiVoiceColumns();
     const result = await query(
-      `SELECT api_key, serp_api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at
+      `SELECT api_key, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled, updated_at
        FROM platform_ai_config
        WHERE id = 1`
     );
@@ -1253,6 +1253,7 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
       api_key: '',
       serp_api_key: '',
       model: 'openai/gpt-4o-mini',
+      image_model: DEFAULT_IMAGE_MODEL,
       stt_model: DEFAULT_STT_MODEL,
       tts_model: DEFAULT_TTS_MODEL,
       tts_voice: DEFAULT_TTS_VOICE,
@@ -1276,6 +1277,7 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
           ? 'database'
           : (config.serpApiKey ? 'environment' : 'none'),
         model: row.model,
+        imageModel: row.image_model || DEFAULT_IMAGE_MODEL,
         sttModel: row.stt_model || DEFAULT_STT_MODEL,
         ttsModel: row.tts_model || DEFAULT_TTS_MODEL,
         ttsVoice: row.tts_voice || DEFAULT_TTS_VOICE,
@@ -1292,6 +1294,7 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
   try {
     await ensureAiVoiceColumns();
     const model = normalizeOptionalText(req.body?.model) || 'openai/gpt-4o-mini';
+    const imageModel = normalizeOptionalText(req.body?.imageModel) || DEFAULT_IMAGE_MODEL;
     const sttModel = normalizeOptionalText(req.body?.sttModel) || DEFAULT_STT_MODEL;
     const ttsModel = normalizeOptionalText(req.body?.ttsModel) || DEFAULT_TTS_MODEL;
     const ttsVoice = normalizeOptionalText(req.body?.ttsVoice) || DEFAULT_TTS_VOICE;
@@ -1308,7 +1311,10 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
     // (not the masked version echoed back)
     const hasNewKey = rawApiKey.length > 0 && !rawApiKey.startsWith('•');
     const nextApiKey = hasNewKey ? rawApiKey : currentApiKey;
-    const hasNewSerpApiKey = rawSerpApiKey.length > 0 && !rawSerpApiKey.startsWith('â€¢') && !rawSerpApiKey.startsWith('*');
+    const hasNewSerpApiKey =
+      rawSerpApiKey.length > 0 &&
+      !rawSerpApiKey.startsWith('â€¢') &&
+      !rawSerpApiKey.startsWith('*');
     const nextSerpApiKey = hasNewSerpApiKey ? rawSerpApiKey : currentSerpApiKey;
 
     if (enabled && !nextApiKey) {
@@ -1317,32 +1323,34 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
 
     if (hasNewKey) {
       await query(
-        `INSERT INTO platform_ai_config (id, api_key, serp_api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
+        `INSERT INTO platform_ai_config (id, api_key, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW())
          ON CONFLICT (id) DO UPDATE
          SET api_key = $1,
              serp_api_key = $2,
              model = $3,
+             image_model = $4,
+             stt_model = $5,
+             tts_model = $6,
+             tts_voice = $7,
+             enabled = $8,
+             updated_at = NOW()`,
+        [rawApiKey, nextSerpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice, enabled]
+      );
+    } else {
+      await query(
+        `INSERT INTO platform_ai_config (id, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET serp_api_key = $1,
+             model = $2,
+             image_model = $3,
              stt_model = $4,
              tts_model = $5,
              tts_voice = $6,
              enabled = $7,
              updated_at = NOW()`,
-        [rawApiKey, nextSerpApiKey, model, sttModel, ttsModel, ttsVoice, enabled]
-      );
-    } else {
-      await query(
-        `INSERT INTO platform_ai_config (id, serp_api_key, model, stt_model, tts_model, tts_voice, enabled, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
-         ON CONFLICT (id) DO UPDATE
-         SET serp_api_key = $1,
-             model = $2,
-             stt_model = $3,
-             tts_model = $4,
-             tts_voice = $5,
-             enabled = $6,
-             updated_at = NOW()`,
-        [nextSerpApiKey, model, sttModel, ttsModel, ttsVoice, enabled]
+        [nextSerpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice, enabled]
       );
     }
 
@@ -1368,8 +1376,8 @@ app.post('/api/platform/ai-test', requirePlatformAdmin, async (req, res, next) =
       headers: {
         'Authorization': `Bearer ${row.api_key}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://devispos.com',
-        'X-Title': 'Devis POS AI',
+        'HTTP-Referer': 'https://pikipos.com',
+        'X-Title': 'Piki POS AI',
       },
       body: JSON.stringify({
         model: row.model,
@@ -1393,7 +1401,40 @@ app.post('/api/platform/ai-test', requirePlatformAdmin, async (req, res, next) =
   }
 });
 
-// ── Business-Auth'd AI Routes ────────────────────────────────────────────────
+// Platform web search diagnostics
+app.post('/api/platform/web-search-test', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    await ensureAiVoiceColumns();
+    const result = await query(
+      'SELECT serp_api_key FROM platform_ai_config WHERE id = 1',
+    );
+    const row = result.rows[0] || {};
+    const serpApiKey = row.serp_api_key || config.serpApiKey;
+    if (!serpApiKey) {
+      throw createHttpError(400, 'No SerpAPI key configured');
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const searchResult = await searchWithSerpApi({
+      apiKey: serpApiKey,
+      fetchImpl: fetch,
+      baseUrl: config.serpApiBaseUrl,
+      input: {
+        query: 'Piki POS web search test',
+        limit: 1,
+      },
+    });
+
+    res.json({
+      ok: true,
+      query: searchResult.query,
+      resultCount: searchResult.results.length,
+      topResult: searchResult.results[0] || null,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
 
 // Subscription catalog and checkout routes
 app.get('/api/subscription/plans', async (req, res, next) => {
@@ -1756,6 +1797,7 @@ const OPENROUTER_BASE_URL =
 const DEFAULT_STT_MODEL = 'openai/whisper-1';
 const DEFAULT_TTS_MODEL = 'openai/tts-1';
 const DEFAULT_TTS_VOICE = 'alloy';
+const DEFAULT_IMAGE_MODEL = 'google/gemini-2.5-flash-image';
 
 async function checkAiRateLimit(businessContext, { consumeQuota = true } = {}) {
   await ensureSubscriptionSchema();
@@ -1871,12 +1913,16 @@ async function ensureAiVoiceColumns() {
     `ALTER TABLE platform_ai_config
      ADD COLUMN IF NOT EXISTS serp_api_key text NOT NULL DEFAULT ''`,
   );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS image_model text NOT NULL DEFAULT '${DEFAULT_IMAGE_MODEL}'`,
+  );
 }
 
 async function loadPlatformAiConfig() {
   await ensureAiVoiceColumns();
   const result = await query(
-    `SELECT api_key, serp_api_key, model, stt_model, tts_model, tts_voice, enabled
+    `SELECT api_key, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled
      FROM platform_ai_config
      WHERE id = 1`,
   );
@@ -1885,6 +1931,7 @@ async function loadPlatformAiConfig() {
       api_key: '',
       serp_api_key: '',
       model: 'openai/gpt-4o-mini',
+      image_model: DEFAULT_IMAGE_MODEL,
       stt_model: DEFAULT_STT_MODEL,
       tts_model: DEFAULT_TTS_MODEL,
       tts_voice: DEFAULT_TTS_VOICE,
@@ -1893,6 +1940,7 @@ async function loadPlatformAiConfig() {
   );
 }
 
+// Business-authenticated AI routes
 app.get('/api/ai/config', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -1901,11 +1949,178 @@ app.get('/api/ai/config', async (req, res, next) => {
     res.json({
       ok: true,
       aiEnabled: Boolean(row.enabled && row.api_key && hasAiEntitlement),
-      webSearchEnabled: Boolean((row.serp_api_key || config.serpApiKey) && hasAiEntitlement),
+      webSearchEnabled: Boolean(
+        (row.serp_api_key || config.serpApiKey) && hasAiEntitlement,
+      ),
       aiModel: row.model,
+      imageModel: row.image_model || DEFAULT_IMAGE_MODEL,
       sttModel: row.stt_model || DEFAULT_STT_MODEL,
       ttsModel: row.tts_model || DEFAULT_TTS_MODEL,
       entitlementEnabled: hasAiEntitlement,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+function extractOpenRouterImageUrl(body) {
+  const message = body?.choices?.[0]?.message || {};
+  const images = Array.isArray(message.images) ? message.images : [];
+  for (const image of images) {
+    const url =
+      image?.image_url?.url ||
+      image?.imageUrl?.url ||
+      image?.url ||
+      image?.image_url;
+    if (typeof url === 'string' && url.trim()) {
+      return url.trim();
+    }
+  }
+
+  const content = message.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      const url =
+        part?.image_url?.url ||
+        part?.imageUrl?.url ||
+        part?.url;
+      if (typeof url === 'string' && url.trim()) {
+        return url.trim();
+      }
+    }
+  }
+
+  if (typeof content === 'string') {
+    const dataUrl = content.match(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/);
+    if (dataUrl) {
+      return dataUrl[0];
+    }
+    const httpUrl = content.match(/https?:\/\/\S+/);
+    if (httpUrl) {
+      return httpUrl[0].replace(/[)\].,]+$/, '');
+    }
+  }
+
+  return null;
+}
+
+async function requestOpenRouterProductImage({ fetchImpl, aiConfig, imageDataUrl, productName, prompt }) {
+  const productLabel = normalizeOptionalText(productName) || 'the product';
+  const instruction = normalizeOptionalText(prompt) ||
+    `Enhance this POS product photo of ${productLabel}. Keep the same real product and packaging, improve lighting, sharpness, color balance, and crop for a clean square catalog thumbnail. Use a simple neutral background. Do not invent a different product, logo, label, or brand text.`;
+
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: instruction,
+        },
+        {
+          type: 'image_url',
+          image_url: { url: imageDataUrl },
+        },
+      ],
+    },
+  ];
+
+  const attempts = [
+    ['image', 'text'],
+    ['image'],
+  ];
+  let lastError = 'OpenRouter image request failed';
+
+  for (const modalities of attempts) {
+    const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${aiConfig.api_key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://pikipos.com',
+        'X-Title': 'Piki POS Product Images',
+      },
+      body: JSON.stringify({
+        model: aiConfig.image_model || DEFAULT_IMAGE_MODEL,
+        messages,
+        modalities,
+        stream: false,
+        image_config: {
+          aspect_ratio: '1:1',
+        },
+      }),
+    });
+
+    let body = {};
+    try {
+      body = await response.json();
+    } catch (_) {
+      body = {};
+    }
+
+    if (!response.ok) {
+      lastError = body?.error?.message || `OpenRouter image request failed (${response.status})`;
+      continue;
+    }
+
+    const imageUrl = extractOpenRouterImageUrl(body);
+    if (imageUrl) {
+      return {
+        imageUrl,
+        model: aiConfig.image_model || DEFAULT_IMAGE_MODEL,
+        content: body?.choices?.[0]?.message?.content || '',
+        usage: body?.usage || {},
+      };
+    }
+
+    lastError = 'OpenRouter did not return an image. Check that the selected image model supports image output.';
+  }
+
+  throw createHttpError(502, lastError);
+}
+
+app.post('/api/ai/product-image/enhance', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const imageDataUrl = normalizeOptionalText(req.body?.imageDataUrl);
+    if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
+      throw createHttpError(400, 'A base64 product image is required');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`
+      );
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const result = await requestOpenRouterProductImage({
+      fetchImpl: fetch,
+      aiConfig,
+      imageDataUrl,
+      productName: req.body?.productName,
+      prompt: req.body?.prompt,
+    });
+
+    res.json({
+      ok: true,
+      imageDataUrl: result.imageUrl,
+      model: result.model,
+      usage: {
+        promptTokens: result.usage.prompt_tokens || 0,
+        completionTokens: result.usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
     });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -1952,8 +2167,8 @@ app.post('/api/ai/chat', async (req, res, next) => {
       headers: {
         'Authorization': `Bearer ${aiConfig.api_key}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://devispos.com',
-        'X-Title': 'Devis POS AI',
+        'HTTP-Referer': 'https://pikipos.com',
+        'X-Title': 'Piki POS AI',
       },
       body: JSON.stringify({
         model: aiConfig.model,
@@ -2334,7 +2549,7 @@ app.use((error, req, res, next) => {
 
 app.listen(config.port, () => {
   console.log(
-    `Velora POS sync backend listening on port ${config.port} (${config.nodeEnv})`,
+    `Piki POS sync backend listening on port ${config.port} (${config.nodeEnv})`,
   );
 });
 
@@ -2789,7 +3004,7 @@ async function initiateMpesaCheckout(payment, gateway) {
         PhoneNumber: phoneNumber,
         CallBackURL: mpesaConfig.callbackUrl,
         AccountReference: payment.externalReference,
-        TransactionDesc: `Velora ${payment.planCode} subscription`,
+        TransactionDesc: `Piki ${payment.planCode} subscription`,
       }),
     },
   );
@@ -3295,7 +3510,7 @@ function resolveGoogleGatewayConfig(gateway) {
   return {
     environment: publicConfig.environment || config.googlePayEnvironment,
     merchantId: publicConfig.merchantId || config.googlePayMerchantId,
-    merchantName: publicConfig.merchantName || 'Velora POS',
+    merchantName: publicConfig.merchantName || 'Piki POS',
     gateway: publicConfig.gateway || config.googlePayGateway,
     gatewayMerchantId:
       publicConfig.gatewayMerchantId || config.googlePayGatewayMerchantId,
@@ -3541,8 +3756,8 @@ async function synthesizeSpeech(aiConfig, { text, voice }) {
 function openRouterHeaders(apiKey) {
   return {
     Authorization: `Bearer ${apiKey}`,
-    'HTTP-Referer': 'https://devispos.com',
-    'X-Title': 'Devis POS AI',
+    'HTTP-Referer': 'https://pikipos.com',
+    'X-Title': 'Piki POS AI',
   };
 }
 

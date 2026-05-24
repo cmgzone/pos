@@ -59,6 +59,7 @@ void main() {
     expect(snapshot.businessId, 'biz-1');
     expect(snapshot.allowsFeature('agent'), isTrue);
     expect(snapshot.allowsFeature('branches'), isFalse);
+    expect(snapshot.allowsFeature('settings'), isTrue);
     expect(snapshot.entitlements.maxBranches, 1);
   });
 

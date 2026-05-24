@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 
 class CustomerMessageDialog extends StatefulWidget {
   final String customerName;
@@ -84,7 +85,15 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$error'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              error,
+              fallback: 'Message could not be sent. Please try again.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
       );
     } finally {
       if (mounted) {
@@ -153,17 +162,18 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
           icon: const Icon(Icons.open_in_new_outlined),
           label: const Text('Open App'),
         ),
-        ElevatedButton.icon(
-          onPressed: _sending ? null : () => _send(api: true),
-          icon: _sending
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.send_outlined),
-          label: const Text('Send API'),
-        ),
+        if (MessagingService.allowApiSend)
+          ElevatedButton.icon(
+            onPressed: _sending ? null : () => _send(api: true),
+            icon: _sending
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send_outlined),
+            label: const Text('Send API'),
+          ),
       ],
     );
   }

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../sales/data/held_sale_provider.dart';
 import '../../sales/data/held_sale_repository.dart';
 import '../../purchases/data/purchase_repository.dart';
@@ -449,7 +450,10 @@ class PikiBrainService {
 
       _messagesNotifier.addMessage(
         PikiMessage(
-          content: '$e',
+          content: AppErrorMessage.from(
+            e,
+            fallback: AppErrorMessage.pikiFailed,
+          ),
           sender: PikiSender.agent,
           messageType: PikiMessageType.error,
         ),
@@ -522,7 +526,9 @@ class PikiBrainService {
         updatedSteps[i] = updatedSteps[i].copyWith(
           status: PikiStepStatus.error,
         );
-        completedDetails.add('Error: $e');
+        completedDetails.add(
+          AppErrorMessage.from(e, fallback: AppErrorMessage.pikiFailed),
+        );
       }
     }
 
@@ -583,7 +589,10 @@ class PikiBrainService {
       } catch (e) {
         _messagesNotifier.addMessage(
           PikiMessage(
-            content: 'Error: $e',
+            content: AppErrorMessage.from(
+              e,
+              fallback: AppErrorMessage.pikiFailed,
+            ),
             sender: PikiSender.agent,
             messageType: PikiMessageType.error,
           ),
@@ -852,7 +861,10 @@ class PikiBrainService {
             result = {
               'tool': toolName,
               'success': false,
-              'error': e.toString().replaceFirst('Exception: ', ''),
+              'error': AppErrorMessage.from(
+                e,
+                fallback: AppErrorMessage.pikiFailed,
+              ),
               'summary': 'Could not complete $toolName.',
             };
             _addWorkNote(
@@ -1040,6 +1052,21 @@ Analyze these results. If you have fully answered the original request, return m
         ),
       );
 
+      // Render product draft cards if the tool was called
+      final draftResults = allResults
+          .where((r) => r['type'] == 'draft_product')
+          .toList();
+      for (final draftResult in draftResults) {
+        _messagesNotifier.addMessage(
+          PikiMessage(
+            content: 'Product Draft',
+            sender: PikiSender.agent,
+            messageType: PikiMessageType.productDraftCard,
+            attachedData: draftResult,
+          ),
+        );
+      }
+
       rememberInteraction(
         userInput: text,
         reply: finalAnswer,
@@ -1060,7 +1087,10 @@ Analyze these results. If you have fully answered the original request, return m
       _resetStatusAfterDelay(statusNotifier);
       return true;
     } catch (e) {
-      _lastPlannerError = e.toString().replaceFirst('Exception: ', '');
+      _lastPlannerError = AppErrorMessage.from(
+        e,
+        fallback: AppErrorMessage.pikiFailed,
+      );
       _addWorkNote(
         workNotes,
         stage: 'error',
@@ -1261,7 +1291,11 @@ Analyze these results. If you have fully answered the original request, return m
         ],
       );
     } catch (e) {
-      final reply = 'Could not save the purchase draft: $e';
+      final reply = AppErrorMessage.withContext(
+        e,
+        prefix: 'Could not save the purchase draft.',
+        fallback: AppErrorMessage.saveFailed,
+      );
       _messagesNotifier.addMessage(
         PikiMessage(
           content: reply,
@@ -1495,7 +1529,13 @@ Analyze these results. If you have fully answered the original request, return m
           'total': total,
         };
       } catch (e) {
-        return {'error': 'Could not create service order: $e'};
+        return {
+          'error': AppErrorMessage.withContext(
+            e,
+            prefix: 'Could not create service order.',
+            fallback: AppErrorMessage.saveFailed,
+          ),
+        };
       }
     }
 

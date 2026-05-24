@@ -262,9 +262,9 @@ class CloudAuthService {
 
   static String get _deviceName {
     try {
-      return 'Velora ${Platform.operatingSystem}';
+      return 'Piki ${Platform.operatingSystem}';
     } catch (_) {
-      return 'Velora device';
+      return 'Piki device';
     }
   }
 }

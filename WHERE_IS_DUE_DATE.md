@@ -105,7 +105,7 @@ The due date section only shows if Kopesha exists in the database.
 
 **Check:**
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT name, is_credit FROM payment_methods WHERE is_credit = 1;"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT name, is_credit FROM payment_methods WHERE is_credit = 1;"
 ```
 
 Should show:
@@ -183,7 +183,7 @@ Check the console for errors when opening the payment dialog.
 
 **Step 1:** Verify Kopesha exists
 ```bash
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT * FROM payment_methods WHERE name = 'Kopesha';"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT * FROM payment_methods WHERE name = 'Kopesha';"
 ```
 
 **Step 2:** Restart the app
@@ -224,7 +224,7 @@ That's okay! The important parts are:
 **Quick Check:**
 ```bash
 # 1. Verify database is fixed
-sqlite3 .dart_tool/sqflite_common_ffi/databases/velora_pos.db "SELECT name FROM payment_methods;"
+sqlite3 .dart_tool/sqflite_common_ffi/databases/Piki_pos.db "SELECT name FROM payment_methods;"
 
 # Should show:
 # Cash

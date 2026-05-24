@@ -504,7 +504,7 @@ async function initiateMpesaPosCheckout(payment, platformGateway, businessGatewa
         PhoneNumber: phoneNumber,
         CallBackURL: mpesaConfig.callbackUrl,
         AccountReference: mpesaConfig.accountReference || payment.externalReference,
-        TransactionDesc: 'Velora POS sale',
+        TransactionDesc: 'Piki POS sale',
       }),
     },
   );

@@ -11,11 +11,11 @@ function normalizeWebSearchInput(input = {}) {
 async function searchWithSerpApi({
   apiKey,
   fetchImpl,
-  baseUrl = 'https://google.serper.dev/search',
+  baseUrl = 'https://serpapi.com/search.json',
   input,
 }) {
   if (!apiKey || !apiKey.trim()) {
-    throw new Error('Serper API key is not configured');
+    throw new Error('SerpAPI key is not configured');
   }
 
   const request = normalizeWebSearchInput(input);
@@ -23,37 +23,30 @@ async function searchWithSerpApi({
     throw new Error('Search query is required');
   }
 
-  const payload = {
-    q: request.query,
-    num: request.limit,
-  };
+  const url = new URL(baseUrl);
+  url.searchParams.set('engine', 'google');
+  url.searchParams.set('q', request.query);
+  url.searchParams.set('num', String(request.limit));
   if (request.location) {
-    payload.location = request.location;
+    url.searchParams.set('location', request.location);
   }
   if (request.gl) {
-    payload.gl = request.gl.toLowerCase();
+    url.searchParams.set('gl', request.gl.toLowerCase());
   }
   if (request.hl) {
-    payload.hl = request.hl.toLowerCase();
+    url.searchParams.set('hl', request.hl.toLowerCase());
   }
+  url.searchParams.set('api_key', apiKey);
 
-  const response = await fetchImpl(baseUrl, {
-    method: 'POST',
-    headers: {
-      'X-API-KEY': apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
+  const response = await fetchImpl(url.toString(), {
+    method: 'GET',
   });
   const body = await response.json();
 
-  if (!response.ok) {
+  if (!response.ok || body?.error) {
     throw new Error(
-      body?.message || body?.error || `Serper request failed (${response.status})`,
+      body?.error || body?.message || `SerpAPI request failed (${response.status})`,
     );
-  }
-  if (body?.message && response.status !== 200) {
-    throw new Error(body.message);
   }
 
   return normalizeSerpApiResponse(body, request);
@@ -71,6 +64,7 @@ function normalizeSerpApiResponse(body, request) {
     snippet: normalizeText(item.snippet),
     source: normalizeText(item.source),
     displayedLink: normalizeText(item.displayed_link),
+    imageUrl: normalizeText(item.imageUrl || item.image_url || item.thumbnail),
   }));
 
   const answerBox = body?.answerBox || body?.answer_box

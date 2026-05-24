@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../utils/error_messages.dart';
 import 'session_service.dart';
 import 'shop_settings.dart';
 
@@ -92,16 +93,19 @@ class CashDrawerService {
       final output = result.stdout.toString().trim();
       return CashDrawerOpenResult(
         success: false,
-        message: error.isNotEmpty
-            ? error
-            : output.isNotEmpty
-            ? output
+        message: error.isNotEmpty || output.isNotEmpty
+            ? 'Windows could not send the drawer command. Check the printer path and try again.'
             : 'Windows could not send the drawer command.',
       );
     } catch (error) {
       return CashDrawerOpenResult(
         success: false,
-        message: 'Cash drawer could not open: $error',
+        message: AppErrorMessage.withContext(
+          error,
+          prefix: 'Cash drawer could not open.',
+          fallback:
+              'Cash drawer could not open. Check the printer path and try again.',
+        ),
       );
     } finally {
       try {

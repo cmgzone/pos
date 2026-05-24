@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 
 class BranchManagementScreen extends StatefulWidget {
   const BranchManagementScreen({super.key});
@@ -131,7 +132,12 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             SnackBar(
-                              content: Text('$error'),
+                              content: Text(
+                                AppErrorMessage.from(
+                                  error,
+                                  fallback: AppErrorMessage.saveFailed,
+                                ),
+                              ),
                               backgroundColor: AppColors.error,
                             ),
                           );

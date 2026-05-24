@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/customer_repository.dart';
 
@@ -43,7 +44,13 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not create customer: $e'),
+            content: Text(
+              AppErrorMessage.withContext(
+                e,
+                prefix: 'Could not create customer.',
+                fallback: AppErrorMessage.saveFailed,
+              ),
+            ),
             backgroundColor: AppColors.error,
           ),
         );
