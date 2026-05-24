@@ -314,6 +314,92 @@ class PikiBrainService {
     return citations;
   }
 
+  Map<String, dynamic>? _chartFromResult(Map<String, dynamic> result) {
+    if (result['type'] == 'chart') return result;
+    if (result['type'] != 'top_products') return null;
+
+    final items =
+        (result['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    if (items.isEmpty) return null;
+
+    num metricValue(Map<String, dynamic> item) {
+      for (final key in const [
+        'total_qty_sold',
+        'qty_sold',
+        'quantity_sold',
+        'quantity',
+      ]) {
+        final value = item[key];
+        if (value is num) return value;
+        if (value != null) {
+          final parsed = num.tryParse(value.toString());
+          if (parsed != null) return parsed;
+        }
+      }
+      return 0;
+    }
+
+    final chartItems = items
+        .take(6)
+        .map((item) {
+          final label =
+              item['name'] as String? ??
+              item['product_name'] as String? ??
+              'Item';
+          final value = metricValue(item);
+          final unit =
+              item['sale_unit'] as String? ??
+              item['unit'] as String? ??
+              item['stock_unit'] as String? ??
+              '';
+          return {
+            'label': label,
+            'value': value,
+            'image_url': item['image_url'],
+            'unit': unit,
+            'revenue': item['total_revenue'],
+          };
+        })
+        .where((item) => ((item['value'] as num?) ?? 0) > 0)
+        .toList();
+
+    if (chartItems.isEmpty) return null;
+
+    final period = PikiAgentService.periodLabelForDays(
+      (result['days_range'] as num? ?? 30).toInt(),
+    );
+    return {
+      'type': 'chart',
+      'source_type': 'top_products',
+      'chart_type': 'product_bar',
+      'title': 'Top products - $period',
+      'labels': chartItems.map((item) => item['label'] as String).toList(),
+      'values': chartItems.map((item) => item['value'] as num).toList(),
+      'items': chartItems,
+      'summary': result['summary'],
+      'tool': result['tool'] ?? PikiAgentService.toolTopProducts,
+    };
+  }
+
+  List<Map<String, dynamic>> _withDerivedChartResults(
+    List<Map<String, dynamic>> results,
+  ) {
+    if (results.any((result) => result['type'] == 'chart')) {
+      return results;
+    }
+
+    final chartResults = results
+        .map(_chartFromResult)
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    if (chartResults.isEmpty) return results;
+    return [...results, ...chartResults];
+  }
+
   Map<String, dynamic> _workNotesAttachedData(
     List<PikiWorkNote> notes, {
     PikiRunState? runState,
@@ -568,15 +654,23 @@ class PikiBrainService {
       try {
         final result = await PikiAgentService.executeSkill(skill);
         final hasItems = ((result['items'] as List?)?.isNotEmpty ?? false);
+        final chartResult = _chartFromResult(result);
 
         _messagesNotifier.addMessage(
           PikiMessage(
             content: result['summary'] as String? ?? 'Done',
             sender: PikiSender.agent,
-            messageType: hasItems
+            messageType: chartResult != null
+                ? PikiMessageType.chart
+                : hasItems
                 ? PikiMessageType.productCard
                 : PikiMessageType.taskComplete,
-            attachedData: result,
+            attachedData: chartResult != null
+                ? {
+                    'type': 'chart',
+                    'tool_results': [result, chartResult],
+                  }
+                : result,
           ),
         );
 
@@ -1017,10 +1111,11 @@ Analyze these results. If you have fully answered the original request, return m
             message.id == thinkingMsg.id || message.id == workingMsg?.id,
       );
 
+      final displayResults = _withDerivedChartResults(allResults);
       final citations = _collectCitations(allResults);
 
       PikiMessageType finalType = PikiMessageType.aiResponse;
-      if (allResults.any((r) => r['type'] == 'chart')) {
+      if (displayResults.any((r) => r['type'] == 'chart')) {
         finalType = PikiMessageType.chart;
       }
 
@@ -1043,7 +1138,7 @@ Analyze these results. If you have fully answered the original request, return m
                 : 'ai_response',
             'model': OpenRouterService.modelName,
             'citations': citations,
-            'tool_results': allResults,
+            'tool_results': displayResults,
             'plan_summary': planSummary,
             'work_notes': workNotes.map((note) => note.toJson()).toList(),
             'run_state': runState.toJson(),

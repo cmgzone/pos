@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -282,8 +284,22 @@ class PikiMessageBubble extends StatelessWidget {
     if (chartData.isEmpty) return _buildAgentTextBubble();
 
     final title = chartData['title'] as String? ?? 'Data Visualization';
-    final labels = (chartData['labels'] as List?)?.cast<String>() ?? [];
-    final values = (chartData['values'] as List?)?.cast<num>() ?? [];
+    final labels =
+        (chartData['labels'] as List?)
+            ?.map((label) => label.toString())
+            .toList() ??
+        <String>[];
+    final values =
+        (chartData['values'] as List?)?.map((value) {
+          if (value is num) return value;
+          return num.tryParse(value.toString()) ?? 0;
+        }).toList() ??
+        <num>[];
+    final chartItems = _chartItemsFromData(chartData, labels, values);
+    final maxValue = values.fold<double>(
+      0,
+      (max, value) => value.toDouble() > max ? value.toDouble() : max,
+    );
 
     return _AgentRow(
       child: Container(
@@ -307,12 +323,7 @@ class PikiMessageBubble extends StatelessWidget {
               child: BarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
-                  maxY: values.isEmpty
-                      ? 10
-                      : values
-                                .map((v) => v.toDouble())
-                                .reduce((a, b) => a > b ? a : b) *
-                            1.2,
+                  maxY: maxValue <= 0 ? 10 : maxValue * 1.2,
                   barTouchData: BarTouchData(enabled: true),
                   titlesData: FlTitlesData(
                     show: true,
@@ -370,6 +381,10 @@ class PikiMessageBubble extends StatelessWidget {
                 ),
               ),
             ),
+            if (chartItems.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildChartProductStrip(chartItems, values),
+            ],
             const SizedBox(height: 16),
             if (message.content.isNotEmpty)
               Text(
@@ -381,6 +396,150 @@ class PikiMessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // ── Chart helpers ──────────────────────────────────────────────────────
+
+  List<Map<String, dynamic>> _chartItemsFromData(
+    Map<String, dynamic> chartData,
+    List<String> labels,
+    List<num> values,
+  ) {
+    final items =
+        (chartData['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    if (items.isNotEmpty) return items;
+
+    final count = labels.length < values.length ? labels.length : values.length;
+    return List.generate(count, (index) {
+      return {'label': labels[index], 'value': values[index]};
+    });
+  }
+
+  Widget _buildChartProductStrip(
+    List<Map<String, dynamic>> items,
+    List<num> values,
+  ) {
+    var visibleCount = items.length < values.length
+        ? items.length
+        : values.length;
+    if (visibleCount > 6) visibleCount = 6;
+    if (visibleCount <= 0) return const SizedBox.shrink();
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: List.generate(visibleCount, (index) {
+        final item = items[index];
+        final label = item['label'] as String? ?? 'Item';
+        final value = item['value'] is num
+            ? item['value'] as num
+            : values[index];
+        final imagePath = item['image_url']?.toString();
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Column(
+              children: [
+                _buildChartProductImage(imagePath),
+                const SizedBox(height: 6),
+                Text(
+                  _formatCompactNumber(value),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildChartProductImage(String? imagePath) {
+    const size = 36.0;
+    final cleanPath = imagePath?.trim();
+    if (cleanPath == null || cleanPath.isEmpty) {
+      return _buildChartImagePlaceholder(size);
+    }
+
+    Widget image;
+    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+      image = Image.network(
+        cleanPath,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            _buildChartImagePlaceholder(size),
+      );
+    } else {
+      var filePath = cleanPath;
+      if (cleanPath.startsWith('file://')) {
+        filePath = Uri.parse(cleanPath).toFilePath();
+      }
+
+      try {
+        final file = File(filePath);
+        if (!file.existsSync()) return _buildChartImagePlaceholder(size);
+        image = Image.file(file, width: size, height: size, fit: BoxFit.cover);
+      } catch (_) {
+        return _buildChartImagePlaceholder(size);
+      }
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(9),
+      child: SizedBox(width: size, height: size, child: image),
+    );
+  }
+
+  Widget _buildChartImagePlaceholder(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+      ),
+      child: const Icon(
+        Icons.inventory_2_rounded,
+        size: 17,
+        color: AppColors.primary,
+      ),
+    );
+  }
+
+  String _formatCompactNumber(num value) {
+    final number = value.toDouble();
+    if (number >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(number >= 10000000 ? 0 : 1)}M';
+    }
+    if (number >= 1000) {
+      return '${(number / 1000).toStringAsFixed(number >= 10000 ? 0 : 1)}K';
+    }
+    if (number == number.roundToDouble()) {
+      return number.toStringAsFixed(0);
+    }
+    return number.toStringAsFixed(1);
   }
 
   // ── User bubble ────────────────────────────────────────────────────────

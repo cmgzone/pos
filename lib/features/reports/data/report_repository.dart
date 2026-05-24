@@ -151,9 +151,7 @@ class ReportRepository {
     ReportBranchScope branchScope = ReportBranchScope.current,
   }) async {
     final order = ascending ? 'ASC' : 'DESC';
-    final clauses = <String>[
-      'p.deleted_at IS NULL',
-    ];
+    final clauses = <String>['p.deleted_at IS NULL'];
     final args = <dynamic>[];
     final salesClauses = <String>[
       's.created_at >= datetime(\'now\', \'-$daysRange days\')',
@@ -171,6 +169,7 @@ class ReportRepository {
         p.name,
         p.sku,
         p.category_id,
+        p.image_url,
         p.stock,
         p.unit,
         p.sale_unit,
@@ -204,7 +203,12 @@ class ReportRepository {
       'deleted_at IS NULL',
     ];
     final receivedArgs = <dynamic>[];
-    _addBranchFilter(receivedClauses, receivedArgs, 'stock_batches', branchScope);
+    _addBranchFilter(
+      receivedClauses,
+      receivedArgs,
+      'stock_batches',
+      branchScope,
+    );
 
     final soldClauses = <String>[
       's.created_at >= datetime(\'now\', \'-$daysRange days\')',
