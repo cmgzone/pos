@@ -2948,179 +2948,230 @@ class _CartSide extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final media = MediaQuery.of(context);
+          final isCompact = media.size.width < 560;
           final hasEnoughCash = tenderedAmount + 0.001 >= total;
           final changeGiven = hasEnoughCash ? tenderedAmount - total : 0.0;
 
           return AlertDialog(
             backgroundColor: AppColors.surface,
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 12 : 40,
+              vertical: isCompact ? 12 : 24,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: Row(
-              children: const [
+            titlePadding: EdgeInsets.fromLTRB(
+              isCompact ? 16 : 24,
+              isCompact ? 16 : 24,
+              isCompact ? 16 : 24,
+              0,
+            ),
+            contentPadding: EdgeInsets.all(isCompact ? 16 : 24),
+            actionsPadding: EdgeInsets.fromLTRB(
+              isCompact ? 16 : 24,
+              0,
+              isCompact ? 16 : 24,
+              isCompact ? 16 : 24,
+            ),
+            actionsOverflowDirection: VerticalDirection.down,
+            actionsOverflowButtonSpacing: 8,
+            title: const Row(
+              children: [
                 Icon(Icons.payments_outlined, color: AppColors.success),
                 SizedBox(width: 12),
-                Text('Cash Checkout'),
+                Expanded(
+                  child: Text(
+                    'Cash Checkout',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
-            content: SizedBox(
-              width: 420,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Total Due',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 12,
-                          ),
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: media.size.height * (isCompact ? 0.6 : 0.65),
+              ),
+              child: SizedBox(
+                width: isCompact ? media.size.width - 56 : 420,
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.success,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Total Due',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: isCompact ? 24 : 28,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.success,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Cash Received',
-                      prefixText: ShopSettings.currency,
-                      errorText: errorText,
-                      helperText: hasEnoughCash
-                          ? 'Change to return: ${ShopSettings.currency}${changeGiven.toStringAsFixed(2)}'
-                          : 'Enter at least ${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                    ),
-                    onChanged: (value) {
-                      setDialogState(() {
-                        tenderedAmount = double.tryParse(value.trim()) ?? 0.0;
-                        errorText = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        controller.text = total.toStringAsFixed(2);
-                        setDialogState(() {
-                          tenderedAmount = total;
-                          errorText = null;
-                        });
-                      },
-                      icon: const Icon(Icons.restart_alt),
-                      label: const Text('Use Exact Amount'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: hasEnoughCash
-                          ? AppColors.primaryLight.withValues(alpha: 0.08)
-                          : AppColors.warning.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          hasEnoughCash
-                              ? Icons.reply_outlined
-                              : Icons.warning_amber_rounded,
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: controller,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Cash Received',
+                          prefixText: ShopSettings.currency,
+                          errorText: errorText,
+                          helperText: hasEnoughCash
+                              ? 'Change to return: ${ShopSettings.currency}${changeGiven.toStringAsFixed(2)}'
+                              : 'Enter at least ${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                        ),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            tenderedAmount =
+                                double.tryParse(value.trim()) ?? 0.0;
+                            errorText = null;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            controller.text = total.toStringAsFixed(2);
+                            setDialogState(() {
+                              tenderedAmount = total;
+                              errorText = null;
+                            });
+                          },
+                          icon: const Icon(Icons.restart_alt),
+                          label: const Text('Use Exact Amount'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
                           color: hasEnoughCash
-                              ? AppColors.primaryLight
-                              : AppColors.warning,
+                              ? AppColors.primaryLight.withValues(alpha: 0.08)
+                              : AppColors.warning.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                hasEnoughCash
-                                    ? 'Change Returned'
-                                    : 'More Cash Needed',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: hasEnoughCash
-                                      ? AppColors.primaryLight
-                                      : AppColors.warning,
-                                ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              hasEnoughCash
+                                  ? Icons.reply_outlined
+                                  : Icons.warning_amber_rounded,
+                              color: hasEnoughCash
+                                  ? AppColors.primaryLight
+                                  : AppColors.warning,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    hasEnoughCash
+                                        ? 'Change Returned'
+                                        : 'More Cash Needed',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: hasEnoughCash
+                                          ? AppColors.primaryLight
+                                          : AppColors.warning,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${ShopSettings.currency}${(hasEnoughCash ? changeGiven : total - tenderedAmount).toStringAsFixed(2)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${ShopSettings.currency}${(hasEnoughCash ? changeGiven : total - tenderedAmount).toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  final parsed = double.tryParse(controller.text.trim());
-                  if (parsed == null) {
-                    setDialogState(() {
-                      errorText = 'Enter a valid cash amount';
-                    });
-                    return;
-                  }
-                  if (parsed + 0.001 < total) {
-                    setDialogState(() {
-                      errorText = 'Cash received must cover the sale total';
-                    });
-                    return;
-                  }
-                  Navigator.pop(
-                    ctx,
-                    _CashCheckoutResult(
-                      amountTendered: parsed,
-                      changeGiven: parsed - total,
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.check_circle_outline),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.success,
+              SizedBox(
+                width: isCompact ? double.infinity : null,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
                 ),
-                label: const Text('Complete Sale'),
+              ),
+              SizedBox(
+                width: isCompact ? double.infinity : null,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final parsed = double.tryParse(controller.text.trim());
+                    if (parsed == null) {
+                      setDialogState(() {
+                        errorText = 'Enter a valid cash amount';
+                      });
+                      return;
+                    }
+                    if (parsed + 0.001 < total) {
+                      setDialogState(() {
+                        errorText = 'Cash received must cover the sale total';
+                      });
+                      return;
+                    }
+                    Navigator.pop(
+                      ctx,
+                      _CashCheckoutResult(
+                        amountTendered: parsed,
+                        changeGiven: parsed - total,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.check_circle_outline),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                  ),
+                  label: const Text(
+                    'Complete Sale',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
             ],
           );
