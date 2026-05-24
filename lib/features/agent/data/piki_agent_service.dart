@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/database_service.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../products/data/category_repository.dart';
@@ -33,6 +34,11 @@ enum PikiSkill {
   expenseSummary,
   purchaseHistory,
   dailyBrief,
+  predictiveRestock,
+  anomalyAlerts,
+  customerFollowups,
+  dailyWhatsappReport,
+  voiceCashier,
 }
 
 class PikiRequestAnalysis {
@@ -42,6 +48,7 @@ class PikiRequestAnalysis {
   final int daysRange;
   final int resultLimit;
   final String? productQuery;
+  final String? filter;
 
   const PikiRequestAnalysis({
     required this.originalInput,
@@ -50,6 +57,7 @@ class PikiRequestAnalysis {
     this.daysRange = 1,
     this.resultLimit = 10,
     this.productQuery,
+    this.filter,
   });
 
   String get periodLabel => PikiAgentService.periodLabelForDays(daysRange);
@@ -96,6 +104,12 @@ class PikiAgentService {
   static const toolPurchaseHistory = 'purchase_history';
   static const toolPurchaseDraft = 'purchase_draft';
   static const toolDailyBrief = 'daily_brief';
+  static const toolPredictiveRestock = 'predictive_restock';
+  static const toolAnomalyAlerts = 'anomaly_alerts';
+  static const toolCustomerFollowups = 'customer_followups';
+  static const toolDailyWhatsappReport = 'daily_whatsapp_report';
+  static const toolImageOrderDraft = 'image_order_draft';
+  static const toolVoiceCashierHelp = 'voice_cashier_help';
   static const toolCreateProduct = 'create_product';
   static const toolDraftProduct = 'draft_product';
   static const toolEnhanceProductImage = 'enhance_product_image';
@@ -208,6 +222,40 @@ class PikiAgentService {
       ['market', 'comparison'],
       ['how', 'doing', 'compared'],
     ],
+    PikiSkill.predictiveRestock: [
+      ['predict', 'restock'],
+      ['forecast', 'stock'],
+      ['demand', 'forecast'],
+      ['future', 'stock'],
+      ['what', 'will', 'run', 'out'],
+    ],
+    PikiSkill.anomalyAlerts: [
+      ['anomaly'],
+      ['unusual'],
+      ['risk', 'alert'],
+      ['sales', 'drop'],
+      ['business', 'alert'],
+      ['what', 'is', 'wrong'],
+    ],
+    PikiSkill.customerFollowups: [
+      ['customer', 'follow'],
+      ['send', 'reminder'],
+      ['kopesha', 'reminder'],
+      ['overdue', 'message'],
+      ['follow', 'debtors'],
+    ],
+    PikiSkill.dailyWhatsappReport: [
+      ['whatsapp', 'report'],
+      ['daily', 'whatsapp'],
+      ['send', 'daily', 'report'],
+      ['owner', 'report'],
+    ],
+    PikiSkill.voiceCashier: [
+      ['voice', 'cashier'],
+      ['auto', 'listen'],
+      ['hands', 'free'],
+      ['voice', 'sell'],
+    ],
   };
 
   static final _toolToSkill = <String, PikiSkill>{
@@ -224,6 +272,11 @@ class PikiAgentService {
     toolExpenseSummary: PikiSkill.expenseSummary,
     toolPurchaseHistory: PikiSkill.purchaseHistory,
     toolDailyBrief: PikiSkill.dailyBrief,
+    toolPredictiveRestock: PikiSkill.predictiveRestock,
+    toolAnomalyAlerts: PikiSkill.anomalyAlerts,
+    toolCustomerFollowups: PikiSkill.customerFollowups,
+    toolDailyWhatsappReport: PikiSkill.dailyWhatsappReport,
+    toolVoiceCashierHelp: PikiSkill.voiceCashier,
   };
 
   static final _toolLabels = <String, String>{
@@ -240,6 +293,13 @@ class PikiAgentService {
     toolExpenseSummary: 'Review expenses',
     toolPurchaseHistory: 'Review purchase history',
     toolPurchaseDraft: 'Create purchase draft',
+    toolDailyBrief: 'Daily market brief',
+    toolPredictiveRestock: 'Predict restock needs',
+    toolAnomalyAlerts: 'Detect business anomalies',
+    toolCustomerFollowups: 'Prepare customer follow-ups',
+    toolDailyWhatsappReport: 'Draft WhatsApp report',
+    toolImageOrderDraft: 'Read order image',
+    toolVoiceCashierHelp: 'Explain voice cashier',
     toolCreateProduct: 'Create product',
     toolDraftProduct: 'Draft a product from the web',
     toolEnhanceProductImage: 'Enhance product image',
@@ -282,6 +342,19 @@ class PikiAgentService {
     toolPurchaseHistory: 'Show recent stock-in and supplier history.',
     toolPurchaseDraft:
         'Build a purchase draft from low stock and recent supplier history.',
+    toolDailyBrief: 'Fetch a short market and business performance brief.',
+    toolPredictiveRestock:
+        'Forecast products likely to run out from sales velocity, current stock, and low-stock thresholds.',
+    toolAnomalyAlerts:
+        'Find unusual sales, stock, Kopesha, expiry, and shift risks that need attention.',
+    toolCustomerFollowups:
+        'Prepare WhatsApp/SMS-ready Kopesha reminder messages for due, overdue, or risky customers.',
+    toolDailyWhatsappReport:
+        'Draft an owner-ready daily WhatsApp report from sales, products, stock, and alerts.',
+    toolImageOrderDraft:
+        'Analyze a product or order photo and draft item lines from the image.',
+    toolVoiceCashierHelp:
+        'Explain how cashiers can use hands-free voice commands in Sell Mode.',
     toolCreateProduct: 'Create a product when name and price are known.',
     toolDraftProduct:
         'Prepare a product with a web image for user approval before saving.',
@@ -330,6 +403,15 @@ class PikiAgentService {
     toolExpenseSummary: 'daysRange(int), limit(int)',
     toolPurchaseHistory: 'daysRange(int), limit(int)',
     toolPurchaseDraft: 'limit(int)',
+    toolDailyBrief: 'daysRange(int)',
+    toolPredictiveRestock: 'daysRange(int), limit(int)',
+    toolAnomalyAlerts: 'daysRange(int), limit(int)',
+    toolCustomerFollowups:
+        'filter(string: overdue|due_today|risky|all), limit(int)',
+    toolDailyWhatsappReport: 'daysRange(int)',
+    toolImageOrderDraft:
+        'image_source/image_url/url/path(string, required), note(string)',
+    toolVoiceCashierHelp: 'none',
     toolCreateProduct:
         'name(string, required), price(number, required), cost(number), stock(number), unit(string), category_id(string), category(string), sku(string), barcode(string), brand(string)',
     toolDraftProduct:
@@ -413,6 +495,38 @@ class PikiAgentService {
         hasAll(['purchase', 'list'])) {
       addScore(PikiSkill.restockList, 4);
     }
+    if (hasAll(['predict', 'restock']) ||
+        hasAll(['forecast', 'stock']) ||
+        hasAll(['demand', 'forecast']) ||
+        hasAll(['what', 'will', 'run', 'out']) ||
+        hasAny(['stock forecast', 'future stock'])) {
+      addScore(PikiSkill.predictiveRestock, 6);
+    }
+    if (hasAny(['anomaly', 'unusual', 'alerts']) ||
+        hasAll(['sales', 'drop']) ||
+        hasAll(['risk', 'alert']) ||
+        hasAll(['what', 'is', 'wrong'])) {
+      addScore(PikiSkill.anomalyAlerts, 6);
+    }
+    if (hasAll(['customer', 'follow']) ||
+        hasAll(['kopesha', 'reminder']) ||
+        hasAll(['overdue', 'message']) ||
+        hasAll(['send', 'reminder']) ||
+        hasAll(['follow', 'debtors'])) {
+      addScore(PikiSkill.customerFollowups, 6);
+    }
+    if (hasAll(['whatsapp', 'report']) ||
+        hasAll(['daily', 'whatsapp']) ||
+        hasAll(['owner', 'report']) ||
+        hasAll(['send', 'daily', 'report'])) {
+      addScore(PikiSkill.dailyWhatsappReport, 6);
+    }
+    if (hasAll(['voice', 'cashier']) ||
+        hasAll(['auto', 'listen']) ||
+        hasAll(['hands', 'free']) ||
+        hasAll(['voice', 'sell'])) {
+      addScore(PikiSkill.voiceCashier, 6);
+    }
     if (hasAny(['today', 'daily']) ||
         hasAll(['sales', 'summary']) ||
         normalized.contains('how are sales')) {
@@ -481,6 +595,7 @@ class PikiAgentService {
       daysRange: daysRange,
       resultLimit: resultLimit,
       productQuery: productQuery,
+      filter: _extractCustomerFilter(normalized),
     );
   }
 
@@ -520,6 +635,11 @@ class PikiAgentService {
     PikiSkill.expenseSummary => 'Expense Summary',
     PikiSkill.purchaseHistory => 'Purchase History',
     PikiSkill.dailyBrief => 'Daily Market Brief',
+    PikiSkill.predictiveRestock => 'Predict Restock',
+    PikiSkill.anomalyAlerts => 'Anomaly Alerts',
+    PikiSkill.customerFollowups => 'Customer Follow-ups',
+    PikiSkill.dailyWhatsappReport => 'WhatsApp Report',
+    PikiSkill.voiceCashier => 'Voice Cashier',
   };
 
   static String skillDescription(PikiSkill skill) => switch (skill) {
@@ -537,6 +657,12 @@ class PikiAgentService {
     PikiSkill.purchaseHistory => 'Reviewing recent stock-in records',
     PikiSkill.dailyBrief =>
       'Fetching daily market news and comparing performance',
+    PikiSkill.predictiveRestock =>
+      'Forecasting stock cover from sales velocity',
+    PikiSkill.anomalyAlerts => 'Scanning sales, stock, debt, and shift risks',
+    PikiSkill.customerFollowups => 'Preparing Kopesha reminder message drafts',
+    PikiSkill.dailyWhatsappReport => 'Drafting an owner-ready daily update',
+    PikiSkill.voiceCashier => 'Showing supported hands-free sell commands',
   };
 
   static IconData skillIcon(PikiSkill skill) => switch (skill) {
@@ -553,6 +679,11 @@ class PikiAgentService {
     PikiSkill.expenseSummary => Icons.money_off_rounded,
     PikiSkill.purchaseHistory => Icons.local_shipping_rounded,
     PikiSkill.dailyBrief => Icons.auto_awesome,
+    PikiSkill.predictiveRestock => Icons.insights_rounded,
+    PikiSkill.anomalyAlerts => Icons.notification_important_rounded,
+    PikiSkill.customerFollowups => Icons.mark_chat_unread_rounded,
+    PikiSkill.dailyWhatsappReport => Icons.chat_rounded,
+    PikiSkill.voiceCashier => Icons.record_voice_over_rounded,
   };
 
   /// Build PikiStep list for Plan mode.
@@ -623,6 +754,30 @@ class PikiAgentService {
 
       case PikiSkill.dailyBrief:
         return _buildDailyBrief(request: request);
+
+      case PikiSkill.predictiveRestock:
+        return _buildPredictiveRestock(
+          daysRange: request?.daysRange ?? 30,
+          limit: request?.resultLimit ?? 10,
+        );
+
+      case PikiSkill.anomalyAlerts:
+        return _buildAnomalyAlerts(
+          daysRange: request?.daysRange ?? 7,
+          limit: request?.resultLimit ?? 10,
+        );
+
+      case PikiSkill.customerFollowups:
+        return _buildCustomerFollowups(
+          filter: request?.filter,
+          limit: request?.resultLimit ?? 10,
+        );
+
+      case PikiSkill.dailyWhatsappReport:
+        return _buildDailyWhatsappReport(daysRange: request?.daysRange ?? 1);
+
+      case PikiSkill.voiceCashier:
+        return _buildVoiceCashierHelp();
 
       case PikiSkill.restockList:
         final items = await ProductRepository.getLowStock();
@@ -893,6 +1048,7 @@ Example: ["detergent", "soap", "laundry"]
       icon: switch (tool) {
         toolPurchaseDraft => Icons.note_alt_rounded,
         toolEnhanceProductImage => Icons.auto_fix_high_rounded,
+        toolImageOrderDraft => Icons.document_scanner_rounded,
         toolWebSearch => Icons.public_rounded,
         _ => Icons.auto_awesome_rounded,
       },
@@ -921,6 +1077,7 @@ Example: ["detergent", "soap", "laundry"]
         productQuery: (args?['query'] as String?)?.trim().isEmpty == true
             ? null
             : (args?['query'] as String?)?.trim(),
+        filter: _stringArg(args ?? const <String, dynamic>{}, ['filter']),
       );
       final result = await executeSkill(mappedSkill, request: request);
       return _enrichToolResult(
@@ -942,6 +1099,8 @@ Example: ["detergent", "soap", "laundry"]
         return _draftProduct(args ?? const <String, dynamic>{});
       case toolEnhanceProductImage:
         return _enhanceProductImage(args ?? const <String, dynamic>{});
+      case toolImageOrderDraft:
+        return _imageOrderDraft(args ?? const <String, dynamic>{});
       case toolCreateService:
         return _createService(args ?? const <String, dynamic>{});
       case toolEditProduct:
@@ -1155,6 +1314,475 @@ Do not use markdown.
     };
   }
 
+  static Future<Map<String, dynamic>> _buildPredictiveRestock({
+    required int daysRange,
+    required int limit,
+  }) async {
+    final safeDays = daysRange.clamp(3, 90).toInt();
+    final range = _dateRangeForDays(safeDays);
+    final rows = await DatabaseService.rawQuery(
+      '''
+      SELECT
+        p.id,
+        p.name,
+        p.stock,
+        p.low_stock,
+        p.unit,
+        p.stock_unit,
+        p.sale_unit,
+        p.purchase_unit,
+        p.price,
+        p.cost,
+        p.image_url,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity ELSE 0 END), 0) as total_qty_sold,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity * si.unit_price ELSE 0 END), 0) as total_revenue,
+        MAX(s.created_at) as last_sold_at
+      FROM products p
+      LEFT JOIN sale_items si ON si.product_id = p.id
+      LEFT JOIN sales s ON s.id = si.sale_id
+        AND s.deleted_at IS NULL
+        AND s.refund_for_sale_id IS NULL
+        AND s.created_at >= ?
+        AND s.created_at <= ?
+        AND COALESCE(s.branch_id, ?) = ?
+      WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(p.track_stock, 1) <> 0
+      GROUP BY p.id
+      ''',
+      [
+        range.start.toIso8601String(),
+        range.end.toIso8601String(),
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
+    );
+
+    final forecastItems = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final sold = (row['total_qty_sold'] as num? ?? 0).toDouble();
+      final stock = (row['stock'] as num? ?? 0).toDouble();
+      final lowStock = (row['low_stock'] as num? ?? 0).toDouble();
+      final avgDaily = sold / safeDays;
+      final hasVelocity = avgDaily > 0.001;
+      final daysCover = hasVelocity ? stock / avgDaily : null;
+      final isLow = lowStock > 0 && stock <= lowStock;
+      final shouldInclude =
+          isLow || (daysCover != null && daysCover <= 14) || stock <= 0;
+      if (!shouldInclude) continue;
+
+      final targetByVelocity = hasVelocity ? avgDaily * 14 : lowStock * 2;
+      final targetByThreshold = lowStock > 0 ? lowStock * 2 : targetByVelocity;
+      final targetStock = targetByVelocity > targetByThreshold
+          ? targetByVelocity
+          : targetByThreshold;
+      var recommendedQty = targetStock - stock;
+      if (recommendedQty <= 0 && isLow) {
+        recommendedQty = lowStock > stock ? lowStock - stock : 1;
+      }
+      if (recommendedQty <= 0) {
+        recommendedQty = hasVelocity ? avgDaily * 7 : 1;
+      }
+
+      final urgency = stock <= 0
+          ? 'critical'
+          : daysCover != null && daysCover <= 3
+          ? 'high'
+          : isLow || (daysCover != null && daysCover <= 7)
+          ? 'medium'
+          : 'watch';
+      final stockUnit =
+          row['stock_unit'] as String? ??
+          row['purchase_unit'] as String? ??
+          row['unit'] as String? ??
+          'pcs';
+
+      forecastItems.add({
+        ...row,
+        'average_daily_sold': avgDaily,
+        'days_of_cover': daysCover,
+        'recommended_qty': recommendedQty.ceil(),
+        'urgency': urgency,
+        'unit': stockUnit,
+        'forecast_reason': hasVelocity
+            ? '${avgDaily.toStringAsFixed(1)} sold/day over $safeDays days'
+            : 'Below stock threshold with no recent sales velocity',
+      });
+    }
+
+    int urgencyRank(Map<String, dynamic> item) {
+      return switch (item['urgency']) {
+        'critical' => 0,
+        'high' => 1,
+        'medium' => 2,
+        _ => 3,
+      };
+    }
+
+    forecastItems.sort((a, b) {
+      final urgencyCompare = urgencyRank(a).compareTo(urgencyRank(b));
+      if (urgencyCompare != 0) return urgencyCompare;
+      final aCover = (a['days_of_cover'] as num?)?.toDouble() ?? 9999;
+      final bCover = (b['days_of_cover'] as num?)?.toDouble() ?? 9999;
+      return aCover.compareTo(bCover);
+    });
+
+    final limited = forecastItems.take(limit.clamp(1, 20).toInt()).toList();
+    return {
+      'type': toolPredictiveRestock,
+      'items': limited,
+      'count': forecastItems.length,
+      'days_range': safeDays,
+      'summary': limited.isEmpty
+          ? 'No urgent restock forecast found from the last $safeDays days.'
+          : 'Forecasted ${limited.length} product(s) that may need restocking soon.',
+      'details': limited.take(5).map((item) {
+        final cover = (item['days_of_cover'] as num?)?.toDouble();
+        final coverLabel = cover == null
+            ? 'no recent velocity'
+            : '${cover.toStringAsFixed(1)} days cover';
+        return '${item['name']}: order ${item['recommended_qty']} ${item['unit']} ($coverLabel)';
+      }).toList(),
+    };
+  }
+
+  static Future<Map<String, dynamic>> _buildAnomalyAlerts({
+    required int daysRange,
+    required int limit,
+  }) async {
+    final safeDays = daysRange.clamp(3, 30).toInt();
+    final now = DateTime.now();
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: safeDays - 1));
+    final dailyRows = await DatabaseService.rawQuery(
+      '''
+      SELECT
+        DATE(created_at) as sale_day,
+        COUNT(*) as sale_count,
+        COALESCE(SUM(total_amount), 0) as revenue
+      FROM sales
+      WHERE deleted_at IS NULL
+        AND refund_for_sale_id IS NULL
+        AND created_at >= ?
+        AND COALESCE(branch_id, ?) = ?
+      GROUP BY DATE(created_at)
+      ORDER BY sale_day DESC
+      ''',
+      [
+        start.toIso8601String(),
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
+    );
+
+    final alerts = <Map<String, dynamic>>[];
+    final todayKey =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    Map<String, dynamic>? todayRow;
+    final previousRows = <Map<String, dynamic>>[];
+    for (final row in dailyRows) {
+      if (row['sale_day'] == todayKey) {
+        todayRow = row;
+      } else {
+        previousRows.add(row);
+      }
+    }
+    final todayRevenue = (todayRow?['revenue'] as num? ?? 0).toDouble();
+    final todaySales = (todayRow?['sale_count'] as num? ?? 0).toInt();
+    if (previousRows.isNotEmpty) {
+      final avgRevenue =
+          previousRows.fold<double>(
+            0,
+            (sum, row) => sum + (row['revenue'] as num? ?? 0).toDouble(),
+          ) /
+          previousRows.length;
+      if (avgRevenue > 0 && todayRevenue < avgRevenue * 0.45) {
+        alerts.add({
+          'kind': 'sales_drop',
+          'severity': 'high',
+          'title': 'Sales are below the recent pattern',
+          'body':
+              'Today is at ${ShopSettings.currency}${todayRevenue.toStringAsFixed(2)} vs a recent daily average of ${ShopSettings.currency}${avgRevenue.toStringAsFixed(2)}.',
+          'action_prompt': 'Show top products today and check missing stock.',
+        });
+      } else if (avgRevenue > 0 && todayRevenue > avgRevenue * 1.75) {
+        alerts.add({
+          'kind': 'sales_spike',
+          'severity': 'info',
+          'title': 'Sales are unusually strong',
+          'body':
+              'Today is at ${ShopSettings.currency}${todayRevenue.toStringAsFixed(2)}, well above the recent daily average.',
+          'action_prompt': 'Check top products and protect stock for tomorrow.',
+        });
+      }
+    } else if (todaySales == 0) {
+      alerts.add({
+        'kind': 'no_sales',
+        'severity': 'medium',
+        'title': 'No sales recorded today',
+        'body': 'No sales are recorded for today yet.',
+        'action_prompt': 'Confirm cashiers are using POS checkout.',
+      });
+    }
+
+    final lowStock = await ProductRepository.getLowStock();
+    if (lowStock.isNotEmpty) {
+      alerts.add({
+        'kind': 'low_stock',
+        'severity': lowStock.length >= 5 ? 'high' : 'medium',
+        'title': '${lowStock.length} low-stock item(s)',
+        'body':
+            'Top affected: ${lowStock.take(3).map((p) => p['name']).join(', ')}.',
+        'action_prompt': 'Run predictive restock.',
+      });
+    }
+
+    final expiryAlerts = await ProductRepository.getExpiryAlerts();
+    if (expiryAlerts.isNotEmpty) {
+      final expired = expiryAlerts
+          .where((item) => (item['days_to_expiry'] as num? ?? 999).toInt() <= 0)
+          .length;
+      alerts.add({
+        'kind': 'expiry_risk',
+        'severity': expired > 0 ? 'high' : 'medium',
+        'title': expired > 0
+            ? '$expired expired batch(es)'
+            : '${expiryAlerts.length} batch(es) expiring soon',
+        'body':
+            'Check ${expiryAlerts.take(3).map((b) => b['product_name']).join(', ')}.',
+        'action_prompt': 'Open expiry check.',
+      });
+    }
+
+    final overdue = await CustomerRepository.getKopeshaCustomers(
+      filter: 'overdue',
+    );
+    if (overdue.isNotEmpty) {
+      final amount = overdue.fold<double>(
+        0,
+        (sum, row) => sum + (row['overdue_amount'] as num? ?? 0).toDouble(),
+      );
+      alerts.add({
+        'kind': 'customer_debt',
+        'severity': amount >= 250 ? 'high' : 'medium',
+        'title': '${overdue.length} overdue Kopesha customer(s)',
+        'body':
+            'Overdue amount totals ${ShopSettings.currency}${amount.toStringAsFixed(2)}.',
+        'action_prompt': 'Prepare customer follow-ups.',
+      });
+    }
+
+    try {
+      final threshold = now.subtract(const Duration(hours: 12));
+      final openShifts = await DatabaseService.rawQuery(
+        '''
+        SELECT id, cashier_name, opened_at
+        FROM shifts
+        WHERE deleted_at IS NULL
+          AND LOWER(status) = 'open'
+          AND opened_at <= ?
+          AND COALESCE(branch_id, ?) = ?
+        ORDER BY opened_at ASC
+        LIMIT 5
+        ''',
+        [
+          threshold.toIso8601String(),
+          DatabaseService.defaultBranchId,
+          DatabaseService.currentBranchId,
+        ],
+      );
+      if (openShifts.isNotEmpty) {
+        alerts.add({
+          'kind': 'open_shift',
+          'severity': 'medium',
+          'title': '${openShifts.length} shift(s) open over 12 hours',
+          'body':
+              'Oldest open shift: ${openShifts.first['cashier_name'] ?? 'Cashier'}.',
+          'action_prompt': 'Review shifts and close the drawer if needed.',
+        });
+      }
+    } catch (_) {
+      // Some older local databases may not have shift tracking enabled.
+    }
+
+    int severityRank(Map<String, dynamic> item) {
+      return switch (item['severity']) {
+        'high' => 0,
+        'medium' => 1,
+        'info' => 2,
+        _ => 3,
+      };
+    }
+
+    alerts.sort((a, b) => severityRank(a).compareTo(severityRank(b)));
+    final limited = alerts.take(limit.clamp(1, 20).toInt()).toList();
+    return {
+      'type': toolAnomalyAlerts,
+      'items': limited,
+      'count': alerts.length,
+      'days_range': safeDays,
+      'summary': limited.isEmpty
+          ? 'No major anomaly alerts found right now.'
+          : 'Found ${limited.length} business alert(s) to review.',
+      'details': limited
+          .take(5)
+          .map((item) => '${item['title']}: ${item['action_prompt']}')
+          .toList(),
+    };
+  }
+
+  static Future<Map<String, dynamic>> _buildCustomerFollowups({
+    String? filter,
+    required int limit,
+  }) async {
+    final safeFilter = _normalizeKopeshaFilter(filter);
+    final rows = await CustomerRepository.getKopeshaCustomers(
+      filter: safeFilter,
+    );
+    final currency = ShopSettings.currency;
+    final items = rows.take(limit.clamp(1, 20).toInt()).map((customer) {
+      final balance =
+          (customer['outstanding_balance'] as num? ??
+                  customer['balance'] as num? ??
+                  0)
+              .toDouble();
+      final dueDate =
+          (customer['oldest_overdue_date'] as String?) ??
+          (customer['next_due_date'] as String?);
+      final message = MessagingService.balanceReminder(
+        customerName: customer['name'] as String? ?? 'Customer',
+        balance: '$currency${balance.toStringAsFixed(2)}',
+        dueDate: dueDate,
+      );
+      return {
+        'customer_id': customer['id'],
+        'name': customer['name'],
+        'phone': customer['phone'],
+        'email': customer['email'],
+        'outstanding_balance': balance,
+        'overdue_amount': (customer['overdue_amount'] as num? ?? 0).toDouble(),
+        'due_today_amount': (customer['due_today_amount'] as num? ?? 0)
+            .toDouble(),
+        'due_date': dueDate,
+        'message': message,
+        'channel': 'whatsapp',
+      };
+    }).toList();
+
+    final total = items.fold<double>(
+      0,
+      (sum, item) =>
+          sum + (item['outstanding_balance'] as num? ?? 0).toDouble(),
+    );
+    return {
+      'type': toolCustomerFollowups,
+      'items': items,
+      'count': rows.length,
+      'filter': safeFilter,
+      'total_outstanding': total,
+      'summary': items.isEmpty
+          ? 'No Kopesha customers matched $safeFilter for follow-up.'
+          : 'Prepared ${items.length} customer follow-up message draft(s).',
+      'details': items
+          .take(5)
+          .map(
+            (item) =>
+                '${item['name']}: ${ShopSettings.currency}${(item['outstanding_balance'] as num).toStringAsFixed(2)}',
+          )
+          .toList(),
+    };
+  }
+
+  static Future<Map<String, dynamic>> _buildDailyWhatsappReport({
+    required int daysRange,
+  }) async {
+    final safeDays = daysRange.clamp(1, 30).toInt();
+    final sales = await _buildSalesSummary(daysRange: safeDays);
+    final topProducts = await ReportRepository.getTopProducts(
+      daysRange: safeDays,
+      limit: 3,
+    );
+    final restock = await _buildPredictiveRestock(daysRange: 30, limit: 3);
+    final anomalies = await _buildAnomalyAlerts(daysRange: 7, limit: 3);
+    final debtors = await CustomerRepository.getKopeshaCustomers(
+      filter: 'overdue',
+    );
+
+    final revenue = (sales['total_revenue'] as num? ?? 0).toDouble();
+    final profit = (sales['total_profit'] as num? ?? 0).toDouble();
+    final count = (sales['total_sales'] as num? ?? 0).toInt();
+    final currency = ShopSettings.currency;
+    final period = periodLabelForDays(safeDays);
+
+    String joinNames(List<Map<String, dynamic>> rows, String key) {
+      if (rows.isEmpty) return 'None';
+      return rows
+          .take(3)
+          .map((row) => row[key] as String? ?? row['name'] as String? ?? 'Item')
+          .join(', ');
+    }
+
+    final restockItems =
+        (restock['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    final anomalyItems =
+        (anomalies['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+
+    final message =
+        '''
+Piki Daily Report - ${ShopSettings.shopName}
+Period: $period
+Sales: $count transactions
+Revenue: $currency${revenue.toStringAsFixed(2)}
+Profit: $currency${profit.toStringAsFixed(2)}
+Top products: ${joinNames(topProducts, 'product_name')}
+Restock watch: ${joinNames(restockItems, 'name')}
+Alerts: ${joinNames(anomalyItems, 'title')}
+Overdue Kopesha customers: ${debtors.length}
+Next action: Review alerts, follow up overdue customers, and restock fast movers.
+'''
+            .trim();
+
+    return {
+      'type': toolDailyWhatsappReport,
+      'success': true,
+      'channel': 'whatsapp',
+      'message': message,
+      'days_range': safeDays,
+      'summary': 'Drafted a WhatsApp-ready daily owner report.',
+      'details': message.split('\n'),
+    };
+  }
+
+  static Map<String, dynamic> _buildVoiceCashierHelp() {
+    final commands = [
+      'Say "sell two breads" or "add milk" to add items to the cart.',
+      'Say "remove milk", "same again", or "make sugar 3" to adjust the cart.',
+      'Say "checkout" to move to payment or "hold sale" to park the cart.',
+      'Use the microphone or auto-listen control on the POS screen for hands-free selling.',
+    ];
+    return {
+      'type': toolVoiceCashierHelp,
+      'items': commands
+          .map((command) => {'name': command, 'command': command})
+          .toList(),
+      'summary': 'Voice cashier is available in Sell Mode on the POS screen.',
+      'details': commands,
+    };
+  }
+
   static _PikiDateRange _dateRangeForDays(int daysRange) {
     final now = DateTime.now();
     final end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
@@ -1269,6 +1897,26 @@ Do not use markdown.
   }
 
   // ─── Sell Mode NLP helpers ───────────────────────────────────────────────
+
+  static String? _extractCustomerFilter(String input) {
+    if (input.contains('due today')) return 'due_today';
+    if (input.contains('risky') || input.contains('risk')) return 'risky';
+    if (input.contains('overdue') || input.contains('late')) return 'overdue';
+    if (input.contains('all customer') || input.contains('all kopesha')) {
+      return 'all';
+    }
+    return null;
+  }
+
+  static String _normalizeKopeshaFilter(String? filter) {
+    final normalized = filter?.trim().toLowerCase().replaceAll('-', '_');
+    return switch (normalized) {
+      'due' || 'due_today' || 'today' => 'due_today',
+      'risky' || 'risk' => 'risky',
+      'all' => 'all',
+      _ => 'overdue',
+    };
+  }
 
   /// Parses a sell-mode utterance into a qty + product-query pair.
   /// Returns null when the text is a cart-control command, not an add request.
@@ -1622,6 +2270,8 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       toolTopProducts => 30,
       toolExpenseSummary => 30,
       toolPurchaseHistory => 30,
+      toolPredictiveRestock => 30,
+      toolAnomalyAlerts => 7,
       _ => 1,
     };
   }
@@ -1631,6 +2281,9 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       toolExpenseSummary => 20,
       toolTopProducts => 8,
       toolPurchaseHistory => 10,
+      toolPredictiveRestock => 10,
+      toolAnomalyAlerts => 10,
+      toolCustomerFollowups => 10,
       _ => 10,
     };
   }
@@ -1919,6 +2572,49 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       'image_model': OpenRouterService.imageModelName,
       'summary':
           'Enhanced product image for "${product['name']}" using ${OpenRouterService.imageModelName}.',
+    }, args: args);
+  }
+
+  static Future<Map<String, dynamic>> _imageOrderDraft(
+    Map<String, dynamic> args,
+  ) async {
+    final imageSource = _requiredStringArg(args, [
+      'image_source',
+      'image_url',
+      'imageUrl',
+      'url',
+      'path',
+    ], 'Image source');
+    final result = await OpenRouterService.analyzeOrderImage(
+      imageSource: imageSource,
+      note: _stringArg(args, ['note', 'prompt', 'instruction']),
+    );
+    final items =
+        (result['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+
+    return _enrichToolResult(toolImageOrderDraft, {
+      'type': toolImageOrderDraft,
+      'success': true,
+      'items': items,
+      'confidence': result['confidence'],
+      'raw': result['raw'],
+      'summary':
+          result['summary'] as String? ??
+          (items.isEmpty
+              ? 'No clear item lines were detected in the image.'
+              : 'Drafted ${items.length} item line(s) from the image.'),
+      'details': items.take(5).map((item) {
+        final qty = item['quantity'];
+        final unit = item['unit'];
+        final name = item['name'] ?? 'Item';
+        final qtyLabel = qty == null ? '' : '$qty ';
+        final unitLabel = unit == null ? '' : '$unit ';
+        return '$qtyLabel$unitLabel$name'.trim();
+      }).toList(),
     }, args: args);
   }
 
@@ -2475,6 +3171,41 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
           'label': 'Draft inputs',
           'detail':
               'Built from low-stock items and the latest supplier and unit-cost history found locally.',
+        },
+      ],
+      toolPredictiveRestock => [
+        {
+          'label': 'Predictive restock',
+          'detail':
+              'Forecast from current product stock and sale item velocity for $period.',
+        },
+      ],
+      toolAnomalyAlerts => [
+        {
+          'label': 'Business alerts',
+          'detail':
+              'Scanned local sales, inventory, expiry, Kopesha, and shift records.',
+        },
+      ],
+      toolCustomerFollowups => [
+        {
+          'label': 'Kopesha customers',
+          'detail':
+              'Prepared from customer balances and open credit sales in the current branch.',
+        },
+      ],
+      toolDailyWhatsappReport => [
+        {
+          'label': 'Daily report draft',
+          'detail':
+              'Compiled from local sales, top products, restock forecasts, and alerts.',
+        },
+      ],
+      toolImageOrderDraft => [
+        {
+          'label': 'Image AI analysis',
+          'detail':
+              'Read from the provided product or order image through the configured OpenRouter model.',
         },
       ],
       toolCustomerSearch => [

@@ -42,6 +42,26 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       'prompt': 'Create a restock list for low stock items',
     },
     {
+      'icon': Icons.insights_rounded,
+      'label': 'Predict Restock',
+      'prompt': 'Predict what products I should restock next',
+    },
+    {
+      'icon': Icons.notification_important_rounded,
+      'label': 'AI Alerts',
+      'prompt': 'Check for unusual business alerts',
+    },
+    {
+      'icon': Icons.mark_chat_unread_rounded,
+      'label': 'Follow-ups',
+      'prompt': 'Prepare Kopesha customer follow-up messages',
+    },
+    {
+      'icon': Icons.chat_rounded,
+      'label': 'WhatsApp Report',
+      'prompt': 'Draft a daily WhatsApp report for the owner',
+    },
+    {
       'icon': Icons.bar_chart_rounded,
       'label': "Today's Summary",
       'prompt': "Show today's sales summary",
@@ -90,6 +110,11 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       'icon': Icons.local_shipping_outlined,
       'label': 'Stock In',
       'prompt': 'Show recent purchase history',
+    },
+    {
+      'icon': Icons.record_voice_over_rounded,
+      'label': 'Voice Cashier',
+      'prompt': 'How does voice cashier mode work?',
     },
   ];
 

@@ -2079,6 +2079,120 @@ async function requestOpenRouterProductImage({ fetchImpl, aiConfig, imageDataUrl
   throw createHttpError(502, lastError);
 }
 
+function extractFirstJsonObject(text) {
+  const raw = normalizeOptionalText(text);
+  if (!raw) return null;
+  const stripped = raw
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+  try {
+    return JSON.parse(stripped);
+  } catch (_) {
+    const start = stripped.indexOf('{');
+    const end = stripped.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(stripped.slice(start, end + 1));
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeOrderImageResult(parsed, rawContent) {
+  const source = parsed && typeof parsed === 'object' ? parsed : {};
+  const rawItems = Array.isArray(source.items) ? source.items : [];
+  const items = rawItems
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      name: normalizeOptionalText(item.name) || 'Item',
+      quantity: Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : null,
+      unit: normalizeOptionalText(item.unit),
+      price: Number.isFinite(Number(item.price)) ? Number(item.price) : null,
+      notes: normalizeOptionalText(item.notes || item.note),
+    }))
+    .filter((item) => item.name && item.name !== 'Item');
+  const confidenceValue = normalizeOptionalText(source.confidence).toLowerCase();
+  const confidence = ['low', 'medium', 'high'].includes(confidenceValue)
+    ? confidenceValue
+    : 'medium';
+  return {
+    items,
+    confidence,
+    summary:
+      normalizeOptionalText(source.summary) ||
+      (items.length ? `Detected ${items.length} item line(s) from the image.` : 'No clear item lines detected.'),
+    raw: rawContent,
+  };
+}
+
+async function requestOpenRouterOrderImage({ fetchImpl, aiConfig, imageDataUrl, note }) {
+  const noteText = normalizeOptionalText(note);
+  const prompt = `Read this POS product/order image and draft item lines for review.
+Return JSON only with this schema:
+{
+  "items": [
+    {"name": "product name", "quantity": 1, "unit": "pcs", "price": null, "notes": "short note"}
+  ],
+  "confidence": "low|medium|high",
+  "summary": "short summary"
+}
+Rules:
+- Do not invent products you cannot see.
+- Use null for unknown quantity, unit, or price.
+- If it is a shelf/product photo, identify the visible products.
+- If it is a handwritten or printed order, extract the order lines.
+${noteText ? `User note: ${noteText}` : ''}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      ...openRouterHeaders(aiConfig.api_key),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageDataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 900,
+      stream: false,
+    }),
+  });
+
+  let body = {};
+  try {
+    body = await response.json();
+  } catch (_) {
+    body = {};
+  }
+
+  if (!response.ok) {
+    throw createHttpError(
+      502,
+      body?.error?.message || `OpenRouter image analysis failed (${response.status})`,
+    );
+  }
+
+  const content = normalizeOptionalText(body?.choices?.[0]?.message?.content);
+  const parsed = extractFirstJsonObject(content);
+  return {
+    ...normalizeOrderImageResult(parsed, content),
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+    usage: body?.usage || {},
+  };
+}
+
 app.post('/api/ai/product-image/enhance', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -2115,6 +2229,58 @@ app.post('/api/ai/product-image/enhance', async (req, res, next) => {
     res.json({
       ok: true,
       imageDataUrl: result.imageUrl,
+      model: result.model,
+      usage: {
+        promptTokens: result.usage.prompt_tokens || 0,
+        completionTokens: result.usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/order-image/analyze', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const imageDataUrl = normalizeOptionalText(req.body?.imageDataUrl);
+    if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
+      throw createHttpError(400, 'A base64 order or product image is required');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`
+      );
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const result = await requestOpenRouterOrderImage({
+      fetchImpl: fetch,
+      aiConfig,
+      imageDataUrl,
+      note: req.body?.note,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        items: result.items,
+        confidence: result.confidence,
+        summary: result.summary,
+        raw: result.raw,
+      },
       model: result.model,
       usage: {
         promptTokens: result.usage.prompt_tokens || 0,

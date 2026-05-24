@@ -234,6 +234,12 @@ Rules:
 - Use reconcile_stock when the user provides a physical count that differs from the system (e.g., "I counted 50 milks").
 - Use customer_search and supplier_search to look up contact details.
 - Use enhance_product_image when the user asks to improve, enhance, clean up, upscale, or make a better product photo for an existing product. If the product has no image, explain that they need to add or capture one first.
+- Use predictive_restock when the user asks what will run out, forecast demand, or predict what to reorder.
+- Use anomaly_alerts when the user asks for alerts, risks, unusual activity, sales drops, or what is wrong in the business.
+- Use customer_followups when the user asks for Kopesha reminders, overdue follow-ups, or customer debt messages.
+- Use daily_whatsapp_report when the user asks for a WhatsApp-ready owner or daily report. This drafts the report only; do not claim it was sent.
+- Use image_order_draft when the user provides an image path or URL and asks Piki to read an order/product image or draft item lines from the image.
+- Use voice_cashier_help when the user asks how hands-free or voice cashier mode works.
 $webSearchRule
 - Do not use web_search for local POS facts like stock, sales, customers, suppliers, or expenses when a local tool can answer.
 - Use add_to_cart to add an item to the POS cart when the user asks to "sell", "add", or "buy" items in Sell Mode.
@@ -415,6 +421,67 @@ $userMessage
 
   // ─── System prompt builder ────────────────────────────────────────────
 
+  /// Reads a local or remote order/product image and returns drafted item
+  /// lines. The backend performs the model call so API keys stay server-side.
+  static Future<Map<String, dynamic>> analyzeOrderImage({
+    required String imageSource,
+    String? note,
+    bool consumeQuota = true,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+
+    final imageDataUrl = await _imageSourceToDataUrl(imageSource);
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final client = http.Client();
+
+    try {
+      final response = await client
+          .post(
+            _buildUri(backendUrl, 'ai/order-image/analyze'),
+            headers: {
+              ..._authHeaders(license),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'imageDataUrl': imageDataUrl,
+              if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+              'consumeQuota': consumeQuota,
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 429) {
+        throw Exception(
+          body['error'] as String? ?? 'AI rate limit reached. Try again later.',
+        );
+      }
+
+      if (response.statusCode == 403) {
+        throw Exception(
+          'AI image analysis is not enabled by the platform administrator.',
+        );
+      }
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        throw Exception(
+          body['error'] as String? ??
+              'AI image analysis failed (${response.statusCode})',
+        );
+      }
+
+      return Map<String, dynamic>.from(body['data'] as Map? ?? {});
+    } finally {
+      client.close();
+    }
+  }
+
   static String _buildSystemPrompt() {
     final shopName = ShopSettings.shopName;
     final currency = ShopSettings.currency;
@@ -464,6 +531,14 @@ WRITE ACTIONS YOU CAN PERFORM:
 • create_supplier: Add a new supplier. Extract name, phone (optional), email (optional), address (optional), and note (optional).
 • reconcile_stock: Adjust product stock level after a physical count. Extract product_name and new_count.
 • When performing a write action, always confirm what was done clearly in your response.
+
+AI BUSINESS TOOLS:
+- predictive_restock forecasts reorder needs from current stock and sales velocity.
+- anomaly_alerts scans sales, stock, Kopesha, expiry, and shift risks.
+- customer_followups prepares Kopesha reminder message drafts.
+- daily_whatsapp_report drafts an owner-ready WhatsApp report. It does not send automatically.
+- image_order_draft reads a provided product/order image path or URL and drafts item lines.
+- voice_cashier_help explains hands-free Sell Mode commands.
 
 CLARIFICATION GUIDELINES:
 • If a user asks to "Add Bread", Bread is the name but the price is missing. Do NOT guess the price. Ask: "What is the selling price for Bread? You can also tell me the initial stock and unit (e.g., 50 loaves)."

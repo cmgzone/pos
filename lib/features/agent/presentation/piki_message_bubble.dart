@@ -1789,6 +1789,66 @@ class PikiMessageBubble extends StatelessWidget {
         );
       } else if (type == 'web_search' && success) {
         cards.add(_buildWebSearchCard(result));
+      } else if (type == 'predictive_restock') {
+        cards.add(
+          _buildCard(
+            icon: Icons.insights_rounded,
+            color: AppColors.primary,
+            title: 'Restock Forecast',
+            subtitle:
+                result['summary'] as String? ?? 'Forecasted restock needs',
+            value: '${(result['count'] as num? ?? 0).toInt()}',
+          ),
+        );
+      } else if (type == 'anomaly_alerts') {
+        cards.add(
+          _buildCard(
+            icon: Icons.notification_important_rounded,
+            color: AppColors.warning,
+            title: 'AI Alerts',
+            subtitle: result['summary'] as String? ?? 'Business alerts ready',
+            value: '${(result['count'] as num? ?? 0).toInt()}',
+          ),
+        );
+      } else if (type == 'customer_followups') {
+        cards.add(
+          _buildCard(
+            icon: Icons.mark_chat_unread_rounded,
+            color: AppColors.secondary,
+            title: 'Follow-up Drafts',
+            subtitle:
+                result['summary'] as String? ?? 'Customer messages prepared',
+            value: '${(result['items'] as List?)?.length ?? 0}',
+          ),
+        );
+      } else if (type == 'daily_whatsapp_report') {
+        cards.add(
+          _buildCard(
+            icon: Icons.chat_rounded,
+            color: AppColors.success,
+            title: 'WhatsApp Report',
+            subtitle: 'Daily owner update drafted',
+          ),
+        );
+      } else if (type == 'image_order_draft' && success) {
+        cards.add(
+          _buildCard(
+            icon: Icons.document_scanner_rounded,
+            color: AppColors.primary,
+            title: 'Image Order Draft',
+            subtitle: result['summary'] as String? ?? 'Image items detected',
+            value: '${(result['items'] as List?)?.length ?? 0}',
+          ),
+        );
+      } else if (type == 'voice_cashier_help') {
+        cards.add(
+          _buildCard(
+            icon: Icons.record_voice_over_rounded,
+            color: AppColors.primary,
+            title: 'Voice Cashier',
+            subtitle: 'Hands-free Sell Mode commands are available',
+          ),
+        );
       }
     }
 
