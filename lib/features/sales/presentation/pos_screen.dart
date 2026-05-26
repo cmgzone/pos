@@ -1087,6 +1087,10 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
 
     final compact = MediaQuery.sizeOf(context).width <= 520;
     final productPadding = compact ? 14.0 : 24.0;
+    final cart = ref.watch(cartProvider);
+    final cartTotal = ref.watch(cartTotalProvider);
+    final visibleProductCount = productsAsync.valueOrNull?.length;
+    final currentShift = ref.watch(currentShiftProvider).valueOrNull;
 
     Widget serviceShortcut({required bool iconOnly}) {
       if (!canUseServices) {
@@ -1131,92 +1135,48 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _PosCockpitHeader(
+            compact: compact,
+            cartCount: cart.length,
+            cartTotal: cartTotal,
+            cashierName: SessionService.currentUserName,
+            visibleProductCount: visibleProductCount,
+            hasOpenShift: currentShift != null,
+          ),
+          SizedBox(height: compact ? 12 : 16),
           // Search bar with scan button
           TrainingAnchor(
             id: 'pos.search',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _searchFocusNode,
-                        autofocus: Platform.isWindows,
-                        onTap: _focusSearchField,
-                        onChanged: (v) =>
-                            ref.read(productSearchProvider.notifier).state = v,
-                        onSubmitted: (v) {
-                          final code = v.trim();
-                          final lower = code.toLowerCase();
-                          // Only attempt barcode lookup if it looks like a barcode
-                          // (not a URL or plain text search entry)
-                          if (code.length >= 4 &&
-                              !lower.startsWith('http') &&
-                              !lower.startsWith('www.') &&
-                              !lower.contains('://') &&
-                              RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(code)) {
-                            _handleBarcodeScan(code);
-                          } else {
-                            WidgetsBinding.instance.addPostFrameCallback(
-                              (_) => _focusSearchField(),
-                            );
-                          }
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Search products or scan barcode...',
-                          prefixIcon: const Icon(
-                            Icons.search,
-                            color: AppColors.textSecondary,
-                          ),
-                          suffixIcon: searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: _clearSearch,
-                                )
-                              : null,
-                        ),
-                      ),
-                    ),
-                    if (canUseServices) ...[
-                      SizedBox(width: compact ? 8 : 12),
-                      serviceShortcut(iconOnly: compact),
-                    ],
-                    if (isMobileDevice) ...[
-                      SizedBox(width: compact ? 8 : 12),
-                      Material(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          onTap: _openCameraScanner,
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            padding: EdgeInsets.all(compact ? 12 : 14),
-                            child: const Icon(
-                              Icons.qr_code_scanner,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                if (Platform.isWindows) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    _searchFocusNode.hasFocus
-                        ? 'Scanner ready. Scan items without clicking again.'
-                        : 'Click here once, then scan barcode.',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ],
+            child: _SearchLane(
+              compact: compact,
+              isMobileDevice: isMobileDevice,
+              searchController: _searchController,
+              searchFocusNode: _searchFocusNode,
+              searchQuery: searchQuery,
+              canUseServices: canUseServices,
+              serviceShortcut: serviceShortcut,
+              onClearSearch: _clearSearch,
+              onFocusSearch: _focusSearchField,
+              onSearchChanged: (v) =>
+                  ref.read(productSearchProvider.notifier).state = v,
+              onSubmitted: (v) {
+                final code = v.trim();
+                final lower = code.toLowerCase();
+                // Only attempt barcode lookup if it looks like a barcode
+                // (not a URL or plain text search entry)
+                if (code.length >= 4 &&
+                    !lower.startsWith('http') &&
+                    !lower.startsWith('www.') &&
+                    !lower.contains('://') &&
+                    RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(code)) {
+                  _handleBarcodeScan(code);
+                } else {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _focusSearchField(),
+                  );
+                }
+              },
+              onOpenCameraScanner: _openCameraScanner,
             ),
           ),
           SizedBox(height: compact ? 14 : 20),
@@ -1225,30 +1185,69 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           TrainingAnchor(
             id: 'pos.categories',
             child: categoriesAsync.when(
-              data: (categories) => SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _CategoryChip(
-                      title: 'All',
-                      isSelected: selectedCategory == null,
-                      onTap: () =>
-                          ref.read(selectedCategoryProvider.notifier).state =
-                              null,
+              data: (categories) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 10),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.view_carousel_rounded,
+                          size: 16,
+                          color: AppColors.primaryLight,
+                        ),
+                        const SizedBox(width: 7),
+                        const Text(
+                          'Catalog lanes',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${categories.length + 1} lanes',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
-                    ...categories.map(
-                      (cat) => _CategoryChip(
-                        title: cat['name'] as String,
-                        color: cat['color'] as String?,
-                        categoryName: cat['name'] as String?,
-                        isSelected: selectedCategory == cat['id'],
-                        onTap: () =>
-                            ref.read(selectedCategoryProvider.notifier).state =
-                                cat['id'] as String,
-                      ),
+                  ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _CategoryChip(
+                          title: 'All',
+                          isSelected: selectedCategory == null,
+                          onTap: () =>
+                              ref
+                                      .read(selectedCategoryProvider.notifier)
+                                      .state =
+                                  null,
+                        ),
+                        ...categories.map(
+                          (cat) => _CategoryChip(
+                            title: cat['name'] as String,
+                            color: cat['color'] as String?,
+                            categoryName: cat['name'] as String?,
+                            isSelected: selectedCategory == cat['id'],
+                            onTap: () =>
+                                ref
+                                        .read(selectedCategoryProvider.notifier)
+                                        .state =
+                                    cat['id'] as String,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               loading: () => const SizedBox(
                 height: 40,
@@ -1331,6 +1330,445 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PosCockpitHeader extends StatelessWidget {
+  final bool compact;
+  final int cartCount;
+  final double cartTotal;
+  final String cashierName;
+  final int? visibleProductCount;
+  final bool hasOpenShift;
+
+  const _PosCockpitHeader({
+    required this.compact,
+    required this.cartCount,
+    required this.cartTotal,
+    required this.cashierName,
+    required this.visibleProductCount,
+    required this.hasOpenShift,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cashierLabel = cashierName.trim().isEmpty ? 'Cashier' : cashierName;
+    final stationLabel = compact ? 'Piki Sell' : 'Piki Sell Station';
+    final productsLabel = visibleProductCount == null
+        ? 'Loading'
+        : '$visibleProductCount ready';
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 14 : 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(compact ? 18 : 22),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF231622), AppColors.surface, Color(0xFF102820)],
+        ),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.72)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.32),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(painter: _PosHeaderPatternPainter()),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: compact ? 42 : 48,
+                    height: compact ? 42 : 48,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppColors.primaryLight.withValues(alpha: 0.36),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.point_of_sale_rounded,
+                      color: AppColors.primaryLight,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          stationLabel,
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: compact ? 18 : 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '$cashierLabel at ${ShopSettings.shopName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!compact)
+                    _PosHeaderSignal(
+                      icon: hasOpenShift
+                          ? Icons.timer_rounded
+                          : Icons.lock_clock_outlined,
+                      label: hasOpenShift ? 'Shift Open' : 'Shift Watch',
+                      color: hasOpenShift
+                          ? AppColors.success
+                          : AppColors.warning,
+                    ),
+                ],
+              ),
+              SizedBox(height: compact ? 14 : 18),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _PosMetricPill(
+                    icon: Icons.shopping_bag_outlined,
+                    label: 'Sale Lines',
+                    value: '$cartCount',
+                    color: AppColors.primaryLight,
+                  ),
+                  _PosMetricPill(
+                    icon: Icons.payments_outlined,
+                    label: 'Ticket',
+                    value:
+                        '${ShopSettings.currency}${cartTotal.toStringAsFixed(2)}',
+                    color: AppColors.secondary,
+                  ),
+                  _PosMetricPill(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'Catalog',
+                    value: productsLabel,
+                    color: AppColors.success,
+                  ),
+                  if (compact)
+                    _PosMetricPill(
+                      icon: hasOpenShift
+                          ? Icons.timer_rounded
+                          : Icons.lock_clock_outlined,
+                      label: 'Shift',
+                      value: hasOpenShift ? 'Open' : 'Watch',
+                      color: hasOpenShift
+                          ? AppColors.success
+                          : AppColors.warning,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PosHeaderPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.035)
+      ..strokeWidth = 1;
+    for (var x = -size.height; x < size.width; x += 26) {
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + size.height, 0),
+        linePaint,
+      );
+    }
+
+    final glowPaint = Paint()
+      ..shader =
+          RadialGradient(
+            colors: [
+              AppColors.secondary.withValues(alpha: 0.14),
+              Colors.transparent,
+            ],
+          ).createShader(
+            Rect.fromCircle(
+              center: Offset(size.width * 0.86, size.height * 0.16),
+              radius: size.shortestSide * 0.9,
+            ),
+          );
+    canvas.drawRect(Offset.zero & size, glowPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _PosHeaderSignal extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _PosHeaderSignal({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.34)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PosMetricPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _PosMetricPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 116),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.background.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 17, color: color),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchLane extends StatelessWidget {
+  final bool compact;
+  final bool isMobileDevice;
+  final TextEditingController searchController;
+  final FocusNode searchFocusNode;
+  final String searchQuery;
+  final bool canUseServices;
+  final Widget Function({required bool iconOnly}) serviceShortcut;
+  final VoidCallback onClearSearch;
+  final VoidCallback onFocusSearch;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onOpenCameraScanner;
+
+  const _SearchLane({
+    required this.compact,
+    required this.isMobileDevice,
+    required this.searchController,
+    required this.searchFocusNode,
+    required this.searchQuery,
+    required this.canUseServices,
+    required this.serviceShortcut,
+    required this.onClearSearch,
+    required this.onFocusSearch,
+    required this.onSearchChanged,
+    required this.onSubmitted,
+    required this.onOpenCameraScanner,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(compact ? 8 : 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(compact ? 18 : 20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: searchController,
+                  focusNode: searchFocusNode,
+                  autofocus: Platform.isWindows,
+                  onTap: onFocusSearch,
+                  onChanged: onSearchChanged,
+                  onSubmitted: onSubmitted,
+                  decoration: InputDecoration(
+                    hintText: compact
+                        ? 'Search or scan...'
+                        : 'Search products or scan barcode...',
+                    filled: true,
+                    fillColor: AppColors.background.withValues(alpha: 0.62),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: AppColors.secondary,
+                    ),
+                    suffixIcon: searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: onClearSearch,
+                          )
+                        : null,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: AppColors.border.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: AppColors.secondary,
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (canUseServices) ...[
+                SizedBox(width: compact ? 8 : 10),
+                serviceShortcut(iconOnly: compact),
+              ],
+              if (isMobileDevice) ...[
+                SizedBox(width: compact ? 8 : 10),
+                Material(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    onTap: onOpenCameraScanner,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: EdgeInsets.all(compact ? 12 : 14),
+                      child: const Icon(
+                        Icons.qr_code_scanner,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (Platform.isWindows) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  searchFocusNode.hasFocus
+                      ? Icons.sensors_rounded
+                      : Icons.touch_app_rounded,
+                  size: 14,
+                  color: searchFocusNode.hasFocus
+                      ? AppColors.secondary
+                      : AppColors.textSecondary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    searchFocusNode.hasFocus
+                        ? 'Scanner ready. Scan items without clicking again.'
+                        : 'Click here once, then scan barcode.',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
