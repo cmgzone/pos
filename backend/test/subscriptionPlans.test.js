@@ -2,10 +2,38 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  DEFAULT_PLANS,
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
+  normalizeSellingMode,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
+
+test('selling mode labels normalize to entitlement modes', () => {
+  assert.equal(normalizeSellingMode('Service only'), 'services');
+  assert.equal(normalizeSellingMode('Services only'), 'services');
+  assert.equal(normalizeSellingMode('Product only'), 'products');
+  assert.equal(normalizeSellingMode('Products only'), 'products');
+  assert.equal(normalizeSellingMode('Products + Services'), 'combo');
+});
+
+test('default trial can onboard service businesses', () => {
+  const trialPlan = DEFAULT_PLANS.find((plan) => plan.code === 'trial');
+
+  assert.ok(trialPlan);
+  assert.equal(trialPlan.features.includes('services'), true);
+  assert.deepEqual(trialPlan.sellingModes, ['products', 'services', 'combo']);
+  assert.equal(
+    validateSellingModeEntitlement(
+      {
+        features: trialPlan.features,
+        allowedSellingModes: trialPlan.sellingModes,
+      },
+      'Service only',
+    ).ok,
+    true,
+  );
+});
 
 test('service selling mode hides product inventory features', () => {
   const entitlements = applySellingModeToEntitlements(

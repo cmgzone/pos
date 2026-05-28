@@ -78,9 +78,21 @@ export default function Dashboard({ token, onLogout }) {
     }
   }
 
+  const sellingModesForPlan = (plan) => {
+    return plan?.availableSellingModes || plan?.sellingModes || []
+  }
+
   const planAllowsSellingMode = (plan, mode) => {
-    const modes = plan?.availableSellingModes || plan?.sellingModes || []
+    const modes = sellingModesForPlan(plan)
     return modes.includes(mode)
+  }
+
+  const compatibleSellingModeForPlan = (plan, preferredMode) => {
+    const modes = plan?.availableSellingModes || plan?.sellingModes || []
+    if (preferredMode && modes.includes(preferredMode)) {
+      return preferredMode
+    }
+    return sellingModeOptions.find((mode) => modes.includes(mode)) || ''
   }
 
   const assignBusinessPlan = async (
@@ -89,7 +101,20 @@ export default function Dashboard({ token, onLogout }) {
     sellingMode = business.selling_mode || 'combo',
   ) => {
     if (!planCode) return
-    if (planCode === business.plan && sellingMode === (business.selling_mode || 'combo')) {
+    const targetPlan = plans.find((plan) => plan.code === planCode)
+    const targetSellingMode = compatibleSellingModeForPlan(targetPlan, sellingMode)
+    if (!targetSellingMode) {
+      setAssignmentState((current) => ({
+        ...current,
+        [business.id]: {
+          saving: false,
+          message: '',
+          error: 'This plan is not available for product or service selling yet.',
+        },
+      }))
+      return
+    }
+    if (planCode === business.plan && targetSellingMode === (business.selling_mode || 'combo')) {
       return
     }
     const expiresAt = new Date()
@@ -109,7 +134,7 @@ export default function Dashboard({ token, onLogout }) {
         },
         body: JSON.stringify({
           plan: planCode,
-          sellingMode,
+          sellingMode: targetSellingMode,
           status: 'active',
           expiresAt: expiresAt.toISOString(),
           graceUntil: graceUntil.toISOString()
@@ -127,16 +152,24 @@ export default function Dashboard({ token, onLogout }) {
                 ...item,
                 plan: updated.plan || planCode,
                 status: updated.status || 'active',
-                selling_mode: updated.selling_mode || sellingMode,
+                selling_mode: updated.selling_mode || targetSellingMode,
                 expires_at: updated.expires_at || expiresAt.toISOString(),
                 grace_until: updated.grace_until || graceUntil.toISOString(),
               }
             : item,
         ),
       )
+      const savedMode = updated.selling_mode || targetSellingMode
+      const modeChanged = savedMode !== (business.selling_mode || 'combo')
       setAssignmentState((current) => ({
         ...current,
-        [business.id]: { saving: false, message: 'Saved', error: '' },
+        [business.id]: {
+          saving: false,
+          message: modeChanged
+            ? `Saved - mode changed to ${sellingModeLabels[savedMode]}`
+            : 'Saved',
+          error: '',
+        },
       }))
     } catch (error) {
       setAssignmentState((current) => ({
@@ -303,12 +336,14 @@ export default function Dashboard({ token, onLogout }) {
                               >
                                 {plans.map(plan => {
                                   const isCurrent = plan.code === (b.plan || 'trial')
-                                  const disabled =
-                                    !isCurrent &&
-                                    !planAllowsSellingMode(plan, b.selling_mode || 'combo')
+                                  const compatibleMode = compatibleSellingModeForPlan(plan, b.selling_mode || 'combo')
+                                  const disabled = !compatibleMode
                                   return (
                                     <option key={plan.code} value={plan.code} disabled={disabled}>
                                       {plan.name}
+                                      {!isCurrent && compatibleMode && !planAllowsSellingMode(plan, b.selling_mode || 'combo')
+                                        ? ` (${sellingModeLabels[compatibleMode]} mode)`
+                                        : ''}
                                     </option>
                                   )
                                 })}

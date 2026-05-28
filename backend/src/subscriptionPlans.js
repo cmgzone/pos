@@ -42,6 +42,11 @@ const BASE_FEATURES = [
   FEATURE_KEYS.agent,
 ];
 
+const TRIAL_FEATURES = [
+  ...BASE_FEATURES,
+  FEATURE_KEYS.services,
+];
+
 const STARTER_FEATURES = [
   ...BASE_FEATURES,
   FEATURE_KEYS.categories,
@@ -70,7 +75,7 @@ const DEFAULT_PLANS = [
     code: 'trial',
     name: 'Trial',
     description: 'Starter trial for a new shop.',
-    features: BASE_FEATURES,
+    features: TRIAL_FEATURES,
     maxBranches: 1,
     maxEmployees: 2,
     maxAiAgents: 1,
@@ -78,7 +83,7 @@ const DEFAULT_PLANS = [
     aiRateWeekly: 200,
     aiRateMonthly: 500,
     sortOrder: 10,
-    sellingModes: [SELLING_MODES.products],
+    sellingModes: [...DEFAULT_SELLING_MODES],
   },
   {
     code: 'starter',
@@ -349,6 +354,25 @@ async function ensureSubscriptionSchema(target = query) {
       ],
     );
   }
+
+  await runQuery(
+    target,
+    `
+    UPDATE subscription_plans
+    SET features_json = $3::jsonb,
+        allowed_selling_modes_json = $4::jsonb,
+        updated_at = NOW()
+    WHERE code = 'trial'
+      AND features_json = $1::jsonb
+      AND allowed_selling_modes_json = $2::jsonb
+    `,
+    [
+      JSON.stringify(BASE_FEATURES),
+      JSON.stringify([SELLING_MODES.products]),
+      JSON.stringify(TRIAL_FEATURES),
+      JSON.stringify(DEFAULT_SELLING_MODES),
+    ],
+  );
 
   for (const price of DEFAULT_PRICES) {
     const [planCode, countryCode, currency, amountMinor, billingPeriod, provider] =
@@ -1092,14 +1116,30 @@ function normalizeSellingMode(value) {
   switch (mode) {
     case SELLING_MODES.products:
     case 'product':
+    case 'product_only':
+    case 'products_only':
     case 'retail':
       return SELLING_MODES.products;
     case SELLING_MODES.services:
     case 'service':
+    case 'service_only':
+    case 'services_only':
       return SELLING_MODES.services;
     case SELLING_MODES.combo:
     case 'both':
     case 'mixed':
+    case 'product_service':
+    case 'product_services':
+    case 'products_service':
+    case 'products_services':
+    case 'product_and_service':
+    case 'product_and_services':
+    case 'products_and_service':
+    case 'products_and_services':
+    case 'product_plus_service':
+    case 'product_plus_services':
+    case 'products_plus_service':
+    case 'products_plus_services':
       return SELLING_MODES.combo;
     default:
       return null;

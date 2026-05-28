@@ -209,6 +209,11 @@ class AppShellState extends ConsumerState<AppShell> {
 
   static const _mobileBottomDefaults = [0, 11, 4, 5];
   static const _fallbackNavigationIndex = 9;
+  static const _posIndex = 0;
+  static const _servicesIndex = 11;
+
+  bool get _isServiceOnlyAccount =>
+      !SessionService.canUseProductPos && SessionService.canUseServicePos;
 
   List<int> get _allowedIndices {
     final indices = [...SessionService.currentNavigationIndices];
@@ -221,11 +226,22 @@ class AppShellState extends ConsumerState<AppShell> {
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
       indices.add(15);
     }
-    final allowed = indices.where(_isAllowedBySubscription).toSet().toList();
+    final allowed = indices
+        .where(_isAllowedForCurrentSellingMode)
+        .where(_isAllowedBySubscription)
+        .toSet()
+        .toList();
     if (allowed.isEmpty) {
       return const [_fallbackNavigationIndex];
     }
     return allowed;
+  }
+
+  bool _isAllowedForCurrentSellingMode(int index) {
+    if (_isServiceOnlyAccount && index == _posIndex) {
+      return false;
+    }
+    return true;
   }
 
   bool _isAllowedBySubscription(int index) {
@@ -234,9 +250,27 @@ class AppShellState extends ConsumerState<AppShell> {
         LicenseService.currentSnapshot.allowsFeature(feature);
   }
 
-  int get _currentIndex => _allowedIndices.contains(_selectedIndex)
-      ? _selectedIndex
-      : _allowedIndices.first;
+  int _normalizeNavigationIndex(int index) {
+    if (_isServiceOnlyAccount && index == _posIndex) {
+      return _servicesIndex;
+    }
+    return index;
+  }
+
+  int _initialIndexForCurrentAccount(int index) {
+    if (_isServiceOnlyAccount &&
+        (index == AppShell.defaultInitialIndex || index == _posIndex)) {
+      return _servicesIndex;
+    }
+    return _normalizeNavigationIndex(index);
+  }
+
+  int get _currentIndex {
+    final normalized = _normalizeNavigationIndex(_selectedIndex);
+    return _allowedIndices.contains(normalized)
+        ? normalized
+        : _allowedIndices.first;
+  }
 
   List<_NavDestination> get _allowedDestinations => _destinations
       .where((destination) => _allowedIndices.contains(destination.index))
@@ -271,7 +305,7 @@ class AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex;
+    _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowTrainingPrompt();
     });
@@ -281,15 +315,16 @@ class AppShellState extends ConsumerState<AppShell> {
   void didUpdateWidget(covariant AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialIndex != widget.initialIndex) {
-      _selectedIndex = widget.initialIndex;
+      _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
     }
   }
 
   void _selectIndex(int index) {
-    if (!_allowedIndices.contains(index) || _selectedIndex == index) {
+    final target = _normalizeNavigationIndex(index);
+    if (!_allowedIndices.contains(target) || _selectedIndex == target) {
       return;
     }
-    setState(() => _selectedIndex = index);
+    setState(() => _selectedIndex = target);
   }
 
   Future<void> _maybeShowTrainingPrompt() async {
@@ -685,9 +720,7 @@ class AppShellState extends ConsumerState<AppShell> {
                               label: destination.item.label,
                               isSelected: currentIndex == destination.index,
                               onTap: () {
-                                setState(
-                                  () => _selectedIndex = destination.index,
-                                );
+                                _selectIndex(destination.index);
                                 Navigator.pop(context);
                               },
                             ),

@@ -1166,20 +1166,21 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
     if (!planResult.rows.length) {
       throw createHttpError(404, 'Subscription plan not found');
     }
-    const requestedSellingMode = normalizeSellingMode(
-      req.body?.sellingMode ??
-        req.body?.selling_mode ??
-        businessResult.rows[0].selling_mode,
-    ) || 'combo';
     const planEntitlements = await loadEntitlementsForPlan(plan);
-    const sellingModeValidation = validateSellingModeEntitlement(
-      planEntitlements,
-      requestedSellingMode,
+    const hasExplicitSellingMode =
+      req.body?.sellingMode != null || req.body?.selling_mode != null;
+    const requestedSellingMode = normalizeSellingMode(
+      req.body?.sellingMode ?? req.body?.selling_mode,
     );
-    if (!sellingModeValidation.ok) {
-      throw createHttpError(400, sellingModeValidation.message);
+    if (hasExplicitSellingMode && !requestedSellingMode) {
+      throw createHttpError(400, 'Choose products, services, or combo for the business type.');
     }
-    const sellingMode = sellingModeValidation.mode;
+    const currentSellingMode = normalizeSellingMode(businessResult.rows[0].selling_mode);
+    const sellingMode = selectSellingModeForPlan(
+      planEntitlements,
+      hasExplicitSellingMode ? requestedSellingMode : null,
+      hasExplicitSellingMode ? null : currentSellingMode,
+    );
 
     const now = new Date();
     const expiresAt =

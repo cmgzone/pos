@@ -38,8 +38,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _showConfirmPassword = false;
   SubscriptionCatalog? _catalog;
   String? _selectedMarketKey;
+  String _selectedSellingMode = 'products';
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
+
+  static const _sellingModeOrder = ['products', 'services', 'combo'];
 
   SubscriptionMarket? get _selectedMarket {
     final catalog = _catalog;
@@ -49,6 +52,63 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
     return catalog.selectedMarket ??
         (catalog.markets.isEmpty ? null : catalog.markets.first);
+  }
+
+  SubscriptionMarket? _marketForKey(SubscriptionCatalog catalog, String? key) {
+    if (key == null) return null;
+    for (final market in catalog.markets) {
+      if (market.key == key) return market;
+    }
+    return null;
+  }
+
+  List<String> _availableSellingModesForMarket(
+    SubscriptionCatalog catalog,
+    SubscriptionMarket? market,
+  ) {
+    if (market == null) return const [];
+    final modes = <String>[];
+    for (final mode in _sellingModeOrder) {
+      final supported = catalog.plans.any(
+        (plan) =>
+            plan.sellingModes.contains(mode) && plan.priceFor(market) != null,
+      );
+      if (supported) {
+        modes.add(mode);
+      }
+    }
+    return modes;
+  }
+
+  SubscriptionPlanSummary? _signupPlanForSellingMode(
+    SubscriptionCatalog? catalog,
+    SubscriptionMarket? market,
+    String mode,
+  ) {
+    if (catalog == null || market == null) return null;
+    SubscriptionPlanSummary? firstMatch;
+    for (final plan in catalog.plans) {
+      final price = plan.priceFor(market);
+      if (price == null || !plan.sellingModes.contains(mode)) {
+        continue;
+      }
+      firstMatch ??= plan;
+      if (price.amountMinor == 0) {
+        return plan;
+      }
+    }
+    return firstMatch;
+  }
+
+  String _preferredSellingModeForMarket(
+    SubscriptionCatalog catalog,
+    SubscriptionMarket? market,
+  ) {
+    final modes = _availableSellingModesForMarket(catalog, market);
+    if (modes.contains(_selectedSellingMode)) {
+      return _selectedSellingMode;
+    }
+    return modes.isEmpty ? 'products' : modes.first;
   }
 
   @override
@@ -74,6 +134,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() {
         _catalog = catalog;
         _selectedMarketKey = market?.key;
+        _selectedSellingMode = _preferredSellingModeForMarket(catalog, market);
         _error = catalogMessage;
         _isLoadingCatalog = false;
       });
@@ -93,9 +154,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _selectMarket(String? key) {
     final catalog = _catalog;
     if (catalog == null || key == null) return;
+    final market = _marketForKey(catalog, key);
     setState(() {
       _selectedMarketKey = key;
+      _selectedSellingMode = _preferredSellingModeForMarket(catalog, market);
     });
+  }
+
+  String? _readInitialPlanCode(CloudAuthResponse response) {
+    final checkoutContext = response.checkoutContext;
+    final checkoutPlan = checkoutContext?['planCode']?.toString().trim();
+    if (checkoutPlan != null && checkoutPlan.isNotEmpty) {
+      return checkoutPlan;
+    }
+    final selectedPlan = response.selectedPlan['code']?.toString().trim();
+    return selectedPlan == null || selectedPlan.isEmpty ? null : selectedPlan;
   }
 
   void _goToSignIn() {
@@ -153,6 +226,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() => _error = 'Choose your country.');
       return;
     }
+    final signupPlan = _isBusinessSetupFlow
+        ? _signupPlanForSellingMode(_catalog, market, _selectedSellingMode)
+        : null;
+    if (_isBusinessSetupFlow && signupPlan == null) {
+      setState(
+        () => _error =
+            'Choose a business type that is available for this country.',
+      );
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -182,6 +265,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         password: password,
         deviceId: deviceId,
         countryCode: market?.countryCode ?? 'GLOBAL',
+        requestedPlanCode: signupPlan?.code,
+        sellingMode: _isBusinessSetupFlow ? _selectedSellingMode : null,
         provider: market?.provider,
       );
 
@@ -256,6 +341,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               afterSignup: true,
               initialCountryCode: market?.countryCode,
               initialProvider: market?.provider,
+              initialPlanCode: _readInitialPlanCode(response),
             )
           : AppShell(key: AppShell.shellKey);
 
@@ -315,6 +401,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     final market = _selectedMarket;
+    final modes = _availableSellingModesForMarket(catalog, market);
+    final signupPlan = _signupPlanForSellingMode(
+      catalog,
+      market,
+      _selectedSellingMode,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -340,10 +432,36 @@ class _SignUpScreenState extends State<SignUpScreen> {
           onChanged: _isLoading ? null : _selectMarket,
         ),
         const SizedBox(height: 20),
+        const Text(
+          'Business Type',
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        if (modes.isEmpty)
+          const Text(
+            'No business types are available for this country yet.',
+            style: TextStyle(color: AppColors.error, fontSize: 12),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: modes.map((mode) {
+              return ChoiceChip(
+                selected: _selectedSellingMode == mode,
+                avatar: Icon(_sellingModeIcon(mode), size: 18),
+                label: Text(_sellingModeLabel(mode)),
+                onSelected: _isLoading
+                    ? null
+                    : (_) => setState(() => _selectedSellingMode = mode),
+              );
+            }).toList(),
+          ),
+        const SizedBox(height: 12),
         Text(
-          market == null
-              ? 'Plans and business type will be selected after account creation.'
-              : 'You will choose products, services, or combo and pick a plan after creating the account.',
+          market == null || signupPlan == null
+              ? 'Your plan will be selected after account creation.'
+              : 'Your account starts with ${_sellingModeLabel(_selectedSellingMode)} on ${signupPlan.name}. You can adjust the plan after creating the account.',
           style: const TextStyle(
             color: AppColors.textSecondary,
             fontSize: 12,
@@ -352,6 +470,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
       ],
     );
+  }
+
+  String _sellingModeLabel(String mode) {
+    switch (mode) {
+      case 'services':
+        return 'Services only';
+      case 'combo':
+        return 'Products + Services';
+      default:
+        return 'Products only';
+    }
+  }
+
+  IconData _sellingModeIcon(String mode) {
+    switch (mode) {
+      case 'services':
+        return Icons.design_services_outlined;
+      case 'combo':
+        return Icons.all_inclusive_outlined;
+      default:
+        return Icons.inventory_2_outlined;
+    }
   }
 
   @override

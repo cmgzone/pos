@@ -20,6 +20,7 @@ import '../../agent/data/piki_provider.dart';
 import '../../products/data/product_provider.dart';
 import '../../products/data/product_repository.dart';
 import '../../products/data/product_variant_repository.dart';
+import '../../products/presentation/product_form_screen.dart';
 import '../../shifts/data/shift_provider.dart';
 import '../../shifts/data/shift_preferences_service.dart';
 import '../../shifts/data/shift_repository.dart';
@@ -37,6 +38,16 @@ import '../../services/data/service_provider.dart';
 import 'barcode_scanner.dart';
 import 'payment_checkout_dialog.dart';
 import 'receipt_service.dart';
+
+enum PosProductViewMode { cards, compact }
+
+final posProductViewModeProvider = StateProvider<PosProductViewMode>(
+  (ref) => PosProductViewMode.cards,
+);
+
+final posRecentProductsProvider = StateProvider<List<Map<String, dynamic>>>(
+  (ref) => const [],
+);
 
 class PosScreen extends ConsumerWidget {
   const PosScreen({super.key});
@@ -104,47 +115,17 @@ class PosScreen extends ConsumerWidget {
           const _PikiPosVoiceAction(),
           const SizedBox(width: 8),
           if (canOpenShifts && !isMobile) ...[
-            _ShiftStatusChip(shiftAsync: currentShiftAsync),
+            _ShiftStatusChip(shiftAsync: currentShiftAsync, compact: true),
             const SizedBox(width: 8),
           ],
           if (!isMobile) ...[
-            _LicenseIndicatorChip(state: syncState),
+            _LicenseIndicatorChip(state: syncState, compact: true),
             const SizedBox(width: 8),
-            _SyncIndicatorChip(state: syncState),
+            _SyncIndicatorChip(state: syncState, compact: true),
             const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.primaryLight,
-              child: Text(
-                cashierName.isEmpty
-                    ? '?'
-                    : cashierName.substring(0, 1).toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  cashierName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  cashierRole,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
+            _CashierAvatarButton(
+              cashierName: cashierName,
+              cashierRole: cashierRole,
             ),
           ],
           const SizedBox(width: 16),
@@ -169,7 +150,12 @@ class PosScreen extends ConsumerWidget {
           }
         },
       ),
-      floatingActionButton: isMobile
+      bottomNavigationBar: isMobile && cartCount > 0
+          ? _MobilePosCheckoutBar(
+              onOpenCart: () => _showMobileCartSheet(context),
+            )
+          : null,
+      floatingActionButton: isMobile && cartCount == 0
           ? TrainingAnchor(
               id: 'pos.cart',
               child: FloatingActionButton.extended(
@@ -240,6 +226,107 @@ class PosScreen extends ConsumerWidget {
               ),
               Expanded(child: _CartSide()),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobilePosCheckoutBar extends ConsumerWidget {
+  final VoidCallback onOpenCart;
+
+  const _MobilePosCheckoutBar({required this.onOpenCart});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final total = ref.watch(cartTotalProvider);
+    final cartCount = ref.watch(cartProvider).length;
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Current sale',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.success,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: onOpenCart,
+              icon: const Icon(Icons.shopping_cart_checkout_rounded),
+              label: Text('Review & Pay ($cartCount)'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CashierAvatarButton extends StatelessWidget {
+  final String cashierName;
+  final String cashierRole;
+
+  const _CashierAvatarButton({
+    required this.cashierName,
+    required this.cashierRole,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = cashierName.trim().isEmpty
+        ? '?'
+        : cashierName.trim().substring(0, 1).toUpperCase();
+    return Tooltip(
+      message: cashierName.trim().isEmpty
+          ? cashierRole
+          : '$cashierName - $cashierRole',
+      child: CircleAvatar(
+        radius: 18,
+        backgroundColor: AppColors.primaryLight,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -593,12 +680,26 @@ class _PikiPosVoiceActionState extends ConsumerState<_PikiPosVoiceAction> {
 
 class _SyncIndicatorChip extends StatelessWidget {
   final SyncState state;
+  final bool compact;
 
-  const _SyncIndicatorChip({required this.state});
+  const _SyncIndicatorChip({required this.state, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     final config = _resolveIndicatorStyle(state);
+
+    if (compact) {
+      return Tooltip(
+        message: config.label,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Center(
+            child: Icon(config.icon, size: 20, color: config.color),
+          ),
+        ),
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.only(right: 8),
@@ -676,13 +777,40 @@ class _SyncIndicatorChip extends StatelessWidget {
 
 class _ShiftStatusChip extends StatelessWidget {
   final AsyncValue<Map<String, dynamic>?> shiftAsync;
+  final bool compact;
 
-  const _ShiftStatusChip({required this.shiftAsync});
+  const _ShiftStatusChip({required this.shiftAsync, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     final shift = shiftAsync.valueOrNull;
     final isOpen = shift != null;
+    final label = shiftAsync.isLoading
+        ? 'Checking shift'
+        : isOpen
+        ? 'Shift Open'
+        : 'Open Shift';
+    final color = isOpen ? AppColors.success : AppColors.warning;
+
+    if (compact) {
+      return Tooltip(
+        message: label,
+        child: IconButton(
+          onPressed: () => AppShell.selectIndex(10),
+          icon: shiftAsync.isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  isOpen ? Icons.timer_rounded : Icons.lock_clock_outlined,
+                  size: 20,
+                  color: color,
+                ),
+        ),
+      );
+    }
 
     return TextButton.icon(
       onPressed: () => AppShell.selectIndex(10),
@@ -695,18 +823,11 @@ class _ShiftStatusChip extends StatelessWidget {
           : Icon(
               isOpen ? Icons.timer_rounded : Icons.lock_clock_outlined,
               size: 18,
-              color: isOpen ? AppColors.success : AppColors.warning,
+              color: color,
             ),
       label: Text(
-        shiftAsync.isLoading
-            ? 'Shift...'
-            : isOpen
-            ? 'Shift Open'
-            : 'Open Shift',
-        style: TextStyle(
-          color: isOpen ? AppColors.success : AppColors.warning,
-          fontWeight: FontWeight.w700,
-        ),
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w700),
       ),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -717,8 +838,9 @@ class _ShiftStatusChip extends StatelessWidget {
 
 class _LicenseIndicatorChip extends StatelessWidget {
   final SyncState state;
+  final bool compact;
 
-  const _LicenseIndicatorChip({required this.state});
+  const _LicenseIndicatorChip({required this.state, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -737,6 +859,24 @@ class _LicenseIndicatorChip extends StatelessWidget {
       LicenseAccessStatus.invalid => Icons.gpp_bad_outlined,
       LicenseAccessStatus.localOnly => Icons.offline_bolt_outlined,
     };
+    final label = switch (license.accessStatus) {
+      LicenseAccessStatus.active => 'Active',
+      LicenseAccessStatus.grace => 'Grace',
+      LicenseAccessStatus.expired => 'Expired',
+      LicenseAccessStatus.invalid => 'License Error',
+      LicenseAccessStatus.localOnly => 'Local Only',
+    };
+
+    if (compact) {
+      return Tooltip(
+        message: 'License: $label',
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Center(child: Icon(icon, size: 20, color: color)),
+        ),
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.only(right: 8),
@@ -749,13 +889,7 @@ class _LicenseIndicatorChip extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 6),
-          Text(switch (license.accessStatus) {
-            LicenseAccessStatus.active => 'Active',
-            LicenseAccessStatus.grace => 'Grace',
-            LicenseAccessStatus.expired => 'Expired',
-            LicenseAccessStatus.invalid => 'License Error',
-            LicenseAccessStatus.localOnly => 'Local Only',
-          }, style: TextStyle(color: color, fontSize: 12)),
+          Text(label, style: TextStyle(color: color, fontSize: 12)),
         ],
       ),
     );
@@ -843,6 +977,65 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     }
   }
 
+  String? _categoryNameFor(
+    Map<String, dynamic> product,
+    List<Map<String, dynamic>> categories,
+  ) {
+    final catId = product['category_id'] as String?;
+    if (catId == null) return null;
+    return categories.firstWhere(
+          (category) => category['id'] == catId,
+          orElse: () => const <String, dynamic>{},
+        )['name']
+        as String?;
+  }
+
+  Future<void> _openProductForm({String? initialSearch}) async {
+    final result = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const ProductFormScreen()));
+    if (result == true) {
+      ref.invalidate(filteredProductsProvider);
+      ref.invalidate(productsProvider(null));
+      _clearSearch(refocus: Platform.isWindows);
+    } else if ((initialSearch ?? '').trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearchField());
+    }
+  }
+
+  void _rememberQuickPick(Map<String, dynamic> product) {
+    final id = product['id'] as String?;
+    if (id == null || id.trim().isEmpty) {
+      return;
+    }
+    final item = Map<String, dynamic>.from(product);
+    final current = ref.read(posRecentProductsProvider);
+    ref.read(posRecentProductsProvider.notifier).state = [
+      item,
+      ...current.where((existing) => existing['id'] != id),
+    ].take(8).toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _mergeQuickPicks(
+    List<Map<String, dynamic>> recent,
+    List<Map<String, dynamic>> products,
+  ) {
+    final seen = <String>{};
+    final merged = <Map<String, dynamic>>[];
+    for (final product in [...recent, ...products]) {
+      final id = product['id'] as String?;
+      if (id == null || id.isEmpty || seen.contains(id)) {
+        continue;
+      }
+      seen.add(id);
+      merged.add(product);
+      if (merged.length == 8) {
+        break;
+      }
+    }
+    return merged;
+  }
+
   String _cartLabel(
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
@@ -899,6 +1092,9 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     final success = ref
         .read(cartProvider.notifier)
         .addProduct(product, variant: variant);
+    if (success) {
+      _rememberQuickPick(product);
+    }
     _showAddToCartSnackBar(success, product, variant: variant);
     _clearSearch();
   }
@@ -1083,10 +1279,12 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     final productsAsync = ref.watch(filteredProductsProvider);
     final selectedCategory = ref.watch(selectedCategoryProvider);
     final searchQuery = ref.watch(productSearchProvider);
+    final viewMode = ref.watch(posProductViewModeProvider);
+    final recentProducts = ref.watch(posRecentProductsProvider);
     final isMobileDevice = Platform.isAndroid || Platform.isIOS;
 
     final compact = MediaQuery.sizeOf(context).width <= 520;
-    final productPadding = compact ? 14.0 : 24.0;
+    final baseProductPadding = compact ? 14.0 : 24.0;
 
     Widget serviceShortcut({required bool iconOnly}) {
       if (!canUseServices) {
@@ -1125,203 +1323,178 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       );
     }
 
-    return Container(
-      color: AppColors.background,
-      padding: EdgeInsets.all(productPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Search bar with scan button
-          TrainingAnchor(
-            id: 'pos.search',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tightVertical = constraints.maxHeight < (compact ? 330 : 380);
+        final productPadding = tightVertical
+            ? (compact ? 10.0 : 16.0)
+            : baseProductPadding;
+        final sectionGap = tightVertical
+            ? (compact ? 10.0 : 14.0)
+            : (compact ? 14.0 : 20.0);
+        final showQuickPicks =
+            searchQuery.trim().isEmpty && constraints.maxHeight >= 330;
+
+        return Container(
+          color: AppColors.background,
+          padding: EdgeInsets.all(productPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Search bar with scan button
+              TrainingAnchor(
+                id: 'pos.search',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _searchFocusNode,
-                        autofocus: Platform.isWindows,
-                        onTap: _focusSearchField,
-                        onChanged: (v) =>
-                            ref.read(productSearchProvider.notifier).state = v,
-                        onSubmitted: (v) {
-                          final code = v.trim();
-                          final lower = code.toLowerCase();
-                          // Only attempt barcode lookup if it looks like a barcode
-                          // (not a URL or plain text search entry)
-                          if (code.length >= 4 &&
-                              !lower.startsWith('http') &&
-                              !lower.startsWith('www.') &&
-                              !lower.contains('://') &&
-                              RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(code)) {
-                            _handleBarcodeScan(code);
-                          } else {
-                            WidgetsBinding.instance.addPostFrameCallback(
-                              (_) => _focusSearchField(),
-                            );
-                          }
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Search products or scan barcode...',
-                          prefixIcon: const Icon(
-                            Icons.search,
-                            color: AppColors.textSecondary,
-                          ),
-                          suffixIcon: searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: _clearSearch,
-                                )
-                              : null,
-                        ),
-                      ),
-                    ),
-                    if (canUseServices) ...[
-                      SizedBox(width: compact ? 8 : 12),
-                      serviceShortcut(iconOnly: compact),
-                    ],
-                    if (isMobileDevice) ...[
-                      SizedBox(width: compact ? 8 : 12),
-                      Material(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          onTap: _openCameraScanner,
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            padding: EdgeInsets.all(compact ? 12 : 14),
-                            child: const Icon(
-                              Icons.qr_code_scanner,
-                              color: Colors.white,
-                              size: 24,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            autofocus: Platform.isWindows,
+                            onTap: _focusSearchField,
+                            onChanged: (v) =>
+                                ref.read(productSearchProvider.notifier).state =
+                                    v,
+                            onSubmitted: (v) {
+                              final code = v.trim();
+                              final lower = code.toLowerCase();
+                              // Only attempt barcode lookup if it looks like a barcode
+                              // (not a URL or plain text search entry)
+                              if (code.length >= 4 &&
+                                  !lower.startsWith('http') &&
+                                  !lower.startsWith('www.') &&
+                                  !lower.contains('://') &&
+                                  RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(code)) {
+                                _handleBarcodeScan(code);
+                              } else {
+                                WidgetsBinding.instance.addPostFrameCallback(
+                                  (_) => _focusSearchField(),
+                                );
+                              }
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'Search products or scan barcode...',
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: AppColors.textSecondary,
+                              ),
+                              suffixIcon: searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: _clearSearch,
+                                    )
+                                  : null,
                             ),
                           ),
                         ),
+                        if (canUseServices) ...[
+                          SizedBox(width: compact ? 8 : 12),
+                          serviceShortcut(iconOnly: compact),
+                        ],
+                        SizedBox(width: compact ? 8 : 12),
+                        const _PosViewModeToggle(),
+                        if (isMobileDevice) ...[
+                          SizedBox(width: compact ? 8 : 12),
+                          Material(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(14),
+                            child: InkWell(
+                              onTap: _openCameraScanner,
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: EdgeInsets.all(compact ? 12 : 14),
+                                child: const Icon(
+                                  Icons.qr_code_scanner,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (Platform.isWindows) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _searchFocusNode.hasFocus
+                            ? 'Scanner ready. Scan items without clicking again.'
+                            : 'Click here once, then scan barcode.',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ],
                 ),
-                if (Platform.isWindows) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    _searchFocusNode.hasFocus
-                        ? 'Scanner ready. Scan items without clicking again.'
-                        : 'Click here once, then scan barcode.',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          SizedBox(height: compact ? 14 : 20),
+              ),
+              SizedBox(height: sectionGap),
 
-          // Category chips
-          TrainingAnchor(
-            id: 'pos.categories',
-            child: categoriesAsync.when(
-              data: (categories) => SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _CategoryChip(
-                      title: 'All',
-                      isSelected: selectedCategory == null,
-                      onTap: () =>
-                          ref.read(selectedCategoryProvider.notifier).state =
-                              null,
-                    ),
-                    ...categories.map(
-                      (cat) => _CategoryChip(
-                        title: cat['name'] as String,
-                        color: cat['color'] as String?,
-                        categoryName: cat['name'] as String?,
-                        isSelected: selectedCategory == cat['id'],
-                        onTap: () =>
-                            ref.read(selectedCategoryProvider.notifier).state =
-                                cat['id'] as String,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              loading: () => const SizedBox(
-                height: 40,
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-              error: (e, _) => Text(
-                AppErrorMessage.from(e, fallback: AppErrorMessage.loadFailed),
-              ),
-            ),
-          ),
-          SizedBox(height: compact ? 14 : 20),
-
-          // Product grid
-          Expanded(
-            child: TrainingAnchor(
-              id: 'pos.products',
-              child: productsAsync.when(
-                data: (products) {
-                  final categories = categoriesAsync.valueOrNull ?? [];
-                  if (products.isEmpty) {
-                    return const EmptyStateWidget(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'No products found',
-                      subtitle:
-                          'Try searching for something else or check your category filters.',
+              if (showQuickPicks)
+                productsAsync.maybeWhen(
+                  data: (products) {
+                    final quickPicks = _mergeQuickPicks(
+                      recentProducts,
+                      products,
                     );
-                  }
-                  return GridView.builder(
-                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: compact ? 180 : 220,
-                      childAspectRatio: compact ? 0.72 : 0.82,
-                      crossAxisSpacing: compact ? 12 : 16,
-                      mainAxisSpacing: compact ? 12 : 16,
-                    ),
-                    itemCount: products.length,
-                    itemBuilder: (context, index) {
-                      final product = products[index];
-                      // Resolve category name for icon fallback
-                      final catId = product['category_id'] as String?;
-                      final catName = catId != null
-                          ? (categories.firstWhere(
-                                  (c) => c['id'] == catId,
-                                  orElse: () => {},
-                                )['name']
-                                as String?)
-                          : null;
-                      return _ProductCard(
-                        product: product,
-                        categoryName: catName,
-                        onTap: () async {
-                          await _handleProductSelection(product);
-                        },
-                      );
-                    },
-                  );
-                },
-                loading: () => GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 220,
-                    childAspectRatio: 0.82,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: 8,
-                  itemBuilder: (_, _) => Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceHighlight.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
+                    if (quickPicks.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: sectionGap),
+                      child: _QuickPicksStrip(
+                        products: quickPicks,
+                        onTap: _handleProductSelection,
+                      ),
+                    );
+                  },
+                  orElse: () => const SizedBox.shrink(),
                 ),
-                error: (e, _) => Center(
-                  child: Text(
+
+              // Category chips
+              TrainingAnchor(
+                id: 'pos.categories',
+                child: categoriesAsync.when(
+                  data: (categories) => SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _CategoryChip(
+                          title: 'All',
+                          isSelected: selectedCategory == null,
+                          onTap: () =>
+                              ref
+                                      .read(selectedCategoryProvider.notifier)
+                                      .state =
+                                  null,
+                        ),
+                        ...categories.map(
+                          (cat) => _CategoryChip(
+                            title: cat['name'] as String,
+                            color: cat['color'] as String?,
+                            categoryName: cat['name'] as String?,
+                            isSelected: selectedCategory == cat['id'],
+                            onTap: () =>
+                                ref
+                                        .read(selectedCategoryProvider.notifier)
+                                        .state =
+                                    cat['id'] as String,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  loading: () => const SizedBox(
+                    height: 40,
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  error: (e, _) => Text(
                     AppErrorMessage.from(
                       e,
                       fallback: AppErrorMessage.loadFailed,
@@ -1329,9 +1502,540 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                   ),
                 ),
               ),
-            ),
+              SizedBox(height: sectionGap),
+
+              // Product grid
+              Expanded(
+                child: TrainingAnchor(
+                  id: 'pos.products',
+                  child: productsAsync.when(
+                    data: (products) {
+                      final categories = categoriesAsync.valueOrNull ?? [];
+                      if (products.isEmpty) {
+                        if (searchQuery.trim().isNotEmpty) {
+                          return _NoProductSearchResults(
+                            query: searchQuery.trim(),
+                            canUseServices: canUseServices,
+                            canManageProducts: SessionService.canAccessFeature(
+                              UserAccessProfile.featureProducts,
+                            ),
+                            onClearSearch: _clearSearch,
+                            onCreateProduct: () =>
+                                _openProductForm(initialSearch: searchQuery),
+                            onOpenServices: _openServicesPage,
+                          );
+                        }
+                        return EmptyStateWidget(
+                          icon: Icons.inventory_2_outlined,
+                          title: 'No products found',
+                          subtitle: selectedCategory == null
+                              ? 'Add products to start selling from this POS.'
+                              : 'Try a different category or clear your filters.',
+                        );
+                      }
+                      if (viewMode == PosProductViewMode.compact) {
+                        return ListView.separated(
+                          itemCount: products.length,
+                          separatorBuilder: (_, _) =>
+                              SizedBox(height: compact ? 8 : 10),
+                          itemBuilder: (context, index) {
+                            final product = products[index];
+                            return _CompactProductTile(
+                              product: product,
+                              categoryName: _categoryNameFor(
+                                product,
+                                categories,
+                              ),
+                              onTap: () async {
+                                await _handleProductSelection(product);
+                              },
+                            );
+                          },
+                        );
+                      }
+                      return GridView.builder(
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: compact ? 180 : 220,
+                          childAspectRatio: compact ? 0.72 : 0.82,
+                          crossAxisSpacing: compact ? 12 : 16,
+                          mainAxisSpacing: compact ? 12 : 16,
+                        ),
+                        itemCount: products.length,
+                        itemBuilder: (context, index) {
+                          final product = products[index];
+                          return _ProductCard(
+                            product: product,
+                            categoryName: _categoryNameFor(product, categories),
+                            onTap: () async {
+                              await _handleProductSelection(product);
+                            },
+                          );
+                        },
+                      );
+                    },
+                    loading: () => GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 220,
+                            childAspectRatio: 0.82,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                          ),
+                      itemCount: 8,
+                      itemBuilder: (_, _) => Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHighlight.withValues(
+                            alpha: 0.5,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
+                    error: (e, _) => Center(
+                      child: Text(
+                        AppErrorMessage.from(
+                          e,
+                          fallback: AppErrorMessage.loadFailed,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PosViewModeToggle extends ConsumerWidget {
+  const _PosViewModeToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(posProductViewModeProvider);
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PosViewModeButton(
+            icon: Icons.grid_view_rounded,
+            tooltip: 'Card view',
+            selected: mode == PosProductViewMode.cards,
+            onTap: () => ref.read(posProductViewModeProvider.notifier).state =
+                PosProductViewMode.cards,
+          ),
+          _PosViewModeButton(
+            icon: Icons.view_list_rounded,
+            tooltip: 'Compact view',
+            selected: mode == PosProductViewMode.compact,
+            onTap: () => ref.read(posProductViewModeProvider.notifier).state =
+                PosProductViewMode.compact,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PosViewModeButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PosViewModeButton({
+    required this.icon,
+    required this.tooltip,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            size: 19,
+            color: selected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickPicksStrip extends StatelessWidget {
+  final List<Map<String, dynamic>> products;
+  final Future<void> Function(Map<String, dynamic> product) onTap;
+
+  const _QuickPicksStrip({required this.products, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Quick picks',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 56,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: products.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return _QuickPickChip(
+                product: product,
+                onTap: () => onTap(product),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickPickChip extends StatelessWidget {
+  final Map<String, dynamic> product;
+  final VoidCallback onTap;
+
+  const _QuickPickChip({required this.product, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = product['name'] as String? ?? 'Product';
+    final price = (product['price'] as num? ?? 0).toDouble();
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 180,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.add_shopping_cart_rounded,
+                  size: 18,
+                  color: AppColors.primaryLight,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${ShopSettings.currency}${price.toStringAsFixed(2)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoProductSearchResults extends StatelessWidget {
+  final String query;
+  final bool canUseServices;
+  final bool canManageProducts;
+  final VoidCallback onClearSearch;
+  final VoidCallback onCreateProduct;
+  final VoidCallback onOpenServices;
+
+  const _NoProductSearchResults({
+    required this.query,
+    required this.canUseServices,
+    required this.canManageProducts,
+    required this.onClearSearch,
+    required this.onCreateProduct,
+    required this.onOpenServices,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.manage_search_rounded,
+              size: 58,
+              color: AppColors.textSecondary.withValues(alpha: 0.38),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No match for "$query"',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Clear the search, create a product, or check services.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onClearSearch,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  label: const Text('Clear'),
+                ),
+                if (canManageProducts)
+                  FilledButton.icon(
+                    onPressed: onCreateProduct,
+                    icon: const Icon(Icons.add_box_outlined, size: 18),
+                    label: const Text('Create Product'),
+                  ),
+                if (canUseServices)
+                  OutlinedButton.icon(
+                    onPressed: onOpenServices,
+                    icon: const Icon(Icons.design_services_outlined, size: 18),
+                    label: const Text('Services'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactProductTile extends StatelessWidget {
+  final Map<String, dynamic> product;
+  final String? categoryName;
+  final VoidCallback onTap;
+
+  const _CompactProductTile({
+    required this.product,
+    required this.categoryName,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isVariantResult =
+        product['result_type'] == 'variant' &&
+        product['matched_variant_id'] != null;
+    final variantName = product['matched_variant_name'] as String?;
+    final name = isVariantResult && variantName?.trim().isNotEmpty == true
+        ? '${product['name']} - ${variantName!.trim()}'
+        : product['name'] as String? ?? 'Product';
+    final price = isVariantResult
+        ? (product['matched_variant_price'] as num? ??
+                  product['price'] as num? ??
+                  0)
+              .toDouble()
+        : (product['price'] as num? ?? 0).toDouble();
+    final stock = isVariantResult
+        ? (product['matched_variant_stock'] as num? ?? 0).toDouble()
+        : (product['stock'] as num? ?? 0).toDouble();
+    final lowStock = isVariantResult
+        ? (product['matched_variant_low_stock'] as num? ?? 5).toDouble()
+        : (product['low_stock'] as num? ?? 5).toDouble();
+    final saleUnit = UnitUtils.saleUnitForProduct(product);
+    final stockUnit = UnitUtils.stockUnitForProduct(product);
+    final saleToStockFactor = UnitUtils.saleToStockFactor(product);
+    final tracksStock = UnitUtils.tracksStock(product);
+    final saleStock = saleToStockFactor > 0
+        ? (stock / saleToStockFactor)
+        : stock;
+    final isLowStock = tracksStock && stock <= lowStock;
+    final isOutOfStock = tracksStock && stock <= 0;
+    final stockColor = isOutOfStock
+        ? AppColors.error
+        : isLowStock
+        ? AppColors.warning
+        : AppColors.success;
+    final stockText = !tracksStock
+        ? 'No stock limit'
+        : isOutOfStock
+        ? 'Out of stock'
+        : UnitUtils.formatWithUnit(saleStock, saleUnit);
+
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: isOutOfStock ? null : onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Opacity(
+          opacity: isOutOfStock ? 0.62 : 1,
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                _ProductImagePlaceholder(
+                  categoryName: categoryName,
+                  isOutOfStock: isOutOfStock,
+                  size: 42,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        categoryName ?? 'General',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (saleUnit != stockUnit) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          'Stocked: ${UnitUtils.formatWithUnit(stock, stockUnit)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${ShopSettings.currency}${price.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: stockColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        stockText,
+                        style: TextStyle(
+                          color: stockColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.add_circle_rounded,
+                  color: isOutOfStock
+                      ? AppColors.textSecondary
+                      : AppColors.primaryLight,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1650,7 +2354,12 @@ class _CartSide extends ConsumerWidget {
                                         ? () => _handleBlockedCheckout(context)
                                         : () => _processCheckout(context, ref),
                                     icon: const Icon(Icons.payment, size: 16),
-                                    label: const Text('Pay'),
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        'Pay ${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                                      ),
+                                    ),
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 12,
@@ -1880,9 +2589,11 @@ class _CartSide extends ConsumerWidget {
                                         ? () => _handleBlockedCheckout(context)
                                         : () => _processCheckout(context, ref),
                                     icon: const Icon(Icons.payment),
-                                    label: const Text(
-                                      'Checkout',
-                                      style: TextStyle(fontSize: 16),
+                                    label: Text(
+                                      'Checkout • ${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 16),
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
@@ -3977,6 +4688,46 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
+class _ProductImagePlaceholder extends StatelessWidget {
+  final String? categoryName;
+  final bool isOutOfStock;
+  final double size;
+
+  const _ProductImagePlaceholder({
+    required this.categoryName,
+    required this.isOutOfStock,
+    this.size = 64,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = size <= 44 ? 12.0 : 20.0;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          if (size > 44)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+        ],
+      ),
+      child: Icon(
+        CategoryIconUtils.iconFor(categoryName),
+        size: size <= 44 ? 22 : 32,
+        color: isOutOfStock
+            ? AppColors.textSecondary.withValues(alpha: 0.4)
+            : AppColors.primaryLight.withValues(alpha: 0.9),
+      ),
+    );
+  }
+}
+
 class _ProductCard extends StatefulWidget {
   final Map<String, dynamic> product;
   final String? categoryName;
@@ -4044,10 +4795,7 @@ class _ProductCardState extends State<_ProductCard> {
         : UnitUtils.formatWithUnit(saleStock, saleUnit);
 
     final imagePath = product['image_url'] as String?;
-    final hasImage =
-        imagePath != null &&
-        imagePath.isNotEmpty &&
-        File(imagePath).existsSync();
+    final hasImage = imagePath != null && imagePath.isNotEmpty;
 
     final scale = _isPressed ? 0.96 : (_isHovered ? 1.02 : 1.0);
 
@@ -4131,39 +4879,24 @@ class _ProductCardState extends State<_ProductCard> {
                                               .cover, // Better for modern cards
                                           alignment: Alignment.center,
                                           filterQuality: FilterQuality.high,
+                                          errorBuilder:
+                                              (
+                                                context,
+                                                error,
+                                                stackTrace,
+                                              ) => Center(
+                                                child: _ProductImagePlaceholder(
+                                                  categoryName:
+                                                      widget.categoryName,
+                                                  isOutOfStock: isOutOfStock,
+                                                ),
+                                              ),
                                         ),
                                       )
                                     : Center(
-                                        child: Container(
-                                          width: 64,
-                                          height: 64,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.surfaceHighlight
-                                                .withValues(alpha: 0.8),
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withValues(
-                                                  alpha: 0.2,
-                                                ),
-                                                blurRadius: 10,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Icon(
-                                            CategoryIconUtils.iconFor(
-                                              widget.categoryName,
-                                            ),
-                                            size: 32,
-                                            color: isOutOfStock
-                                                ? AppColors.textSecondary
-                                                      .withValues(alpha: 0.4)
-                                                : AppColors.primaryLight
-                                                      .withValues(alpha: 0.9),
-                                          ),
+                                        child: _ProductImagePlaceholder(
+                                          categoryName: widget.categoryName,
+                                          isOutOfStock: isOutOfStock,
                                         ),
                                       ),
                               ),
