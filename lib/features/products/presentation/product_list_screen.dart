@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/services/catalog_share_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -29,6 +30,7 @@ class ProductListScreen extends ConsumerStatefulWidget {
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   String _searchQuery = '';
   String? _selectedCategory;
+  bool _sharingCatalog = false;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +50,31 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         automaticallyImplyLeading: false,
         title: const Text('Product Management'),
         actions: [
+          if (!isMobile)
+            OutlinedButton.icon(
+              onPressed: _sharingCatalog ? null : _shareCatalog,
+              icon: _sharingCatalog
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share_outlined, size: 18),
+              label: const Text('Share Catalog'),
+            )
+          else
+            IconButton(
+              icon: _sharingCatalog
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share_outlined),
+              tooltip: 'Share Catalog',
+              onPressed: _sharingCatalog ? null : _shareCatalog,
+            ),
+          const SizedBox(width: 8),
           if (!isMobile)
             OutlinedButton.icon(
               onPressed: _openStockList,
@@ -353,6 +380,117 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       MaterialPageRoute(builder: (_) => const StockListScreen()),
     );
     _refreshProducts();
+  }
+
+  Future<void> _shareCatalog() async {
+    if (_sharingCatalog) return;
+    setState(() => _sharingCatalog = true);
+    try {
+      final info = await CatalogShareService.prepare();
+      if (!mounted) return;
+      await _showCatalogShareDialog(info);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sharingCatalog = false);
+      }
+    }
+  }
+
+  Future<void> _showCatalogShareDialog(CatalogShareInfo info) {
+    final message = CatalogShareService.buildMessage(info);
+    final syncSummary = info.syncSummary;
+    final syncText = syncSummary == null
+        ? 'Catalog link is ready.'
+        : 'Synced ${syncSummary.pushedCount} local change${syncSummary.pushedCount == 1 ? '' : 's'} before sharing.';
+
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Share Product Catalog'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                syncText,
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: info.url,
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: 'Customer catalog link',
+                  prefixIcon: const Icon(Icons.link_outlined),
+                  suffixIcon: IconButton(
+                    tooltip: 'Copy link',
+                    icon: const Icon(Icons.copy_outlined),
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: info.url));
+                      if (!ctx.mounted) return;
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Catalog link copied')),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                initialValue: message,
+                readOnly: true,
+                minLines: 3,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Message preview',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: info.url));
+              if (!ctx.mounted) return;
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Catalog link copied')),
+              );
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copy Link'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => CatalogShareService.openCatalog(info),
+            icon: const Icon(Icons.open_in_new_outlined),
+            label: const Text('Open'),
+          ),
+          FilledButton.icon(
+            onPressed: () => CatalogShareService.openWhatsApp(info),
+            icon: const Icon(Icons.chat_outlined),
+            label: const Text('WhatsApp'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showStockAdjustmentDialog(Map<String, dynamic> product) {

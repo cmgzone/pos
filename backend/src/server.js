@@ -2080,120 +2080,6 @@ async function requestOpenRouterProductImage({ fetchImpl, aiConfig, imageDataUrl
   throw createHttpError(502, lastError);
 }
 
-function extractFirstJsonObject(text) {
-  const raw = normalizeOptionalText(text);
-  if (!raw) return null;
-  const stripped = raw
-    .replace(/^```(?:json)?/i, '')
-    .replace(/```$/i, '')
-    .trim();
-  try {
-    return JSON.parse(stripped);
-  } catch (_) {
-    const start = stripped.indexOf('{');
-    const end = stripped.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(stripped.slice(start, end + 1));
-      } catch (_) {
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-function normalizeOrderImageResult(parsed, rawContent) {
-  const source = parsed && typeof parsed === 'object' ? parsed : {};
-  const rawItems = Array.isArray(source.items) ? source.items : [];
-  const items = rawItems
-    .filter((item) => item && typeof item === 'object')
-    .map((item) => ({
-      name: normalizeOptionalText(item.name) || 'Item',
-      quantity: Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : null,
-      unit: normalizeOptionalText(item.unit),
-      price: Number.isFinite(Number(item.price)) ? Number(item.price) : null,
-      notes: normalizeOptionalText(item.notes || item.note),
-    }))
-    .filter((item) => item.name && item.name !== 'Item');
-  const confidenceValue = normalizeOptionalText(source.confidence).toLowerCase();
-  const confidence = ['low', 'medium', 'high'].includes(confidenceValue)
-    ? confidenceValue
-    : 'medium';
-  return {
-    items,
-    confidence,
-    summary:
-      normalizeOptionalText(source.summary) ||
-      (items.length ? `Detected ${items.length} item line(s) from the image.` : 'No clear item lines detected.'),
-    raw: rawContent,
-  };
-}
-
-async function requestOpenRouterOrderImage({ fetchImpl, aiConfig, imageDataUrl, note }) {
-  const noteText = normalizeOptionalText(note);
-  const prompt = `Read this POS product/order image and draft item lines for review.
-Return JSON only with this schema:
-{
-  "items": [
-    {"name": "product name", "quantity": 1, "unit": "pcs", "price": null, "notes": "short note"}
-  ],
-  "confidence": "low|medium|high",
-  "summary": "short summary"
-}
-Rules:
-- Do not invent products you cannot see.
-- Use null for unknown quantity, unit, or price.
-- If it is a shelf/product photo, identify the visible products.
-- If it is a handwritten or printed order, extract the order lines.
-${noteText ? `User note: ${noteText}` : ''}`;
-
-  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      ...openRouterHeaders(aiConfig.api_key),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: aiConfig.model || 'openai/gpt-4o-mini',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imageDataUrl } },
-          ],
-        },
-      ],
-      temperature: 0.1,
-      max_tokens: 900,
-      stream: false,
-    }),
-  });
-
-  let body = {};
-  try {
-    body = await response.json();
-  } catch (_) {
-    body = {};
-  }
-
-  if (!response.ok) {
-    throw createHttpError(
-      502,
-      body?.error?.message || `OpenRouter image analysis failed (${response.status})`,
-    );
-  }
-
-  const content = normalizeOptionalText(body?.choices?.[0]?.message?.content);
-  const parsed = extractFirstJsonObject(content);
-  return {
-    ...normalizeOrderImageResult(parsed, content),
-    model: aiConfig.model || 'openai/gpt-4o-mini',
-    usage: body?.usage || {},
-  };
-}
-
 app.post('/api/ai/product-image/enhance', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -2230,58 +2116,6 @@ app.post('/api/ai/product-image/enhance', async (req, res, next) => {
     res.json({
       ok: true,
       imageDataUrl: result.imageUrl,
-      model: result.model,
-      usage: {
-        promptTokens: result.usage.prompt_tokens || 0,
-        completionTokens: result.usage.completion_tokens || 0,
-      },
-      remaining: rateCheck.remaining,
-    });
-  } catch (error) {
-    next(normalizeRouteError(error));
-  }
-});
-
-app.post('/api/ai/order-image/analyze', async (req, res, next) => {
-  try {
-    const businessContext = await requireBusinessContext(req);
-    ensureAiFeatureAllowed(businessContext);
-
-    const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
-      throw createHttpError(403, 'AI is not enabled by the platform administrator');
-    }
-
-    const imageDataUrl = normalizeOptionalText(req.body?.imageDataUrl);
-    if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
-      throw createHttpError(400, 'A base64 order or product image is required');
-    }
-
-    const consumeQuota = req.body?.consumeQuota !== false;
-    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
-    if (!rateCheck.allowed) {
-      throw createHttpError(
-        429,
-        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`
-      );
-    }
-
-    const fetch = (await import('node-fetch')).default;
-    const result = await requestOpenRouterOrderImage({
-      fetchImpl: fetch,
-      aiConfig,
-      imageDataUrl,
-      note: req.body?.note,
-    });
-
-    res.json({
-      ok: true,
-      data: {
-        items: result.items,
-        confidence: result.confidence,
-        summary: result.summary,
-        raw: result.raw,
-      },
       model: result.model,
       usage: {
         promptTokens: result.usage.prompt_tokens || 0,
@@ -2698,6 +2532,37 @@ app.get('/api/ai/learning', async (req, res, next) => {
       params,
     );
     res.json({ ok: true, learning: result.rows.map(normalizeLearningRow) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/public/catalog/:businessId', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.params.businessId);
+    if (!businessId) {
+      throw createHttpError(400, 'Business catalog link is invalid');
+    }
+
+    const catalog = await loadPublicCatalog(businessId);
+    res.json({ ok: true, data: catalog });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/catalog/:businessId', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.params.businessId);
+    if (!businessId) {
+      throw createHttpError(400, 'Business catalog link is invalid');
+    }
+
+    const catalog = await loadPublicCatalog(businessId);
+    res
+      .status(200)
+      .type('html')
+      .send(renderPublicCatalogPage(catalog));
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -3753,6 +3618,496 @@ function normalizePaymentRow(row) {
     checkoutRequestId: row.checkout_request_id,
     createdAt: toIsoString(row.created_at),
   };
+}
+
+async function loadPublicCatalog(businessId) {
+  const businessResult = await query(
+    `
+    SELECT b.id, b.name, b.country_code, b.updated_at,
+           cs.whatsapp_number
+    FROM businesses b
+    LEFT JOIN business_communication_settings cs
+      ON cs.business_id = b.id
+    WHERE b.id = $1
+    LIMIT 1
+    `,
+    [businessId],
+  );
+  const business = businessResult.rows[0];
+  if (!business) {
+    throw createHttpError(404, 'Catalog not found');
+  }
+
+  const productsResult = await query(
+    `
+    SELECT
+      p.id,
+      p.name,
+      p.price,
+      p.stock,
+      p.unit,
+      p.sale_unit,
+      p.stock_unit,
+      p.image_url,
+      p.brand,
+      p.track_stock,
+      p.has_variants,
+      p.updated_at,
+      c.name AS category_name,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', pv.id,
+            'name', pv.name,
+            'price', pv.price,
+            'stock', pv.stock
+          )
+          ORDER BY pv.sort_order ASC, pv.name ASC
+        ) FILTER (WHERE pv.id IS NOT NULL),
+        '[]'::json
+      ) AS variants
+    FROM products p
+    LEFT JOIN categories c
+      ON c.id = p.category_id
+     AND c.business_id = p.business_id
+     AND c.deleted_at IS NULL
+    LEFT JOIN product_variants pv
+      ON pv.product_id = p.id
+     AND pv.business_id = p.business_id
+     AND pv.deleted_at IS NULL
+    WHERE p.business_id = $1
+      AND p.deleted_at IS NULL
+    GROUP BY
+      p.id,
+      p.name,
+      p.price,
+      p.stock,
+      p.unit,
+      p.sale_unit,
+      p.stock_unit,
+      p.image_url,
+      p.brand,
+      p.track_stock,
+      p.has_variants,
+      p.updated_at,
+      c.name
+    ORDER BY c.name ASC NULLS LAST, p.name ASC
+    LIMIT 500
+    `,
+    [businessId],
+  );
+
+  const products = productsResult.rows.map((row) =>
+    normalizePublicCatalogProduct(row),
+  );
+  const categories = [
+    ...new Set(
+      products
+        .map((product) => product.category)
+        .filter((category) => category && category.trim()),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  return {
+    business: {
+      id: business.id,
+      name: business.name,
+      countryCode: business.country_code || 'GLOBAL',
+      whatsappNumber: normalizeOptionalText(business.whatsapp_number),
+    },
+    currency: currencyForCountry(business.country_code),
+    categories,
+    products,
+    updatedAt: products.reduce((latest, product) => {
+      if (!product.updatedAt) return latest;
+      if (!latest || product.updatedAt > latest) return product.updatedAt;
+      return latest;
+    }, toIsoString(business.updated_at)),
+  };
+}
+
+function normalizePublicCatalogProduct(row) {
+  const trackStock = Number(row.track_stock ?? 1) !== 0;
+  const variants = Array.isArray(row.variants)
+    ? row.variants
+        .filter((variant) => variant && variant.id)
+        .map((variant) => ({
+          id: variant.id,
+          name: String(variant.name || '').trim(),
+          price: Number(variant.price || 0),
+          available: !trackStock || Number(variant.stock || 0) > 0,
+        }))
+    : [];
+  const hasVariants = Number(row.has_variants || 0) === 1 && variants.length > 0;
+  const stock = Number(row.stock || 0);
+  const available = hasVariants
+    ? variants.some((variant) => variant.available)
+    : !trackStock || stock > 0;
+
+  return {
+    id: row.id,
+    name: String(row.name || '').trim(),
+    price: Number(row.price || 0),
+    brand: normalizeOptionalText(row.brand),
+    category: normalizeOptionalText(row.category_name),
+    unit: normalizeOptionalText(row.sale_unit) || normalizeOptionalText(row.unit) || 'pcs',
+    imageUrl: safePublicImageUrl(row.image_url),
+    hasVariants,
+    variants,
+    availability: available ? 'Available' : 'Ask for availability',
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function renderPublicCatalogPage(catalog) {
+  const businessName = catalog.business.name || 'Catalog';
+  const productCount = catalog.products.length;
+  const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
+  const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
+  const contactHref = whatsappNumber
+    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(
+        `Hello ${businessName}, I saw your catalog and would like to order.`,
+      )}`
+    : '';
+  const updated = catalog.updatedAt
+    ? new Date(catalog.updatedAt).toLocaleDateString('en', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(businessName)} Catalog</title>
+  <meta name="description" content="Browse ${escapeHtml(businessName)} products and prices." />
+  <meta property="og:title" content="${escapeHtml(businessName)} Catalog" />
+  <meta property="og:description" content="${productCount} product${productCount === 1 ? '' : 's'} available." />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7fb;
+      --surface: #ffffff;
+      --ink: #17151f;
+      --muted: #666173;
+      --line: #e5e2ec;
+      --primary: #ec2257;
+      --primary-dark: #ba1641;
+      --success: #087f5b;
+      --shadow: 0 16px 40px rgba(23, 21, 31, 0.09);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .wrap {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+    .hero {
+      min-height: 220px;
+      display: grid;
+      align-items: end;
+      padding: 44px 0 28px;
+      gap: 18px;
+    }
+    .store {
+      display: grid;
+      gap: 8px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 58px);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    .meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 18px 0;
+    }
+    input,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font: inherit;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    select { min-width: 190px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      padding: 22px 0 48px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .photo {
+      aspect-ratio: 4 / 3;
+      background: linear-gradient(135deg, #fff0f4, #f4f1ff);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+    }
+    .photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .body {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      flex: 1;
+    }
+    .name {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+    .brand,
+    .category,
+    .variants {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .price-row {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+    }
+    .price {
+      font-weight: 800;
+      font-size: 18px;
+    }
+    .badge {
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: rgba(8, 127, 91, 0.1);
+      color: var(--success);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .empty {
+      padding: 56px 0;
+      color: var(--muted);
+      text-align: center;
+      display: none;
+    }
+    .contact {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 5;
+      display: ${contactHref ? 'inline-flex' : 'none'};
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      font-weight: 800;
+      box-shadow: 0 12px 28px rgba(236, 34, 87, 0.3);
+    }
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 20px 0 72px;
+      color: var(--muted);
+      font-size: 13px;
+      background: var(--surface);
+    }
+    @media (max-width: 720px) {
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+      .hero {
+        min-height: 190px;
+        padding-top: 32px;
+      }
+      .grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+      }
+      .body { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <div class="store">
+        <h1>${escapeHtml(businessName)}</h1>
+        <p class="meta">${productCount} product${productCount === 1 ? '' : 's'}${updated ? ` · Updated ${escapeHtml(updated)}` : ''}</p>
+      </div>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search products" autocomplete="off" />
+        <select id="category">
+          <option value="">All categories</option>
+          ${catalog.categories
+            .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+            .join('')}
+        </select>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <section id="grid" class="grid"></section>
+    <p id="empty" class="empty">No products match your search.</p>
+  </main>
+  <a class="contact" href="${escapeHtml(contactHref)}" target="_blank" rel="noopener">Order on WhatsApp</a>
+  <footer>
+    <div class="wrap">Powered by Piki POS</div>
+  </footer>
+  <script id="catalog-data" type="application/json">${safeCatalogJson}</script>
+  <script>
+    const catalog = JSON.parse(document.getElementById('catalog-data').textContent);
+    const grid = document.getElementById('grid');
+    const empty = document.getElementById('empty');
+    const search = document.getElementById('search');
+    const category = document.getElementById('category');
+    const formatter = new Intl.NumberFormat('en', {
+      style: 'currency',
+      currency: catalog.currency || 'KES',
+      minimumFractionDigits: 2,
+    });
+
+    function escapeText(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]);
+    }
+
+    function productMatches(product, q, cat) {
+      const haystack = [product.name, product.brand, product.category]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return (!q || haystack.includes(q)) && (!cat || product.category === cat);
+    }
+
+    function render() {
+      const q = search.value.trim().toLowerCase();
+      const cat = category.value;
+      const products = catalog.products.filter((product) => productMatches(product, q, cat));
+      grid.innerHTML = products.map((product) => {
+        const variants = product.variants && product.variants.length
+          ? '<div class="variants">' + product.variants.map((variant) => {
+              const name = escapeText(variant.name);
+              const variantPrice = Number(variant.price || 0);
+              return variantPrice && variantPrice !== Number(product.price || 0)
+                ? name + ' - ' + formatter.format(variantPrice)
+                : name;
+            }).join(', ') + '</div>'
+          : '';
+        return '<article class="card">' +
+          '<div class="photo">' +
+            (product.imageUrl
+              ? '<img src="' + escapeText(product.imageUrl) + '" alt="' + escapeText(product.name) + '" loading="lazy" />'
+              : '<span>No image</span>') +
+          '</div>' +
+          '<div class="body">' +
+            '<h2 class="name">' + escapeText(product.name) + '</h2>' +
+            (product.brand ? '<div class="brand">' + escapeText(product.brand) + '</div>' : '') +
+            (product.category ? '<div class="category">' + escapeText(product.category) + '</div>' : '') +
+            variants +
+            '<div class="price-row">' +
+              '<div class="price">' + formatter.format(Number(product.price || 0)) + '</div>' +
+              '<span class="badge">' + escapeText(product.availability) + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</article>';
+      }).join('');
+      empty.style.display = products.length ? 'none' : 'block';
+    }
+
+    search.addEventListener('input', render);
+    category.addEventListener('change', render);
+    render();
+  </script>
+</body>
+</html>`;
+}
+
+function safePublicImageUrl(value) {
+  const text = normalizeOptionalText(value);
+  if (!text) {
+    return null;
+  }
+  try {
+    const url = new URL(text);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function currencyForCountry(countryCode) {
+  const clean = String(countryCode || '').trim().toUpperCase();
+  if (clean === 'KE') return 'KES';
+  if (clean === 'TZ') return 'TZS';
+  if (clean === 'UG') return 'UGX';
+  if (clean === 'RW') return 'RWF';
+  return 'KES';
+}
+
+function normalizePublicPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `254${digits.slice(1)}`;
+  }
+  return digits;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
 }
 
 function parseOptionalDate(value) {

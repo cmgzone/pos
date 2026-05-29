@@ -950,6 +950,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   @override
   void initState() {
     super.initState();
+    _searchFocusNode.addListener(_handleSearchFocusChange);
     if (Platform.isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearchField());
     }
@@ -957,9 +958,16 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
 
   @override
   void dispose() {
+    _searchFocusNode.removeListener(_handleSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleSearchFocusChange() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _focusSearchField() {
@@ -1286,40 +1294,16 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     final compact = MediaQuery.sizeOf(context).width <= 520;
     final baseProductPadding = compact ? 14.0 : 24.0;
 
-    Widget serviceShortcut({required bool iconOnly}) {
+    Widget serviceShortcut() {
       if (!canUseServices) {
         return const SizedBox.shrink();
       }
-      if (iconOnly) {
-        return Tooltip(
-          message: 'Open services',
-          child: Material(
-            color: AppColors.secondary,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              onTap: _openServicesPage,
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                padding: EdgeInsets.all(compact ? 12 : 14),
-                child: const Icon(
-                  Icons.design_services_outlined,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-
-      return OutlinedButton.icon(
-        onPressed: _openServicesPage,
-        icon: const Icon(Icons.design_services_outlined, size: 18),
-        label: const Text('Services'),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-          visualDensity: VisualDensity.compact,
-        ),
+      return _PremiumIconAction(
+        icon: Icons.design_services_outlined,
+        tooltip: 'Open services',
+        onTap: _openServicesPage,
+        compact: compact,
+        accent: AppColors.secondary,
       );
     }
 
@@ -1348,84 +1332,81 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            autofocus: Platform.isWindows,
-                            onTap: _focusSearchField,
-                            onChanged: (v) =>
-                                ref.read(productSearchProvider.notifier).state =
-                                    v,
-                            onSubmitted: (v) {
-                              final code = v.trim();
-                              final lower = code.toLowerCase();
-                              // Only attempt barcode lookup if it looks like a barcode
-                              // (not a URL or plain text search entry)
-                              if (code.length >= 4 &&
-                                  !lower.startsWith('http') &&
-                                  !lower.startsWith('www.') &&
-                                  !lower.contains('://') &&
-                                  RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(code)) {
-                                _handleBarcodeScan(code);
-                              } else {
-                                WidgetsBinding.instance.addPostFrameCallback(
-                                  (_) => _focusSearchField(),
-                                );
-                              }
-                            },
-                            decoration: InputDecoration(
-                              hintText: 'Search products or scan barcode...',
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: AppColors.textSecondary,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: compact ? double.infinity : 560,
                               ),
-                              suffixIcon: searchQuery.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: _clearSearch,
-                                    )
-                                  : null,
+                              child: _PremiumSearchField(
+                                controller: _searchController,
+                                focusNode: _searchFocusNode,
+                                query: searchQuery,
+                                compact: compact,
+                                autofocus: Platform.isWindows,
+                                onTap: _focusSearchField,
+                                onChanged: (v) =>
+                                    ref
+                                            .read(
+                                              productSearchProvider.notifier,
+                                            )
+                                            .state =
+                                        v,
+                                onSubmitted: (v) {
+                                  final code = v.trim();
+                                  final lower = code.toLowerCase();
+                                  // Only attempt barcode lookup if it looks like a barcode
+                                  // (not a URL or plain text search entry)
+                                  if (code.length >= 4 &&
+                                      !lower.startsWith('http') &&
+                                      !lower.startsWith('www.') &&
+                                      !lower.contains('://') &&
+                                      RegExp(
+                                        r'^[A-Za-z0-9._-]+$',
+                                      ).hasMatch(code)) {
+                                    _handleBarcodeScan(code);
+                                  } else {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback(
+                                          (_) => _focusSearchField(),
+                                        );
+                                  }
+                                },
+                                onClear: _clearSearch,
+                              ),
                             ),
                           ),
                         ),
                         if (canUseServices) ...[
                           SizedBox(width: compact ? 8 : 12),
-                          serviceShortcut(iconOnly: compact),
+                          serviceShortcut(),
                         ],
                         SizedBox(width: compact ? 8 : 12),
                         const _PosViewModeToggle(),
                         if (isMobileDevice) ...[
                           SizedBox(width: compact ? 8 : 12),
-                          Material(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(14),
-                            child: InkWell(
-                              onTap: _openCameraScanner,
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                padding: EdgeInsets.all(compact ? 12 : 14),
-                                child: const Icon(
-                                  Icons.qr_code_scanner,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                            ),
+                          _PremiumIconAction(
+                            icon: Icons.qr_code_scanner_rounded,
+                            tooltip: 'Scan barcode',
+                            onTap: _openCameraScanner,
+                            compact: compact,
+                            accent: AppColors.primaryLight,
                           ),
                         ],
                       ],
                     ),
                     if (Platform.isWindows) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        _searchFocusNode.hasFocus
-                            ? 'Scanner ready. Scan items without clicking again.'
-                            : 'Click here once, then scan barcode.',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
+                      const SizedBox(height: 5),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: _SearchStatusHint(
+                          key: ValueKey(_searchFocusNode.hasFocus),
+                          ready: _searchFocusNode.hasFocus,
                         ),
                       ),
                     ],
@@ -1610,18 +1591,350 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   }
 }
 
+class _PremiumSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String query;
+  final bool compact;
+  final bool autofocus;
+  final VoidCallback onTap;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onClear;
+
+  const _PremiumSearchField({
+    required this.controller,
+    required this.focusNode,
+    required this.query,
+    required this.compact,
+    required this.autofocus,
+    required this.onTap,
+    required this.onChanged,
+    required this.onSubmitted,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: focusNode,
+      builder: (context, _) {
+        final hasFocus = focusNode.hasFocus;
+        final hasQuery = query.trim().isNotEmpty;
+        final active = hasFocus || hasQuery;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          height: compact ? 42 : 46,
+          decoration: BoxDecoration(
+            color: active
+                ? AppColors.surface
+                : AppColors.surfaceHighlight.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: active
+                  ? AppColors.secondary.withValues(alpha: 0.48)
+                  : AppColors.border.withValues(alpha: 0.74),
+              width: active ? 1.25 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: active
+                    ? AppColors.secondary.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.18),
+                blurRadius: active ? 20 : 12,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: compact ? 28 : 30,
+                height: compact ? 28 : 30,
+                margin: const EdgeInsets.only(left: 8, right: 8),
+                decoration: BoxDecoration(
+                  color: active
+                      ? AppColors.secondary.withValues(alpha: 0.14)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: AnimatedRotation(
+                  turns: hasFocus ? -0.04 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.manage_search_rounded,
+                    size: compact ? 18 : 19,
+                    color: active
+                        ? AppColors.secondary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: autofocus,
+                  onTap: onTap,
+                  onChanged: onChanged,
+                  onSubmitted: onSubmitted,
+                  textInputAction: TextInputAction.search,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
+                  cursorColor: AppColors.secondary,
+                  cursorWidth: 1.6,
+                  decoration: InputDecoration(
+                    isCollapsed: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    hintText: compact
+                        ? 'Search or scan'
+                        : 'Search or scan barcode',
+                    hintStyle: TextStyle(
+                      color: AppColors.textSecondary.withValues(alpha: 0.72),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: hasQuery
+                    ? _SearchClearButton(
+                        key: const ValueKey('clear-search'),
+                        onTap: onClear,
+                        compact: compact,
+                      )
+                    : const SizedBox(
+                        key: ValueKey('empty-search-action'),
+                        width: 8,
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SearchClearButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final bool compact;
+
+  const _SearchClearButton({
+    super.key,
+    required this.onTap,
+    required this.compact,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Clear search',
+      child: Padding(
+        padding: const EdgeInsets.only(right: 7),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: compact ? 28 : 30,
+            height: compact ? 28 : 30,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceHighlight.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.88),
+              ),
+            ),
+            child: Icon(
+              Icons.close_rounded,
+              size: compact ? 16 : 17,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchStatusHint extends StatelessWidget {
+  final bool ready;
+
+  const _SearchStatusHint({super.key, required this.ready});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ready ? AppColors.secondary : AppColors.textSecondary;
+
+    return Row(
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: ready
+                ? AppColors.secondary
+                : AppColors.textSecondary.withValues(alpha: 0.56),
+            shape: BoxShape.circle,
+            boxShadow: ready
+                ? [
+                    BoxShadow(
+                      color: AppColors.secondary.withValues(alpha: 0.4),
+                      blurRadius: 10,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            ready
+                ? 'Scanner ready. Keep scanning without clicking.'
+                : 'Tap search once before using a barcode scanner.',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color.withValues(alpha: ready ? 0.9 : 0.72),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PremiumIconAction extends StatefulWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool compact;
+  final Color accent;
+
+  const _PremiumIconAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    required this.compact,
+    required this.accent,
+  });
+
+  @override
+  State<_PremiumIconAction> createState() => _PremiumIconActionState();
+}
+
+class _PremiumIconActionState extends State<_PremiumIconAction> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _hovered || _pressed;
+    final size = widget.compact ? 42.0 : 46.0;
+    final iconSize = widget.compact ? 19.0 : 20.0;
+
+    return Tooltip(
+      message: widget.tooltip,
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : (_hovered ? 1.03 : 1),
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() {
+            _hovered = false;
+            _pressed = false;
+          }),
+          child: GestureDetector(
+            onTapDown: (_) => setState(() => _pressed = true),
+            onTapUp: (_) => setState(() => _pressed = false),
+            onTapCancel: () => setState(() => _pressed = false),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(14),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOutCubic,
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface.withValues(alpha: 0.86),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: active
+                          ? widget.accent.withValues(alpha: 0.5)
+                          : AppColors.border.withValues(alpha: 0.78),
+                    ),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: widget.accent.withValues(alpha: 0.14),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    size: iconSize,
+                    color: active
+                        ? widget.accent
+                        : AppColors.textSecondary.withValues(alpha: 0.86),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PosViewModeToggle extends ConsumerWidget {
   const _PosViewModeToggle();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(posProductViewModeProvider);
+    final compact = MediaQuery.sizeOf(context).width <= 520;
     return Container(
-      padding: const EdgeInsets.all(2),
+      height: compact ? 42 : 46,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surface.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.78)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 12,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1630,6 +1943,7 @@ class _PosViewModeToggle extends ConsumerWidget {
             icon: Icons.grid_view_rounded,
             tooltip: 'Card view',
             selected: mode == PosProductViewMode.cards,
+            compact: compact,
             onTap: () => ref.read(posProductViewModeProvider.notifier).state =
                 PosProductViewMode.cards,
           ),
@@ -1637,6 +1951,7 @@ class _PosViewModeToggle extends ConsumerWidget {
             icon: Icons.view_list_rounded,
             tooltip: 'Compact view',
             selected: mode == PosProductViewMode.compact,
+            compact: compact,
             onTap: () => ref.read(posProductViewModeProvider.notifier).state =
                 PosProductViewMode.compact,
           ),
@@ -1650,12 +1965,14 @@ class _PosViewModeButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final bool selected;
+  final bool compact;
   final VoidCallback onTap;
 
   const _PosViewModeButton({
     required this.icon,
     required this.tooltip,
     required this.selected,
+    required this.compact,
     required this.onTap,
   });
 
@@ -1668,16 +1985,30 @@ class _PosViewModeButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          width: 38,
-          height: 38,
+          curve: Curves.easeOutCubic,
+          width: compact ? 34 : 38,
+          height: compact ? 34 : 38,
           decoration: BoxDecoration(
-            color: selected ? AppColors.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            color: selected
+                ? AppColors.primaryLight.withValues(alpha: 0.18)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: AppColors.primaryLight.withValues(alpha: 0.18),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
           child: Icon(
             icon,
-            size: 19,
-            color: selected ? Colors.white : AppColors.textSecondary,
+            size: compact ? 17 : 18,
+            color: selected
+                ? AppColors.primaryLight
+                : AppColors.textSecondary.withValues(alpha: 0.82),
           ),
         ),
       ),

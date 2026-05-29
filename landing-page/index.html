@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Piki POS | Local-First Point of Sale with Seamless Cloud Sync</title>
+    <meta name="description" content="Piki POS is an ultra-fast, local-first retail Point of Sale system. Powered by SQLite for robust offline operation and synced seamlessly to Neon Postgres cloud database.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons for modern aesthetic -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Background Glow Blobs -->
+    <div class="glow-blob blob-1"></div>
+    <div class="glow-blob blob-2"></div>
+    <div class="glow-blob blob-3"></div>
+
+    <!-- Header / Navigation -->
+    <header id="header">
+        <div class="header-container">
+            <a href="#" class="logo">
+                <i class="fa-solid fa-bolt logo-icon"></i>
+                <span>Piki<span>POS</span></span>
+            </a>
+            
+            <nav class="nav-menu" id="navMenu">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#simulator" class="nav-link">Live Terminal</a>
+                <a href="#architecture" class="nav-link">Architecture</a>
+                <a href="#calculator" class="nav-link">Savings Calculator</a>
+                <a href="#faq" class="nav-link">FAQs</a>
+            </nav>
+
+            <div class="header-actions">
+                <a href="#contact" class="btn btn-primary btn-sm">Get Started</a>
+                <button class="mobile-menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero-section" id="hero">
+            <div class="section-container hero-grid">
+                <div class="hero-content">
+                    <div class="badge neon-pulse-badge">
+                        <i class="fa-solid fa-cloud-sun"></i> Local-First Cloud Sync
+                    </div>
+                    <h1>Never Lose a Sale. <br><span class="text-gradient">Even When Offline.</span></h1>
+                    <p class="hero-lead">Piki POS combines the lightning speed and 100% reliability of offline SQLite storage with the real-time sync power of Neon Serverless Postgres. Built for modern retail, pharmacy, and wholesale stores.</p>
+                    
+                    <div class="hero-actions-group">
+                        <a href="#simulator" class="btn btn-primary btn-lg">
+                            <i class="fa-solid fa-circle-play"></i> Try Live Terminal
+                        </a>
+                        <a href="#contact" class="btn btn-secondary btn-lg">
+                            Request Demo <i class="fa-solid fa-arrow-right"></i>
+                        </a>
+                    </div>
+
+                    <div class="hero-features-list">
+                        <div class="h-feature-item">
+                            <i class="fa-solid fa-wifi-slash"></i>
+                            <span>Offline-First (SQLite)</span>
+                        </div>
+                        <div class="h-feature-item">
+                            <i class="fa-solid fa-rotate"></i>
+                            <span>Real-Time Neon Sync</span>
+                        </div>
+                        <div class="h-feature-item">
+                            <i class="fa-solid fa-money-bill-transfer"></i>
+                            <span>Kopesha Credit Tracker</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-visual">
+                    <div class="mockup-wrapper glass-card">
+                        <div class="mockup-header">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                            <span class="mockup-title">Piki POS Dashboard</span>
+                            <span class="status-indicator online" id="heroSyncStatus">
+                                <span class="pulse-ring"></span>
+                                <i class="fa-solid fa-circle"></i> Connected
+                            </span>
+                        </div>
+                        <div class="mockup-body">
+                            <!-- Hero dashboard image generated earlier will load here -->
+                            <img src="assets/hero_dashboard.png" alt="Piki POS Dashboard Mockup" class="mockup-img" onerror="this.src='https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&q=80&w=1200'">
+                            <div class="visual-glow-overlay"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Section -->
+        <section class="stats-section">
+            <div class="section-container stats-grid">
+                <div class="stat-card glass-card">
+                    <h3>0ms</h3>
+                    <p>Checkout Latency</p>
+                </div>
+                <div class="stat-card glass-card">
+                    <h3>100%</h3>
+                    <p>Offline Uptime</p>
+                </div>
+                <div class="stat-card glass-card">
+                    <h3>2.5x</h3>
+                    <p>Faster Shift Audits</p>
+                </div>
+                <div class="stat-card glass-card">
+                    <h3>&lt; 3s</h3>
+                    <p>Cloud Synchronization</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Grid Section -->
+        <section class="features-section" id="features">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge">Robust & Extensible</div>
+                    <h2>Engineered for Enterprise Performance</h2>
+                    <p>Say goodbye to sluggish, cloud-dependent Point of Sale systems that freeze when the internet drops. Piki POS is built local-first, ensuring peak speed and zero downtime.</p>
+                </div>
+
+                <div class="features-grid">
+                    <!-- Feature Card 1 -->
+                    <div class="feature-card glass-card">
+                        <div class="icon-box purple-gradient">
+                            <i class="fa-solid fa-database"></i>
+                        </div>
+                        <h3>Local-First SQLite Engine</h3>
+                        <p>Stores all inventory, customer accounts, and transaction records on the local device storage. Instantly query thousands of barcodes in 0 milliseconds, with zero internet lag.</p>
+                    </div>
+
+                    <!-- Feature Card 2 -->
+                    <div class="feature-card glass-card">
+                        <div class="icon-box cyan-gradient">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <h3>Neon Postgres Cloud Sync</h3>
+                        <p>A background worker transparently syncs local sales, payments, and shifts to the hosted Neon Postgres cloud via Node.js Express. Data safety is guaranteed with auto-sync conflict resolution.</p>
+                    </div>
+
+                    <!-- Feature Card 3 -->
+                    <div class="feature-card glass-card">
+                        <div class="icon-box blue-gradient">
+                            <i class="fa-solid fa-hand-holding-dollar"></i>
+                        </div>
+                        <h3>Kopesha Credit Tracker</h3>
+                        <p>Select customer accounts, issue goods on credit (Kopesha), track outstanding balances, set custom due dates, and manage ledger reconciliations dynamically directly from the sales screen.</p>
+                    </div>
+
+                    <!-- Feature Card 4 -->
+                    <div class="feature-card glass-card">
+                        <div class="icon-box green-gradient">
+                            <i class="fa-solid fa-cash-register"></i>
+                        </div>
+                        <h3>Reconciled Shift Drawer</h3>
+                        <p>Differentiate between physical Cash Drawer, credit bookings (Kopesha), and digital transactions (M-Pesa, Card, Bank). Eliminates auditing discrepancies for employees on shift changes.</p>
+                    </div>
+
+                    <!-- Feature Card 5 -->
+                    <div class="feature-card glass-card">
+                        <div class="icon-box yellow-gradient">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </div>
+                        <h3>Analytics & Multi-Store Dashboard</h3>
+                        <p>Track retail branches, manage global stock distributions, update remote retail item pricing, and see deep sales analysis in real time using the dedicated Admin Web frontend portal.</p>
+                    </div>
+
+                    <!-- Feature Card 6 -->
+                    <div class="feature-card glass-card">
+                        <div class="icon-box red-gradient">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <h3>Automatic Schema Migration</h3>
+                        <p>Runs SQLite-to-Neon migration and backfill scripts seamlessly. Add new payment integrations, customize fields, and reorder checkout pathways in the settings without breaking live registers.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive POS Simulator Section -->
+        <section class="simulator-section" id="simulator">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge highlight-badge">Interactive Experience</div>
+                    <h2>Test Drive Piki POS in Your Browser</h2>
+                    <p>Add items, toggle the internet connection to test offline mode, checkout using multiple payment channels, and witness the cloud databases sync in real-time!</p>
+                </div>
+
+                <div class="simulator-layout glass-card">
+                    <!-- Left Column: POS Selling UI -->
+                    <div class="sim-pos-terminal">
+                        <div class="terminal-header">
+                            <div class="title-area">
+                                <i class="fa-solid fa-cash-register text-cyan"></i>
+                                <span>PikiPOS Cashier v1.2</span>
+                            </div>
+                            <div class="connectivity-control">
+                                <span class="status-label">Network:</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="networkToggle" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                                <span class="connection-badge online" id="terminalNetworkBadge">ONLINE</span>
+                            </div>
+                        </div>
+
+                        <!-- Product Grid -->
+                        <div class="terminal-body">
+                            <div class="products-panel">
+                                <h4>Quick Items</h4>
+                                <div class="products-grid">
+                                    <button class="product-btn" onclick="addToCart('Fresh Bread', 60, 'fa-bread-slice')">
+                                        <i class="fa-solid fa-bread-slice"></i>
+                                        <span class="p-name">Fresh Bread</span>
+                                        <span class="p-price">KES 60</span>
+                                    </button>
+                                    <button class="product-btn" onclick="addToCart('Chilled Milk 1L', 120, 'fa-glass-water')">
+                                        <i class="fa-solid fa-glass-water"></i>
+                                        <span class="p-name">Chilled Milk 1L</span>
+                                        <span class="p-price">KES 120</span>
+                                    </button>
+                                    <button class="product-btn" onclick="addToCart('Fanta Soda 500ml', 80, 'fa-bottle-water')">
+                                        <i class="fa-solid fa-bottle-water"></i>
+                                        <span class="p-name">Fanta Soda 500ml</span>
+                                        <span class="p-price">KES 80</span>
+                                    </button>
+                                    <button class="product-btn" onclick="addToCart('Washing Soap', 150, 'fa-soap')">
+                                        <i class="fa-solid fa-soap"></i>
+                                        <span class="p-name">Washing Soap</span>
+                                        <span class="p-price">KES 150</span>
+                                    </button>
+                                    <button class="product-btn" onclick="addToCart('Cooking Oil 1L', 320, 'fa-oil-can')">
+                                        <i class="fa-solid fa-oil-can"></i>
+                                        <span class="p-name">Cooking Oil 1L</span>
+                                        <span class="p-price">KES 320</span>
+                                    </button>
+                                    <button class="product-btn" onclick="addToCart('Premium Rice 2kg', 280, 'fa-bowl-rice')">
+                                        <i class="fa-solid fa-bowl-rice"></i>
+                                        <span class="p-name">Premium Rice 2kg</span>
+                                        <span class="p-price">KES 280</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Cart and Checkout Panel -->
+                            <div class="cart-panel">
+                                <h4>Checkout Cart</h4>
+                                <div class="cart-items-container" id="cartContainer">
+                                    <div class="empty-cart-message">
+                                        <i class="fa-solid fa-cart-shopping"></i>
+                                        <p>Cart is empty. Click items to add.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="cart-summary">
+                                    <div class="summary-line">
+                                        <span>Subtotal</span>
+                                        <span id="cartSubtotal">KES 0</span>
+                                    </div>
+                                    <div class="summary-line total-line">
+                                        <span>Total Due</span>
+                                        <span id="cartTotal">KES 0</span>
+                                    </div>
+                                </div>
+
+                                <!-- Payment Selector -->
+                                <div class="checkout-actions">
+                                    <div class="payment-methods-title">Select Payment:</div>
+                                    <div class="payment-selector-grid">
+                                        <button class="pay-method-btn active" data-type="cash" onclick="selectPaymentMethod('cash')">
+                                            <i class="fa-solid fa-money-bill-1"></i> Cash
+                                        </button>
+                                        <button class="pay-method-btn" data-type="mpesa" onclick="selectPaymentMethod('mpesa')">
+                                            <i class="fa-solid fa-mobile-screen"></i> M-Pesa
+                                        </button>
+                                        <button class="pay-method-btn kopesha-theme" data-type="kopesha" onclick="selectPaymentMethod('kopesha')">
+                                            <i class="fa-solid fa-user-plus"></i> Pay Kopesha
+                                        </button>
+                                    </div>
+
+                                    <!-- Extra info for Kopesha (Credit) -->
+                                    <div class="kopesha-extra-fields hidden" id="kopeshaFields">
+                                        <div class="input-group">
+                                            <label for="customerSelect">Select Customer:</label>
+                                            <select id="customerSelect" class="form-control">
+                                                <option value="1">Jane Doe (Balance: KES 4,200)</option>
+                                                <option value="2">John Mwangi (Balance: KES 0)</option>
+                                                <option value="3">Fatuma Ali (Balance: KES 1,850)</option>
+                                            </select>
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="creditDueDate">Due Date:</label>
+                                            <input type="date" id="creditDueDate" class="form-control" value="2026-06-28">
+                                        </div>
+                                    </div>
+
+                                    <button class="btn btn-success btn-block" onclick="processCheckout()" id="checkoutBtn">
+                                        <i class="fa-solid fa-receipt"></i> Process Checkout
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Simulated Cloud Logs & Local DB Status -->
+                    <div class="sim-monitor-terminal">
+                        <div class="terminal-header">
+                            <div class="title-area">
+                                <i class="fa-solid fa-microchip text-purple"></i>
+                                <span>Local SQLite & Neon Database Monitor</span>
+                            </div>
+                        </div>
+                        
+                        <div class="monitor-body">
+                            <div class="db-status-section">
+                                <div class="db-indicator">
+                                    <div class="db-header">
+                                        <i class="fa-solid fa-database text-blue"></i>
+                                        <span>Local SQLite (Offline DB)</span>
+                                    </div>
+                                    <div class="db-value" id="sqliteTxCount">0 Transactions</div>
+                                    <span class="badge badge-success">ONLINE READY</span>
+                                </div>
+                                <div class="db-indicator">
+                                    <div class="db-header">
+                                        <i class="fa-solid fa-cloud text-purple"></i>
+                                        <span>Neon Postgres (Cloud DB)</span>
+                                    </div>
+                                    <div class="db-value" id="neonTxCount">0 Transactions</div>
+                                    <span class="badge" id="neonCloudStatus">SYNCED</span>
+                                </div>
+                            </div>
+
+                            <div class="console-title">Live Sync Logs:</div>
+                            <div class="console-logs" id="consoleLogs">
+                                <div class="log-line system">[SYSTEM] Piki POS initialized successfully.</div>
+                                <div class="log-line system">[SYSTEM] Local SQLite connection active.</div>
+                                <div class="log-line system">[SYSTEM] Neon cloud synchronization service started.</div>
+                            </div>
+
+                            <!-- Receipt Preview -->
+                            <div class="receipt-preview-container hidden" id="receiptPreview">
+                                <div class="receipt">
+                                    <div class="receipt-header">
+                                        <h4>PIKI POS RETAIL SHOP</h4>
+                                        <p>Receipt #<span id="rNum">1002</span></p>
+                                        <p id="rDate">2026-05-28 22:24</p>
+                                    </div>
+                                    <hr class="receipt-divider">
+                                    <div class="receipt-items" id="receiptItems">
+                                        <!-- Dynamic receipt items -->
+                                    </div>
+                                    <hr class="receipt-divider">
+                                    <div class="receipt-total">
+                                        <span>TOTAL</span>
+                                        <span id="receiptTotalVal">KES 0</span>
+                                    </div>
+                                    <div class="receipt-payment-info" id="receiptPaymentType">
+                                        Payment Method: CASH
+                                    </div>
+                                    <div class="receipt-kopesha-info hidden" id="receiptKopeshaDetail">
+                                        Customer: Jane Doe<br>
+                                        Due Date: 2026-06-28
+                                    </div>
+                                    <div class="receipt-footer">
+                                        <div class="barcode">|||| | ||| |||| | |</div>
+                                        <p>Thank you for shopping with us!</p>
+                                        <p class="receipt-status-badge offline" id="receiptStatusText">OFFLINE RECORDED</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Technical Architecture Diagram Section -->
+        <section class="architecture-section" id="architecture">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge">Under the Hood</div>
+                    <h2>The Hybrid Synchronization Engine</h2>
+                    <p>Learn how our local-first state stays in 100% transactional consistency with our serverless Postgres databases in the cloud.</p>
+                </div>
+
+                <div class="architecture-layout glass-card">
+                    <div class="arch-step">
+                        <div class="step-icon">
+                            <i class="fa-solid fa-mobile-screen-button"></i>
+                        </div>
+                        <h4>1. Speed & Offline Uptime</h4>
+                        <p>The Flutter application records sales, shifts, and inventory directly into a local <strong>SQLite</strong> database inside the device. Transactions execute instantly with zero network round trips.</p>
+                    </div>
+                    
+                    <div class="arch-connector">
+                        <i class="fa-solid fa-arrows-left-right-to-line"></i>
+                    </div>
+
+                    <div class="arch-step">
+                        <div class="step-icon">
+                            <i class="fa-solid fa-server"></i>
+                        </div>
+                        <h4>2. Background Syncer</h4>
+                        <p>A Node.js & Express API acts as the bridge. A background thread polls for changes and transmits encrypted transaction payloads using a safe sequential cursor tracking mechanism.</p>
+                    </div>
+
+                    <div class="arch-connector">
+                        <i class="fa-solid fa-arrows-left-right-to-line"></i>
+                    </div>
+
+                    <div class="arch-step">
+                        <div class="step-icon text-cyan">
+                            <i class="fa-solid fa-cloud-bolt"></i>
+                        </div>
+                        <h4>3. Neon Postgres Storage</h4>
+                        <p>Cloud records are safely committed to <strong>Neon PostgreSQL</strong>. Built-in indexes and horizontal scaling support multi-store real-time analytics, instant stock alerts, and global operations.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Savings Calculator Section -->
+        <section class="calculator-section" id="calculator">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge highlight-badge">Business ROI</div>
+                    <h2>Calculate Your Piki POS Savings</h2>
+                    <p>Compare the cost-effective model of Piki POS with high-commission POS competitors. Adjust the sliders to see your calculated monthly and yearly savings.</p>
+                </div>
+
+                <div class="calculator-grid">
+                    <div class="calc-inputs glass-card">
+                        <h3>Your Business Volume</h3>
+                        <div class="range-group">
+                            <div class="range-header">
+                                <label for="monthlySales">Monthly Sales Volume:</label>
+                                <span class="range-value" id="salesVal">KES 500,000</span>
+                            </div>
+                            <input type="range" id="monthlySales" min="100000" max="5000000" step="50000" value="500000">
+                        </div>
+
+                        <div class="range-group">
+                            <div class="range-header">
+                                <label for="cardTxShare">Digital Payment Share (M-Pesa/Card):</label>
+                                <span class="range-value" id="cardShareVal">60%</span>
+                            </div>
+                            <input type="range" id="cardTxShare" min="10" max="100" step="5" value="60">
+                        </div>
+
+                        <div class="range-group">
+                            <div class="range-header">
+                                <label for="competitorFee">Legacy Competitor Commission Fee:</label>
+                                <span class="range-value" id="competitorFeeVal">2.5%</span>
+                            </div>
+                            <input type="range" id="competitorFee" min="1.0" max="4.0" step="0.1" value="2.5">
+                        </div>
+                    </div>
+
+                    <div class="calc-outputs glass-card purple-glow">
+                        <h3>Your Calculated Savings</h3>
+                        <div class="savings-container">
+                            <div class="saving-item">
+                                <span>Monthly Savings</span>
+                                <span class="savings-num text-gradient" id="monthlySavingsVal">KES 6,500</span>
+                            </div>
+                            <div class="saving-item">
+                                <span>Yearly Extra Capital</span>
+                                <span class="savings-num accent-cyan-text" id="yearlySavingsVal">KES 78,000</span>
+                            </div>
+                        </div>
+                        <div class="savings-cta">
+                            <p>Piki POS charge <strong>0% transaction fees</strong>. You only pay a flat licensing tier matching your business requirements.</p>
+                            <a href="#contact" class="btn btn-primary btn-block">Claim Your Free License</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testimonial Slider Section -->
+        <section class="testimonials-section">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge">Merchant Stories</div>
+                    <h2>Trusted by Retail Retailers Globally</h2>
+                </div>
+
+                <div class="testimonial-slider-container">
+                    <div class="testimonial-slider" id="testimonialSlider">
+                        <!-- Slide 1 -->
+                        <div class="testimonial-slide active">
+                            <div class="stars">
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                            </div>
+                            <p class="quote">"In Nairobi, power cuts and local fiber line cuts occur regularly. Other POS systems would shut down completely, bringing our sales to a halt. With Piki POS, we check out milk and soap offline instantly. Once networks restore, SQLite pushes data to our Neon Postgres cloud backend in under 3 seconds! Sensational design."</p>
+                            <div class="author-details">
+                                <div class="author-avatar"><i class="fa-solid fa-store"></i></div>
+                                <div>
+                                    <h5>David Kamau</h5>
+                                    <p>Owner, Kamau Supermarket</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Slide 2 -->
+                        <div class="testimonial-slide">
+                            <div class="stars">
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-star"></i>
+                            </div>
+                            <p class="quote">"The Kopesha payment credit drawer is exactly what we needed. A significant share of our repeat customers take stock on credit and settle later. Tracking customer debts in physical ledgers led to continuous mathematical errors. Piki POS handles credit balances dynamically and alerts us when due dates elapse!"</p>
+                            <div class="author-details">
+                                <div class="author-avatar"><i class="fa-solid fa-prescription-bottle-medical"></i></div>
+                                <div>
+                                    <h5>Amina Mohammed</h5>
+                                    <p>Director, Highridge Pharmacy</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="slider-controls">
+                        <button class="slider-arrow btn-prev" onclick="prevSlide()"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button class="slider-arrow btn-next" onclick="nextSlide()"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ Section -->
+        <section class="faq-section" id="faq">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge">Frequently Asked Questions</div>
+                    <h2>Frequently Asked Questions</h2>
+                    <p>Have questions about Piki POS architecture, offline caching, and data migrations? Read on.</p>
+                </div>
+
+                <div class="faq-accordion-list">
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="toggleFaq(this)">
+                            <span>How does local-first database cache state without conflicts?</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>Piki POS implements localized UUID generators instead of serial incremental keys. When a sale is processed offline, it is written as a secure local transaction row in SQLite with a sync status flagged as 'pending'. When the client transitions online, a secure incremental cursor sends batches to the Express Node.js API, where updates are reconciled based on the latest <code>updated_at</code> server timestamp.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="toggleFaq(this)">
+                            <span>What happens to the physical cash drawer balances during a shift?</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>Our payment system uses flag-based sorting: Cash sales are tagged with <code>is_cash_drawer = 1</code>, while credit sales (Kopesha) and online banking (M-Pesa, card) are tagged with <code>is_cash_drawer = 0</code>. During shift handovers, the cash register reports exactly the expected physical cash drawer volume separate from online/ledger transactions, minimizing reconciliation overhead.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="toggleFaq(this)">
+                            <span>Is Neon Serverless Postgres secure and durable?</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>Yes. Neon is an enterprise cloud serverless PostgreSQL architecture. The database splits storage and compute. Your store transactions are safely replicated across redundant storage nodes, guaranteeing instant failover protection, automatic cloud backups, and seamless scalability to handle millions of invoices.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="toggleFaq(this)">
+                            <span>Can we define custom digital payment methods?</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>Absolutely. The settings panel in Piki POS provides full administration over payment configurations. You can deactivate cash features, activate local credit methods, or integrate custom digital gateways. New payment configurations automatically sync across your sales registers instantly.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact Section / Lead Capture -->
+        <section class="contact-section" id="contact">
+            <div class="section-container contact-grid">
+                <div class="contact-info">
+                    <h2>Upgrade Your Store with Piki POS Today</h2>
+                    <p>Start managing your store with offline reliability, automated credit systems, and effortless Neon cloud data synchronization. Register below to request your demo license credentials.</p>
+                    
+                    <div class="contact-contact-methods">
+                        <div class="c-method">
+                            <i class="fa-solid fa-envelope"></i>
+                            <span>support@pikipos.com</span>
+                        </div>
+                        <div class="c-method">
+                            <i class="fa-solid fa-phone"></i>
+                            <span>+254 700 000 000</span>
+                        </div>
+                        <div class="c-method">
+                            <i class="fa-solid fa-location-dot"></i>
+                            <span>Nairobi, Kenya</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="contact-card-form glass-card">
+                    <h3>Get in Touch</h3>
+                    <form id="contactForm" onsubmit="handleFormSubmit(event)">
+                        <div class="form-group">
+                            <label for="contactName">Full Name</label>
+                            <input type="text" id="contactName" class="form-control" placeholder="Enter your name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="contactEmail">Email Address</label>
+                            <input type="email" id="contactEmail" class="form-control" placeholder="name@company.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="storeType">Store Type</label>
+                            <select id="storeType" class="form-control">
+                                <option value="retail">Supermarket / Retail Store</option>
+                                <option value="pharmacy">Pharmacy / Chemist</option>
+                                <option value="wholesale">Wholesale Warehouse</option>
+                                <option value="other">Other Business</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="contactMessage">Additional Notes</label>
+                            <textarea id="contactMessage" rows="3" class="form-control" placeholder="Tell us about your store..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            Send Request <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </form>
+                    <div class="form-success-message hidden" id="formSuccess">
+                        <i class="fa-solid fa-circle-check text-success"></i>
+                        <h4>Request Sent Successfully!</h4>
+                        <p>Our sales engineer will reach out to you within 2 hours with license credentials.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="section-container footer-grid">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <i class="fa-solid fa-bolt logo-icon"></i>
+                    <span>Piki<span>POS</span></span>
+                </a>
+                <p>High-performance point of sale systems combining local-first speed with modern serverless cloud databases.</p>
+                <div class="social-links">
+                    <a href="#"><i class="fa-brands fa-github"></i></a>
+                    <a href="#"><i class="fa-brands fa-twitter"></i></a>
+                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                </div>
+            </div>
+
+            <div class="footer-links">
+                <h4>Product</h4>
+                <a href="#features">Features</a>
+                <a href="#simulator">Live Terminal</a>
+                <a href="#calculator">Savings Calculator</a>
+                <a href="#architecture">Architecture</a>
+            </div>
+
+            <div class="footer-links">
+                <h4>Integrations</h4>
+                <a href="#">SQLite Storage</a>
+                <a href="#">Neon Database</a>
+                <a href="#">M-Pesa API</a>
+                <a href="#">Node.js Express</a>
+            </div>
+
+            <div class="footer-links">
+                <h4>Company</h4>
+                <a href="#">About Us</a>
+                <a href="#">Security</a>
+                <a href="#">Terms of Service</a>
+                <a href="#contact">Contact</a>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <div class="section-container">
+                <p>&copy; 2026 Piki POS Systems Ltd. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Main JavaScript Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
