@@ -2551,6 +2551,55 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
   }
 });
 
+app.get('/api/catalog/orders', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const status = normalizeCatalogOrderStatus(req.query?.status, {
+      allowAll: true,
+      fallback: 'pending',
+    });
+    const orders = await listPublicCatalogOrders(businessContext.businessId, {
+      status,
+    });
+    res.json({ ok: true, data: orders });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/orders/:orderId/status', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const orderId = normalizeOptionalText(req.params.orderId);
+    const status = normalizeCatalogOrderStatus(req.body?.status);
+    if (!orderId) {
+      throw createHttpError(400, 'Order id is required');
+    }
+    const order = await updatePublicCatalogOrderStatus({
+      businessId: businessContext.businessId,
+      orderId,
+      status,
+    });
+    res.json({ ok: true, data: order });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/public/catalog/:businessId/orders', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.params.businessId);
+    if (!businessId) {
+      throw createHttpError(400, 'Business catalog link is invalid');
+    }
+
+    const order = await createPublicCatalogOrder(businessId, req.body || {});
+    res.status(201).json({ ok: true, data: order });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/catalog/:businessId', async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.params.businessId);
@@ -3726,6 +3775,393 @@ async function loadPublicCatalog(businessId) {
   };
 }
 
+async function createPublicCatalogOrder(businessId, payload) {
+  await ensurePublicCatalogOrderSchema(query);
+
+  const customerName = normalizeOptionalText(payload.customerName || payload.customer_name);
+  const phone = normalizeOptionalText(payload.phone || payload.phoneNumber || payload.phone_number);
+  const deliveryAddress = normalizeOptionalText(payload.deliveryAddress || payload.delivery_address);
+  const note = normalizeOptionalText(payload.note);
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+
+  if (!customerName) {
+    throw createHttpError(400, 'Customer name is required');
+  }
+  if (!phone) {
+    throw createHttpError(400, 'Phone number is required');
+  }
+  if (rawItems.length === 0) {
+    throw createHttpError(400, 'Add at least one item to the order');
+  }
+  if (rawItems.length > 100) {
+    throw createHttpError(400, 'Order has too many items');
+  }
+
+  const businessResult = await query(
+    'SELECT id, name FROM businesses WHERE id = $1 LIMIT 1',
+    [businessId],
+  );
+  const business = businessResult.rows[0];
+  if (!business) {
+    throw createHttpError(404, 'Catalog not found');
+  }
+
+  const preparedItems = [];
+  for (const rawItem of rawItems) {
+    const productId = normalizeOptionalText(rawItem?.productId || rawItem?.product_id);
+    const variantId = normalizeOptionalText(rawItem?.variantId || rawItem?.variant_id);
+    const quantity = Number(rawItem?.quantity);
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
+      throw createHttpError(400, 'Each order item needs a product and quantity');
+    }
+    if (quantity > 9999) {
+      throw createHttpError(400, 'Order quantity is too high');
+    }
+
+    const item = await resolvePublicCatalogOrderItem({
+      businessId,
+      productId,
+      variantId,
+      quantity,
+    });
+    preparedItems.push(item);
+  }
+
+  const subtotal = preparedItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const orderId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const itemCount = preparedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  await withTransaction(async (client) => {
+    await ensurePublicCatalogOrderSchema(client);
+    await client.query(
+      `
+      INSERT INTO public_catalog_orders (
+        id,
+        business_id,
+        customer_name,
+        phone,
+        delivery_address,
+        note,
+        status,
+        subtotal,
+        item_count,
+        source,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, 'catalog_link', $9, $10)
+      `,
+      [
+        orderId,
+        businessId,
+        customerName,
+        phone,
+        deliveryAddress,
+        note,
+        subtotal,
+        itemCount,
+        now,
+        now,
+      ],
+    );
+
+    for (const item of preparedItems) {
+      await client.query(
+        `
+        INSERT INTO public_catalog_order_items (
+          id,
+          order_id,
+          business_id,
+          product_id,
+          variant_id,
+          product_name,
+          variant_name,
+          quantity,
+          unit_price,
+          line_total,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `,
+        [
+          crypto.randomUUID(),
+          orderId,
+          businessId,
+          item.productId,
+          item.variantId,
+          item.productName,
+          item.variantName,
+          item.quantity,
+          item.unitPrice,
+          item.lineTotal,
+          now,
+        ],
+      );
+    }
+  });
+
+  return {
+    id: orderId,
+    orderNumber: shortOrderNumber(orderId),
+    businessName: business.name,
+    customerName,
+    phone,
+    deliveryAddress,
+    note,
+    status: 'pending',
+    subtotal,
+    itemCount,
+    items: preparedItems.map((item) => ({
+      productId: item.productId,
+      variantId: item.variantId,
+      productName: item.productName,
+      variantName: item.variantName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      lineTotal: item.lineTotal,
+    })),
+    createdAt: now,
+  };
+}
+
+async function listPublicCatalogOrders(businessId, { status = 'pending' } = {}) {
+  await ensurePublicCatalogOrderSchema(query);
+
+  const params = [businessId];
+  const where = ['business_id = $1'];
+  if (status && status !== 'all') {
+    params.push(status);
+    where.push(`status = $${params.length}`);
+  }
+
+  const ordersResult = await query(
+    `
+    SELECT *
+    FROM public_catalog_orders
+    WHERE ${where.join(' AND ')}
+    ORDER BY created_at DESC
+    LIMIT 200
+    `,
+    params,
+  );
+  return attachPublicCatalogOrderItems(ordersResult.rows);
+}
+
+async function updatePublicCatalogOrderStatus({ businessId, orderId, status }) {
+  await ensurePublicCatalogOrderSchema(query);
+  const result = await query(
+    `
+    UPDATE public_catalog_orders
+    SET status = $3,
+        updated_at = NOW()
+    WHERE business_id = $1
+      AND id = $2
+    RETURNING *
+    `,
+    [businessId, orderId, status],
+  );
+  if (result.rows.length === 0) {
+    throw createHttpError(404, 'Catalog order not found');
+  }
+  const orders = await attachPublicCatalogOrderItems(result.rows);
+  return orders[0];
+}
+
+async function attachPublicCatalogOrderItems(orderRows) {
+  if (!orderRows.length) {
+    return [];
+  }
+
+  const orderIds = orderRows.map((row) => row.id);
+  const itemsResult = await query(
+    `
+    SELECT *
+    FROM public_catalog_order_items
+    WHERE order_id = ANY($1::text[])
+    ORDER BY created_at ASC, id ASC
+    `,
+    [orderIds],
+  );
+  const itemsByOrder = new Map();
+  for (const item of itemsResult.rows) {
+    const list = itemsByOrder.get(item.order_id) || [];
+    list.push(normalizePublicCatalogOrderItem(item));
+    itemsByOrder.set(item.order_id, list);
+  }
+
+  return orderRows.map((row) => normalizePublicCatalogOrder(row, itemsByOrder.get(row.id) || []));
+}
+
+function normalizePublicCatalogOrder(row, items) {
+  return {
+    id: row.id,
+    orderNumber: shortOrderNumber(row.id),
+    customerName: row.customer_name,
+    phone: row.phone,
+    deliveryAddress: row.delivery_address || '',
+    note: row.note || '',
+    status: row.status,
+    subtotal: Number(row.subtotal || 0),
+    itemCount: Number(row.item_count || 0),
+    source: row.source || 'catalog_link',
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+    items,
+  };
+}
+
+function normalizePublicCatalogOrderItem(row) {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    variantId: row.variant_id,
+    productName: row.product_name,
+    variantName: row.variant_name || '',
+    quantity: Number(row.quantity || 0),
+    unitPrice: Number(row.unit_price || 0),
+    lineTotal: Number(row.line_total || 0),
+    createdAt: toIsoString(row.created_at),
+  };
+}
+
+function normalizeCatalogOrderStatus(value, { allowAll = false, fallback = null } = {}) {
+  const status = normalizeOptionalText(value);
+  if (!status && fallback) {
+    return fallback;
+  }
+  const clean = String(status || '').toLowerCase();
+  const allowed = ['pending', 'accepted', 'completed', 'cancelled'];
+  if (allowAll && clean === 'all') {
+    return 'all';
+  }
+  if (allowed.includes(clean)) {
+    return clean;
+  }
+  throw createHttpError(400, 'Invalid catalog order status');
+}
+
+async function resolvePublicCatalogOrderItem({
+  businessId,
+  productId,
+  variantId,
+  quantity,
+}) {
+  const result = await query(
+    `
+    SELECT
+      p.id AS product_id,
+      p.name AS product_name,
+      p.price AS product_price,
+      p.track_stock,
+      p.stock AS product_stock,
+      pv.id AS variant_id,
+      pv.name AS variant_name,
+      pv.price AS variant_price,
+      pv.stock AS variant_stock
+    FROM products p
+    LEFT JOIN product_variants pv
+      ON pv.product_id = p.id
+     AND pv.business_id = p.business_id
+     AND pv.deleted_at IS NULL
+     AND ($3::text IS NOT NULL AND pv.id = $3)
+    WHERE p.business_id = $1
+      AND p.id = $2
+      AND p.deleted_at IS NULL
+    LIMIT 1
+    `,
+    [businessId, productId, variantId],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw createHttpError(400, 'One of the selected products is no longer available');
+  }
+  if (variantId && !row.variant_id) {
+    throw createHttpError(400, 'One of the selected product options is no longer available');
+  }
+
+  const trackStock = Number(row.track_stock ?? 1) !== 0;
+  const stock = variantId
+    ? Number(row.variant_stock || 0)
+    : Number(row.product_stock || 0);
+  if (trackStock && stock <= 0) {
+    throw createHttpError(400, `${row.product_name} is not available right now`);
+  }
+  if (trackStock && quantity > stock) {
+    throw createHttpError(
+      400,
+      `Only ${stock} ${row.product_name} available right now`,
+    );
+  }
+
+  const unitPrice = Number(variantId ? row.variant_price : row.product_price) || 0;
+  const cleanQuantity = Math.round(quantity * 1000) / 1000;
+  return {
+    productId: row.product_id,
+    variantId: row.variant_id || null,
+    productName: String(row.product_name || '').trim(),
+    variantName: row.variant_name ? String(row.variant_name).trim() : null,
+    quantity: cleanQuantity,
+    unitPrice,
+    lineTotal: Math.round(cleanQuantity * unitPrice * 100) / 100,
+  };
+}
+
+async function ensurePublicCatalogOrderSchema(target = query) {
+  await runDbQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS public_catalog_orders (
+      id text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      customer_name text NOT NULL,
+      phone text NOT NULL,
+      delivery_address text,
+      note text,
+      status text NOT NULL DEFAULT 'pending',
+      subtotal double precision NOT NULL DEFAULT 0,
+      item_count double precision NOT NULL DEFAULT 0,
+      source text NOT NULL DEFAULT 'catalog_link',
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+  await runDbQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS public_catalog_order_items (
+      id text PRIMARY KEY,
+      order_id text NOT NULL REFERENCES public_catalog_orders(id) ON DELETE CASCADE,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      product_id text NOT NULL,
+      variant_id text,
+      product_name text NOT NULL,
+      variant_name text,
+      quantity double precision NOT NULL DEFAULT 1,
+      unit_price double precision NOT NULL DEFAULT 0,
+      line_total double precision NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
+     ON public_catalog_orders(business_id, status, created_at DESC)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
+     ON public_catalog_order_items(order_id)`,
+  );
+}
+
+function shortOrderNumber(orderId) {
+  const clean = String(orderId || '').replace(/-/g, '').toUpperCase();
+  return clean ? clean.slice(0, 8) : 'ORDER';
+}
+
 function normalizePublicCatalogProduct(row) {
   const trackStock = Number(row.track_stock ?? 1) !== 0;
   const variants = Array.isArray(row.variants)
@@ -3764,11 +4200,6 @@ function renderPublicCatalogPage(catalog) {
   const productCount = catalog.products.length;
   const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
   const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
-  const contactHref = whatsappNumber
-    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(
-        `Hello ${businessName}, I saw your catalog and would like to order.`,
-      )}`
-    : '';
   const updated = catalog.updatedAt
     ? new Date(catalog.updatedAt).toLocaleDateString('en', {
         year: 'numeric',
@@ -3797,11 +4228,13 @@ function renderPublicCatalogPage(catalog) {
       --primary: #ec2257;
       --primary-dark: #ba1641;
       --success: #087f5b;
+      --danger: #c92a2a;
       --shadow: 0 16px 40px rgba(23, 21, 31, 0.09);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
+      padding-bottom: 92px;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--ink);
@@ -3869,6 +4302,12 @@ function renderPublicCatalogPage(catalog) {
       display: flex;
       flex-direction: column;
       min-height: 100%;
+      cursor: pointer;
+      transition: border-color 160ms ease, transform 160ms ease;
+    }
+    .card:hover {
+      border-color: rgba(236, 34, 87, 0.42);
+      transform: translateY(-1px);
     }
     .photo {
       aspect-ratio: 4 / 3;
@@ -3924,18 +4363,50 @@ function renderPublicCatalogPage(catalog) {
       font-weight: 700;
       white-space: nowrap;
     }
+    .order-actions {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .variant-select {
+      min-width: 0;
+      padding: 9px 10px;
+      font-size: 13px;
+    }
+    .add-button,
+    .cart-toggle,
+    .submit-order,
+    .whatsapp-order {
+      border: 0;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+      border-radius: 8px;
+    }
+    .add-button {
+      background: var(--ink);
+      color: white;
+      padding: 10px 12px;
+      white-space: nowrap;
+    }
+    .add-button:disabled,
+    .submit-order:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
     .empty {
       padding: 56px 0;
       color: var(--muted);
       text-align: center;
       display: none;
     }
-    .contact {
+    .cart-toggle {
       position: fixed;
       right: 18px;
       bottom: 18px;
       z-index: 5;
-      display: ${contactHref ? 'inline-flex' : 'none'};
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       min-height: 48px;
@@ -3946,6 +4417,135 @@ function renderPublicCatalogPage(catalog) {
       text-decoration: none;
       font-weight: 800;
       box-shadow: 0 12px 28px rgba(236, 34, 87, 0.3);
+    }
+    .cart-panel {
+      position: fixed;
+      right: 18px;
+      bottom: 82px;
+      z-index: 6;
+      width: min(420px, calc(100vw - 32px));
+      max-height: min(680px, calc(100vh - 118px));
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      display: none;
+    }
+    .cart-panel.open {
+      display: block;
+    }
+    .cart-head,
+    .cart-foot {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .cart-foot {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      font-weight: 800;
+    }
+    .cart-head h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .icon-button {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font: inherit;
+      color: var(--muted);
+      padding: 6px;
+    }
+    .cart-lines,
+    .order-form {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .cart-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 84px 28px;
+      gap: 8px;
+      align-items: center;
+    }
+    .cart-line strong,
+    .cart-line span {
+      overflow-wrap: anywhere;
+    }
+    .cart-line small {
+      color: var(--muted);
+    }
+    .qty-input {
+      padding: 8px 9px;
+    }
+    .remove-button {
+      border: 0;
+      background: transparent;
+      color: var(--danger);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .order-form label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .order-form textarea {
+      width: 100%;
+      min-height: 74px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font: inherit;
+      color: var(--ink);
+    }
+    .submit-order {
+      width: 100%;
+      min-height: 46px;
+      background: var(--primary);
+      color: white;
+    }
+    .whatsapp-order {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      background: #25d366;
+      color: #092113;
+      text-decoration: none;
+    }
+    .notice {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .success {
+      display: none;
+      margin: 0 14px 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(8, 127, 91, 0.1);
+      color: var(--success);
+      font-weight: 700;
+      line-height: 1.4;
+    }
+    .error {
+      display: none;
+      margin: 0 14px 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(201, 42, 42, 0.1);
+      color: var(--danger);
+      font-weight: 700;
+      line-height: 1.4;
     }
     footer {
       border-top: 1px solid var(--line);
@@ -3967,6 +4567,11 @@ function renderPublicCatalogPage(catalog) {
         gap: 12px;
       }
       .body { padding: 12px; }
+      .cart-panel {
+        right: 16px;
+        left: 16px;
+        width: auto;
+      }
     }
   </style>
 </head>
@@ -3975,7 +4580,7 @@ function renderPublicCatalogPage(catalog) {
     <div class="wrap hero">
       <div class="store">
         <h1>${escapeHtml(businessName)}</h1>
-        <p class="meta">${productCount} product${productCount === 1 ? '' : 's'}${updated ? ` · Updated ${escapeHtml(updated)}` : ''}</p>
+        <p class="meta">${productCount} product${productCount === 1 ? '' : 's'}${updated ? ` - Updated ${escapeHtml(updated)}` : ''}</p>
       </div>
       <div class="toolbar">
         <input id="search" type="search" placeholder="Search products" autocomplete="off" />
@@ -3992,17 +4597,63 @@ function renderPublicCatalogPage(catalog) {
     <section id="grid" class="grid"></section>
     <p id="empty" class="empty">No products match your search.</p>
   </main>
-  <a class="contact" href="${escapeHtml(contactHref)}" target="_blank" rel="noopener">Order on WhatsApp</a>
+  <aside id="cart-panel" class="cart-panel" aria-label="Order cart">
+    <div class="cart-head">
+      <h2>Your order</h2>
+      <button id="close-cart" class="icon-button" type="button" aria-label="Close cart">Close</button>
+    </div>
+    <div id="cart-lines" class="cart-lines"></div>
+    <div class="cart-foot">
+      <span>Total</span>
+      <span id="cart-total">KES 0.00</span>
+    </div>
+    <form id="order-form" class="order-form">
+      <label>
+        Name
+        <input id="customer-name" name="customerName" required maxlength="120" autocomplete="name" />
+      </label>
+      <label>
+        Phone number
+        <input id="customer-phone" name="phone" required maxlength="40" autocomplete="tel" />
+      </label>
+      <label>
+        Delivery address or pickup note
+        <input id="delivery-address" name="deliveryAddress" maxlength="240" autocomplete="street-address" />
+      </label>
+      <label>
+        Extra note
+        <textarea id="order-note" name="note" maxlength="500"></textarea>
+      </label>
+      <p class="notice">Submit your order and the shop will confirm availability and payment.</p>
+      <button id="submit-order" class="submit-order" type="submit">Submit Order</button>
+      <a id="whatsapp-order" class="whatsapp-order" target="_blank" rel="noopener">Send order on WhatsApp</a>
+    </form>
+    <p id="order-success" class="success"></p>
+    <p id="order-error" class="error"></p>
+  </aside>
+  <button id="cart-toggle" class="cart-toggle" type="button">Order (0)</button>
   <footer>
     <div class="wrap">Powered by Piki POS</div>
   </footer>
   <script id="catalog-data" type="application/json">${safeCatalogJson}</script>
   <script>
     const catalog = JSON.parse(document.getElementById('catalog-data').textContent);
+    const shopWhatsApp = '${escapeHtml(whatsappNumber)}';
+    const cart = new Map();
     const grid = document.getElementById('grid');
     const empty = document.getElementById('empty');
     const search = document.getElementById('search');
     const category = document.getElementById('category');
+    const cartPanel = document.getElementById('cart-panel');
+    const cartToggle = document.getElementById('cart-toggle');
+    const closeCart = document.getElementById('close-cart');
+    const cartLines = document.getElementById('cart-lines');
+    const cartTotal = document.getElementById('cart-total');
+    const orderForm = document.getElementById('order-form');
+    const submitOrder = document.getElementById('submit-order');
+    const successBox = document.getElementById('order-success');
+    const errorBox = document.getElementById('order-error');
+    const whatsappOrder = document.getElementById('whatsapp-order');
     const formatter = new Intl.NumberFormat('en', {
       style: 'currency',
       currency: catalog.currency || 'KES',
@@ -4017,6 +4668,76 @@ function renderPublicCatalogPage(catalog) {
         '"': '&quot;',
         "'": '&#39;',
       })[char]);
+    }
+
+    function productById(id) {
+      return catalog.products.find((product) => product.id === id);
+    }
+
+    function variantById(product, id) {
+      return (product.variants || []).find((variant) => variant.id === id) || null;
+    }
+
+    function cartKey(productId, variantId) {
+      return productId + ':' + (variantId || '');
+    }
+
+    function optionLabel(product, variant) {
+      return variant ? product.name + ' - ' + variant.name : product.name;
+    }
+
+    function optionPrice(product, variant) {
+      return Number((variant ? variant.price : product.price) || 0);
+    }
+
+    function cartTotalValue() {
+      let total = 0;
+      for (const item of cart.values()) {
+        total += item.quantity * optionPrice(item.product, item.variant);
+      }
+      return Math.round(total * 100) / 100;
+    }
+
+    function renderCart() {
+      const items = Array.from(cart.values());
+      const count = items.reduce((sum, item) => sum + item.quantity, 0);
+      cartToggle.textContent = 'Order (' + count + ')';
+      cartTotal.textContent = formatter.format(cartTotalValue());
+      submitOrder.disabled = items.length === 0;
+
+      if (!items.length) {
+        cartLines.innerHTML = '<p class="notice">Your order is empty. Add products from the catalog.</p>';
+        return;
+      }
+
+      cartLines.innerHTML = items.map((item) => {
+        const key = cartKey(item.product.id, item.variant ? item.variant.id : '');
+        const price = optionPrice(item.product, item.variant);
+        return '<div class="cart-line">' +
+          '<span><strong>' + escapeText(optionLabel(item.product, item.variant)) + '</strong><br><small>' + formatter.format(price) + ' each</small></span>' +
+          '<input class="qty-input" data-cart-key="' + escapeText(key) + '" type="number" min="1" step="1" value="' + item.quantity + '" aria-label="Quantity" />' +
+          '<button class="remove-button" data-remove-key="' + escapeText(key) + '" type="button" aria-label="Remove item">x</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    function addToCart(productId, variantId) {
+      const product = productById(productId);
+      if (!product) return;
+      const variant = variantId ? variantById(product, variantId) : null;
+      if (variantId && !variant) return;
+      const key = cartKey(product.id, variant ? variant.id : '');
+      const existing = cart.get(key);
+      cart.set(key, {
+        product,
+        variant,
+        quantity: existing ? existing.quantity + 1 : 1,
+      });
+      successBox.style.display = 'none';
+      errorBox.style.display = 'none';
+      whatsappOrder.style.display = 'none';
+      cartPanel.classList.add('open');
+      renderCart();
     }
 
     function productMatches(product, q, cat) {
@@ -4041,7 +4762,20 @@ function renderPublicCatalogPage(catalog) {
                 : name;
             }).join(', ') + '</div>'
           : '';
-        return '<article class="card">' +
+        const variantSelect = product.variants && product.variants.length
+          ? '<select class="variant-select" data-variant-for="' + escapeText(product.id) + '">' +
+              product.variants.map((variant) => {
+                const variantPrice = Number(variant.price || 0);
+                const label = variantPrice && variantPrice !== Number(product.price || 0)
+                  ? variant.name + ' - ' + formatter.format(variantPrice)
+                  : variant.name;
+                const unavailableLabel = variant.available ? '' : ' (unavailable)';
+                return '<option value="' + escapeText(variant.id) + '" ' + (variant.available ? '' : 'disabled') + '>' + escapeText(label + unavailableLabel) + '</option>';
+              }).join('') +
+            '</select>'
+          : '<span></span>';
+        const isAvailable = product.availability === 'Available';
+        return '<article class="card" data-card-product-id="' + escapeText(product.id) + '" data-available="' + (isAvailable ? 'true' : 'false') + '">' +
           '<div class="photo">' +
             (product.imageUrl
               ? '<img src="' + escapeText(product.imageUrl) + '" alt="' + escapeText(product.name) + '" loading="lazy" />'
@@ -4056,15 +4790,126 @@ function renderPublicCatalogPage(catalog) {
               '<div class="price">' + formatter.format(Number(product.price || 0)) + '</div>' +
               '<span class="badge">' + escapeText(product.availability) + '</span>' +
             '</div>' +
+            '<div class="order-actions">' +
+              variantSelect +
+              '<button class="add-button" data-product-id="' + escapeText(product.id) + '" type="button" ' + (isAvailable ? '' : 'disabled') + '>Add</button>' +
+            '</div>' +
           '</div>' +
         '</article>';
       }).join('');
       empty.style.display = products.length ? 'none' : 'block';
     }
 
+    function buildOrderPayload() {
+      return {
+        customerName: document.getElementById('customer-name').value.trim(),
+        phone: document.getElementById('customer-phone').value.trim(),
+        deliveryAddress: document.getElementById('delivery-address').value.trim(),
+        note: document.getElementById('order-note').value.trim(),
+        items: Array.from(cart.values()).map((item) => ({
+          productId: item.product.id,
+          variantId: item.variant ? item.variant.id : null,
+          quantity: item.quantity,
+        })),
+      };
+    }
+
+    function buildOrderMessage(order) {
+      const lines = [
+        'New catalog order #' + order.orderNumber,
+        'Shop: ' + catalog.business.name,
+        'Customer: ' + order.customerName,
+        'Phone: ' + order.phone,
+      ];
+      if (order.deliveryAddress) lines.push('Address: ' + order.deliveryAddress);
+      lines.push('', 'Items:');
+      for (const item of order.items) {
+        const label = item.variantName ? item.productName + ' - ' + item.variantName : item.productName;
+        lines.push('- ' + item.quantity + ' x ' + label + ' @ ' + formatter.format(item.unitPrice) + ' = ' + formatter.format(item.lineTotal));
+      }
+      lines.push('', 'Total: ' + formatter.format(order.subtotal));
+      if (order.note) lines.push('Note: ' + order.note);
+      return lines.join('\\n');
+    }
+
+    async function submitCatalogOrder(event) {
+      event.preventDefault();
+      errorBox.style.display = 'none';
+      successBox.style.display = 'none';
+      whatsappOrder.style.display = 'none';
+      const payload = buildOrderPayload();
+      if (!payload.items.length) {
+        errorBox.textContent = 'Add at least one product first.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      submitOrder.disabled = true;
+      submitOrder.textContent = 'Submitting...';
+      try {
+        const response = await fetch('/api/public/catalog/' + encodeURIComponent(catalog.business.id) + '/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.ok !== true) {
+          throw new Error(body.error || 'Order could not be submitted.');
+        }
+
+        const order = body.data;
+        successBox.textContent = 'Order #' + order.orderNumber + ' received. The shop will confirm availability and payment.';
+        successBox.style.display = 'block';
+        if (shopWhatsApp) {
+          whatsappOrder.href = 'https://wa.me/' + shopWhatsApp + '?text=' + encodeURIComponent(buildOrderMessage(order));
+          whatsappOrder.style.display = 'flex';
+        }
+        cart.clear();
+        renderCart();
+        orderForm.reset();
+      } catch (error) {
+        errorBox.textContent = error.message || 'Order could not be submitted.';
+        errorBox.style.display = 'block';
+      } finally {
+        submitOrder.textContent = 'Submit Order';
+        renderCart();
+      }
+    }
+
     search.addEventListener('input', render);
     category.addEventListener('change', render);
+    grid.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-product-id]');
+      const interactive = event.target.closest('select, option, input, textarea, a');
+      const card = event.target.closest('[data-card-product-id]');
+      if (!button && interactive) return;
+      if (!button && (!card || card.getAttribute('data-available') !== 'true')) return;
+      const productId = button
+        ? button.getAttribute('data-product-id')
+        : card.getAttribute('data-card-product-id');
+      const select = Array.from(grid.querySelectorAll('[data-variant-for]'))
+        .find((item) => item.getAttribute('data-variant-for') === productId);
+      addToCart(productId, select ? select.value : '');
+    });
+    cartToggle.addEventListener('click', () => cartPanel.classList.toggle('open'));
+    closeCart.addEventListener('click', () => cartPanel.classList.remove('open'));
+    cartLines.addEventListener('input', (event) => {
+      const input = event.target.closest('[data-cart-key]');
+      if (!input) return;
+      const item = cart.get(input.getAttribute('data-cart-key'));
+      if (!item) return;
+      item.quantity = Math.max(1, Number(input.value || 1));
+      renderCart();
+    });
+    cartLines.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-remove-key]');
+      if (!button) return;
+      cart.delete(button.getAttribute('data-remove-key'));
+      renderCart();
+    });
+    orderForm.addEventListener('submit', submitCatalogOrder);
     render();
+    renderCart();
   </script>
 </body>
 </html>`;

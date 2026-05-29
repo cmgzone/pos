@@ -13,6 +13,7 @@ import '../../training/widgets/training_anchor.dart';
 import '../../purchases/presentation/purchase_management_screen.dart';
 import '../data/product_provider.dart';
 import '../data/product_repository.dart';
+import 'catalog_orders_screen.dart';
 import 'product_form_screen.dart';
 import 'product_batches_screen.dart';
 import 'category_management_screen.dart';
@@ -50,6 +51,19 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         automaticallyImplyLeading: false,
         title: const Text('Product Management'),
         actions: [
+          if (!isMobile)
+            OutlinedButton.icon(
+              onPressed: _openCatalogOrders,
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+              label: const Text('Catalog Orders'),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.receipt_long_outlined),
+              tooltip: 'Catalog Orders',
+              onPressed: _openCatalogOrders,
+            ),
+          const SizedBox(width: 8),
           if (!isMobile)
             OutlinedButton.icon(
               onPressed: _sharingCatalog ? null : _shareCatalog,
@@ -380,6 +394,13 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       MaterialPageRoute(builder: (_) => const StockListScreen()),
     );
     _refreshProducts();
+  }
+
+  Future<void> _openCatalogOrders() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CatalogOrdersScreen()),
+    );
   }
 
   Future<void> _shareCatalog() async {

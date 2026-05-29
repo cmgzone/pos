@@ -175,6 +175,40 @@ CREATE TABLE IF NOT EXISTS message_send_logs (
 CREATE INDEX IF NOT EXISTS idx_message_send_logs_business
   ON message_send_logs(business_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public_catalog_orders (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  customer_name text NOT NULL,
+  phone text NOT NULL,
+  delivery_address text,
+  note text,
+  status text NOT NULL DEFAULT 'pending',
+  subtotal double precision NOT NULL DEFAULT 0,
+  item_count double precision NOT NULL DEFAULT 0,
+  source text NOT NULL DEFAULT 'catalog_link',
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public_catalog_order_items (
+  id text PRIMARY KEY,
+  order_id text NOT NULL REFERENCES public_catalog_orders(id) ON DELETE CASCADE,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  product_id text NOT NULL,
+  variant_id text,
+  product_name text NOT NULL,
+  variant_name text,
+  quantity double precision NOT NULL DEFAULT 1,
+  unit_price double precision NOT NULL DEFAULT 0,
+  line_total double precision NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
+  ON public_catalog_orders(business_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
+  ON public_catalog_order_items(order_id);
+
 CREATE TABLE IF NOT EXISTS business_access_tokens (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
   access_token text NOT NULL UNIQUE,
