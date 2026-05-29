@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../../core/services/catalog_order_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/database_service.dart';
@@ -38,6 +39,7 @@ enum PikiSkill {
   anomalyAlerts,
   customerFollowups,
   dailyWhatsappReport,
+  catalogOrders,
   voiceCashier,
 }
 
@@ -108,6 +110,7 @@ class PikiAgentService {
   static const toolAnomalyAlerts = 'anomaly_alerts';
   static const toolCustomerFollowups = 'customer_followups';
   static const toolDailyWhatsappReport = 'daily_whatsapp_report';
+  static const toolCatalogOrders = 'catalog_orders';
   static const toolImageOrderDraft = 'image_order_draft';
   static const toolVoiceCashierHelp = 'voice_cashier_help';
   static const toolCreateProduct = 'create_product';
@@ -250,6 +253,15 @@ class PikiAgentService {
       ['send', 'daily', 'report'],
       ['owner', 'report'],
     ],
+    PikiSkill.catalogOrders: [
+      ['catalog', 'order'],
+      ['online', 'order'],
+      ['customer', 'order'],
+      ['pending', 'order'],
+      ['order', 'link'],
+      ['orders'],
+      ['oders'],
+    ],
     PikiSkill.voiceCashier: [
       ['voice', 'cashier'],
       ['auto', 'listen'],
@@ -276,6 +288,7 @@ class PikiAgentService {
     toolAnomalyAlerts: PikiSkill.anomalyAlerts,
     toolCustomerFollowups: PikiSkill.customerFollowups,
     toolDailyWhatsappReport: PikiSkill.dailyWhatsappReport,
+    toolCatalogOrders: PikiSkill.catalogOrders,
     toolVoiceCashierHelp: PikiSkill.voiceCashier,
   };
 
@@ -298,6 +311,7 @@ class PikiAgentService {
     toolAnomalyAlerts: 'Detect business anomalies',
     toolCustomerFollowups: 'Prepare customer follow-ups',
     toolDailyWhatsappReport: 'Draft WhatsApp report',
+    toolCatalogOrders: 'Review catalog orders',
     toolImageOrderDraft: 'Read order image',
     toolVoiceCashierHelp: 'Explain voice cashier',
     toolCreateProduct: 'Create product',
@@ -351,6 +365,8 @@ class PikiAgentService {
         'Prepare WhatsApp/SMS-ready Kopesha reminder messages for due, overdue, or risky customers.',
     toolDailyWhatsappReport:
         'Draft an owner-ready daily WhatsApp report from sales, products, stock, and alerts.',
+    toolCatalogOrders:
+        'Read customer orders submitted through the public catalog link.',
     toolImageOrderDraft:
         'Analyze a product or order photo and draft item lines from the image.',
     toolVoiceCashierHelp:
@@ -409,6 +425,8 @@ class PikiAgentService {
     toolCustomerFollowups:
         'filter(string: overdue|due_today|risky|all), limit(int)',
     toolDailyWhatsappReport: 'daysRange(int)',
+    toolCatalogOrders:
+        'filter/status(string: pending|accepted|completed|cancelled|all), limit(int)',
     toolImageOrderDraft:
         'image_source/image_url/url/path(string, required), note(string)',
     toolVoiceCashierHelp: 'none',
@@ -521,6 +539,18 @@ class PikiAgentService {
         hasAll(['send', 'daily', 'report'])) {
       addScore(PikiSkill.dailyWhatsappReport, 6);
     }
+    final asksCatalogOrders =
+        hasAll(['catalog', 'order']) ||
+        hasAll(['online', 'order']) ||
+        hasAll(['customer', 'order']) ||
+        hasAll(['pending', 'order']) ||
+        hasAll(['order', 'link']) ||
+        hasAny(['catalog orders', 'online orders', 'customer orders']) ||
+        (hasAny(['orders', 'oders']) &&
+            !hasAny(['purchase', 'supplier', 'restock', 'stock in']));
+    if (asksCatalogOrders) {
+      addScore(PikiSkill.catalogOrders, 6);
+    }
     if (hasAll(['voice', 'cashier']) ||
         hasAll(['auto', 'listen']) ||
         hasAll(['hands', 'free']) ||
@@ -595,7 +625,9 @@ class PikiAgentService {
       daysRange: daysRange,
       resultLimit: resultLimit,
       productQuery: productQuery,
-      filter: _extractCustomerFilter(normalized),
+      filter:
+          _extractCustomerFilter(normalized) ??
+          _extractCatalogOrderStatus(normalized),
     );
   }
 
@@ -639,6 +671,7 @@ class PikiAgentService {
     PikiSkill.anomalyAlerts => 'Anomaly Alerts',
     PikiSkill.customerFollowups => 'Customer Follow-ups',
     PikiSkill.dailyWhatsappReport => 'WhatsApp Report',
+    PikiSkill.catalogOrders => 'Catalog Orders',
     PikiSkill.voiceCashier => 'Voice Cashier',
   };
 
@@ -662,6 +695,7 @@ class PikiAgentService {
     PikiSkill.anomalyAlerts => 'Scanning sales, stock, debt, and shift risks',
     PikiSkill.customerFollowups => 'Preparing Kopesha reminder message drafts',
     PikiSkill.dailyWhatsappReport => 'Drafting an owner-ready daily update',
+    PikiSkill.catalogOrders => 'Reviewing customer orders from catalog links',
     PikiSkill.voiceCashier => 'Showing supported hands-free sell commands',
   };
 
@@ -683,6 +717,7 @@ class PikiAgentService {
     PikiSkill.anomalyAlerts => Icons.notification_important_rounded,
     PikiSkill.customerFollowups => Icons.mark_chat_unread_rounded,
     PikiSkill.dailyWhatsappReport => Icons.chat_rounded,
+    PikiSkill.catalogOrders => Icons.assignment_rounded,
     PikiSkill.voiceCashier => Icons.record_voice_over_rounded,
   };
 
@@ -775,6 +810,12 @@ class PikiAgentService {
 
       case PikiSkill.dailyWhatsappReport:
         return _buildDailyWhatsappReport(daysRange: request?.daysRange ?? 1);
+
+      case PikiSkill.catalogOrders:
+        return _buildCatalogOrders(
+          status: request?.filter,
+          limit: request?.resultLimit ?? 10,
+        );
 
       case PikiSkill.voiceCashier:
         return _buildVoiceCashierHelp();
@@ -1077,7 +1118,10 @@ Example: ["detergent", "soap", "laundry"]
         productQuery: (args?['query'] as String?)?.trim().isEmpty == true
             ? null
             : (args?['query'] as String?)?.trim(),
-        filter: _stringArg(args ?? const <String, dynamic>{}, ['filter']),
+        filter: _stringArg(args ?? const <String, dynamic>{}, [
+          'filter',
+          'status',
+        ]),
       );
       final result = await executeSkill(mappedSkill, request: request);
       return _enrichToolResult(
@@ -1766,6 +1810,85 @@ Next action: Review alerts, follow up overdue customers, and restock fast movers
     };
   }
 
+  static Future<Map<String, dynamic>> _buildCatalogOrders({
+    required String? status,
+    required int limit,
+  }) async {
+    final normalizedStatus = _normalizeCatalogOrderStatus(status);
+    final safeLimit = limit.clamp(1, 50).toInt();
+    final orders = await CatalogOrderService.fetchOrders(
+      status: normalizedStatus,
+    );
+    final limited = orders.take(safeLimit).toList();
+    final totalValue = orders.fold<double>(
+      0,
+      (sum, order) => sum + order.subtotal,
+    );
+    final counts = <String, int>{};
+    for (final order in orders) {
+      counts[order.status] = (counts[order.status] ?? 0) + 1;
+    }
+    final currency = ShopSettings.currency;
+    final statusLabel = _catalogOrderStatusLabel(normalizedStatus);
+
+    return {
+      'type': toolCatalogOrders,
+      'items': limited.map(_catalogOrderToMap).toList(),
+      'count': orders.length,
+      'status_filter': normalizedStatus,
+      'status_counts': counts,
+      'total_value': totalValue,
+      'summary': orders.isEmpty
+          ? 'No $statusLabel catalog orders found.'
+          : '${orders.length} $statusLabel catalog order${orders.length == 1 ? '' : 's'} worth $currency${totalValue.toStringAsFixed(2)}.',
+      'details': limited
+          .take(6)
+          .map(
+            (order) =>
+                '#${order.orderNumber}: ${order.customerName} - $currency${order.subtotal.toStringAsFixed(2)} (${_catalogOrderStatusLabel(order.status)})',
+          )
+          .toList(),
+    };
+  }
+
+  static Map<String, dynamic> _catalogOrderToMap(CatalogOrder order) {
+    return {
+      'id': order.id,
+      'order_number': order.orderNumber,
+      'customer_name': order.customerName,
+      'phone': order.phone,
+      'delivery_address': order.deliveryAddress,
+      'note': order.note,
+      'status': order.status,
+      'subtotal': order.subtotal,
+      'item_count': order.itemCount,
+      'created_at': order.createdAt?.toIso8601String(),
+      'items': order.items
+          .map(
+            (item) => {
+              'product_id': item.productId,
+              'variant_id': item.variantId,
+              'product_name': item.productName,
+              'variant_name': item.variantName,
+              'quantity': item.quantity,
+              'unit_price': item.unitPrice,
+              'line_total': item.lineTotal,
+            },
+          )
+          .toList(),
+    };
+  }
+
+  static String _catalogOrderStatusLabel(String status) {
+    return switch (status) {
+      'accepted' => 'accepted',
+      'completed' => 'completed',
+      'cancelled' => 'cancelled',
+      'all' => 'all',
+      _ => 'pending',
+    };
+  }
+
   static Map<String, dynamic> _buildVoiceCashierHelp() {
     final commands = [
       'Say "sell two breads" or "add milk" to add items to the cart.',
@@ -1906,6 +2029,38 @@ Next action: Review alerts, follow up overdue customers, and restock fast movers
       return 'all';
     }
     return null;
+  }
+
+  static String? _extractCatalogOrderStatus(String input) {
+    if (input.contains('accepted') || input.contains('accept')) {
+      return 'accepted';
+    }
+    if (input.contains('completed') || input.contains('complete')) {
+      return 'completed';
+    }
+    if (input.contains('cancelled') || input.contains('canceled')) {
+      return 'cancelled';
+    }
+    if (input.contains('all order') || input.contains('all oder')) {
+      return 'all';
+    }
+    if (input.contains('pending') ||
+        input.contains('new order') ||
+        input.contains('new oder')) {
+      return 'pending';
+    }
+    return null;
+  }
+
+  static String _normalizeCatalogOrderStatus(String? status) {
+    final normalized = status?.trim().toLowerCase().replaceAll('-', '_');
+    return switch (normalized) {
+      'accepted' || 'accept' => 'accepted',
+      'completed' || 'complete' || 'done' => 'completed',
+      'cancelled' || 'canceled' || 'cancel' => 'cancelled',
+      'all' => 'all',
+      _ => 'pending',
+    };
   }
 
   static String _normalizeKopeshaFilter(String? filter) {
@@ -3199,6 +3354,13 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
           'label': 'Daily report draft',
           'detail':
               'Compiled from local sales, top products, restock forecasts, and alerts.',
+        },
+      ],
+      toolCatalogOrders => [
+        {
+          'label': 'Catalog orders',
+          'detail':
+              'Read from customer orders submitted through the public catalog link.',
         },
       ],
       toolImageOrderDraft => [

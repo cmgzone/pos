@@ -32,6 +32,8 @@ class PikiSummaryCard extends StatelessWidget {
         return _ExpenseSummaryCard(data: data);
       case 'purchase_history':
         return _PurchaseHistoryCard(data: data);
+      case 'catalog_orders':
+        return _CatalogOrdersCard(data: data);
       default:
         return const SizedBox.shrink();
     }
@@ -146,11 +148,12 @@ class _ShiftCard extends StatelessWidget {
     }
     return Column(
       children: items.take(3).map((shift) {
-        final cashier = (shift['user_name'] as String?)?.trim().isNotEmpty == true
+        final cashier =
+            (shift['user_name'] as String?)?.trim().isNotEmpty == true
             ? shift['user_name'] as String
             : (shift['opened_by'] as String?)?.trim().isNotEmpty == true
-                ? shift['opened_by'] as String
-                : 'Cashier';
+            ? shift['opened_by'] as String
+            : 'Cashier';
         final total = (shift['total_sales'] as num? ?? 0).toDouble();
         final cash = (shift['cash_total'] as num? ?? 0).toDouble();
         return Container(
@@ -163,23 +166,36 @@ class _ShiftCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.timer_rounded, size: 18, color: AppColors.secondary),
+              const Icon(
+                Icons.timer_rounded,
+                size: 18,
+                color: AppColors.secondary,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   cashier,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               Text(
                 '$currency${total.toStringAsFixed(2)}',
-                style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               if (cash > 0) ...[
                 const SizedBox(width: 8),
                 Text(
                   'Cash: $currency${cash.toStringAsFixed(0)}',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ],
@@ -214,13 +230,13 @@ class _ExpiryCard extends StatelessWidget {
         final color = days <= 0
             ? AppColors.error
             : days <= 7
-                ? AppColors.warning
-                : AppColors.success;
+            ? AppColors.warning
+            : AppColors.success;
         final label = days <= 0
             ? 'EXPIRED'
             : days == 1
-                ? 'Tomorrow'
-                : 'in $days days';
+            ? 'Tomorrow'
+            : 'in $days days';
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: _MetricRow(
@@ -261,7 +277,9 @@ class _SalesReportCard extends StatelessWidget {
           ...items.take(3).map((sale) {
             final amount = (sale['total_amount'] as num? ?? 0).toDouble();
             final date = sale['created_at'] as String? ?? '';
-            final timeStr = date.length >= 16 ? date.substring(11, 16) : '--:--';
+            final timeStr = date.length >= 16
+                ? date.substring(11, 16)
+                : '--:--';
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -272,19 +290,27 @@ class _SalesReportCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.receipt_rounded,
-                      size: 16, color: AppColors.textSecondary),
+                  const Icon(
+                    Icons.receipt_rounded,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Sale at $timeStr',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ),
                   Text(
                     '$currency${amount.toStringAsFixed(2)}',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -328,7 +354,10 @@ class _MetricRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
           ),
         ),
         Text(
@@ -384,7 +413,9 @@ class _TopDebtorsCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.error.withValues(alpha: 0.25)),
+              border: Border.all(
+                color: AppColors.error.withValues(alpha: 0.25),
+              ),
             ),
             child: Row(
               children: [
@@ -412,12 +443,18 @@ class _TopDebtorsCard extends StatelessWidget {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
                 Text(
                   '$currency${balance.toStringAsFixed(2)}',
-                  style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -448,7 +485,11 @@ class _TopProductsCard extends StatelessWidget {
       );
     }
 
-    final rankColors = [AppColors.warning, AppColors.textSecondary, AppColors.primaryLight];
+    final rankColors = [
+      AppColors.warning,
+      AppColors.textSecondary,
+      AppColors.primaryLight,
+    ];
 
     return Column(
       children: items.asMap().entries.map((entry) {
@@ -458,7 +499,9 @@ class _TopProductsCard extends StatelessWidget {
         final qty = (p['total_qty_sold'] as num? ?? 0).toDouble();
         final revenue = (p['total_revenue'] as num? ?? 0).toDouble();
         final unit = p['sale_unit'] as String? ?? p['unit'] as String? ?? 'pcs';
-        final rankColor = i < rankColors.length ? rankColors[i] : AppColors.textSecondary;
+        final rankColor = i < rankColors.length
+            ? rankColors[i]
+            : AppColors.textSecondary;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 7),
@@ -480,7 +523,11 @@ class _TopProductsCard extends StatelessWidget {
                 child: Center(
                   child: Text(
                     '${i + 1}',
-                    style: TextStyle(color: rankColor, fontWeight: FontWeight.w800, fontSize: 12),
+                    style: TextStyle(
+                      color: rankColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),
@@ -493,18 +540,27 @@ class _TopProductsCard extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                     Text(
                       '${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unit sold',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
               ),
               Text(
                 '$currency${revenue.toStringAsFixed(2)}',
-                style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -559,25 +615,42 @@ class _ExpenseSummaryCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.receipt_rounded, size: 16, color: AppColors.warning),
+                const Icon(
+                  Icons.receipt_rounded,
+                  size: 16,
+                  color: AppColors.warning,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
                       if (category.isNotEmpty)
-                        Text(category,
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                        Text(
+                          category,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
                     ],
                   ),
                 ),
                 Text(
                   '$currency${amount.toStringAsFixed(2)}',
-                  style: const TextStyle(color: AppColors.warning, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: AppColors.warning,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -588,7 +661,10 @@ class _ExpenseSummaryCard extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               '+ ${items.length - 5} more expenses',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ),
       ],
@@ -620,13 +696,17 @@ class _PurchaseHistoryCard extends StatelessWidget {
       children: items.take(6).map((batch) {
         final product = batch['product_name'] as String? ?? 'Product';
         final qty = (batch['quantity_received'] as num? ?? 0).toDouble();
-        final unit = batch['stock_unit'] as String? ?? batch['unit'] as String? ?? 'pcs';
+        final unit =
+            batch['stock_unit'] as String? ?? batch['unit'] as String? ?? 'pcs';
         final cost = (batch['cost_per_unit'] as num? ?? 0).toDouble();
-        final supplier = (batch['supplier_name'] as String?)?.trim().isNotEmpty == true
+        final supplier =
+            (batch['supplier_name'] as String?)?.trim().isNotEmpty == true
             ? batch['supplier_name'] as String
             : null;
         final received = batch['received_at'] as String? ?? '';
-        final dateStr = received.length >= 10 ? received.substring(0, 10) : '--';
+        final dateStr = received.length >= 10
+            ? received.substring(0, 10)
+            : '--';
 
         return Container(
           margin: const EdgeInsets.only(bottom: 7),
@@ -638,20 +718,32 @@ class _PurchaseHistoryCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.local_shipping_rounded, size: 16, color: AppColors.secondary),
+              const Icon(
+                Icons.local_shipping_rounded,
+                size: 16,
+                color: AppColors.secondary,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(product,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text(
+                      product,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
                     Text(
                       '${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unit'
                       '${supplier != null ? ' · $supplier' : ''} · $dateStr',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -660,12 +752,111 @@ class _PurchaseHistoryCard extends StatelessWidget {
                 Text(
                   '$currency${cost.toStringAsFixed(2)}',
                   style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
             ],
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+class _CatalogOrdersCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  const _CatalogOrdersCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final currency = ShopSettings.currency;
+    final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final totalValue = (data['total_value'] as num? ?? 0).toDouble();
+    final count = (data['count'] as num? ?? items.length).toInt();
+
+    if (items.isEmpty) {
+      return const _MetricRow(
+        icon: Icons.assignment_outlined,
+        label: 'Catalog orders',
+        value: 'None',
+        color: AppColors.textSecondary,
+      );
+    }
+
+    return Column(
+      children: [
+        _MetricRow(
+          icon: Icons.assignment_rounded,
+          label: 'Orders',
+          value: '$count found',
+          color: AppColors.primary,
+        ),
+        const SizedBox(height: 8),
+        _MetricRow(
+          icon: Icons.payments_outlined,
+          label: 'Order value',
+          value: '$currency${totalValue.toStringAsFixed(2)}',
+          color: AppColors.success,
+        ),
+        const SizedBox(height: 10),
+        ...items.take(5).map((order) {
+          final number = order['order_number']?.toString() ?? '';
+          final customer = order['customer_name']?.toString() ?? 'Customer';
+          final status = order['status']?.toString() ?? 'pending';
+          final subtotal = (order['subtotal'] as num? ?? 0).toDouble();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.receipt_long_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '#$number - $customer',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        status,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '$currency${subtotal.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 }

@@ -47,6 +47,11 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       'prompt': "Show today's sales summary",
     },
     {
+      'icon': Icons.assignment_outlined,
+      'label': 'Catalog Orders',
+      'prompt': 'Show pending catalog orders',
+    },
+    {
       'icon': Icons.auto_awesome_rounded,
       'label': 'Proactive Check',
       'prompt': 'run proactive check',

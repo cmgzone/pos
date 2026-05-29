@@ -1,6 +1,7 @@
 import 'package:url_launcher/url_launcher.dart';
 
 import 'license_service.dart';
+import 'shop_settings.dart';
 import 'sync_service.dart';
 import 'sync_settings_service.dart';
 
@@ -46,7 +47,12 @@ class CatalogShareService {
   static String buildCatalogUrl(String businessId) {
     final base = _publicBackendBaseUrl();
     final encodedBusinessId = Uri.encodeComponent(businessId.trim());
-    return '$base/catalog/$encodedBusinessId';
+    final uri = Uri.parse('$base/catalog/$encodedBusinessId');
+    final currency = ShopSettings.currency.trim();
+    if (currency.isEmpty) {
+      return uri.toString();
+    }
+    return uri.replace(queryParameters: {'currency': currency}).toString();
   }
 
   static String buildMessage(CatalogShareInfo info) {

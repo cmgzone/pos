@@ -1087,6 +1087,7 @@ class PikiMessageBubble extends StatelessWidget {
       'shift_summary',
       'expiry_check',
       'sales_report',
+      'catalog_orders',
     };
     if (summaryTypes.contains(type)) {
       return _AgentRow(

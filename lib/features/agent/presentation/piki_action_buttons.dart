@@ -14,12 +14,16 @@ class PikiActionButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasRestock = results?.containsKey('restockList') ?? false;
     final hasLowStock = results?.containsKey('analyzeLowStock') ?? false;
-    final hasReport = results?.containsKey('todaysSummary') ??
+    final hasReport =
+        results?.containsKey('todaysSummary') ??
         results?.containsKey('salesReport') ??
         false;
-    final hasPurchaseCreated = results?.containsKey('purchaseDraftConfirm') ?? false;
+    final hasCatalogOrders = results?.containsKey('catalogOrders') ?? false;
+    final hasPurchaseCreated =
+        results?.containsKey('purchaseDraftConfirm') ?? false;
 
-    final canCreatePurchaseDraft = (hasRestock || hasLowStock) && !hasPurchaseCreated;
+    final canCreatePurchaseDraft =
+        (hasRestock || hasLowStock) && !hasPurchaseCreated;
 
     return Wrap(
       spacing: 8,
@@ -41,6 +45,12 @@ class PikiActionButtons extends StatelessWidget {
             icon: Icons.open_in_new_rounded,
             label: 'Open Report',
             onTap: () => AppShell.selectIndex(8), // Reports
+          ),
+        if (hasCatalogOrders)
+          _ActionChip(
+            icon: Icons.assignment_outlined,
+            label: 'Open Orders',
+            onTap: () => AppShell.selectIndex(17),
           ),
         if (hasPurchaseCreated)
           _ActionChip(
@@ -76,8 +86,9 @@ class _ActionChip extends StatelessWidget {
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         icon: Icon(icon, size: 16),
         label: Text(label, style: const TextStyle(fontSize: 13)),

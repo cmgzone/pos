@@ -2544,7 +2544,9 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
       throw createHttpError(400, 'Business catalog link is invalid');
     }
 
-    const catalog = await loadPublicCatalog(businessId);
+    const catalog = await loadPublicCatalog(businessId, {
+      currencyOverride: req.query?.currency,
+    });
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -2607,7 +2609,9 @@ app.get('/catalog/:businessId', async (req, res, next) => {
       throw createHttpError(400, 'Business catalog link is invalid');
     }
 
-    const catalog = await loadPublicCatalog(businessId);
+    const catalog = await loadPublicCatalog(businessId, {
+      currencyOverride: req.query?.currency,
+    });
     res
       .status(200)
       .type('html')
@@ -3669,7 +3673,7 @@ function normalizePaymentRow(row) {
   };
 }
 
-async function loadPublicCatalog(businessId) {
+async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
   const businessResult = await query(
     `
     SELECT b.id, b.name, b.country_code, b.updated_at,
@@ -3757,6 +3761,11 @@ async function loadPublicCatalog(businessId) {
     ),
   ].sort((a, b) => a.localeCompare(b));
 
+  const currencyInfo = publicCatalogCurrencyInfo(
+    currencyOverride,
+    business.country_code,
+  );
+
   return {
     business: {
       id: business.id,
@@ -3764,7 +3773,10 @@ async function loadPublicCatalog(businessId) {
       countryCode: business.country_code || 'GLOBAL',
       whatsappNumber: normalizeOptionalText(business.whatsapp_number),
     },
-    currency: currencyForCountry(business.country_code),
+    currency: currencyInfo.code,
+    currencyCode: currencyInfo.code,
+    currencySymbol: currencyInfo.symbol,
+    currencyLabel: currencyInfo.label,
     categories,
     products,
     updatedAt: products.reduce((latest, product) => {
@@ -4605,7 +4617,7 @@ function renderPublicCatalogPage(catalog) {
     <div id="cart-lines" class="cart-lines"></div>
     <div class="cart-foot">
       <span>Total</span>
-      <span id="cart-total">KES 0.00</span>
+      <span id="cart-total">0.00</span>
     </div>
     <form id="order-form" class="order-form">
       <label>
@@ -4654,11 +4666,32 @@ function renderPublicCatalogPage(catalog) {
     const successBox = document.getElementById('order-success');
     const errorBox = document.getElementById('order-error');
     const whatsappOrder = document.getElementById('whatsapp-order');
-    const formatter = new Intl.NumberFormat('en', {
-      style: 'currency',
-      currency: catalog.currency || 'KES',
-      minimumFractionDigits: 2,
-    });
+    const currencyCode = catalog.currencyCode || catalog.currency || 'KES';
+    const currencySymbol = String(catalog.currencySymbol || '').trim();
+    let formatter = null;
+    try {
+      formatter = new Intl.NumberFormat('en', {
+        style: 'currency',
+        currency: currencyCode,
+        minimumFractionDigits: 2,
+      });
+    } catch (_) {
+      formatter = null;
+    }
+
+    function formatMoney(value) {
+      const amount = Number(value || 0);
+      if (currencySymbol) {
+        return currencySymbol + amount.toLocaleString('en', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+      if (formatter) {
+        return formatter.format(amount);
+      }
+      return String(catalog.currencyLabel || currencyCode) + ' ' + amount.toFixed(2);
+    }
 
     function escapeText(value) {
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -4702,7 +4735,7 @@ function renderPublicCatalogPage(catalog) {
       const items = Array.from(cart.values());
       const count = items.reduce((sum, item) => sum + item.quantity, 0);
       cartToggle.textContent = 'Order (' + count + ')';
-      cartTotal.textContent = formatter.format(cartTotalValue());
+      cartTotal.textContent = formatMoney(cartTotalValue());
       submitOrder.disabled = items.length === 0;
 
       if (!items.length) {
@@ -4714,7 +4747,7 @@ function renderPublicCatalogPage(catalog) {
         const key = cartKey(item.product.id, item.variant ? item.variant.id : '');
         const price = optionPrice(item.product, item.variant);
         return '<div class="cart-line">' +
-          '<span><strong>' + escapeText(optionLabel(item.product, item.variant)) + '</strong><br><small>' + formatter.format(price) + ' each</small></span>' +
+          '<span><strong>' + escapeText(optionLabel(item.product, item.variant)) + '</strong><br><small>' + formatMoney(price) + ' each</small></span>' +
           '<input class="qty-input" data-cart-key="' + escapeText(key) + '" type="number" min="1" step="1" value="' + item.quantity + '" aria-label="Quantity" />' +
           '<button class="remove-button" data-remove-key="' + escapeText(key) + '" type="button" aria-label="Remove item">x</button>' +
         '</div>';
@@ -4758,7 +4791,7 @@ function renderPublicCatalogPage(catalog) {
               const name = escapeText(variant.name);
               const variantPrice = Number(variant.price || 0);
               return variantPrice && variantPrice !== Number(product.price || 0)
-                ? name + ' - ' + formatter.format(variantPrice)
+                ? name + ' - ' + formatMoney(variantPrice)
                 : name;
             }).join(', ') + '</div>'
           : '';
@@ -4767,7 +4800,7 @@ function renderPublicCatalogPage(catalog) {
               product.variants.map((variant) => {
                 const variantPrice = Number(variant.price || 0);
                 const label = variantPrice && variantPrice !== Number(product.price || 0)
-                  ? variant.name + ' - ' + formatter.format(variantPrice)
+                  ? variant.name + ' - ' + formatMoney(variantPrice)
                   : variant.name;
                 const unavailableLabel = variant.available ? '' : ' (unavailable)';
                 return '<option value="' + escapeText(variant.id) + '" ' + (variant.available ? '' : 'disabled') + '>' + escapeText(label + unavailableLabel) + '</option>';
@@ -4787,7 +4820,7 @@ function renderPublicCatalogPage(catalog) {
             (product.category ? '<div class="category">' + escapeText(product.category) + '</div>' : '') +
             variants +
             '<div class="price-row">' +
-              '<div class="price">' + formatter.format(Number(product.price || 0)) + '</div>' +
+              '<div class="price">' + formatMoney(Number(product.price || 0)) + '</div>' +
               '<span class="badge">' + escapeText(product.availability) + '</span>' +
             '</div>' +
             '<div class="order-actions">' +
@@ -4825,9 +4858,9 @@ function renderPublicCatalogPage(catalog) {
       lines.push('', 'Items:');
       for (const item of order.items) {
         const label = item.variantName ? item.productName + ' - ' + item.variantName : item.productName;
-        lines.push('- ' + item.quantity + ' x ' + label + ' @ ' + formatter.format(item.unitPrice) + ' = ' + formatter.format(item.lineTotal));
+        lines.push('- ' + item.quantity + ' x ' + label + ' @ ' + formatMoney(item.unitPrice) + ' = ' + formatMoney(item.lineTotal));
       }
-      lines.push('', 'Total: ' + formatter.format(order.subtotal));
+      lines.push('', 'Total: ' + formatMoney(order.subtotal));
       if (order.note) lines.push('Note: ' + order.note);
       return lines.join('\\n');
     }
@@ -4935,6 +4968,33 @@ function currencyForCountry(countryCode) {
   if (clean === 'UG') return 'UGX';
   if (clean === 'RW') return 'RWF';
   return 'KES';
+}
+
+function publicCatalogCurrencyInfo(currencyOverride, countryCode) {
+  const fallbackCode = currencyForCountry(countryCode);
+  const raw = normalizeOptionalText(currencyOverride);
+  if (!raw) {
+    return {
+      code: fallbackCode,
+      symbol: null,
+      label: fallbackCode,
+    };
+  }
+
+  const upper = raw.toUpperCase();
+  if (/^[A-Z]{3}$/.test(upper)) {
+    return {
+      code: upper,
+      symbol: null,
+      label: upper,
+    };
+  }
+
+  return {
+    code: fallbackCode,
+    symbol: raw,
+    label: raw,
+  };
 }
 
 function normalizePublicPhone(value) {
