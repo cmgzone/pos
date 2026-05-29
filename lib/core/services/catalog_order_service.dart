@@ -5,6 +5,8 @@ import 'sync_settings_service.dart';
 
 class CatalogOrderItem {
   final String id;
+  final String productId;
+  final String variantId;
   final String productName;
   final String variantName;
   final double quantity;
@@ -13,6 +15,8 @@ class CatalogOrderItem {
 
   const CatalogOrderItem({
     required this.id,
+    required this.productId,
+    required this.variantId,
     required this.productName,
     required this.variantName,
     required this.quantity,
@@ -26,6 +30,8 @@ class CatalogOrderItem {
   factory CatalogOrderItem.fromJson(Map<String, dynamic> json) {
     return CatalogOrderItem(
       id: json['id']?.toString() ?? '',
+      productId: json['productId']?.toString() ?? '',
+      variantId: json['variantId']?.toString() ?? '',
       productName: json['productName']?.toString() ?? 'Product',
       variantName: json['variantName']?.toString() ?? '',
       quantity: _readDouble(json['quantity']),

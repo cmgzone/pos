@@ -12,6 +12,7 @@ import '../training/application/training_controller.dart';
 import '../training/presentation/training_hub_screen.dart';
 import '../training/widgets/training_anchor.dart';
 import '../customers/presentation/kopesha_screen.dart';
+import '../products/presentation/catalog_orders_screen.dart';
 import '../products/presentation/category_management_screen.dart';
 import '../products/presentation/product_list_screen.dart';
 import '../products/presentation/stock_list_screen.dart';
@@ -68,6 +69,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.shopping_cart_checkout_outlined,
         selectedIcon: Icons.shopping_cart_checkout_rounded,
         label: 'POS',
+      ),
+    ),
+    _NavDestination(
+      index: 17,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.assignment_outlined,
+        selectedIcon: Icons.assignment_rounded,
+        label: 'Orders',
       ),
     ),
     _NavDestination(
@@ -225,6 +235,14 @@ class AppShellState extends ConsumerState<AppShell> {
     if (SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
       indices.add(15);
+    }
+    if (SessionService.canUseProductPos &&
+        (SessionService.canAccessFeature(UserAccessProfile.featurePos) ||
+            SessionService.canAccessFeature(UserAccessProfile.featureSales) ||
+            SessionService.canAccessFeature(
+              UserAccessProfile.featureProducts,
+            ))) {
+      indices.add(17);
     }
     final allowed = indices
         .where(_isAllowedForCurrentSellingMode)
@@ -784,6 +802,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return const StockTransferScreen();
       case 16:
         return const PikiAgentScreen();
+      case 17:
+        return CatalogOrdersScreen(onOpenPos: () => _selectIndex(0));
       default:
         return const PosScreen();
     }

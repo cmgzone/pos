@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/catalog_order_service.dart';
@@ -6,15 +7,21 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/empty_state_widget.dart';
+import '../../sales/data/cart_provider.dart';
+import '../data/product_repository.dart';
+import '../data/product_variant_repository.dart';
 
-class CatalogOrdersScreen extends StatefulWidget {
-  const CatalogOrdersScreen({super.key});
+class CatalogOrdersScreen extends ConsumerStatefulWidget {
+  final VoidCallback? onOpenPos;
+
+  const CatalogOrdersScreen({super.key, this.onOpenPos});
 
   @override
-  State<CatalogOrdersScreen> createState() => _CatalogOrdersScreenState();
+  ConsumerState<CatalogOrdersScreen> createState() =>
+      _CatalogOrdersScreenState();
 }
 
-class _CatalogOrdersScreenState extends State<CatalogOrdersScreen> {
+class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
   String _status = 'pending';
   late Future<List<CatalogOrder>> _ordersFuture;
   final Set<String> _updating = <String>{};
@@ -60,6 +67,147 @@ class _CatalogOrdersScreenState extends State<CatalogOrdersScreen> {
         setState(() => _updating.remove(order.id));
       }
     }
+  }
+
+  Future<void> _acceptAndCheckout(CatalogOrder order) async {
+    if (_updating.contains(order.id)) {
+      return;
+    }
+
+    if (order.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This catalog order has no items to checkout.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final cart = ref.read(cartProvider);
+    if (cart.isNotEmpty) {
+      final replace = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Replace current cart?'),
+          content: const Text(
+            'Loading this order will clear the items currently in checkout.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Replace'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      if (replace != true) {
+        return;
+      }
+    }
+
+    setState(() => _updating.add(order.id));
+    final previousItems = ref
+        .read(cartProvider)
+        .map((item) => item.toHeldItem())
+        .toList(growable: false);
+    final previousDiscount = ref.read(discountProvider);
+
+    try {
+      final lines = await _prepareCheckoutLines(order);
+      final cartNotifier = ref.read(cartProvider.notifier);
+      cartNotifier.clear();
+      ref.read(discountProvider.notifier).state = 0;
+
+      for (final line in lines) {
+        final added = cartNotifier.addProduct(
+          line.product,
+          variant: line.variant,
+        );
+        if (!added) {
+          throw Exception('Not enough stock for ${line.item.label}.');
+        }
+
+        final cartKey = _cartKeyFor(line.product, line.variant);
+        final quantitySet = cartNotifier.setQuantity(
+          cartKey,
+          line.item.quantity,
+        );
+        if (!quantitySet) {
+          throw Exception(
+            'Not enough stock to load ${_formatQty(line.item.quantity)} x ${line.item.label}.',
+          );
+        }
+      }
+
+      if (order.status != 'accepted') {
+        await CatalogOrderService.updateStatus(
+          orderId: order.id,
+          status: 'accepted',
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Order #${order.orderNumber} is loaded in checkout.'),
+        ),
+      );
+      _refresh();
+      widget.onOpenPos?.call();
+    } catch (error) {
+      ref.read(cartProvider.notifier).restoreHeldItems(previousItems);
+      ref.read(discountProvider.notifier).state = previousDiscount;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              error,
+              fallback: 'Could not load this order into checkout.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _updating.remove(order.id));
+      }
+    }
+  }
+
+  Future<List<_CheckoutLine>> _prepareCheckoutLines(CatalogOrder order) async {
+    final lines = <_CheckoutLine>[];
+    for (final item in order.items) {
+      if (item.productId.trim().isEmpty) {
+        throw Exception('${item.label} is not linked to a POS product.');
+      }
+
+      final product = await ProductRepository.getById(item.productId);
+      if (product == null) {
+        throw Exception('${item.label} is no longer in products.');
+      }
+
+      Map<String, dynamic>? variant;
+      if (item.variantId.trim().isNotEmpty) {
+        variant = await ProductVariantRepository.getById(item.variantId);
+        if (variant == null) {
+          throw Exception('${item.label} variant is no longer available.');
+        }
+      }
+
+      lines.add(_CheckoutLine(product: product, variant: variant, item: item));
+    }
+    return lines;
   }
 
   @override
@@ -162,6 +310,7 @@ class _CatalogOrdersScreenState extends State<CatalogOrdersScreen> {
                     order: orders[index],
                     updating: _updating.contains(orders[index].id),
                     onStatus: (status) => _updateStatus(orders[index], status),
+                    onCheckout: () => _acceptAndCheckout(orders[index]),
                   ),
                 );
               },
@@ -177,11 +326,13 @@ class _CatalogOrderCard extends StatelessWidget {
   final CatalogOrder order;
   final bool updating;
   final ValueChanged<String> onStatus;
+  final VoidCallback onCheckout;
 
   const _CatalogOrderCard({
     required this.order,
     required this.updating,
     required this.onStatus,
+    required this.onCheckout,
   });
 
   @override
@@ -288,17 +439,27 @@ class _CatalogOrderCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (order.status == 'pending')
+              if (order.status == 'pending' || order.status == 'accepted')
                 FilledButton.icon(
-                  onPressed: updating ? null : () => onStatus('accepted'),
+                  onPressed: updating ? null : onCheckout,
                   icon: updating
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.check_outlined),
-                  label: const Text('Accept'),
+                      : const Icon(Icons.point_of_sale_outlined),
+                  label: Text(
+                    order.status == 'pending'
+                        ? 'Accept & Checkout'
+                        : 'Load Checkout',
+                  ),
+                ),
+              if (order.status == 'pending')
+                OutlinedButton.icon(
+                  onPressed: updating ? null : () => onStatus('accepted'),
+                  icon: const Icon(Icons.check_outlined),
+                  label: const Text('Accept Only'),
                 ),
               if (order.status != 'completed')
                 OutlinedButton.icon(
@@ -342,6 +503,29 @@ class _InfoLine extends StatelessWidget {
       ],
     );
   }
+}
+
+class _CheckoutLine {
+  final Map<String, dynamic> product;
+  final Map<String, dynamic>? variant;
+  final CatalogOrderItem item;
+
+  const _CheckoutLine({
+    required this.product,
+    required this.variant,
+    required this.item,
+  });
+}
+
+String _cartKeyFor(
+  Map<String, dynamic> product,
+  Map<String, dynamic>? variant,
+) {
+  final productId = product['id']?.toString() ?? '';
+  final variantId = variant?['id']?.toString();
+  return variantId == null || variantId.isEmpty
+      ? productId
+      : '${productId}_$variantId';
 }
 
 String _statusLabel(String status) {
