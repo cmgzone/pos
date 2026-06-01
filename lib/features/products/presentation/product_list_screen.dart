@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/services/catalog_qr_poster_service.dart';
 import '../../../core/services/catalog_share_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/expiry_utils.dart';
@@ -20,6 +21,10 @@ import 'category_management_screen.dart';
 import 'product_variants_screen.dart';
 import 'stock_list_screen.dart';
 import '../../app/app_shell.dart';
+
+enum _MobileProductPageAction { stockList, purchases, categories }
+
+enum _MobileProductMenuAction { viewStock, adjustStock, edit, delete }
 
 class ProductListScreen extends ConsumerStatefulWidget {
   const ProductListScreen({super.key});
@@ -49,21 +54,15 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               )
             : null,
         automaticallyImplyLeading: false,
-        title: const Text('Product Management'),
+        title: Text(isMobile ? 'Products' : 'Product Management'),
         actions: [
           if (!isMobile)
             OutlinedButton.icon(
               onPressed: _openCatalogOrders,
               icon: const Icon(Icons.receipt_long_outlined, size: 18),
               label: const Text('Catalog Orders'),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.receipt_long_outlined),
-              tooltip: 'Catalog Orders',
-              onPressed: _openCatalogOrders,
             ),
-          const SizedBox(width: 8),
+          if (!isMobile) const SizedBox(width: 8),
           if (!isMobile)
             OutlinedButton.icon(
               onPressed: _sharingCatalog ? null : _shareCatalog,
@@ -75,143 +74,79 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     )
                   : const Icon(Icons.ios_share_outlined, size: 18),
               label: const Text('Share Catalog'),
-            )
-          else
-            IconButton(
-              icon: _sharingCatalog
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.ios_share_outlined),
-              tooltip: 'Share Catalog',
-              onPressed: _sharingCatalog ? null : _shareCatalog,
             ),
-          const SizedBox(width: 8),
+          if (!isMobile) const SizedBox(width: 8),
           if (!isMobile)
             OutlinedButton.icon(
               onPressed: _openStockList,
               icon: const Icon(Icons.fact_check_outlined, size: 18),
               label: const Text('Stock List'),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.fact_check_outlined),
-              tooltip: 'Stock List',
-              onPressed: _openStockList,
             ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.local_shipping_outlined),
-            tooltip: 'Purchases & Suppliers',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const PurchaseManagementScreen(),
-                ),
-              );
-              _refreshProducts();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.category_outlined),
-            tooltip: 'Manage Categories',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const CategoryManagementScreen(),
-                ),
-              );
-              ref.invalidate(categoriesProvider);
-              ref.invalidate(filteredProductsProvider);
-            },
-          ),
-          const SizedBox(width: 8),
+          if (!isMobile) const SizedBox(width: 8),
+          if (!isMobile)
+            IconButton(
+              icon: const Icon(Icons.local_shipping_outlined),
+              tooltip: 'Purchases & Suppliers',
+              onPressed: _openPurchases,
+            ),
+          if (!isMobile)
+            IconButton(
+              icon: const Icon(Icons.category_outlined),
+              tooltip: 'Manage Categories',
+              onPressed: _openCategories,
+            ),
           TrainingAnchor(
             id: 'products.add',
-            child: FilledButton.icon(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProductFormScreen()),
-                );
-                if (result == true) _refreshProducts();
-              },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Product'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-            ),
+            child: isMobile
+                ? IconButton(
+                    tooltip: 'Add Product',
+                    onPressed: _addProduct,
+                    icon: const Icon(Icons.add_circle_outline),
+                  )
+                : FilledButton.icon(
+                    onPressed: _addProduct,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Product'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                    ),
+                  ),
           ),
-          const SizedBox(width: 16),
+          if (isMobile)
+            PopupMenuButton<_MobileProductPageAction>(
+              tooltip: 'More product tools',
+              onSelected: _handleMobilePageAction,
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _MobileProductPageAction.stockList,
+                  child: ListTile(
+                    leading: Icon(Icons.fact_check_outlined),
+                    title: Text('Stock List'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _MobileProductPageAction.purchases,
+                  child: ListTile(
+                    leading: Icon(Icons.local_shipping_outlined),
+                    title: Text('Purchases & Suppliers'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _MobileProductPageAction.categories,
+                  child: ListTile(
+                    leading: Icon(Icons.category_outlined),
+                    title: Text('Manage Categories'),
+                  ),
+                ),
+              ],
+            ),
+          SizedBox(width: isMobile ? 4 : 16),
         ],
       ),
       body: Column(
         children: [
-          // Search and filter bar
-          TrainingAnchor(
-            id: 'products.search',
-            child: Container(
-              color: AppColors.surface,
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                      decoration: const InputDecoration(
-                        hintText: 'Search by name, SKU, or barcode...',
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: AppColors.textSecondary,
-                        ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Category dropdown
-                  categoriesAsync.when(
-                    data: (categories) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceHighlight,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String?>(
-                          value: _selectedCategory,
-                          hint: const Text(
-                            'All Categories',
-                            style: TextStyle(fontSize: 14),
-                          ),
-                          dropdownColor: AppColors.surface,
-                          items: [
-                            const DropdownMenuItem(
-                              value: null,
-                              child: Text('All Categories'),
-                            ),
-                            ...categories.map(
-                              (cat) => DropdownMenuItem(
-                                value: cat['id'] as String,
-                                child: Text(cat['name'] as String),
-                              ),
-                            ),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _selectedCategory = v),
-                        ),
-                      ),
-                    ),
-                    loading: () => const SizedBox(width: 150),
-                    error: (_, _) => const SizedBox(),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          if (isMobile) _buildMobileCatalogCard(),
+          _buildSearchAndFilter(categoriesAsync, isMobile),
           const Divider(height: 1),
 
           // Product table
@@ -223,7 +158,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return ListView.separated(
-                      padding: const EdgeInsets.all(24),
+                      padding: EdgeInsets.all(isMobile ? 12 : 24),
                       itemCount: 8,
                       separatorBuilder: (_, _) => const SizedBox(height: 12),
                       itemBuilder: (_, _) => Container(
@@ -265,7 +200,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   }
 
                   return ListView.separated(
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(isMobile ? 12 : 24),
                     itemCount: products.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
@@ -308,7 +243,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           TrainingAnchor(
             id: 'products.stats',
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 12 : 24,
+                vertical: isMobile ? 8 : 12,
+              ),
               decoration: const BoxDecoration(
                 color: AppColors.surface,
                 border: Border(top: BorderSide(color: AppColors.border)),
@@ -331,8 +269,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                       .toSet()
                       .length;
                   return Wrap(
-                    spacing: 16,
-                    runSpacing: 12,
+                    spacing: isMobile ? 8 : 16,
+                    runSpacing: isMobile ? 8 : 12,
                     children: [
                       _StatChip(
                         icon: Icons.inventory,
@@ -376,6 +314,144 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     );
   }
 
+  Widget _buildMobileCatalogCard() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.storefront_outlined, color: AppColors.primary),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Customer Catalog',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Share your online order link or publish a QR poster for customers.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _sharingCatalog ? null : _shareCatalog,
+                icon: _sharingCatalog
+                    ? const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.link_outlined, size: 18),
+                label: const Text('Share Order Link'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _openCatalogOrders,
+                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                label: const Text('Orders'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _sharingCatalog ? null : _publishCatalogQr,
+                icon: const Icon(Icons.qr_code_2_outlined, size: 18),
+                label: const Text('Publish QR'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilter(
+    AsyncValue<List<Map<String, dynamic>>> categoriesAsync,
+    bool isMobile,
+  ) {
+    final search = TextField(
+      onChanged: (value) => setState(() => _searchQuery = value),
+      decoration: const InputDecoration(
+        hintText: 'Search name, SKU, or barcode...',
+        prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
+        contentPadding: EdgeInsets.symmetric(vertical: 12),
+      ),
+    );
+    final categories = categoriesAsync.when(
+      data: (items) => Container(
+        width: isMobile ? double.infinity : null,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String?>(
+            isExpanded: isMobile,
+            value: _selectedCategory,
+            hint: const Text('All Categories', style: TextStyle(fontSize: 14)),
+            dropdownColor: AppColors.surface,
+            items: [
+              const DropdownMenuItem(
+                value: null,
+                child: Text('All Categories'),
+              ),
+              ...items.map(
+                (category) => DropdownMenuItem(
+                  value: category['id'] as String,
+                  child: Text(category['name'] as String),
+                ),
+              ),
+            ],
+            onChanged: (value) => setState(() => _selectedCategory = value),
+          ),
+        ),
+      ),
+      loading: () => const SizedBox(
+        height: 48,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+
+    return TrainingAnchor(
+      id: 'products.search',
+      child: Container(
+        color: AppColors.surface,
+        padding: EdgeInsets.fromLTRB(
+          isMobile ? 12 : 24,
+          isMobile ? 12 : 0,
+          isMobile ? 12 : 24,
+          12,
+        ),
+        child: isMobile
+            ? Column(children: [search, const SizedBox(height: 8), categories])
+            : Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 16),
+                  categories,
+                ],
+              ),
+      ),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _getFilteredProducts() async {
     if (_searchQuery.isNotEmpty) {
       return ProductRepository.search(_searchQuery);
@@ -386,6 +462,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   void _refreshProducts() {
     ref.invalidate(filteredProductsProvider);
     setState(() {});
+  }
+
+  Future<void> _addProduct() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProductFormScreen()),
+    );
+    if (result == true) _refreshProducts();
   }
 
   Future<void> _openStockList() async {
@@ -403,15 +487,53 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     );
   }
 
+  Future<void> _openPurchases() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PurchaseManagementScreen()),
+    );
+    _refreshProducts();
+  }
+
+  Future<void> _openCategories() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CategoryManagementScreen()),
+    );
+    ref.invalidate(categoriesProvider);
+    ref.invalidate(filteredProductsProvider);
+  }
+
+  Future<void> _handleMobilePageAction(_MobileProductPageAction action) async {
+    switch (action) {
+      case _MobileProductPageAction.stockList:
+        await _openStockList();
+      case _MobileProductPageAction.purchases:
+        await _openPurchases();
+      case _MobileProductPageAction.categories:
+        await _openCategories();
+    }
+  }
+
   Future<void> _shareCatalog() async {
-    if (_sharingCatalog) return;
+    final info = await _prepareCatalogShare();
+    if (info == null || !mounted) return;
+    await _showCatalogShareDialog(info);
+  }
+
+  Future<void> _publishCatalogQr() async {
+    final info = await _prepareCatalogShare();
+    if (info == null || !mounted) return;
+    await _showCatalogQrDialog(info);
+  }
+
+  Future<CatalogShareInfo?> _prepareCatalogShare() async {
+    if (_sharingCatalog) return null;
     setState(() => _sharingCatalog = true);
     try {
-      final info = await CatalogShareService.prepare();
-      if (!mounted) return;
-      await _showCatalogShareDialog(info);
+      return await CatalogShareService.prepare();
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.toString().replaceFirst('Exception: ', '')),
@@ -424,6 +546,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         setState(() => _sharingCatalog = false);
       }
     }
+    return null;
   }
 
   Future<void> _showCatalogShareDialog(CatalogShareInfo info) {
@@ -510,10 +633,126 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             icon: const Icon(Icons.open_in_new_outlined),
             label: const Text('Open'),
           ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _showCatalogQrDialog(info);
+            },
+            icon: const Icon(Icons.qr_code_2_outlined),
+            label: const Text('QR Poster'),
+          ),
           FilledButton.icon(
             onPressed: () => _openCatalogWhatsApp(ctx, info),
             icon: const Icon(Icons.chat_outlined),
             label: const Text('WhatsApp'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCatalogQrDialog(CatalogShareInfo info) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_2_outlined, color: AppColors.primary),
+            SizedBox(width: 10),
+            Expanded(child: Text('Publish Catalog QR')),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Customers can scan this poster to open your catalog and place an order.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  height: 300,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: FutureBuilder(
+                    future: CatalogQrPosterService.buildPreviewPng(info),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
+                      final preview = snapshot.data;
+                      if (preview == null) {
+                        return const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.qr_code_2_outlined,
+                                size: 96,
+                                color: AppColors.textSecondary,
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'QR poster is ready to share or print.',
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return Image.memory(preview, fit: BoxFit.contain);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  info.url,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: info.url));
+              if (!ctx.mounted) return;
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Catalog link copied')),
+              );
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copy Link'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _printCatalogQrPoster(ctx, info),
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('Print'),
+          ),
+          FilledButton.icon(
+            onPressed: () => _shareCatalogQrPoster(ctx, info),
+            icon: const Icon(Icons.ios_share_outlined),
+            label: const Text('Share Poster'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
           ),
         ],
@@ -539,6 +778,30 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   ) async {
     try {
       await CatalogShareService.openWhatsApp(info);
+    } catch (error) {
+      if (!context.mounted) return;
+      _showCatalogActionError(context, error);
+    }
+  }
+
+  Future<void> _shareCatalogQrPoster(
+    BuildContext context,
+    CatalogShareInfo info,
+  ) async {
+    try {
+      await CatalogQrPosterService.sharePoster(info);
+    } catch (error) {
+      if (!context.mounted) return;
+      _showCatalogActionError(context, error);
+    }
+  }
+
+  Future<void> _printCatalogQrPoster(
+    BuildContext context,
+    CatalogShareInfo info,
+  ) async {
+    try {
+      await CatalogQrPosterService.printPoster(info);
     } catch (error) {
       if (!context.mounted) return;
       _showCatalogActionError(context, error);
@@ -1288,51 +1551,77 @@ class _ProductRow extends StatelessWidget {
                 ),
               ),
             ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.history,
-                    size: 20,
-                    color: AppColors.primaryLight,
+            PopupMenuButton<_MobileProductMenuAction>(
+              tooltip: 'Manage product',
+              onSelected: (action) {
+                switch (action) {
+                  case _MobileProductMenuAction.viewStock:
+                    onViewBatches();
+                  case _MobileProductMenuAction.adjustStock:
+                    onAdjustStock();
+                  case _MobileProductMenuAction.edit:
+                    onEdit();
+                  case _MobileProductMenuAction.delete:
+                    onDelete();
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  enabled: tracksStock,
+                  value: _MobileProductMenuAction.viewStock,
+                  child: ListTile(
+                    leading: const Icon(Icons.history),
+                    title: Text(
+                      hasVariants ? 'Manage Variants' : 'View Batches',
+                    ),
                   ),
-                  onPressed: onViewBatches,
-                  tooltip: tracksStock ? null : 'Stock tracking is off',
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.all(8),
                 ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.add_box_outlined,
-                    size: 20,
-                    color: AppColors.primary,
+                PopupMenuItem(
+                  enabled: tracksStock,
+                  value: _MobileProductMenuAction.adjustStock,
+                  child: ListTile(
+                    leading: const Icon(Icons.add_box_outlined),
+                    title: Text(
+                      hasVariants ? 'Adjust Variant Stock' : 'Receive Stock',
+                    ),
                   ),
-                  onPressed: onAdjustStock,
-                  tooltip: tracksStock ? null : 'Stock tracking is off',
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.all(8),
                 ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.edit_outlined,
-                    size: 20,
-                    color: AppColors.textSecondary,
+                const PopupMenuItem(
+                  value: _MobileProductMenuAction.edit,
+                  child: ListTile(
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Edit Product'),
                   ),
-                  onPressed: onEdit,
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.all(8),
                 ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 20,
-                    color: AppColors.error,
+                const PopupMenuItem(
+                  value: _MobileProductMenuAction.delete,
+                  child: ListTile(
+                    leading: Icon(Icons.delete_outline, color: AppColors.error),
+                    title: Text('Delete Product'),
                   ),
-                  onPressed: onDelete,
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.all(8),
                 ),
               ],
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHighlight,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Manage',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.more_horiz, size: 18),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_app/core/services/catalog_qr_poster_service.dart';
 import 'package:pos_app/core/services/catalog_share_service.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
 import 'package:pos_app/core/services/sync_settings_service.dart';
@@ -24,4 +25,16 @@ void main() {
       );
     },
   );
+
+  test('catalog QR poster builds a publishable PDF', () async {
+    const info = CatalogShareInfo(
+      url: 'https://pos-e0hs.onrender.com/catalog/business-id?currency=KSh',
+      businessName: 'My Shop',
+    );
+
+    final poster = await CatalogQrPosterService.buildPoster(info);
+
+    expect(poster, isNotEmpty);
+    expect(String.fromCharCodes(poster.take(4)), '%PDF');
+  });
 }
