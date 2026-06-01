@@ -1,5 +1,6 @@
 import 'package:url_launcher/url_launcher.dart';
 
+import '../constants/app_constants.dart';
 import 'license_service.dart';
 import 'shop_settings.dart';
 import 'sync_service.dart';
@@ -9,11 +10,13 @@ class CatalogShareInfo {
   final String url;
   final String businessName;
   final SyncRunSummary? syncSummary;
+  final String? syncWarning;
 
   const CatalogShareInfo({
     required this.url,
     required this.businessName,
     this.syncSummary,
+    this.syncWarning,
   });
 }
 
@@ -31,8 +34,13 @@ class CatalogShareService {
     }
 
     SyncRunSummary? syncSummary;
+    String? syncWarning;
     if (syncBeforeShare) {
-      syncSummary = await SyncService.syncNow();
+      try {
+        syncSummary = await SyncService.syncNow();
+      } catch (error) {
+        syncWarning = _errorMessage(error);
+      }
     }
 
     return CatalogShareInfo(
@@ -41,13 +49,15 @@ class CatalogShareService {
           ? snapshot.businessName!.trim()
           : 'our shop',
       syncSummary: syncSummary,
+      syncWarning: syncWarning,
     );
   }
 
   static String buildCatalogUrl(String businessId) {
-    final base = _publicBackendBaseUrl();
     final encodedBusinessId = Uri.encodeComponent(businessId.trim());
-    final uri = Uri.parse('$base/catalog/$encodedBusinessId');
+    final uri = Uri.parse(
+      '${AppConstants.publicCatalogBaseUrl}/catalog/$encodedBusinessId',
+    );
     final currency = ShopSettings.currency.trim();
     if (currency.isEmpty) {
       return uri.toString();
@@ -80,15 +90,7 @@ class CatalogShareService {
     }
   }
 
-  static String _publicBackendBaseUrl() {
-    final backendUrl = SyncSettingsService.backendUrl.trim();
-    if (backendUrl.isEmpty) {
-      throw Exception('Cloud sync backend is not configured.');
-    }
-    final trimmed = backendUrl.replaceFirst(RegExp(r'/+$'), '');
-    if (trimmed.endsWith('/api')) {
-      return trimmed.substring(0, trimmed.length - 4);
-    }
-    return trimmed;
+  static String _errorMessage(Object error) {
+    return error.toString().replaceFirst('Exception: ', '');
   }
 }

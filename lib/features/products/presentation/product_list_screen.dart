@@ -429,7 +429,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   Future<void> _showCatalogShareDialog(CatalogShareInfo info) {
     final message = CatalogShareService.buildMessage(info);
     final syncSummary = info.syncSummary;
-    final syncText = syncSummary == null
+    final syncWarning = info.syncWarning;
+    final syncText = syncWarning != null
+        ? 'Catalog link is ready. Latest changes could not sync: $syncWarning'
+        : syncSummary == null
         ? 'Catalog link is ready.'
         : 'Synced ${syncSummary.pushedCount} local change${syncSummary.pushedCount == 1 ? '' : 's'} before sharing.';
 
@@ -446,7 +449,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             children: [
               Text(
                 syncText,
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(
+                  color: syncWarning == null
+                      ? AppColors.textSecondary
+                      : AppColors.warning,
+                ),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -499,17 +506,51 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             label: const Text('Copy Link'),
           ),
           OutlinedButton.icon(
-            onPressed: () => CatalogShareService.openCatalog(info),
+            onPressed: () => _openCatalogLink(ctx, info),
             icon: const Icon(Icons.open_in_new_outlined),
             label: const Text('Open'),
           ),
           FilledButton.icon(
-            onPressed: () => CatalogShareService.openWhatsApp(info),
+            onPressed: () => _openCatalogWhatsApp(ctx, info),
             icon: const Icon(Icons.chat_outlined),
             label: const Text('WhatsApp'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openCatalogLink(
+    BuildContext context,
+    CatalogShareInfo info,
+  ) async {
+    try {
+      await CatalogShareService.openCatalog(info);
+    } catch (error) {
+      if (!context.mounted) return;
+      _showCatalogActionError(context, error);
+    }
+  }
+
+  Future<void> _openCatalogWhatsApp(
+    BuildContext context,
+    CatalogShareInfo info,
+  ) async {
+    try {
+      await CatalogShareService.openWhatsApp(info);
+    } catch (error) {
+      if (!context.mounted) return;
+      _showCatalogActionError(context, error);
+    }
+  }
+
+  void _showCatalogActionError(BuildContext context, Object error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.toString().replaceFirst('Exception: ', '')),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.error,
       ),
     );
   }

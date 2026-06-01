@@ -1,10 +1,9 @@
-
-
 class AppConstants {
   static const String appName = 'Piki POS';
   static const String appVersion = '1.0.0';
   static const String productionApiBaseUrl =
       'https://pos-e0hs.onrender.com/api';
+  static const String productionPublicBaseUrl = 'https://pos-e0hs.onrender.com';
   static const String debugApiBaseUrl = 'http://127.0.0.1:3000/api';
   static const String _defaultSocketUrl = 'https://pos-e0hs.onrender.com';
   static const String _defaultLicenseSigningSecret =
@@ -35,6 +34,15 @@ class AppConstants {
       return '${uri.scheme}://${uri.host}$port';
     }
     return _defaultSocketUrl;
+  }
+
+  static String get publicCatalogBaseUrl {
+    const explicit = String.fromEnvironment(
+      'PUBLIC_CATALOG_BASE_URL',
+      defaultValue: '',
+    );
+    final selected = explicit.isNotEmpty ? explicit : productionPublicBaseUrl;
+    return selected.replaceFirst(RegExp(r'/+$'), '');
   }
 
   static String get licenseSigningSecret {
