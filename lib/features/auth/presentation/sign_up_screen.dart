@@ -39,6 +39,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   SubscriptionCatalog? _catalog;
   String? _selectedMarketKey;
   String _selectedSellingMode = 'products';
+  String _selectedCurrency = r'$';
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
@@ -135,6 +136,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _catalog = catalog;
         _selectedMarketKey = market?.key;
         _selectedSellingMode = _preferredSellingModeForMarket(catalog, market);
+        _selectedCurrency = ShopSettings.suggestedCurrencyForCountry(
+          market?.countryCode,
+        );
         _error = catalogMessage;
         _isLoadingCatalog = false;
       });
@@ -158,6 +162,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() {
       _selectedMarketKey = key;
       _selectedSellingMode = _preferredSellingModeForMarket(catalog, market);
+      _selectedCurrency = ShopSettings.suggestedCurrencyForCountry(
+        market?.countryCode,
+      );
     });
   }
 
@@ -265,6 +272,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         password: password,
         deviceId: deviceId,
         countryCode: market?.countryCode ?? 'GLOBAL',
+        currency: _selectedCurrency,
         requestedPlanCode: signupPlan?.code,
         sellingMode: _isBusinessSetupFlow ? _selectedSellingMode : null,
         provider: market?.provider,
@@ -329,6 +337,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         );
         await ShopSettings.setShopPhone(phone);
         await ShopSettings.setShopEmail(email);
+        await ShopSettings.setCurrency(_selectedCurrency);
       }
 
       final localUser = await DatabaseService.queryById('users', userId);
@@ -430,6 +439,34 @@ class _SignUpScreenState extends State<SignUpScreen> {
               )
               .toList(),
           onChanged: _isLoading ? null : _selectMarket,
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Display Currency',
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          key: ValueKey(_selectedCurrency),
+          initialValue: _selectedCurrency,
+          decoration: const InputDecoration(
+            prefixIcon: _GradientIcon(Icons.currency_exchange_outlined),
+          ),
+          items: ShopSettings.currencyOptions
+              .map(
+                (currency) => DropdownMenuItem(
+                  value: currency.prefix,
+                  child: Text(currency.label),
+                ),
+              )
+              .toList(),
+          onChanged: _isLoading
+              ? null
+              : (value) {
+                  if (value != null) {
+                    setState(() => _selectedCurrency = value);
+                  }
+                },
         ),
         const SizedBox(height: 20),
         const Text(

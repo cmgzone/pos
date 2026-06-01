@@ -7,6 +7,7 @@ const {
   applySellingModeToEntitlements,
   ensureSubscriptionSchema,
   loadEntitlementsForPlan,
+  loadPlatformSubscriptionSettings,
   normalizeCountryCode,
   normalizeSellingMode,
 } = require('./subscriptionPlans');
@@ -18,11 +19,14 @@ async function activateBusinessAccess({
   ownerEmail,
   deviceName,
   countryCode,
+  currency,
   sellingMode,
 }) {
   const normalizedDeviceId = normalizeText(deviceId);
   const normalizedBusinessName = normalizeText(businessName);
   const normalizedCountryCode = normalizeCountryCode(countryCode || 'GLOBAL');
+  const normalizedCurrency =
+    normalizeCurrency(currency) || displayCurrencyForCountry(normalizedCountryCode);
   const normalizedSellingMode = normalizeSellingMode(sellingMode) || 'combo';
 
   if (!normalizedDeviceId) {
@@ -34,6 +38,7 @@ async function activateBusinessAccess({
 
   return withTransaction(async (client) => {
     await ensureSubscriptionSchema(client);
+    const subscriptionSettings = await loadPlatformSubscriptionSettings(client);
     const now = new Date();
     const existingContext = await loadBusinessContextByDevice(client, normalizedDeviceId);
 
@@ -42,8 +47,8 @@ async function activateBusinessAccess({
       businessId = crypto.randomUUID();
       await client.query(
         `
-        INSERT INTO businesses (id, name, owner_name, owner_email, country_code, selling_mode, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        INSERT INTO businesses (id, name, owner_name, owner_email, country_code, currency, selling_mode, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
         `,
         [
           businessId,
@@ -51,12 +56,13 @@ async function activateBusinessAccess({
           normalizeText(ownerName),
           normalizeText(ownerEmail),
           normalizedCountryCode,
+          normalizedCurrency,
           normalizedSellingMode,
           now.toISOString(),
         ],
       );
 
-      const expiresAt = addDays(now, config.subscriptionTrialDays);
+      const expiresAt = addDays(now, subscriptionSettings.trialDays);
       const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
       await client.query(
         `
@@ -83,8 +89,9 @@ async function activateBusinessAccess({
           owner_name = COALESCE(NULLIF($3, ''), owner_name),
           owner_email = COALESCE(NULLIF($4, ''), owner_email),
           country_code = COALESCE(NULLIF($5, ''), country_code),
-          selling_mode = COALESCE(NULLIF($6, ''), selling_mode),
-          updated_at = $7
+          currency = COALESCE(NULLIF($6, ''), currency),
+          selling_mode = COALESCE(NULLIF($7, ''), selling_mode),
+          updated_at = $8
         WHERE id = $1
         `,
         [
@@ -93,12 +100,18 @@ async function activateBusinessAccess({
           normalizeText(ownerName),
           normalizeText(ownerEmail),
           normalizedCountryCode,
+          normalizedCurrency,
           normalizedSellingMode,
           now.toISOString(),
         ],
       );
 
-      await ensureSubscriptionRow(client, businessId, now);
+      await ensureSubscriptionRow(
+        client,
+        businessId,
+        now,
+        subscriptionSettings.trialDays,
+      );
     }
 
     await client.query(
@@ -217,6 +230,7 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
       b.id AS business_id,
       b.name AS business_name,
       b.country_code,
+      b.currency,
       b.selling_mode,
       s.plan,
       s.status,
@@ -249,6 +263,7 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
     businessId: context.business_id,
     businessName: context.business_name,
     countryCode: normalizeCountryCode(context.country_code || 'GLOBAL'),
+    currency: normalizeCurrency(context.currency) || displayCurrencyForCountry(context.country_code),
     sellingMode,
     deviceId: context.device_id,
     plan: context.plan,
@@ -269,7 +284,7 @@ function parseBearerToken(headerValue) {
   return normalizeText(raw.slice(7));
 }
 
-async function ensureSubscriptionRow(client, businessId, now) {
+async function ensureSubscriptionRow(client, businessId, now, trialDays) {
   const result = await client.query(
     'SELECT business_id FROM subscriptions WHERE business_id = $1 LIMIT 1',
     [businessId],
@@ -278,7 +293,7 @@ async function ensureSubscriptionRow(client, businessId, now) {
     return;
   }
 
-  const expiresAt = addDays(now, config.subscriptionTrialDays);
+  const expiresAt = addDays(now, trialDays);
   const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
   await client.query(
     `
@@ -305,6 +320,7 @@ async function loadBusinessContextByDevice(client, deviceId) {
       b.id AS business_id,
       b.name AS business_name,
       b.country_code,
+      b.currency,
       b.selling_mode,
       s.plan,
       s.status,
@@ -331,6 +347,7 @@ async function loadBusinessContextByToken(client, accessToken, deviceId) {
       b.id AS business_id,
       b.name AS business_name,
       b.country_code,
+      b.currency,
       b.selling_mode,
       s.plan,
       s.status,
@@ -386,6 +403,9 @@ async function buildAccessResponse({
       id: businessContext.business_id,
       name: businessContext.business_name,
       countryCode: normalizeCountryCode(businessContext.country_code || 'GLOBAL'),
+      currency:
+        normalizeCurrency(businessContext.currency) ||
+        displayCurrencyForCountry(businessContext.country_code),
       sellingMode: normalizeSellingMode(businessContext.selling_mode) || 'combo',
     },
     accessToken,
@@ -413,6 +433,25 @@ function normalizeText(value) {
   }
   const normalized = String(value).trim();
   return normalized || null;
+}
+
+function normalizeCurrency(value) {
+  const normalized = normalizeText(value);
+  if (!normalized || normalized.length > 12 || /[<>{}"'`\\]/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function displayCurrencyForCountry(countryCode) {
+  const normalized = String(countryCode || '').trim().toUpperCase();
+  if (normalized === 'KE') return 'KSh';
+  if (normalized === 'TZ') return 'TSh';
+  if (normalized === 'UG') return 'USh';
+  if (normalized === 'RW') return 'FRw';
+  if (normalized === 'ZA') return 'R';
+  if (normalized === 'GB') return '\u00A3';
+  return '$';
 }
 
 function toIsoString(value) {

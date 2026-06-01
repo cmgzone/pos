@@ -67,6 +67,23 @@ test('POS M-Pesa config does not fall back to platform merchant credentials', ()
   assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
 });
 
+test('POS M-Pesa config ignores business callback URL overrides', () => {
+  const config = resolveMpesaGatewayConfig(
+    {
+      publicConfig: {
+        callbackUrl: 'https://platform.example/mpesa/callback',
+      },
+    },
+    {
+      publicConfig: {
+        callbackUrl: 'https://shop.example/override',
+      },
+    },
+  );
+
+  assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
+});
+
 test('active business M-Pesa settings require merchant credentials', () => {
   assert.throws(
     () =>
@@ -98,5 +115,29 @@ test('inactive business M-Pesa settings can be saved incomplete', () => {
       },
       null,
     ),
+  );
+});
+
+test('active business M-Pesa settings reject an invalid callback URL', () => {
+  assert.throws(
+    () =>
+      validateBusinessPaymentGatewayConfiguration(
+        {
+          provider: 'mpesa',
+          isActive: true,
+          publicConfig: { shortcode: '123456' },
+          secretConfig: {
+            consumerKey: 'key',
+            consumerSecret: 'secret',
+            passkey: 'passkey',
+          },
+        },
+        {
+          publicConfig: {
+            callbackUrl: 'superadmin@example.com',
+          },
+        },
+      ),
+    /callback URL must be a valid HTTPS URL/,
   );
 });

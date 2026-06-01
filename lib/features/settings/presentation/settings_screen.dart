@@ -121,6 +121,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) {
+      return;
+    }
     setState(() => _saving = true);
     try {
       await ShopSettings.setShopName(_nameController.text.trim());
@@ -1890,13 +1893,159 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildManagementPagesSection() {
+  Widget _buildSaveSettingsButton() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: FilledButton.icon(
+        onPressed: _save,
+        icon: const Icon(Icons.save_outlined, size: 18),
+        label: const Text('Save settings'),
+      ),
+    );
+  }
+
+  Widget _buildShopProfilePage() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCard([
+          _buildField(
+            'Shop Name',
+            'e.g. Downtown Electronics',
+            _nameController,
+            Icons.storefront,
+          ),
+          const SizedBox(height: 20),
+          _buildField(
+            'Address',
+            'e.g. 123 Main Street, City',
+            _addressController,
+            Icons.location_on_outlined,
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildField(
+                  'Phone Number',
+                  'e.g. (555) 123-4567',
+                  _phoneController,
+                  Icons.phone_outlined,
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: _buildField(
+                  'Email',
+                  'e.g. shop@example.com',
+                  _emailController,
+                  Icons.email_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildField(
+                  'Tax Rate (%)',
+                  '8.0',
+                  _taxController,
+                  Icons.percent,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d+\.?\d{0,2}'),
+                    ),
+                  ],
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: _buildField(
+                  'Currency Symbol',
+                  '\$',
+                  _currencyController,
+                  Icons.attach_money,
+                ),
+              ),
+            ],
+          ),
+        ]),
+        const SizedBox(height: 16),
+        _buildSaveSettingsButton(),
+      ],
+    );
+  }
+
+  Widget _buildReceiptSettingsPage() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCard([
+          _buildField(
+            'Receipt Footer Message',
+            'Thank you for your purchase!',
+            _footerController,
+            Icons.message_outlined,
+            maxLines: 2,
+          ),
+        ]),
+        const SizedBox(height: 16),
+        _buildSaveSettingsButton(),
+        const SizedBox(height: 28),
+        _buildSectionHeader(Icons.preview_outlined, 'Receipt Preview'),
+        const SizedBox(height: 16),
+        _buildReceiptPreview(),
+      ],
+    );
+  }
+
+  Widget _buildOperationalSettingsPage() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCard([
+          _buildField(
+            'Number of Car Wash Bays',
+            'e.g. 4',
+            _baysController,
+            Icons.local_car_wash_outlined,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            keyboardType: TextInputType.number,
+          ),
+          if (Platform.isWindows) ...[
+            const SizedBox(height: 20),
+            _buildCashDrawerCard(),
+          ],
+        ]),
+        const SizedBox(height: 16),
+        _buildSaveSettingsButton(),
+      ],
+    );
+  }
+
+  Widget _buildCloudSyncPage(SyncState syncState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSyncCard(syncState),
+        const SizedBox(height: 16),
+        _buildSaveSettingsButton(),
+      ],
+    );
+  }
+
+  Widget _buildShopSettingsPagesSection(SyncState syncState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader(
-          Icons.dashboard_customize_outlined,
-          'Management Pages',
+        _buildSectionHeader(Icons.tune_outlined, 'Shop Settings'),
+        const SizedBox(height: 4),
+        const Text(
+          'Open one area at a time to update your shop and device setup.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
         ),
         const SizedBox(height: 16),
         LayoutBuilder(
@@ -1909,6 +2058,185 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               spacing: 12,
               runSpacing: 12,
               children: [
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.storefront_outlined,
+                    title: 'Shop Profile',
+                    subtitle: 'Contact details, tax rate, and currency.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Shop Profile',
+                      icon: Icons.storefront_outlined,
+                      child: _buildShopProfilePage(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'Receipts',
+                    subtitle: 'Footer message and receipt preview.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Receipts',
+                      icon: Icons.receipt_long_outlined,
+                      child: _buildReceiptSettingsPage(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.garage_outlined,
+                    title: 'Operations',
+                    subtitle: 'Car wash bays and connected cash drawer.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Operations',
+                      icon: Icons.garage_outlined,
+                      child: _buildOperationalSettingsPage(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: TrainingAnchor(
+                    id: 'settings.sync',
+                    child: _buildFeaturePageCard(
+                      icon: Icons.cloud_sync_outlined,
+                      title: 'Cloud Sync',
+                      subtitle: 'Review cloud status and sync this device.',
+                      onTap: () => _openSettingsMiniPage(
+                        title: 'Cloud Sync',
+                        icon: Icons.cloud_sync_outlined,
+                        child: _buildCloudSyncPage(syncState),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: TrainingAnchor(
+                    id: 'settings.backup',
+                    child: _buildFeaturePageCard(
+                      icon: Icons.backup_outlined,
+                      title: 'Backup & Restore',
+                      subtitle: 'Create snapshots or restore shop data.',
+                      onTap: () => _openSettingsMiniPage(
+                        title: 'Backup & Restore',
+                        icon: Icons.backup_outlined,
+                        child: _buildBackupCard(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTrainingHelpPage(
+    TrainingController training,
+    int progressPercent,
+  ) {
+    return _buildCard([
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          _buildTrainingMetric(
+            'Modules',
+            '${training.completedModuleCount}/${training.availableModuleCount}',
+            AppColors.success,
+          ),
+          _buildTrainingMetric(
+            'Progress',
+            '$progressPercent%',
+            AppColors.primary,
+          ),
+          _buildTrainingMetric(
+            'User',
+            SessionService.currentUserName,
+            AppColors.warning,
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      const Text(
+        'Training progress is saved separately for each signed-in staff member.',
+        style: TextStyle(color: AppColors.textSecondary),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TrainingHubScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.play_circle_outline, size: 18),
+            label: const Text('Open Training Hub'),
+          ),
+          OutlinedButton.icon(
+            onPressed: training.availableModuleCount == 0
+                ? null
+                : () => ref.read(trainingControllerProvider).startFullTour(),
+            icon: const Icon(Icons.route_outlined, size: 18),
+            label: const Text('Start Full Tour'),
+          ),
+        ],
+      ),
+    ]);
+  }
+
+  Widget _buildManagementPagesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          Icons.dashboard_customize_outlined,
+          'Business Management',
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Manage subscriptions, integrations, locations, and staff access.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final twoColumns = constraints.maxWidth >= 560;
+            final cardWidth = twoColumns
+                ? (constraints.maxWidth - 12) / 2
+                : constraints.maxWidth;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                if (_canManageUsers)
+                  SizedBox(
+                    width: cardWidth,
+                    child: TrainingAnchor(
+                      id: 'settings.team',
+                      child: _buildFeaturePageCard(
+                        icon: Icons.groups_outlined,
+                        title: 'Team Access',
+                        subtitle: 'Create staff accounts and set permissions.',
+                        onTap: () => _openSettingsMiniPage(
+                          title: 'Team Access',
+                          icon: Icons.groups_outlined,
+                          child: _buildTeamCard(),
+                        ),
+                      ),
+                    ),
+                  ),
                 SizedBox(
                   width: cardWidth,
                   child: _buildFeaturePageCard(
@@ -2086,82 +2414,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionHeader(Icons.school_outlined, 'Training & Help'),
-                const SizedBox(height: 4),
-                const Text(
-                  'Replay guided tours for the live POS, inventory, customers, reports, and settings experience.',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TrainingAnchor(
-                  id: 'settings.training',
-                  child: _buildCard([
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _buildTrainingMetric(
-                          'Modules',
-                          '${training.completedModuleCount}/${training.availableModuleCount}',
-                          AppColors.success,
-                        ),
-                        _buildTrainingMetric(
-                          'Progress',
-                          '$progressPercent%',
-                          AppColors.primary,
-                        ),
-                        _buildTrainingMetric(
-                          'User',
-                          SessionService.currentUserName,
-                          AppColors.warning,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Training progress is saved separately for each signed-in staff member.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const TrainingHubScreen(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.play_circle_outline, size: 18),
-                          label: const Text('Open Training Hub'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: training.availableModuleCount == 0
-                              ? null
-                              : () => ref
-                                    .read(trainingControllerProvider)
-                                    .startFullTour(),
-                          icon: const Icon(Icons.route_outlined, size: 18),
-                          label: const Text('Start Full Tour'),
-                        ),
-                      ],
-                    ),
-                  ]),
-                ),
-                const SizedBox(height: 32),
                 _buildSectionHeader(
                   Icons.admin_panel_settings_outlined,
                   'My Account',
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Manage your current login, password, and staff access.',
+                  'Manage your current login and password.',
                   style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 13,
@@ -2172,20 +2431,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   id: 'settings.account',
                   child: _buildAccountCard(),
                 ),
-                if (_canManageUsers) ...[
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(Icons.groups_outlined, 'Team Access'),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Create staff accounts and adjust role permissions.',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
+                const SizedBox(height: 32),
+                _buildSectionHeader(Icons.school_outlined, 'Training & Help'),
+                const SizedBox(height: 4),
+                const Text(
+                  'Replay guided tours whenever a staff member needs a refresher.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TrainingAnchor(
+                  id: 'settings.training',
+                  child: _buildFeaturePageCard(
+                    icon: Icons.school_outlined,
+                    title: 'Training Hub',
+                    subtitle:
+                        '${training.completedModuleCount}/${training.availableModuleCount} modules complete - $progressPercent% progress.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Training & Help',
+                      icon: Icons.school_outlined,
+                      child: _buildTrainingHelpPage(training, progressPercent),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TrainingAnchor(id: 'settings.team', child: _buildTeamCard()),
-                ],
+                ),
                 if (!_canManageOperationalSettings) ...[
                   const SizedBox(height: 32),
                   Container(
@@ -2203,165 +2473,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   const SizedBox(height: 32),
                 ] else ...[
+                  const SizedBox(height: 32),
+                  _buildShopSettingsPagesSection(syncState),
+                  const SizedBox(height: 32),
                   _buildManagementPagesSection(),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(Icons.store, 'Shop Information'),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'This info appears on receipts and the app header.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCard([
-                    _buildField(
-                      'Shop Name',
-                      'e.g. Downtown Electronics',
-                      _nameController,
-                      Icons.storefront,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildField(
-                      'Address',
-                      'e.g. 123 Main Street, City',
-                      _addressController,
-                      Icons.location_on_outlined,
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildField(
-                            'Phone Number',
-                            'e.g. (555) 123-4567',
-                            _phoneController,
-                            Icons.phone_outlined,
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: _buildField(
-                            'Email',
-                            'e.g. shop@example.com',
-                            _emailController,
-                            Icons.email_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ]),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(
-                    Icons.calculate_outlined,
-                    'Tax & Currency',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCard([
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildField(
-                            'Tax Rate (%)',
-                            '8.0',
-                            _taxController,
-                            Icons.percent,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'^\d+\.?\d{0,2}'),
-                              ),
-                            ],
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: _buildField(
-                            'Currency Symbol',
-                            '\$',
-                            _currencyController,
-                            Icons.attach_money,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ]),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(
-                    Icons.receipt_long_outlined,
-                    'Receipt Settings',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCard([
-                    _buildField(
-                      'Receipt Footer Message',
-                      'Thank you for your purchase!',
-                      _footerController,
-                      Icons.message_outlined,
-                      maxLines: 2,
-                    ),
-                  ]),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(
-                    Icons.garage_outlined,
-                    'Operational Settings',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCard([
-                    _buildField(
-                      'Number of Car Wash Bays',
-                      'e.g. 4',
-                      _baysController,
-                      Icons.local_car_wash_outlined,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      keyboardType: TextInputType.number,
-                    ),
-                    if (Platform.isWindows) ...[
-                      const SizedBox(height: 20),
-                      _buildCashDrawerCard(),
-                    ],
-                  ]),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(Icons.cloud_sync_outlined, 'Cloud Sync'),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Connect this device to the sync backend, review cloud status, and trigger manual sync when needed.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TrainingAnchor(
-                    id: 'settings.sync',
-                    child: _buildSyncCard(syncState),
-                  ),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(
-                    Icons.backup_outlined,
-                    'Backup & Restore',
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Create database snapshots and restore the shop from any saved backup. Restoring automatically creates a safety backup first.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TrainingAnchor(
-                    id: 'settings.backup',
-                    child: _buildBackupCard(),
-                  ),
-                  const SizedBox(height: 32),
-                  _buildSectionHeader(
-                    Icons.preview_outlined,
-                    'Receipt Preview',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildReceiptPreview(),
                   const SizedBox(height: 32),
                 ],
               ],

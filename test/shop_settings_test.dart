@@ -39,4 +39,20 @@ void main() {
     expect(ShopSettings.receiptFooter, 'Thank you for your purchase!');
     expect(ShopSettings.isConfigured, isFalse);
   });
+
+  test('suggested registration currency follows the selected country', () {
+    expect(ShopSettings.suggestedCurrencyForCountry('KE'), 'KSh');
+    expect(ShopSettings.suggestedCurrencyForCountry('TZ'), 'TSh');
+    expect(ShopSettings.suggestedCurrencyForCountry('UG'), 'USh');
+    expect(ShopSettings.suggestedCurrencyForCountry('RW'), 'FRw');
+    expect(ShopSettings.suggestedCurrencyForCountry('GLOBAL'), r'$');
+  });
+
+  test('setCurrency trims input and keeps a safe default', () async {
+    await ShopSettings.setCurrency('  KSh  ');
+    expect(ShopSettings.currency, 'KSh');
+
+    await ShopSettings.setCurrency('   ');
+    expect(ShopSettings.currency, r'$');
+  });
 }

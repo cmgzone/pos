@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { config } = require('./config');
 const { query, withTransaction } = require('./db');
 const {
+  isHttpsUrl,
   loadPaymentGateway,
   normalizeCountryCode,
 } = require('./subscriptionPlans');
@@ -204,7 +205,7 @@ async function loadPosMpesaConfig(businessContext) {
     Boolean(mpesaConfig.consumerKey) &&
     Boolean(mpesaConfig.consumerSecret) &&
     Boolean(mpesaConfig.passkey) &&
-    Boolean(mpesaConfig.callbackUrl);
+    isHttpsUrl(mpesaConfig.callbackUrl);
   const active = platformActive && merchantConfigured;
   return {
     active,
@@ -460,7 +461,8 @@ async function initiateMpesaPosCheckout(payment, platformGateway, businessGatewa
     !mpesaConfig.consumerSecret ||
     !mpesaConfig.shortcode ||
     !mpesaConfig.passkey ||
-    !mpesaConfig.callbackUrl
+    !isHttpsUrl(mpesaConfig.baseUrl) ||
+    !isHttpsUrl(mpesaConfig.callbackUrl)
   ) {
     await query(
       `
@@ -580,7 +582,6 @@ function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
       config.mpesaBaseUrl,
     shortcode: businessPublicConfig.shortcode || '',
     callbackUrl:
-      businessPublicConfig.callbackUrl ||
       platformPublicConfig.callbackUrl ||
       config.mpesaCallbackUrl,
     transactionType: normalizeMpesaTransactionType(
@@ -618,6 +619,7 @@ function normalizeBusinessPaymentGatewayInput(input, existing = {}) {
     ),
   };
   if (provider === 'mpesa') {
+    delete normalized.publicConfig.callbackUrl;
     normalized.publicConfig.transactionType = normalizeMpesaTransactionType(
       normalized.publicConfig.transactionType,
     );
@@ -641,13 +643,19 @@ function validateBusinessPaymentGatewayConfiguration(gateway, platformGateway) {
   if (!config.consumerSecret) missing.push('consumer secret');
   if (!config.passkey) missing.push('passkey');
   if (!config.callbackUrl) {
-    missing.push('callback URL from super admin or business settings');
+    missing.push('callback URL from super admin');
   }
   if (missing.length > 0) {
     throw createError(
       400,
       `Complete M-Pesa settings before enabling: ${missing.join(', ')}.`,
     );
+  }
+  if (!isHttpsUrl(config.baseUrl)) {
+    throw createError(400, 'Daraja base URL must be a valid HTTPS URL.');
+  }
+  if (!isHttpsUrl(config.callbackUrl)) {
+    throw createError(400, 'M-Pesa callback URL must be a valid HTTPS URL.');
   }
 }
 

@@ -198,6 +198,56 @@ class HeldSaleRepository {
     final refreshedItems = <Map<String, dynamic>>[];
     final adjustments = <String>[];
 
+    final productIds = items
+        .where((item) => (item['line_type'] as String? ?? 'product') != 'service')
+        .map((item) => item['product_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final variantIds = items
+        .where((item) => (item['line_type'] as String? ?? 'product') != 'service')
+        .map((item) => item['variant_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final List<Map<String, dynamic>> productsList;
+    if (productIds.isNotEmpty) {
+      final placeholders = List.filled(productIds.length, '?').join(',');
+      productsList = await DatabaseService.rawQuery(
+        '''
+        SELECT *
+        FROM products
+        WHERE id IN ($placeholders)
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+        ''',
+        [...productIds, ..._currentBranchArgs],
+      );
+    } else {
+      productsList = [];
+    }
+    final productsMap = {for (final p in productsList) p['id'] as String: p};
+
+    final List<Map<String, dynamic>> variantsList;
+    if (variantIds.isNotEmpty) {
+      final placeholders = List.filled(variantIds.length, '?').join(',');
+      variantsList = await DatabaseService.rawQuery(
+        '''
+        SELECT *
+        FROM product_variants
+        WHERE id IN ($placeholders)
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+        ''',
+        [...variantIds, ..._currentBranchArgs],
+      );
+    } else {
+      variantsList = [];
+    }
+    final variantsMap = {for (final v in variantsList) v['id'] as String: v};
+
     for (final item in items) {
       final lineType = item['line_type'] as String? ?? 'product';
       if (lineType == 'service') {
@@ -206,19 +256,7 @@ class HeldSaleRepository {
       }
 
       final productId = item['product_id'] as String? ?? '';
-      final product = productId.isEmpty
-          ? null
-          : (await DatabaseService.rawQuery(
-              '''
-              SELECT *
-              FROM products
-              WHERE id = ?
-                AND deleted_at IS NULL
-                AND COALESCE(branch_id, ?) = ?
-              LIMIT 1
-              ''',
-              [productId, ..._currentBranchArgs],
-            )).firstOrNull;
+      final product = productId.isEmpty ? null : productsMap[productId];
       final variantId = item['variant_id'] as String?;
       final variantName = item['variant_name'] as String?;
       final baseName =
@@ -235,17 +273,7 @@ class HeldSaleRepository {
       final factor = _positiveDouble(item['sale_to_stock_factor'], fallback: 1);
       final variant = (variantId == null || variantId.trim().isEmpty)
           ? null
-          : (await DatabaseService.rawQuery(
-              '''
-              SELECT *
-              FROM product_variants
-              WHERE id = ?
-                AND deleted_at IS NULL
-                AND COALESCE(branch_id, ?) = ?
-              LIMIT 1
-              ''',
-              [variantId, ..._currentBranchArgs],
-            )).firstOrNull;
+          : variantsMap[variantId];
       if (variantId != null && variantId.trim().isNotEmpty && variant == null) {
         adjustments.add('$itemName is no longer available and was removed.');
         continue;

@@ -366,20 +366,14 @@ class TrainingController extends ChangeNotifier {
   }
 
   bool _canAccessTrainingModule(TrainingModule module) {
-    final feature = _featureForModule(module.id);
-    return feature == null || _canUseFeature(feature);
+    final shellIndex = _shellIndexForModule(module.id);
+    return shellIndex == null || _canAccessShellIndex(shellIndex);
   }
 
   bool _canAccessTrainingStep(TrainingStep step) {
     final shellIndex = step.shellIndex;
-    if (shellIndex != null) {
-      if (!SessionService.canAccessNavigationIndex(shellIndex)) {
-        return false;
-      }
-      final feature = UserAccessProfile.featureForNavigationIndex(shellIndex);
-      if (feature != null && !_canUseFeature(feature)) {
-        return false;
-      }
+    if (shellIndex != null && !_canAccessShellIndex(shellIndex)) {
+      return false;
     }
 
     switch (step.action) {
@@ -397,30 +391,74 @@ class TrainingController extends ChangeNotifier {
         LicenseService.currentSnapshot.allowsFeature(feature);
   }
 
-  String? _featureForModule(String moduleId) {
+  bool _canAccessShellIndex(int index) {
+    final role = SessionService.currentUserRole;
+    final hasShellAccess = switch (index) {
+      0 =>
+        SessionService.canUseProductPos &&
+            SessionService.canAccessNavigationIndex(index),
+      13 || 14 => RolePermissions.canManageOperationalSettings(role),
+      15 =>
+        SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
+            SessionService.canAccessFeature(UserAccessProfile.featurePurchases),
+      17 =>
+        SessionService.canUseProductPos &&
+            (SessionService.canAccessFeature(UserAccessProfile.featurePos) ||
+                SessionService.canAccessFeature(
+                  UserAccessProfile.featureSales,
+                ) ||
+                SessionService.canAccessFeature(
+                  UserAccessProfile.featureProducts,
+                )),
+      _ => SessionService.canAccessNavigationIndex(index),
+    };
+    if (!hasShellAccess) {
+      return false;
+    }
+
+    final feature = UserAccessProfile.featureForNavigationIndex(index);
+    return feature == null ||
+        LicenseService.currentSnapshot.allowsFeature(feature);
+  }
+
+  int? _shellIndexForModule(String moduleId) {
     switch (moduleId) {
       case 'pos':
-        return UserAccessProfile.featurePos;
-      case 'dashboard':
-        return UserAccessProfile.featureDashboard;
-      case 'products':
-        return UserAccessProfile.featureProducts;
-      case 'categories':
-        return UserAccessProfile.featureCategories;
-      case 'purchases':
-        return UserAccessProfile.featurePurchases;
-      case 'sales':
-        return UserAccessProfile.featureSales;
-      case 'kopesha':
-        return UserAccessProfile.featureKopesha;
-      case 'profit-loss':
-        return UserAccessProfile.featureProfitLoss;
-      case 'reports':
-        return UserAccessProfile.featureReports;
-      case 'settings':
-        return UserAccessProfile.featureSettings;
+        return 0;
+      case 'orders':
+        return 17;
       case 'services':
-        return UserAccessProfile.featureServices;
+        return 11;
+      case 'dashboard':
+        return 5;
+      case 'piki':
+        return 16;
+      case 'products':
+        return 1;
+      case 'stock-list':
+        return 12;
+      case 'categories':
+        return 2;
+      case 'purchases':
+        return 3;
+      case 'transfers':
+        return 15;
+      case 'sales':
+        return 4;
+      case 'shifts':
+        return 10;
+      case 'kopesha':
+        return 6;
+      case 'profit-loss':
+        return 7;
+      case 'reports':
+        return 8;
+      case 'branches':
+        return 13;
+      case 'audit-logs':
+        return 14;
+      case 'settings':
+        return 9;
       default:
         return null;
     }

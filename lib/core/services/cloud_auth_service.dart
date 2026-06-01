@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'license_service.dart';
+import 'shop_settings.dart';
 import 'sync_settings_service.dart';
 
 /// Response from cloud authentication endpoints.
@@ -80,6 +81,7 @@ class CloudAuthService {
     required String password,
     required String deviceId,
     required String countryCode,
+    required String currency,
     String? requestedPlanCode,
     String? sellingMode,
     String? provider,
@@ -104,6 +106,7 @@ class CloudAuthService {
               'deviceId': deviceId,
               'deviceName': _deviceName,
               'countryCode': countryCode,
+              'currency': ShopSettings.normalizeCurrency(currency),
               if (requestedPlanCode != null &&
                   requestedPlanCode.trim().isNotEmpty)
                 'requestedPlanCode': requestedPlanCode.trim(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/stock_transfer_repository.dart';
 
@@ -296,138 +297,145 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.sync_problem_rounded,
-                      color: AppColors.warning,
-                      size: 42,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _loadError!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Retry'),
-                    ),
-                  ],
+      body: TrainingAnchor(
+        id: 'transfers.workspace',
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.sync_problem_rounded,
+                        color: AppColors.warning,
+                        size: 42,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _loadError!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            )
-          : _transfers.isEmpty
-          ? const Center(
-              child: Text(
-                'No stock transfers yet',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _transfers.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final transfer = _transfers[index];
-                final outgoing =
-                    transfer['from_branch_id'] == BranchService.currentBranchId;
-                final quantity = (transfer['quantity'] as num? ?? 0).toDouble();
-                final status = transfer['status'] as String? ?? 'requested';
-                final actions = _statusActions(transfer);
-                return Material(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor:
-                              (outgoing ? AppColors.warning : AppColors.success)
-                                  .withValues(alpha: 0.14),
-                          child: Icon(
-                            outgoing
-                                ? Icons.call_made_rounded
-                                : Icons.call_received_rounded,
-                            color: outgoing
-                                ? AppColors.warning
-                                : AppColors.success,
+              )
+            : _transfers.isEmpty
+            ? const Center(
+                child: Text(
+                  'No stock transfers yet',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: _transfers.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final transfer = _transfers[index];
+                  final outgoing =
+                      transfer['from_branch_id'] ==
+                      BranchService.currentBranchId;
+                  final quantity = (transfer['quantity'] as num? ?? 0)
+                      .toDouble();
+                  final status = transfer['status'] as String? ?? 'requested';
+                  final actions = _statusActions(transfer);
+                  return Material(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor:
+                                (outgoing
+                                        ? AppColors.warning
+                                        : AppColors.success)
+                                    .withValues(alpha: 0.14),
+                            child: Icon(
+                              outgoing
+                                  ? Icons.call_made_rounded
+                                  : Icons.call_received_rounded,
+                              color: outgoing
+                                  ? AppColors.warning
+                                  : AppColors.success,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  transfer['product_name'] as String? ??
+                                      'Product',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${outgoing ? 'To' : 'From'} ${outgoing ? transfer['to_branch_name'] : transfer['from_branch_name']}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                transfer['product_name'] as String? ??
-                                    'Product',
+                                '${quantity.toStringAsFixed(2)} ${transfer['unit'] ?? ''}',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${outgoing ? 'To' : 'From'} ${outgoing ? transfer['to_branch_name'] : transfer['from_branch_name']}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                status.toUpperCase(),
                                 style: const TextStyle(
                                   color: AppColors.textSecondary,
-                                  fontSize: 12,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${quantity.toStringAsFixed(2)} ${transfer['unit'] ?? ''}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              status.toUpperCase(),
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
+                          if (actions.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            PopupMenuButton<String>(
+                              tooltip: 'Transfer actions',
+                              itemBuilder: (_) => actions,
+                              onSelected: (value) =>
+                                  _changeStatus(transfer, value),
                             ),
                           ],
-                        ),
-                        if (actions.isNotEmpty) ...[
-                          const SizedBox(width: 4),
-                          PopupMenuButton<String>(
-                            tooltip: 'Transfer actions',
-                            itemBuilder: (_) => actions,
-                            onSelected: (value) =>
-                                _changeStatus(transfer, value),
-                          ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }

@@ -19,7 +19,6 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   final _mpesaDisplayNameController = TextEditingController(text: 'M-Pesa');
   final _mpesaShortcodeController = TextEditingController();
   final _mpesaAccountReferenceController = TextEditingController();
-  final _mpesaCallbackUrlController = TextEditingController();
   final _mpesaConsumerKeyController = TextEditingController();
   final _mpesaConsumerSecretController = TextEditingController();
   final _mpesaPasskeyController = TextEditingController();
@@ -41,7 +40,6 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
     _mpesaDisplayNameController.dispose();
     _mpesaShortcodeController.dispose();
     _mpesaAccountReferenceController.dispose();
-    _mpesaCallbackUrlController.dispose();
     _mpesaConsumerKeyController.dispose();
     _mpesaConsumerSecretController.dispose();
     _mpesaPasskeyController.dispose();
@@ -68,8 +66,6 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
             'CustomerPayBillOnline';
         _mpesaAccountReferenceController.text =
             publicConfig['accountReference']?.toString() ?? '';
-        _mpesaCallbackUrlController.text =
-            publicConfig['callbackUrl']?.toString() ?? '';
         _mpesaConsumerKeyController.text =
             secretConfig['consumerKey']?.toString() ?? '';
         _mpesaConsumerSecretController.text =
@@ -126,7 +122,6 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
         shortcode: _mpesaShortcodeController.text,
         transactionType: _mpesaTransactionType,
         accountReference: _mpesaAccountReferenceController.text,
-        callbackUrl: _mpesaCallbackUrlController.text,
         consumerKey: _mpesaConsumerKeyController.text,
         consumerSecret: _mpesaConsumerSecretController.text,
         passkey: _mpesaPasskeyController.text,
@@ -559,15 +554,6 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                 controller: _mpesaAccountReferenceController,
                 decoration: const InputDecoration(
                   labelText: 'Account reference',
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 320,
-              child: TextField(
-                controller: _mpesaCallbackUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'Callback URL override',
                 ),
               ),
             ),

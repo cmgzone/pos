@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../training/widgets/training_anchor.dart';
 
 class BranchManagementScreen extends StatefulWidget {
   const BranchManagementScreen({super.key});
@@ -191,61 +192,67 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
           const SizedBox(width: 12),
         ],
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _branchesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final branches = snapshot.data ?? [];
-          return ListView.separated(
-            padding: const EdgeInsets.all(20),
-            itemCount: branches.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final branch = branches[index];
-              final isCurrent = branch['id'] == BranchService.currentBranchId;
-              final isActive = (branch['is_active'] as num? ?? 1) == 1;
-              return ListTile(
-                tileColor: AppColors.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: AppColors.border),
-                ),
-                leading: Icon(
-                  isCurrent ? Icons.store_rounded : Icons.store_outlined,
-                  color: isCurrent ? AppColors.success : AppColors.primaryLight,
-                ),
-                title: Text(branch['name'] as String? ?? 'Branch'),
-                subtitle: Text(
-                  [
-                    if ((branch['code'] as String?)?.trim().isNotEmpty == true)
-                      'Code: ${branch['code']}',
-                    if ((branch['address'] as String?)?.trim().isNotEmpty ==
-                        true)
-                      branch['address'] as String,
-                    isActive ? 'Active' : 'Inactive',
-                  ].join(' - '),
-                ),
-                trailing: Wrap(
-                  spacing: 8,
-                  children: [
-                    TextButton(
-                      onPressed: isCurrent
-                          ? null
-                          : () => _switchBranch(branch['id'] as String),
-                      child: Text(isCurrent ? 'Current' : 'Use'),
-                    ),
-                    IconButton(
-                      onPressed: () => _showBranchDialog(branch),
-                      icon: const Icon(Icons.edit_outlined),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+      body: TrainingAnchor(
+        id: 'branches.workspace',
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _branchesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final branches = snapshot.data ?? [];
+            return ListView.separated(
+              padding: const EdgeInsets.all(20),
+              itemCount: branches.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final branch = branches[index];
+                final isCurrent = branch['id'] == BranchService.currentBranchId;
+                final isActive = (branch['is_active'] as num? ?? 1) == 1;
+                return ListTile(
+                  tileColor: AppColors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
+                  leading: Icon(
+                    isCurrent ? Icons.store_rounded : Icons.store_outlined,
+                    color: isCurrent
+                        ? AppColors.success
+                        : AppColors.primaryLight,
+                  ),
+                  title: Text(branch['name'] as String? ?? 'Branch'),
+                  subtitle: Text(
+                    [
+                      if ((branch['code'] as String?)?.trim().isNotEmpty ==
+                          true)
+                        'Code: ${branch['code']}',
+                      if ((branch['address'] as String?)?.trim().isNotEmpty ==
+                          true)
+                        branch['address'] as String,
+                      isActive ? 'Active' : 'Inactive',
+                    ].join(' - '),
+                  ),
+                  trailing: Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: isCurrent
+                            ? null
+                            : () => _switchBranch(branch['id'] as String),
+                        child: Text(isCurrent ? 'Current' : 'Use'),
+                      ),
+                      IconButton(
+                        onPressed: () => _showBranchDialog(branch),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

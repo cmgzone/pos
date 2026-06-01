@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/openrouter_service.dart';
+import '../../../core/services/sync_controller.dart';
 import 'piki_agent_service.dart';
 import 'piki_brain_service.dart';
 import 'piki_chat_repository.dart';
@@ -35,7 +36,10 @@ final pikiSessionsProvider = FutureProvider<List<PikiSession>>((ref) {
 
 final pikiProactiveInsightsProvider =
     FutureProvider<List<PikiProactiveInsight>>((ref) {
-      return PikiProactiveService.fetchInsights();
+      final isOnline = ref.watch(
+        syncControllerProvider.select((state) => state.isOnline),
+      );
+      return PikiProactiveService.fetchInsights(allowNetwork: isOnline);
     });
 
 final pikiMessagesProvider =
@@ -262,25 +266,35 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
 
   Future<void> _sendProactiveBrief(String userInput) async {
     final statusNotifier = _ref.read(pikiStatusProvider.notifier);
+    final isOnline = _ref.read(syncControllerProvider).isOnline;
     statusNotifier.state = AgentStatus.working;
     final thinking = PikiMessage(
-      content: 'Checking backend signals...',
+      content: isOnline
+          ? 'Checking backend signals...'
+          : 'Loading saved business alerts...',
       sender: PikiSender.agent,
       messageType: PikiMessageType.working,
     );
     addMessage(thinking);
 
     final insights = await PikiProactiveService.fetchInsights(
-      forceRefresh: true,
+      forceRefresh: isOnline,
+      allowNetwork: isOnline,
     );
+    _ref.invalidate(pikiProactiveInsightsProvider);
     removeMessagesWhere((message) => message.id == thinking.id);
 
-    final content = insights.isEmpty
-        ? 'No backend alerts need attention right now. Piki will keep checking from the cloud side while the backend is running.'
-        : insights
-              .take(5)
-              .map((insight) => '${insight.title}: ${insight.body}')
-              .join('\n');
+    final summary = insights
+        .take(5)
+        .map((insight) => '${insight.title}: ${insight.body}')
+        .join('\n');
+    final content = isOnline
+        ? insights.isEmpty
+              ? 'No backend alerts need attention right now. Piki will keep checking from the cloud side while the backend is running.'
+              : summary
+        : insights.isEmpty
+        ? 'You are offline and there are no saved Piki alerts on this device yet. Connect to the internet to run a fresh business check.'
+        : 'You are offline. Here are the latest saved Piki alerts:\n$summary';
 
     addMessage(
       PikiMessage(

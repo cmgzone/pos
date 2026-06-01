@@ -61,8 +61,8 @@ class ReportRepository {
         MAX(s.due_date) as latest_due
       FROM customers c
       LEFT JOIN sales s ON s.customer_id = c.id
-        AND s.payment_type = 'kopesha'
         AND s.balance_due > 0
+        AND s.customer_id IS NOT NULL
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
         AND COALESCE(s.branch_id, ?) = ?
@@ -99,8 +99,8 @@ class ReportRepository {
         END as age_bucket,
         CAST(julianday('now') - julianday(s.due_date) AS INTEGER) as days_overdue
       FROM sales s
-      WHERE s.payment_type = 'kopesha'
-        AND s.balance_due > 0
+      WHERE s.balance_due > 0
+        AND s.customer_id IS NOT NULL
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
         AND COALESCE(s.branch_id, ?) = ?
@@ -132,8 +132,8 @@ class ReportRepository {
         SUM(s.balance_due) as total_outstanding,
         COUNT(s.id) as total_count
       FROM sales s
-      WHERE s.payment_type = 'kopesha'
-        AND s.balance_due > 0
+      WHERE s.balance_due > 0
+        AND s.customer_id IS NOT NULL
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
         AND COALESCE(s.branch_id, ?) = ?
@@ -352,10 +352,10 @@ class ReportRepository {
         COALESCE(SUM(s.total_amount), 0) as total_revenue,
         COALESCE(SUM(s.tax), 0) as total_tax,
         COALESCE(SUM(s.discount), 0) as total_discount,
-        SUM(CASE WHEN s.payment_type = 'cash' THEN s.total_amount ELSE 0 END) as cash_revenue,
-        SUM(CASE WHEN s.payment_type = 'kopesha' THEN s.total_amount ELSE 0 END) as kopesha_revenue,
-        COUNT(CASE WHEN s.payment_type = 'cash' THEN 1 END) as cash_count,
-        COUNT(CASE WHEN s.payment_type = 'kopesha' THEN 1 END) as kopesha_count,
+        SUM(CASE WHEN s.is_cash_drawer = 1 THEN s.total_amount ELSE 0 END) as cash_revenue,
+        SUM(CASE WHEN s.balance_due > 0 THEN s.total_amount ELSE 0 END) as kopesha_revenue,
+        COUNT(CASE WHEN s.is_cash_drawer = 1 THEN 1 END) as cash_count,
+        COUNT(CASE WHEN s.balance_due > 0 THEN 1 END) as kopesha_count,
         COALESCE(SUM((SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) FROM sale_items si WHERE si.sale_id = s.id)), 0) as product_revenue,
         COALESCE(SUM((SELECT COALESCE(SUM(ssi.quantity * ssi.unit_price), 0) FROM service_sale_items ssi WHERE ssi.sale_id = s.id)), 0) as service_revenue,
         COUNT(CASE WHEN EXISTS (SELECT 1 FROM sale_items si WHERE si.sale_id = s.id) THEN 1 END) as product_sales,
@@ -503,8 +503,8 @@ class ReportRepository {
         COALESCE(u.role, 'CASHIER') as cashier_role,
         COUNT(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN 1 END) as total_sales,
         COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.total_amount ELSE 0 END), 0) as total_revenue,
-        COALESCE(SUM(CASE WHEN base.payment_type = 'cash' THEN base.total_amount ELSE 0 END), 0) as cash_revenue,
-        COALESCE(SUM(CASE WHEN base.payment_type = 'kopesha' THEN base.total_amount ELSE 0 END), 0) as kopesha_revenue,
+        COALESCE(SUM(CASE WHEN base.is_cash_drawer = 1 THEN base.total_amount ELSE 0 END), 0) as cash_revenue,
+        COALESCE(SUM(CASE WHEN base.balance_due > 0 THEN base.total_amount ELSE 0 END), 0) as kopesha_revenue,
         COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.product_line_revenue ELSE 0 END), 0) as product_revenue,
         COALESCE(SUM(CASE WHEN base.payment_type NOT LIKE 'refund%' THEN base.service_line_revenue ELSE 0 END), 0) as service_revenue,
         COUNT(CASE WHEN base.has_product_items = 1 AND base.payment_type NOT LIKE 'refund%' THEN 1 END) as product_sales,
@@ -520,6 +520,8 @@ class ReportRepository {
           s.payment_type,
           s.total_amount,
           s.created_at,
+          s.is_cash_drawer,
+          s.balance_due,
           CASE WHEN EXISTS (SELECT 1 FROM sale_items si WHERE si.sale_id = s.id) THEN 1 ELSE 0 END as has_product_items,
           CASE WHEN EXISTS (SELECT 1 FROM service_sale_items ssi WHERE ssi.sale_id = s.id) THEN 1 ELSE 0 END as has_service_items,
           COALESCE((SELECT SUM(si.quantity * si.unit_price) FROM sale_items si WHERE si.sale_id = s.id), 0) as product_line_revenue,

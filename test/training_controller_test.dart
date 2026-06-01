@@ -41,6 +41,7 @@ void main() {
         .toList(growable: false);
 
     expect(moduleIds, containsAll(['quick-start', 'pos', 'sales', 'settings']));
+    expect(moduleIds, contains('orders'));
     expect(moduleIds, isNot(contains('products')));
     expect(moduleIds, isNot(contains('categories')));
     expect(moduleIds, isNot(contains('purchases')));
@@ -54,4 +55,80 @@ void main() {
       isNot(contains('quick-start.dashboard')),
     );
   });
+
+  test('service-only staff only receive training they can open', () async {
+    final controller = TrainingController(
+      progressService: TrainingProgressService(),
+    );
+    addTearDown(controller.dispose);
+
+    await SessionService.signIn({
+      'id': 'cashier-services',
+      'name': 'Service Cashier',
+      'email': 'services@example.com',
+      'role': RolePermissions.cashier,
+      'feature_access_json': UserAccessProfile.encodeStringList([
+        UserAccessProfile.featureServices,
+        UserAccessProfile.featureShifts,
+        UserAccessProfile.featureAgent,
+        UserAccessProfile.featureSettings,
+      ]),
+      'pos_mode': UserAccessProfile.posModeServices,
+    });
+    await controller.ensureLoadedForCurrentUser();
+
+    final moduleIds = controller.availableModules
+        .map((module) => module.id)
+        .toList(growable: false);
+
+    expect(
+      moduleIds,
+      containsAll(['quick-start', 'services', 'shifts', 'piki', 'settings']),
+    );
+    expect(moduleIds, isNot(contains('pos')));
+    expect(moduleIds, isNot(contains('orders')));
+    expect(moduleIds, isNot(contains('products')));
+  });
+
+  test(
+    'manager receives shell operational modules for allowed stock work',
+    () async {
+      final controller = TrainingController(
+        progressService: TrainingProgressService(),
+      );
+      addTearDown(controller.dispose);
+
+      await SessionService.signIn({
+        'id': 'manager-stock',
+        'name': 'Stock Manager',
+        'email': 'stock@example.com',
+        'role': RolePermissions.manager,
+        'feature_access_json': UserAccessProfile.encodeStringList([
+          UserAccessProfile.featureProducts,
+          UserAccessProfile.featurePurchases,
+          UserAccessProfile.featureSettings,
+        ]),
+      });
+      await controller.ensureLoadedForCurrentUser();
+
+      final moduleIds = controller.availableModules
+          .map((module) => module.id)
+          .toList(growable: false);
+
+      expect(
+        moduleIds,
+        containsAll([
+          'quick-start',
+          'orders',
+          'products',
+          'purchases',
+          'transfers',
+          'branches',
+          'audit-logs',
+          'settings',
+        ]),
+      );
+      expect(moduleIds, isNot(contains('stock-list')));
+    },
+  );
 }

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/app_constants.dart';
+import 'shop_settings.dart';
 
 enum LicenseAccessStatus { localOnly, active, grace, expired, invalid }
 
@@ -535,6 +536,7 @@ class LicenseService {
               'businessName': normalizedBusinessName,
               'ownerName': ownerName.trim(),
               'ownerEmail': ownerEmail.trim(),
+              'currency': ShopSettings.currency,
             }),
           )
           .timeout(_timeout);
@@ -561,6 +563,7 @@ class LicenseService {
 
     final businessId = _readTrimmed(business['id']?.toString());
     final businessName = _readTrimmed(business['name']?.toString());
+    final currency = _readTrimmed(business['currency']?.toString());
     final accessToken = _readTrimmed(body['accessToken']?.toString());
     final plan = _readTrimmed(subscription['plan']?.toString());
     final payloadBase64 = _readTrimmed(license['payloadBase64']?.toString());
@@ -579,6 +582,10 @@ class LicenseService {
     await _prefs!.setString(_keyBusinessId, businessId);
     if (businessName != null) {
       await _prefs!.setString(_keyBusinessName, businessName);
+    }
+    if (currency != null) {
+      await ShopSettings.init();
+      await ShopSettings.setCurrency(currency);
     }
     await _prefs!.setString(_keyAccessToken, accessToken);
     if (plan != null) {

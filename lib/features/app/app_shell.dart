@@ -7,6 +7,9 @@ import '../../core/services/branch_service.dart';
 import '../../core/services/sync_controller.dart';
 import '../../core/services/license_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../agent/data/piki_models.dart';
+import '../agent/data/piki_proactive_service.dart';
+import '../agent/data/piki_provider.dart';
 import '../agent/presentation/piki_agent_screen.dart';
 import '../training/application/training_controller.dart';
 import '../training/presentation/training_hub_screen.dart';
@@ -26,6 +29,7 @@ import '../services/presentation/service_management_screen.dart';
 import '../settings/presentation/audit_log_screen.dart';
 import '../settings/presentation/branch_management_screen.dart';
 import '../settings/presentation/settings_screen.dart';
+import '../settings/presentation/subscription_plans_section.dart';
 import '../shifts/presentation/shift_management_screen.dart';
 import 'dashboard_screen.dart';
 import '../../widgets/beautiful_icon.dart';
@@ -51,6 +55,7 @@ class AppShell extends ConsumerStatefulWidget {
 class AppShellState extends ConsumerState<AppShell> {
   late int _selectedIndex;
   String _trainingPromptUserId = '';
+  bool _subscriptionPromptShown = false;
 
   final _destinations = const [
     _NavDestination(
@@ -325,7 +330,7 @@ class AppShellState extends ConsumerState<AppShell> {
     super.initState();
     _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeShowTrainingPrompt();
+      _showStartupPrompts();
     });
   }
 
@@ -343,6 +348,455 @@ class AppShellState extends ConsumerState<AppShell> {
       return;
     }
     setState(() => _selectedIndex = target);
+  }
+
+  bool _canLoadPikiNotifications(SyncState syncState) {
+    final license = syncState.licenseSnapshot;
+    return SessionService.canAccessFeature(
+          UserAccessProfile.featureProactivePiki,
+        ) &&
+        (license.accessStatus == LicenseAccessStatus.active ||
+            license.accessStatus == LicenseAccessStatus.grace) &&
+        license.entitlements.features.contains(
+          UserAccessProfile.featureProactivePiki,
+        );
+  }
+
+  List<_AppNotification> _buildNotifications(
+    SyncState syncState, {
+    List<PikiProactiveInsight> pikiInsights = const [],
+  }) {
+    final notifications = <_AppNotification>[];
+    final license = syncState.licenseSnapshot;
+
+    switch (license.accessStatus) {
+      case LicenseAccessStatus.grace:
+        notifications.add(
+          _AppNotification(
+            icon: Icons.schedule_outlined,
+            color: AppColors.warning,
+            title: 'Subscription renewal due',
+            message:
+                license.detail ??
+                'Renew the subscription before the grace period ends.',
+            destinationIndex: 9,
+          ),
+        );
+      case LicenseAccessStatus.expired:
+        notifications.add(
+          _AppNotification(
+            icon: Icons.lock_clock_outlined,
+            color: AppColors.error,
+            title: 'Subscription expired',
+            message:
+                license.detail ??
+                'Renew the subscription to record sales and make changes.',
+            destinationIndex: 9,
+          ),
+        );
+      case LicenseAccessStatus.invalid:
+        notifications.add(
+          _AppNotification(
+            icon: Icons.gpp_bad_outlined,
+            color: AppColors.error,
+            title: 'License needs attention',
+            message:
+                license.detail ??
+                'Reconnect this device to refresh the subscription license.',
+            destinationIndex: 9,
+          ),
+        );
+      case LicenseAccessStatus.localOnly:
+      case LicenseAccessStatus.active:
+        break;
+    }
+
+    if (syncState.isConfigured && !syncState.isOnline) {
+      notifications.add(
+        const _AppNotification(
+          icon: Icons.cloud_off_outlined,
+          color: AppColors.warning,
+          title: 'Device is offline',
+          message:
+              'Changes stay on this device until the internet connection returns.',
+          destinationIndex: 9,
+        ),
+      );
+    } else if (syncState.lastError?.trim().isNotEmpty == true) {
+      notifications.add(
+        _AppNotification(
+          icon: Icons.sync_problem_outlined,
+          color: AppColors.error,
+          title: 'Cloud sync failed',
+          message: syncState.lastError!,
+          destinationIndex: 9,
+        ),
+      );
+    }
+
+    final issueCount = syncState.conflictCount + syncState.errorCount;
+    if (issueCount > 0) {
+      notifications.add(
+        _AppNotification(
+          icon: Icons.warning_amber_rounded,
+          color: AppColors.error,
+          title: 'Sync issues need review',
+          message:
+              '$issueCount sync issue${issueCount == 1 ? '' : 's'} need attention in Settings.',
+          destinationIndex: 9,
+        ),
+      );
+    }
+    if (syncState.pendingChanges > 0) {
+      notifications.add(
+        _AppNotification(
+          icon: Icons.cloud_upload_outlined,
+          color: AppColors.warning,
+          title: 'Changes waiting to sync',
+          message:
+              '${syncState.pendingChanges} local change${syncState.pendingChanges == 1 ? '' : 's'} still need to upload.',
+          destinationIndex: 9,
+        ),
+      );
+    }
+    if (syncState.remoteChanges > 0) {
+      notifications.add(
+        _AppNotification(
+          icon: Icons.cloud_download_outlined,
+          color: AppColors.primaryLight,
+          title: 'Cloud updates available',
+          message:
+              '${syncState.remoteChanges} cloud update${syncState.remoteChanges == 1 ? '' : 's'} are ready to download.',
+          destinationIndex: 9,
+        ),
+      );
+    }
+    for (final insight in pikiInsights) {
+      notifications.add(
+        _AppNotification(
+          icon: _pikiInsightIcon(insight.kind),
+          color: _pikiSeverityColor(insight.severity),
+          title: 'Piki: ${insight.title}',
+          message: insight.body,
+          destinationIndex: 16,
+          pikiInsight: insight,
+        ),
+      );
+    }
+    return notifications;
+  }
+
+  Color _pikiSeverityColor(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'high':
+        return AppColors.error;
+      case 'medium':
+        return AppColors.warning;
+      default:
+        return AppColors.primaryLight;
+    }
+  }
+
+  IconData _pikiInsightIcon(String kind) {
+    switch (kind) {
+      case 'low_stock':
+        return Icons.inventory_2_outlined;
+      case 'expiry_risk':
+        return Icons.event_busy_outlined;
+      case 'sales_drop':
+        return Icons.trending_down_outlined;
+      case 'open_shift':
+        return Icons.timer_outlined;
+      case 'customer_debt':
+        return Icons.account_balance_wallet_outlined;
+      default:
+        return Icons.auto_awesome_outlined;
+    }
+  }
+
+  Future<void> _refreshPikiNotifications() async {
+    final syncState = ref.read(syncControllerProvider);
+    final insights = await PikiProactiveService.fetchInsights(
+      forceRefresh: syncState.isOnline,
+      allowNetwork: syncState.isOnline,
+    );
+    ref.invalidate(pikiProactiveInsightsProvider);
+    if (!mounted) {
+      return;
+    }
+    await _showNotifications(syncState, pikiInsights: insights);
+  }
+
+  void _showConnectivityNotification(SyncState? previous, SyncState next) {
+    if (!mounted ||
+        previous == null ||
+        !next.isConfigured ||
+        previous.isOnline == next.isOnline) {
+      return;
+    }
+    final message = next.isOnline
+        ? next.pendingChanges > 0
+              ? 'Back online. Syncing ${next.pendingChanges} saved change${next.pendingChanges == 1 ? '' : 's'}.'
+              : 'Back online. Cloud sync is available again.'
+        : 'You are offline. Changes stay on this device and will sync when the connection returns.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: next.isOnline
+              ? AppColors.success
+              : AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  void _openNotification(
+    BuildContext sheetContext,
+    _AppNotification notification,
+  ) {
+    Navigator.pop(sheetContext);
+    final insight = notification.pikiInsight;
+    if (insight != null) {
+      final tool = insight.action['tool']?.toString().replaceAll('_', ' ');
+      ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+        text: '${insight.title}: ${insight.body}',
+        details: [
+          insight.body,
+          if (tool != null && tool.isNotEmpty) 'Suggested Piki tool: $tool',
+        ],
+      );
+    }
+    final destinationIndex = notification.destinationIndex;
+    if (destinationIndex != null) {
+      _selectIndex(destinationIndex);
+    }
+  }
+
+  Future<void> _showNotifications(
+    SyncState syncState, {
+    List<PikiProactiveInsight> pikiInsights = const [],
+  }) async {
+    final notifications = _buildNotifications(
+      syncState,
+      pikiInsights: pikiInsights,
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 520),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (notifications.isNotEmpty)
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                          _selectIndex(9);
+                        },
+                        child: const Text('Open Settings'),
+                      ),
+                    if (_canLoadPikiNotifications(syncState) &&
+                        syncState.isOnline)
+                      IconButton(
+                        tooltip: 'Refresh Piki alerts',
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                          _refreshPikiNotifications();
+                        },
+                        icon: const Icon(Icons.auto_awesome_outlined),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (notifications.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 36),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.notifications_none_rounded,
+                            size: 36,
+                            color: AppColors.success,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'You are all caught up.',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: notifications.length,
+                      separatorBuilder: (_, _) =>
+                          const Divider(color: AppColors.border, height: 1),
+                      itemBuilder: (context, index) {
+                        final notification = notifications[index];
+                        return ListTile(
+                          onTap: notification.destinationIndex == null
+                              ? null
+                              : () => _openNotification(
+                                  sheetContext,
+                                  notification,
+                                ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 0,
+                            vertical: 6,
+                          ),
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: notification.color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(
+                              notification.icon,
+                              color: notification.color,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            notification.title,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(notification.message),
+                          trailing: notification.destinationIndex == null
+                              ? null
+                              : const Icon(Icons.chevron_right_rounded),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationIcon(
+    List<_AppNotification> notifications, {
+    Color? color,
+  }) {
+    final count = notifications.length;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(
+          count == 0
+              ? Icons.notifications_none_rounded
+              : Icons.notifications_rounded,
+          color: color,
+        ),
+        if (count > 0)
+          Positioned(
+            right: -8,
+            top: -6,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: AppColors.error,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: AppColors.surface, width: 1.5),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                count > 9 ? '9+' : '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showStartupPrompts() async {
+    await _maybeShowSubscriptionPrompt();
+    if (mounted) {
+      await _maybeShowTrainingPrompt();
+    }
+  }
+
+  Future<void> _maybeShowSubscriptionPrompt() async {
+    final license = LicenseService.currentSnapshot;
+    final status = license.accessStatus;
+    if (_subscriptionPromptShown ||
+        (status != LicenseAccessStatus.grace &&
+            status != LicenseAccessStatus.expired)) {
+      return;
+    }
+    _subscriptionPromptShown = true;
+
+    final isExpired = status == LicenseAccessStatus.expired;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(
+          isExpired ? Icons.lock_clock_outlined : Icons.schedule_outlined,
+          color: isExpired ? AppColors.error : AppColors.warning,
+        ),
+        title: Text(
+          isExpired ? 'Subscription expired' : 'Subscription renewal due',
+        ),
+        content: Text(
+          isExpired
+              ? '${license.detail ?? 'Your subscription has expired.'}\n\n'
+                    'You can still view existing data, but recording sales and '
+                    'other changes is paused until you renew.'
+              : '${license.detail ?? 'Your subscription is in its grace period.'}\n\n'
+                    'You can keep working temporarily. Renew now to avoid the '
+                    'app becoming read-only.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'later'),
+            child: Text(isExpired ? 'Continue read-only' : 'Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'plans'),
+            child: const Text('View plans'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action != 'plans') {
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const _SubscriptionPlansPage()),
+    );
   }
 
   Future<void> _maybeShowTrainingPrompt() async {
@@ -474,7 +928,20 @@ class AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(syncControllerProvider);
+    final syncState = ref.watch(syncControllerProvider);
+    ref.listen<SyncState>(
+      syncControllerProvider,
+      _showConnectivityNotification,
+    );
+    final List<PikiProactiveInsight> pikiInsights =
+        _canLoadPikiNotifications(syncState)
+        ? ref.watch(pikiProactiveInsightsProvider).valueOrNull ??
+              const <PikiProactiveInsight>[]
+        : const <PikiProactiveInsight>[];
+    final notifications = _buildNotifications(
+      syncState,
+      pikiInsights: pikiInsights,
+    );
     final isWide = MediaQuery.of(context).size.width > 800;
     final currentIndex = _currentIndex;
     final mobileBottomDestinations = _mobileBottomDestinations;
@@ -544,6 +1011,18 @@ class AppShellState extends ConsumerState<AppShell> {
                               compact: true,
                               onTap: () => _selectIndex(13),
                             ),
+                            const SizedBox(height: 10),
+                            IconButton(
+                              tooltip: 'Notifications',
+                              onPressed: () => _showNotifications(
+                                syncState,
+                                pikiInsights: pikiInsights,
+                              ),
+                              icon: _buildNotificationIcon(
+                                notifications,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -586,21 +1065,30 @@ class AppShellState extends ConsumerState<AppShell> {
                 selectedIndex: mobileSelectedIndex >= 0
                     ? mobileSelectedIndex
                     : 0,
-                onDestinationSelected: (i) =>
-                    _selectIndex(mobileBottomDestinations[i].index),
-                destinations: mobileBottomDestinations
-                    .map(
-                      (destination) => NavigationDestination(
-                        icon: BeautifulIcon(destination.item.icon),
-                        selectedIcon: BeautifulIcon(
-                          destination.item.selectedIcon,
-                          color: AppColors.primary,
-                          withBackground: true,
-                        ),
-                        label: destination.item.label,
+                onDestinationSelected: (i) {
+                  if (i == mobileBottomDestinations.length) {
+                    _showNotifications(syncState, pikiInsights: pikiInsights);
+                    return;
+                  }
+                  _selectIndex(mobileBottomDestinations[i].index);
+                },
+                destinations: [
+                  ...mobileBottomDestinations.map(
+                    (destination) => NavigationDestination(
+                      icon: BeautifulIcon(destination.item.icon),
+                      selectedIcon: BeautifulIcon(
+                        destination.item.selectedIcon,
+                        color: AppColors.primary,
+                        withBackground: true,
                       ),
-                    )
-                    .toList(),
+                      label: destination.item.label,
+                    ),
+                  ),
+                  NavigationDestination(
+                    icon: _buildNotificationIcon(notifications),
+                    label: 'Alerts',
+                  ),
+                ],
               ),
             )
           : null,
@@ -835,6 +1323,43 @@ class AppShellState extends ConsumerState<AppShell> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AppNotification {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String message;
+  final int? destinationIndex;
+  final PikiProactiveInsight? pikiInsight;
+
+  const _AppNotification({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.message,
+    this.destinationIndex,
+    this.pikiInsight,
+  });
+}
+
+class _SubscriptionPlansPage extends StatelessWidget {
+  const _SubscriptionPlansPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Subscription plans'),
+        backgroundColor: AppColors.surface,
+      ),
+      body: SubscriptionPlansSection(
+        fullPage: true,
+        onOpenApp: () => Navigator.of(context).pop(),
       ),
     );
   }

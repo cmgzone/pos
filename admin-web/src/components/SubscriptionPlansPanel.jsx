@@ -113,9 +113,72 @@ function upsertPrice(plan, nextPrice) {
   }
 }
 
+function isHttpsUrl(value) {
+  try {
+    return new URL(String(value || '')).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function gatewayConfigurationError(gateway) {
+  if (!gateway?.isActive) return ''
+
+  if (gateway.provider === 'mpesa') {
+    const publicConfig = gateway.publicConfig || {}
+    const secretConfig = gateway.secretConfig || {}
+    const missing = []
+    if (!publicConfig.baseUrl) missing.push('Daraja base URL')
+    if (!publicConfig.shortcode) missing.push('shortcode')
+    if (!publicConfig.callbackUrl) missing.push('callback URL')
+    if (!secretConfig.consumerKey) missing.push('consumer key')
+    if (!secretConfig.consumerSecret) missing.push('consumer secret')
+    if (!secretConfig.passkey) missing.push('passkey')
+    if (missing.length) {
+      return `Complete M-Pesa settings before enabling: ${missing.join(', ')}.`
+    }
+    if (!isHttpsUrl(publicConfig.baseUrl)) {
+      return 'Daraja base URL must be a valid HTTPS URL.'
+    }
+    if (!isHttpsUrl(publicConfig.callbackUrl)) {
+      return 'M-Pesa callback URL must be a valid HTTPS URL.'
+    }
+  }
+
+  if (gateway.provider === 'google_pay') {
+    const publicConfig = gateway.publicConfig || {}
+    const secretConfig = gateway.secretConfig || {}
+    const missing = []
+    if (!publicConfig.merchantId) missing.push('merchant ID')
+    if (!publicConfig.gateway || publicConfig.gateway === 'example') {
+      missing.push('payment gateway')
+    }
+    if (
+      !publicConfig.gatewayMerchantId ||
+      publicConfig.gatewayMerchantId === 'exampleGatewayMerchantId'
+    ) {
+      missing.push('gateway merchant ID')
+    }
+    if (missing.length) {
+      return `Complete Google Pay settings before enabling: ${missing.join(', ')}.`
+    }
+    if (
+      secretConfig.gatewayChargeUrl &&
+      !isHttpsUrl(secretConfig.gatewayChargeUrl)
+    ) {
+      return 'Google Pay charge URL must be a valid HTTPS URL.'
+    }
+  }
+
+  return ''
+}
+
 export default function SubscriptionPlansPanel({ token }) {
   const [plans, setPlans] = useState([])
   const [features, setFeatures] = useState(defaultFeatures)
+  const [subscriptionSettings, setSubscriptionSettings] = useState({
+    trialDays: 30,
+  })
   const [gateways, setGateways] = useState([])
   const [gatewayDrafts, setGatewayDrafts] = useState({})
   const [messageGateways, setMessageGateways] = useState([])
@@ -124,6 +187,8 @@ export default function SubscriptionPlansPanel({ token }) {
   const [draft, setDraft] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingSubscriptionSettings, setSavingSubscriptionSettings] =
+    useState(false)
   const [savingGateway, setSavingGateway] = useState('')
   const [savingMessageGateway, setSavingMessageGateway] = useState('')
   const [message, setMessage] = useState('')
@@ -146,9 +211,15 @@ export default function SubscriptionPlansPanel({ token }) {
         }
         return body
       }
-      const [plansResult, gatewayResult, messageGatewayResult] =
+      const [
+        plansResult,
+        subscriptionSettingsResult,
+        gatewayResult,
+        messageGatewayResult,
+      ] =
         await Promise.allSettled([
           loadApi('/api/platform/plans'),
+          loadApi('/api/platform/subscription-settings'),
           loadApi('/api/platform/payment-gateways'),
           loadApi('/api/platform/message-gateways'),
         ])
@@ -163,6 +234,9 @@ export default function SubscriptionPlansPanel({ token }) {
       setSelectedCode(nextSelected)
       setDraft(clonePlan(nextPlans.find((plan) => plan.code === nextSelected) || nextPlans[0]))
 
+      if (subscriptionSettingsResult.status === 'fulfilled') {
+        setSubscriptionSettings(subscriptionSettingsResult.value.data)
+      }
       if (gatewayResult.status === 'fulfilled') {
         const nextGateways = gatewayResult.value.data || []
         setGateways(nextGateways)
@@ -184,7 +258,11 @@ export default function SubscriptionPlansPanel({ token }) {
           ),
         )
       }
-      const failures = [gatewayResult, messageGatewayResult]
+      const failures = [
+        subscriptionSettingsResult,
+        gatewayResult,
+        messageGatewayResult,
+      ]
         .filter((item) => item.status === 'rejected')
         .map((item) => friendlyError(item.reason, 'Some settings could not be loaded.'))
         .filter(Boolean)
@@ -210,6 +288,31 @@ export default function SubscriptionPlansPanel({ token }) {
 
   const updateDraft = (patch) => {
     setDraft((current) => ({ ...current, ...patch }))
+  }
+
+  const saveSubscriptionSettings = async () => {
+    setSavingSubscriptionSettings(true)
+    setMessage('')
+    try {
+      const response = await fetch('/api/platform/subscription-settings', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(subscriptionSettings),
+      })
+      const body = await response.json()
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error || 'Could not save subscription settings')
+      }
+      setSubscriptionSettings(body.data)
+      setMessage('Subscription settings saved')
+    } catch (error) {
+      setMessage(friendlyError(error, 'Could not save subscription settings.'))
+    } finally {
+      setSavingSubscriptionSettings(false)
+    }
   }
 
   const updateFeature = (feature, enabled) => {
@@ -311,6 +414,10 @@ export default function SubscriptionPlansPanel({ token }) {
     setSavingGateway(provider)
     setMessage('')
     try {
+      const validationError = gatewayConfigurationError(gateway)
+      if (validationError) {
+        throw new Error(validationError)
+      }
       const response = await fetch(`/api/platform/payment-gateways/${provider}`, {
         method: 'PUT',
         headers: {
@@ -435,6 +542,49 @@ export default function SubscriptionPlansPanel({ token }) {
 
   return (
     <div className="subscription-admin-stack">
+      <section className="gateway-panel">
+        <div className="gateway-panel-header">
+          <div>
+            <h3>New Shop Trial</h3>
+            <p>
+              Choose how long new shops can use the trial plan. Existing
+              subscriptions keep their current expiry dates.
+            </p>
+          </div>
+        </div>
+        <div className="editor-grid">
+          <label className="form-group">
+            <span className="form-label">Trial Period (days)</span>
+            <input
+              className="form-input"
+              type="number"
+              min="1"
+              max="365"
+              step="1"
+              value={subscriptionSettings.trialDays ?? 30}
+              onChange={(event) =>
+                setSubscriptionSettings((current) => ({
+                  ...current,
+                  trialDays: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+        </div>
+        <div className="editor-actions">
+          <span className="gateway-status">
+            Applies when a new business starts its free trial.
+          </span>
+          <button
+            className="btn btn-primary"
+            disabled={savingSubscriptionSettings}
+            onClick={saveSubscriptionSettings}
+          >
+            {savingSubscriptionSettings ? 'Saving...' : 'Save Trial Period'}
+          </button>
+        </div>
+      </section>
+
       <div className="plans-layout">
         <div className="plans-sidebar">
           {plans.map((plan) => (
@@ -644,6 +794,7 @@ export default function SubscriptionPlansPanel({ token }) {
                       <span className="form-label">{label}</span>
                       <input
                         className="form-input"
+                        type={key.toLowerCase().includes('url') ? 'url' : 'text'}
                         value={gatewayDraft.publicConfig?.[key] || ''}
                         onChange={(event) =>
                           updateGatewayConfig(

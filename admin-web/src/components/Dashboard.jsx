@@ -70,6 +70,8 @@ export default function Dashboard({ token, onLogout }) {
   const getStatusBadge = (status) => {
     switch(status) {
       case 'active': return <span className="badge badge-success">Active</span>
+      case 'grace': return <span className="badge badge-warning">Grace Period</span>
+      case 'expired': return <span className="badge badge-danger">Expired</span>
       case 'trialing': return <span className="badge badge-info">Trial</span>
       case 'past_due': return <span className="badge badge-warning">Past Due</span>
       case 'canceled': return <span className="badge badge-danger">Canceled</span>
@@ -117,10 +119,6 @@ export default function Dashboard({ token, onLogout }) {
     if (planCode === business.plan && targetSellingMode === (business.selling_mode || 'combo')) {
       return
     }
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 30)
-    const graceUntil = new Date(expiresAt)
-    graceUntil.setDate(graceUntil.getDate() + 5)
     setAssignmentState((current) => ({
       ...current,
       [business.id]: { saving: true, message: '', error: '' },
@@ -135,9 +133,7 @@ export default function Dashboard({ token, onLogout }) {
         body: JSON.stringify({
           plan: planCode,
           sellingMode: targetSellingMode,
-          status: 'active',
-          expiresAt: expiresAt.toISOString(),
-          graceUntil: graceUntil.toISOString()
+          status: 'active'
         })
       })
       const body = await response.json()
@@ -153,8 +149,8 @@ export default function Dashboard({ token, onLogout }) {
                 plan: updated.plan || planCode,
                 status: updated.status || 'active',
                 selling_mode: updated.selling_mode || targetSellingMode,
-                expires_at: updated.expires_at || expiresAt.toISOString(),
-                grace_until: updated.grace_until || graceUntil.toISOString(),
+                expires_at: updated.expires_at || item.expires_at,
+                grace_until: updated.grace_until || item.grace_until,
               }
             : item,
         ),

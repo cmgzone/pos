@@ -186,6 +186,14 @@ async function ensureSubscriptionSchema(target = query) {
   await runQuery(
     target,
     `
+    ALTER TABLE businesses
+      ADD COLUMN IF NOT EXISTS currency text
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
     CREATE TABLE IF NOT EXISTS subscription_plans (
       code text PRIMARY KEY,
       name text NOT NULL,
@@ -212,6 +220,29 @@ async function ensureSubscriptionSchema(target = query) {
     ALTER TABLE subscription_plans
       ADD COLUMN IF NOT EXISTS allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb
     `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS platform_subscription_settings (
+      id integer PRIMARY KEY DEFAULT 1,
+      trial_days integer NOT NULL DEFAULT 30,
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      CONSTRAINT platform_subscription_settings_single_row CHECK (id = 1),
+      CONSTRAINT platform_subscription_settings_trial_days CHECK (trial_days BETWEEN 1 AND 365)
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    INSERT INTO platform_subscription_settings (id, trial_days)
+    VALUES (1, $1)
+    ON CONFLICT (id) DO NOTHING
+    `,
+    [configuredTrialDays()],
   );
 
   await runQuery(
@@ -407,6 +438,46 @@ async function ensureSubscriptionSchema(target = query) {
   if (canUseCache) {
     schemaReady = true;
   }
+}
+
+async function loadPlatformSubscriptionSettings(target = query) {
+  await ensureSubscriptionSchema(target);
+  const result = await runQuery(
+    target,
+    `
+    SELECT trial_days, updated_at
+    FROM platform_subscription_settings
+    WHERE id = 1
+    LIMIT 1
+    `,
+  );
+  const row = result.rows[0];
+  return {
+    trialDays: normalizeTrialDays(row?.trial_days, configuredTrialDays()),
+    updatedAt: toIsoString(row?.updated_at),
+  };
+}
+
+async function savePlatformSubscriptionSettings(input = {}, target = query) {
+  await ensureSubscriptionSchema(target);
+  const trialDays = normalizeTrialDays(input.trialDays ?? input.trial_days);
+  const result = await runQuery(
+    target,
+    `
+    INSERT INTO platform_subscription_settings (id, trial_days, updated_at)
+    VALUES (1, $1, NOW())
+    ON CONFLICT (id) DO UPDATE
+    SET trial_days = EXCLUDED.trial_days,
+        updated_at = NOW()
+    RETURNING trial_days, updated_at
+    `,
+    [trialDays],
+  );
+  const row = result.rows[0];
+  return {
+    trialDays: normalizeTrialDays(row.trial_days),
+    updatedAt: toIsoString(row.updated_at),
+  };
 }
 
 async function listPlans({ includeInactive = false } = {}, target = query) {
@@ -636,6 +707,7 @@ async function savePaymentGateway(provider, input = {}, target = query) {
     ...(existing || {}),
     provider: cleanProvider,
   });
+  validatePaymentGatewayConfiguration(normalized);
 
   const result = await runQuery(
     target,
@@ -911,6 +983,78 @@ function isPriceAvailableForPublicCatalog(price, gateway) {
     gateway?.isActive &&
       (gateway.countries || []).includes(price.countryCode),
   );
+}
+
+function validatePaymentGatewayConfiguration(gateway) {
+  if (!gateway?.isActive) {
+    return;
+  }
+
+  if (gateway.provider === 'mpesa') {
+    const publicConfig = gateway.publicConfig || {};
+    const secretConfig = gateway.secretConfig || {};
+    const missing = [];
+    if (!publicConfig.baseUrl) missing.push('Daraja base URL');
+    if (!publicConfig.shortcode) missing.push('shortcode');
+    if (!publicConfig.callbackUrl) missing.push('callback URL');
+    if (!secretConfig.consumerKey) missing.push('consumer key');
+    if (!secretConfig.consumerSecret) missing.push('consumer secret');
+    if (!secretConfig.passkey) missing.push('passkey');
+    if (missing.length > 0) {
+      throw createError(
+        400,
+        `Complete M-Pesa settings before enabling: ${missing.join(', ')}.`,
+      );
+    }
+    if (!isHttpsUrl(publicConfig.baseUrl)) {
+      throw createError(400, 'Daraja base URL must be a valid HTTPS URL.');
+    }
+    if (!isHttpsUrl(publicConfig.callbackUrl)) {
+      throw createError(400, 'M-Pesa callback URL must be a valid HTTPS URL.');
+    }
+  }
+
+  if (gateway.provider === 'google_pay') {
+    const publicConfig = gateway.publicConfig || {};
+    const secretConfig = gateway.secretConfig || {};
+    const missing = [];
+    if (!publicConfig.merchantId) missing.push('merchant ID');
+    if (!publicConfig.gateway || publicConfig.gateway === 'example') {
+      missing.push('payment gateway');
+    }
+    if (
+      !publicConfig.gatewayMerchantId ||
+      publicConfig.gatewayMerchantId === 'exampleGatewayMerchantId'
+    ) {
+      missing.push('gateway merchant ID');
+    }
+    if (missing.length > 0) {
+      throw createError(
+        400,
+        `Complete Google Pay settings before enabling: ${missing.join(', ')}.`,
+      );
+    }
+    if (
+      secretConfig.gatewayChargeUrl &&
+      !isHttpsUrl(secretConfig.gatewayChargeUrl)
+    ) {
+      throw createError(400, 'Google Pay charge URL must be a valid HTTPS URL.');
+    }
+  }
+}
+
+function isHttpsUrl(value) {
+  try {
+    return new URL(String(value || '')).protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
+function renewalBaseDate(expiresAt, referenceDate = new Date()) {
+  const now = parseDate(referenceDate) || new Date();
+  const expiry = parseDate(expiresAt);
+  return expiry && expiry > now ? expiry : now;
 }
 
 function normalizePlanInput(input, existing = {}) {
@@ -1257,10 +1401,44 @@ function normalizeLimit(value, fallback) {
   return Math.max(0, Math.floor(parsed));
 }
 
+function normalizeTrialDays(value, fallback = null) {
+  const candidate =
+    value == null || String(value).trim() === '' ? fallback : value;
+  const parsed = Number(candidate);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 365) {
+    throw createError(
+      400,
+      'Trial period must be a whole number between 1 and 365 days.',
+    );
+  }
+  return parsed;
+}
+
+function configuredTrialDays() {
+  return normalizeTrialDays(config.subscriptionTrialDays, 30);
+}
+
 function toIsoString(value) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function parseDate(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (value == null) {
+    return null;
+  }
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function createError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
 }
 
 async function runQuery(target, sql, params = []) {
@@ -1280,19 +1458,25 @@ module.exports = {
   ensureSubscriptionSchema,
   listPaymentGateways,
   listPlans,
+  loadPlatformSubscriptionSettings,
   listPublicPlans,
   listPublicMarkets,
   loadEntitlementsForPlan,
   loadPaymentGateway,
   isPriceAvailableForPublicCatalog,
+  isHttpsUrl,
   normalizePlanInput,
   normalizeCountryCode,
   normalizePriceInput,
   normalizePriceRow,
   normalizeProvider,
   normalizeSellingMode,
+  normalizeTrialDays,
   providerForCountry,
+  renewalBaseDate,
   resolvePlanPrice,
   savePaymentGateway,
+  savePlatformSubscriptionSettings,
+  validatePaymentGatewayConfiguration,
   validateSellingModeEntitlement,
 };

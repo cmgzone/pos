@@ -11,6 +11,7 @@ import '../../../core/services/speech_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../../sales/data/cart_provider.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/piki_models.dart';
 import '../data/piki_provider.dart';
 import 'piki_message_bubble.dart';
@@ -500,72 +501,80 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         ],
       ),
       endDrawer: const _ChatHistoryDrawer(),
-      body: Column(
-        children: [
-          // ── Chat area ──────────────────────────────────────────────
-          Expanded(
-            child: messages.isEmpty
-                ? _buildEmptyState(mode)
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) => PikiMessageBubble(
-                      message: messages[index],
-                      onSendPrompt: (prompt) {
-                        ref
-                            .read(pikiMessagesProvider.notifier)
-                            .sendMessage(prompt);
-                        _scrollToBottom();
-                      },
+      body: TrainingAnchor(
+        id: 'piki.workspace',
+        child: Column(
+          children: [
+            // ── Chat area ──────────────────────────────────────────────
+            Expanded(
+              child: messages.isEmpty
+                  ? _buildEmptyState(mode)
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) => PikiMessageBubble(
+                        message: messages[index],
+                        onSendPrompt: (prompt) {
+                          ref
+                              .read(pikiMessagesProvider.notifier)
+                              .sendMessage(prompt);
+                          _scrollToBottom();
+                        },
+                      ),
                     ),
-                  ),
-          ),
+            ),
 
-          // ── Insight / Cart bar ────────────────────────────────────
-          if (mode == PikiMode.sell && cart.isNotEmpty)
-            _SellCartBar(
-              cart: cart,
-              onCheckout: () {
-                ref.read(pikiMessagesProvider.notifier).sendMessage('checkout');
-              },
-            )
-          else if (insight != null &&
-              insight.text.isNotEmpty &&
-              mode != PikiMode.sell)
-            _InsightBar(
-              insight: insight.text,
-              onTap: () {
-                if (insight.details.isNotEmpty) {
-                  _showInsightDetails(context, insight);
-                } else {
-                  _scrollToBottom();
-                }
+            // ── Insight / Cart bar ────────────────────────────────────
+            if (mode == PikiMode.sell && cart.isNotEmpty)
+              _SellCartBar(
+                cart: cart,
+                onCheckout: () {
+                  ref
+                      .read(pikiMessagesProvider.notifier)
+                      .sendMessage('checkout');
+                },
+              )
+            else if (insight != null &&
+                insight.text.isNotEmpty &&
+                mode != PikiMode.sell)
+              _InsightBar(
+                insight: insight.text,
+                onTap: () {
+                  if (insight.details.isNotEmpty) {
+                    _showInsightDetails(context, insight);
+                  } else {
+                    _scrollToBottom();
+                  }
+                },
+              ),
+
+            // ── Quick actions ───────────────────────────────────────
+            _QuickActions(
+              actions: mode == PikiMode.sell
+                  ? _sellQuickActions
+                  : _quickActions,
+              onTap: (prompt) {
+                ref.read(pikiMessagesProvider.notifier).sendMessage(prompt);
+                _scrollToBottom();
               },
             ),
 
-          // ── Quick actions ───────────────────────────────────────
-          _QuickActions(
-            actions: mode == PikiMode.sell ? _sellQuickActions : _quickActions,
-            onTap: (prompt) {
-              ref.read(pikiMessagesProvider.notifier).sendMessage(prompt);
-              _scrollToBottom();
-            },
-          ),
-
-          // ── Mode toggle + input bar ──────────────────────────────
-          _BottomBar(
-            controller: _controller,
-            focusNode: _focusNode,
-            mode: mode,
-            isListening: _isListening || _voiceBusy,
-            isAutoListening: _autoListening,
-            onSend: _send,
-            onMicTap: _toggleListening,
-            onAutoListenTap: _toggleAutoListening,
-            onSelectMode: (m) => ref.read(pikiModeProvider.notifier).state = m,
-          ),
-        ],
+            // ── Mode toggle + input bar ──────────────────────────────
+            _BottomBar(
+              controller: _controller,
+              focusNode: _focusNode,
+              mode: mode,
+              isListening: _isListening || _voiceBusy,
+              isAutoListening: _autoListening,
+              onSend: _send,
+              onMicTap: _toggleListening,
+              onAutoListenTap: _toggleAutoListening,
+              onSelectMode: (m) =>
+                  ref.read(pikiModeProvider.notifier).state = m,
+            ),
+          ],
+        ),
       ),
     );
   }

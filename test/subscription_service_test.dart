@@ -52,4 +52,18 @@ void main() {
     );
     expect(plan.priceFor(market, billingPeriod: 'weekly'), isNull);
   });
+
+  test('subscription checkout parses M-Pesa prompt details', () {
+    final checkout = SubscriptionCheckoutResult.fromJson({
+      'id': 'payment-1',
+      'provider': 'mpesa',
+      'status': 'pending',
+      'mpesa': {'message': 'Complete the prompt on your phone.'},
+    });
+
+    expect(checkout.paymentId, 'payment-1');
+    expect(checkout.provider, 'mpesa');
+    expect(checkout.status, 'pending');
+    expect(checkout.message, 'Complete the prompt on your phone.');
+  });
 }

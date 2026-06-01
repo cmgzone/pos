@@ -15,6 +15,7 @@ import '../../shifts/data/shift_preferences_service.dart';
 import '../../shifts/data/shift_provider.dart';
 import '../../shifts/data/shift_repository.dart';
 import '../../shifts/presentation/shift_auto_open_dialog.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/service_provider.dart';
 import '../data/service_repository.dart';
 import 'carwash_queue_screen.dart';
@@ -128,17 +129,20 @@ class _ServiceManagementScreenState
           const SizedBox(width: 8),
         ],
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          ServicePosPanel(
-            onOpenOrders: () => _tabController.animateTo(1),
-            onRefresh: _refresh,
-          ),
-          _OrdersTab(onRefresh: _refresh),
-          _CatalogTab(onRefresh: _refresh),
-          _ServiceReportsTab(onRefresh: _refresh),
-        ],
+      body: TrainingAnchor(
+        id: 'services.workspace',
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            ServicePosPanel(
+              onOpenOrders: () => _tabController.animateTo(1),
+              onRefresh: _refresh,
+            ),
+            _OrdersTab(onRefresh: _refresh),
+            _CatalogTab(onRefresh: _refresh),
+            _ServiceReportsTab(onRefresh: _refresh),
+          ],
+        ),
       ),
       floatingActionButton:
           _tabController.index == 0 || _tabController.index == 3

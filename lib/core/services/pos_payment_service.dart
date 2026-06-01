@@ -135,7 +135,6 @@ class PosPaymentService {
     required String shortcode,
     required String transactionType,
     required String accountReference,
-    required String callbackUrl,
     required String consumerKey,
     required String consumerSecret,
     required String passkey,
@@ -156,7 +155,6 @@ class PosPaymentService {
               ? 'CustomerPayBillOnline'
               : transactionType.trim(),
           'accountReference': accountReference.trim(),
-          'callbackUrl': callbackUrl.trim(),
         },
         'secretConfig': {
           'consumerKey': consumerKey.trim(),

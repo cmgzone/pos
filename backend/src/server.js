@@ -36,19 +36,23 @@ const {
   FEATURE_KEYS,
   applySellingModeToEntitlements,
   ensureSubscriptionSchema,
+  isHttpsUrl,
   listPaymentGateways,
   listPlans,
   listPublicPlans,
   listPublicMarkets,
   loadEntitlementsForPlan,
   loadPaymentGateway,
+  loadPlatformSubscriptionSettings,
   normalizeCountryCode,
   normalizePlanInput,
   normalizePriceInput,
   normalizeProvider,
   normalizeSellingMode,
+  renewalBaseDate,
   resolvePlanPrice,
   savePaymentGateway,
+  savePlatformSubscriptionSettings,
   validateSellingModeEntitlement,
 } = require('./subscriptionPlans');
 const {
@@ -106,6 +110,7 @@ app.post('/api/license/activate', async (req, res, next) => {
       ownerName: req.body?.ownerName,
       ownerEmail: req.body?.ownerEmail,
       countryCode: req.body?.countryCode,
+      currency: req.body?.currency,
     });
 
     res.json({
@@ -156,6 +161,7 @@ app.post('/api/auth/register', async (req, res, next) => {
     const deviceId = normalizeOptionalText(req.body?.deviceId);
     const deviceName = normalizeOptionalText(req.body?.deviceName);
     const requestedCountry = normalizeOptionalText(req.body?.countryCode);
+    const requestedCurrency = normalizeBusinessCurrency(req.body?.currency);
     const requestedProvider = normalizeOptionalText(req.body?.provider);
     const requestedPlanCode = normalizeOptionalText(
       req.body?.requestedPlanCode || req.body?.planCode || req.body?.plan,
@@ -194,6 +200,7 @@ app.post('/api/auth/register', async (req, res, next) => {
       throw createHttpError(400, 'No active subscription market is configured for this country');
     }
     const countryCode = normalizeCountryCode(market.countryCode || requestedCountry);
+    const currency = requestedCurrency || displayCurrencyForCountry(countryCode);
     const provider = normalizeProvider(market.provider || requestedProvider);
     const registrationSelection = await resolveRegistrationPlanSelection({
       requestedPlanCode,
@@ -219,8 +226,9 @@ app.post('/api/auth/register', async (req, res, next) => {
       planEntitlements,
       sellingMode,
     );
-    const startsPaid = Number(selectedPrice.amountMinor || 0) === 0;
-    const initialPlan = startsPaid ? selectedPlanCode : 'trial';
+    const subscriptionSettings = await loadPlatformSubscriptionSettings();
+    const activatesSelectedPlan = Number(selectedPrice.amountMinor || 0) === 0;
+    const initialPlan = activatesSelectedPlan ? selectedPlanCode : 'trial';
 
     const result = await withTransaction(async (client) => {
       // Check for existing user with same email across all businesses
@@ -243,22 +251,24 @@ app.post('/api/auth/register', async (req, res, next) => {
       // Create business
       const businessId = crypto.randomUUID();
       await client.query(
-        `INSERT INTO businesses (id, name, owner_name, owner_email, country_code, selling_mode, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        `INSERT INTO businesses (id, name, owner_name, owner_email, country_code, currency, selling_mode, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
         [
           businessId,
           businessName,
           ownerName,
           ownerEmail,
           countryCode,
+          currency,
           sellingMode,
           now.toISOString(),
         ],
       );
 
-      const subscriptionDays = startsPaid
-        ? billingPeriodDays(selectedPrice.billingPeriod)
-        : config.subscriptionTrialDays;
+      const subscriptionDays =
+        initialPlan === 'trial'
+          ? subscriptionSettings.trialDays
+          : billingPeriodDays(selectedPrice.billingPeriod);
       const expiresAt = addDays(now, subscriptionDays);
       const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
       await client.query(
@@ -325,7 +335,7 @@ app.post('/api/auth/register', async (req, res, next) => {
 
       // Load context for license
       const contextResult = await client.query(
-        `SELECT b.id AS business_id, b.name AS business_name, b.country_code, b.selling_mode,
+        `SELECT b.id AS business_id, b.name AS business_name, b.country_code, b.currency, b.selling_mode,
                 s.plan, s.status, s.expires_at, s.grace_until, s.last_verified_at
          FROM businesses b
          JOIN subscriptions s ON s.business_id = b.id
@@ -350,7 +360,7 @@ app.post('/api/auth/register', async (req, res, next) => {
       });
 
       return {
-        business: { id: businessId, name: businessName, countryCode, sellingMode },
+        business: { id: businessId, name: businessName, countryCode, currency, sellingMode },
         accessToken,
         subscription: {
           plan: initialPlan,
@@ -381,8 +391,8 @@ app.post('/api/auth/register', async (req, res, next) => {
           price: selectedPrice,
         },
         selectedMarket: market,
-        checkoutRequired: !startsPaid,
-        checkoutContext: !startsPaid
+        checkoutRequired: !activatesSelectedPlan,
+        checkoutContext: !activatesSelectedPlan
           ? {
               planCode: selectedPlanCode,
               countryCode,
@@ -419,7 +429,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 
     const result = await withTransaction(async (client) => {
       const userResult = await client.query(
-        `SELECT u.*, b.name AS business_name, b.country_code, b.selling_mode
+        `SELECT u.*, b.name AS business_name, b.country_code, b.currency, b.selling_mode
          FROM users u
          JOIN businesses b ON b.id = u.business_id
          WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
@@ -522,6 +532,7 @@ app.post('/api/auth/login', async (req, res, next) => {
           id: businessId,
           name: user.business_name,
           countryCode: normalizeCountryCode(user.country_code || 'GLOBAL'),
+          currency: normalizeBusinessCurrency(user.currency) || displayCurrencyForCountry(user.country_code),
           sellingMode: normalizeSellingMode(user.selling_mode) || 'combo',
         },
         accessToken,
@@ -1028,7 +1039,12 @@ app.get('/api/platform/dashboard', requirePlatformAdmin, async (req, res, next) 
   try {
     const result = await withReadTransaction(async (client) => {
       const bizRes = await client.query('SELECT COUNT(*) FROM businesses');
-      const subRes = await client.query("SELECT COUNT(*) FROM subscriptions WHERE status = 'active'");
+      const subRes = await client.query(`
+        SELECT COUNT(*)
+        FROM subscriptions
+        WHERE status = 'active'
+          AND expires_at >= NOW()
+      `);
       const usrRes = await client.query('SELECT COUNT(*) FROM users WHERE deleted_at IS NULL');
       return {
         totalBusinesses: parseInt(bizRes.rows[0].count, 10),
@@ -1046,8 +1062,15 @@ app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next)
   try {
     await ensureSubscriptionSchema();
     const result = await query(`
-      SELECT b.id, b.name, b.owner_name, b.owner_email, b.country_code, b.selling_mode, b.created_at,
-             s.plan, s.status, s.expires_at, s.grace_until
+      SELECT b.id, b.name, b.owner_name, b.owner_email, b.country_code, b.currency, b.selling_mode, b.created_at,
+             s.plan,
+             CASE
+               WHEN s.status NOT IN ('active', 'grace') THEN s.status
+               WHEN NOW() > s.grace_until THEN 'expired'
+               WHEN NOW() > s.expires_at THEN 'grace'
+               ELSE 'active'
+             END AS status,
+             s.expires_at, s.grace_until
       FROM businesses b
       LEFT JOIN subscriptions s ON s.business_id = b.id
       ORDER BY b.created_at DESC
@@ -1079,6 +1102,24 @@ app.get('/api/platform/plans', requirePlatformAdmin, async (req, res, next) => {
   try {
     const plans = await listPlans({ includeInactive: true });
     res.json({ ok: true, data: plans, features: Object.values(FEATURE_KEYS) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/platform/subscription-settings', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const settings = await loadPlatformSubscriptionSettings();
+    res.json({ ok: true, data: settings });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/platform/subscription-settings', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const settings = await savePlatformSubscriptionSettings(req.body || {});
+    res.json({ ok: true, data: settings });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -1183,9 +1224,10 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
     );
 
     const now = new Date();
+    const subscriptionSettings = await loadPlatformSubscriptionSettings();
     const expiresAt =
       parseOptionalDate(req.body?.expiresAt || req.body?.expires_at) ||
-      addDays(now, 30);
+      addDays(now, plan === 'trial' ? subscriptionSettings.trialDays : 30);
     const graceUntil =
       parseOptionalDate(req.body?.graceUntil || req.body?.grace_until) ||
       addDays(expiresAt, config.subscriptionGraceDays);
@@ -1490,6 +1532,22 @@ app.get('/api/subscription/current', async (req, res, next) => {
   }
 });
 
+app.get('/api/subscription/payments/:paymentId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const payment = await loadSubscriptionPayment(
+      businessContext.businessId,
+      req.params.paymentId,
+    );
+    if (!payment) {
+      throw createHttpError(404, 'Subscription payment was not found');
+    }
+    res.json({ ok: true, data: payment });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/subscription/checkout', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -1513,6 +1571,12 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
     const phoneNumber = normalizeOptionalText(req.body?.phoneNumber);
     if (!planCode) {
       throw createHttpError(400, 'planCode is required');
+    }
+    if (planCode.toLowerCase() === 'trial') {
+      throw createHttpError(
+        400,
+        'Trial plans are assigned during registration and cannot be renewed through checkout',
+      );
     }
     if (!market) {
       throw createHttpError(400, 'No active subscription payment gateway is configured for this market');
@@ -2638,12 +2702,18 @@ app.listen(config.port, () => {
   );
 });
 
-startPikiProactiveWorker({
-  query,
-  withTransaction,
-  intervalMs: Number(process.env.PIKI_PROACTIVE_INTERVAL_MS || 15 * 60 * 1000),
-  initialDelayMs: Number(process.env.PIKI_PROACTIVE_INITIAL_DELAY_MS || 10 * 1000),
-});
+ensureSubscriptionSchema()
+  .then(() =>
+    startPikiProactiveWorker({
+      query,
+      withTransaction,
+      intervalMs: Number(process.env.PIKI_PROACTIVE_INTERVAL_MS || 15 * 60 * 1000),
+      initialDelayMs: Number(process.env.PIKI_PROACTIVE_INITIAL_DELAY_MS || 10 * 1000),
+    }),
+  )
+  .catch((error) => {
+    console.error('Could not initialize subscription schema:', error.message);
+  });
 
 async function requireBusinessContext(req) {
   const accessToken = parseBearerToken(req.headers.authorization);
@@ -2967,6 +3037,25 @@ async function createSubscriptionPayment(
   return normalizePaymentRow(result.rows[0]);
 }
 
+async function loadSubscriptionPayment(businessId, paymentId, target = query) {
+  const cleanBusinessId = normalizeOptionalText(businessId);
+  const cleanPaymentId = normalizeOptionalText(paymentId);
+  if (!cleanBusinessId || !cleanPaymentId) {
+    return null;
+  }
+  const result = await runDbQuery(
+    target,
+    `
+    SELECT *
+    FROM subscription_payments
+    WHERE id = $1 AND business_id = $2
+    LIMIT 1
+    `,
+    [cleanPaymentId, cleanBusinessId],
+  );
+  return result.rows[0] ? normalizePaymentRow(result.rows[0]) : null;
+}
+
 async function activateSubscriptionFromPayment(client, paymentId) {
   const paymentResult = await client.query(
     'SELECT * FROM subscription_payments WHERE id = $1 FOR UPDATE',
@@ -2976,14 +3065,28 @@ async function activateSubscriptionFromPayment(client, paymentId) {
   if (!payment) {
     throw createHttpError(404, 'Subscription payment was not found');
   }
+  if (payment.status === 'paid' && payment.completed_at) {
+    return false;
+  }
 
   const now = new Date();
+  const subscriptionResult = await client.query(
+    'SELECT expires_at FROM subscriptions WHERE business_id = $1 FOR UPDATE',
+    [payment.business_id],
+  );
+  const renewalStartsAt = renewalBaseDate(
+    subscriptionResult.rows[0]?.expires_at,
+    now,
+  );
   const planEntitlements = await loadEntitlementsForPlan(payment.plan_code, client);
   const sellingMode = selectSellingModeForPlan(
     planEntitlements,
     normalizeSellingMode(payment.selling_mode),
   );
-  const expiresAt = addDays(now, billingPeriodDays(payment.billing_period));
+  const expiresAt = addDays(
+    renewalStartsAt,
+    billingPeriodDays(payment.billing_period),
+  );
   const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
   await client.query(
     `
@@ -3033,6 +3136,7 @@ async function activateSubscriptionFromPayment(client, paymentId) {
     `,
     [paymentId, now.toISOString()],
   );
+  return true;
 }
 
 async function initiateMpesaCheckout(payment, gateway) {
@@ -3045,7 +3149,8 @@ async function initiateMpesaCheckout(payment, gateway) {
     !mpesaConfig.consumerSecret ||
     !mpesaConfig.shortcode ||
     !mpesaConfig.passkey ||
-    !mpesaConfig.callbackUrl
+    !isHttpsUrl(mpesaConfig.baseUrl) ||
+    !isHttpsUrl(mpesaConfig.callbackUrl)
   ) {
     await query(
       `
@@ -3172,6 +3277,12 @@ async function processGooglePayConfirmation({ businessId, paymentId, paymentData
     if (payment.provider !== 'google_pay') {
       throw createHttpError(400, 'Payment is not a Google Pay checkout');
     }
+    if (payment.status === 'paid' && payment.completed_at) {
+      return {
+        status: 'paid',
+        activated: true,
+      };
+    }
     const gateway = await loadPaymentGateway(payment.provider, client);
     if (!gateway || !gateway.isActive) {
       throw createHttpError(400, 'Google Pay is not active in the admin panel');
@@ -3266,7 +3377,7 @@ async function handleMpesaCallback({
   await withTransaction(async (client) => {
     const paymentResult = await client.query(
       `
-      SELECT id
+      SELECT id, status, completed_at
       FROM subscription_payments
       WHERE checkout_request_id = $1
       FOR UPDATE
@@ -3277,28 +3388,36 @@ async function handleMpesaCallback({
     if (!payment) {
       return;
     }
-    const status = resultCode === 0 ? 'paid' : 'failed';
+    const callbackMetadata = JSON.stringify({
+      resultCode,
+      resultDescription,
+      metadata,
+    });
+    if (resultCode === 0) {
+      await client.query(
+        `
+        UPDATE subscription_payments
+        SET metadata_json = metadata_json || $2::jsonb,
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [payment.id, callbackMetadata],
+      );
+      if (payment.status !== 'paid' || !payment.completed_at) {
+        await activateSubscriptionFromPayment(client, payment.id);
+      }
+      return;
+    }
     await client.query(
       `
       UPDATE subscription_payments
-      SET status = $2,
-          metadata_json = metadata_json || $3::jsonb,
+      SET status = 'failed',
+          metadata_json = metadata_json || $2::jsonb,
           updated_at = NOW()
       WHERE id = $1
       `,
-      [
-        payment.id,
-        status,
-        JSON.stringify({
-          resultCode,
-          resultDescription,
-          metadata,
-        }),
-      ],
+      [payment.id, callbackMetadata],
     );
-    if (resultCode === 0) {
-      await activateSubscriptionFromPayment(client, payment.id);
-    }
   });
 }
 
@@ -3676,7 +3795,7 @@ function normalizePaymentRow(row) {
 async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
   const businessResult = await query(
     `
-    SELECT b.id, b.name, b.country_code, b.updated_at,
+    SELECT b.id, b.name, b.country_code, b.currency, b.updated_at,
            cs.whatsapp_number
     FROM businesses b
     LEFT JOIN business_communication_settings cs
@@ -3762,7 +3881,7 @@ async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
   ].sort((a, b) => a.localeCompare(b));
 
   const currencyInfo = publicCatalogCurrencyInfo(
-    currencyOverride,
+    currencyOverride || business.currency,
     business.country_code,
   );
 
@@ -4968,6 +5087,28 @@ function currencyForCountry(countryCode) {
   if (clean === 'UG') return 'UGX';
   if (clean === 'RW') return 'RWF';
   return 'KES';
+}
+
+function displayCurrencyForCountry(countryCode) {
+  const clean = String(countryCode || '').trim().toUpperCase();
+  if (clean === 'KE') return 'KSh';
+  if (clean === 'TZ') return 'TSh';
+  if (clean === 'UG') return 'USh';
+  if (clean === 'RW') return 'FRw';
+  if (clean === 'ZA') return 'R';
+  if (clean === 'GB') return '\u00A3';
+  return '$';
+}
+
+function normalizeBusinessCurrency(value) {
+  const currency = normalizeOptionalText(value);
+  if (!currency) {
+    return null;
+  }
+  if (currency.length > 12 || /[<>{}"'`\\]/.test(currency)) {
+    throw createHttpError(400, 'Choose a valid currency');
+  }
+  return currency;
 }
 
 function publicCatalogCurrencyInfo(currencyOverride, countryCode) {

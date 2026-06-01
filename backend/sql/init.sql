@@ -6,12 +6,14 @@ CREATE TABLE IF NOT EXISTS businesses (
   owner_name text,
   owner_email text,
   country_code text NOT NULL DEFAULT 'GLOBAL',
+  currency text,
   selling_mode text NOT NULL DEFAULT 'combo',
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
 
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS currency text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'combo';
 
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -45,6 +47,18 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 
 ALTER TABLE subscription_plans
   ADD COLUMN IF NOT EXISTS allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS platform_subscription_settings (
+  id integer PRIMARY KEY DEFAULT 1,
+  trial_days integer NOT NULL DEFAULT 30,
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  CONSTRAINT platform_subscription_settings_single_row CHECK (id = 1),
+  CONSTRAINT platform_subscription_settings_trial_days CHECK (trial_days BETWEEN 1 AND 365)
+);
+
+INSERT INTO platform_subscription_settings (id, trial_days)
+VALUES (1, 30)
+ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS platform_payment_gateways (
   provider text PRIMARY KEY,
@@ -1016,3 +1030,10 @@ CREATE INDEX IF NOT EXISTS idx_credit_payments_branch_id ON credit_payments(busi
 CREATE INDEX IF NOT EXISTS idx_expenses_branch_id ON expenses(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_services_branch_id ON services(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_service_orders_branch_id ON service_orders(business_id, branch_id);
+
+CREATE INDEX IF NOT EXISTS idx_products_barcode_partial ON products(business_id, barcode) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_product_variants_barcode_partial ON product_variants(business_id, barcode) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_product_variants_product_deleted ON product_variants(business_id, product_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_stock_batches_fifo_partial ON stock_batches(business_id, product_id, quantity_remaining, expiry_date, received_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sale_items_lookup ON sale_items(sale_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_sales_sync_branch ON sales(business_id, branch_id, deleted_at, created_at);

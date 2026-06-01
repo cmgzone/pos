@@ -80,6 +80,40 @@ const trainingModules = <TrainingModule>[
     ],
   ),
   TrainingModule(
+    id: 'orders',
+    title: 'Catalog Orders',
+    description:
+        'Review customer catalog requests, accept orders, and load them into checkout.',
+    icon: Icons.assignment_rounded,
+    steps: [
+      TrainingStep(
+        id: 'orders.workspace',
+        title: 'Catalog Order Inbox',
+        description:
+            'Use these filters to review pending or accepted online catalog orders. Open an order to accept it, complete it, or load its items into POS.',
+        anchorId: 'orders.workspace',
+        shellIndex: 17,
+      ),
+    ],
+  ),
+  TrainingModule(
+    id: 'services',
+    title: 'Services',
+    description:
+        'Sell services, manage service orders, maintain the catalog, and review service reports.',
+    icon: Icons.design_services_rounded,
+    steps: [
+      TrainingStep(
+        id: 'services.workspace',
+        title: 'Service Workspace',
+        description:
+            'Use the tabs to switch between quick service checkout, active orders, service templates, and service reports.',
+        anchorId: 'services.workspace',
+        shellIndex: 11,
+      ),
+    ],
+  ),
+  TrainingModule(
     id: 'dashboard',
     title: 'Dashboard',
     description:
@@ -107,6 +141,23 @@ const trainingModules = <TrainingModule>[
         description:
             'Recent sales help you confirm that transactions are flowing and let managers review the latest completed receipts.',
         anchorId: 'dashboard.recentSales',
+      ),
+    ],
+  ),
+  TrainingModule(
+    id: 'piki',
+    title: 'Piki AI',
+    description:
+        'Ask Piki for business help, review proactive alerts, or prepare a sale by voice or text.',
+    icon: Icons.auto_awesome_rounded,
+    steps: [
+      TrainingStep(
+        id: 'piki.workspace',
+        title: 'Piki Assistant',
+        description:
+            'Choose a mode, use a quick action, or type a request. Piki can answer questions, surface saved alerts, and help prepare checkout.',
+        anchorId: 'piki.workspace',
+        shellIndex: 16,
       ),
     ],
   ),
@@ -179,6 +230,24 @@ const trainingModules = <TrainingModule>[
     ],
   ),
   TrainingModule(
+    id: 'stock-list',
+    title: 'Stock List',
+    description:
+        'Search current stock, inspect batches, and spot low-stock or expiry risks.',
+    icon: Icons.fact_check_rounded,
+    allowedRoles: TrainingRoles.management,
+    steps: [
+      TrainingStep(
+        id: 'stock-list.workspace',
+        title: 'Stock Health',
+        description:
+            'Search by product, SKU, barcode, or batch. Each stock card shows quantities and warning states so you can act before stock runs out or expires.',
+        anchorId: 'stockList.workspace',
+        shellIndex: 12,
+      ),
+    ],
+  ),
+  TrainingModule(
     id: 'categories',
     title: 'Categories',
     description:
@@ -243,6 +312,24 @@ const trainingModules = <TrainingModule>[
     ],
   ),
   TrainingModule(
+    id: 'transfers',
+    title: 'Stock Transfers',
+    description:
+        'Move inventory between branches and track approval and receiving status.',
+    icon: Icons.swap_horiz_rounded,
+    allowedRoles: TrainingRoles.management,
+    steps: [
+      TrainingStep(
+        id: 'transfers.workspace',
+        title: 'Branch Stock Movement',
+        description:
+            'Request a transfer, then follow its approval and receiving state. The list makes incoming and outgoing stock easy to distinguish.',
+        anchorId: 'transfers.workspace',
+        shellIndex: 15,
+      ),
+    ],
+  ),
+  TrainingModule(
     id: 'sales',
     title: 'Sales History',
     description:
@@ -263,6 +350,23 @@ const trainingModules = <TrainingModule>[
         description:
             'Open a sale row to inspect the receipt, see customer or cashier details, print again, or process returns when your role allows it.',
         anchorId: 'sales.list',
+      ),
+    ],
+  ),
+  TrainingModule(
+    id: 'shifts',
+    title: 'Shifts & Cash',
+    description:
+        'Open and close shifts, reconcile the drawer, and record cash movements.',
+    icon: Icons.timer_rounded,
+    steps: [
+      TrainingStep(
+        id: 'shifts.workspace',
+        title: 'Cash Control',
+        description:
+            'Review the active shift, record cash in or out, close with reconciliation, and inspect recent shift history from this workspace.',
+        anchorId: 'shifts.workspace',
+        shellIndex: 10,
       ),
     ],
   ),
@@ -384,6 +488,42 @@ const trainingModules = <TrainingModule>[
     ],
   ),
   TrainingModule(
+    id: 'branches',
+    title: 'Branches',
+    description:
+        'Create locations and choose which branch receives new records on this device.',
+    icon: Icons.store_mall_directory_rounded,
+    allowedRoles: TrainingRoles.management,
+    steps: [
+      TrainingStep(
+        id: 'branches.workspace',
+        title: 'Branch Management',
+        description:
+            'Add or edit shop locations and switch the current branch before recording new sales, stock, or audit activity.',
+        anchorId: 'branches.workspace',
+        shellIndex: 13,
+      ),
+    ],
+  ),
+  TrainingModule(
+    id: 'audit-logs',
+    title: 'Audit Logs',
+    description:
+        'Review staff and system activity for one branch or across the business.',
+    icon: Icons.manage_search_rounded,
+    allowedRoles: TrainingRoles.management,
+    steps: [
+      TrainingStep(
+        id: 'audit-logs.workspace',
+        title: 'Activity Review',
+        description:
+            'Use the branch filter and activity list to inspect who created, updated, or deleted business records.',
+        anchorId: 'auditLogs.workspace',
+        shellIndex: 14,
+      ),
+    ],
+  ),
+  TrainingModule(
     id: 'settings',
     title: 'Settings & Access',
     description:
@@ -436,14 +576,22 @@ const trainingModules = <TrainingModule>[
 const fullTrainingOrder = <String>[
   'quick-start',
   'pos',
+  'orders',
+  'services',
   'dashboard',
+  'piki',
   'products',
+  'stock-list',
   'categories',
   'purchases',
+  'transfers',
   'sales',
+  'shifts',
   'kopesha',
   'profit-loss',
   'reports',
+  'branches',
+  'audit-logs',
   'settings',
 ];
 

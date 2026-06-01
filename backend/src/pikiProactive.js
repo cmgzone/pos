@@ -273,6 +273,10 @@ function stopPikiProactiveWorker() {
 }
 
 async function loadBusinessSnapshot(client, businessId, branchId) {
+  const businessResult = await client.query(
+    'SELECT currency, country_code FROM businesses WHERE id = $1 LIMIT 1',
+    [businessId],
+  );
   const lowStockParams = [businessId];
   const lowStockBranch = branchClause('p', lowStockParams, branchId);
   const lowStock = await client.query(
@@ -345,7 +349,10 @@ async function loadBusinessSnapshot(client, businessId, branchId) {
 
   return {
     branchId,
-    currency: '',
+    currency: String(
+      businessResult.rows[0]?.currency ||
+        displayCurrencyForCountry(businessResult.rows[0]?.country_code),
+    ).trim(),
     lowStock: lowStock.rows,
     expiringBatches: expiring.rows,
     todaySales,
@@ -378,6 +385,17 @@ function branchClause(alias, params, branchId) {
   if (!branchId) return '';
   params.push(branchId);
   return `AND COALESCE(${alias}.branch_id, '${DEFAULT_BRANCH_ID}') = $${params.length}`;
+}
+
+function displayCurrencyForCountry(countryCode) {
+  const normalized = String(countryCode || '').trim().toUpperCase();
+  if (normalized === 'KE') return 'KSh';
+  if (normalized === 'TZ') return 'TSh';
+  if (normalized === 'UG') return 'USh';
+  if (normalized === 'RW') return 'FRw';
+  if (normalized === 'ZA') return 'R';
+  if (normalized === 'GB') return '\u00A3';
+  return '$';
 }
 
 async function runQuery(target, text, params = []) {

@@ -7,6 +7,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/shift_provider.dart';
 import '../data/shift_preferences_service.dart';
 import '../data/shift_repository.dart';
@@ -49,95 +50,99 @@ class ShiftManagementScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: () async => invalidateShiftProviders(ref),
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              'Opening, closing, and drawer reconciliation live here.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
-            ),
-            if (access?.autoClosedShift != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: AppColors.warning.withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.schedule_send_outlined,
-                      color: AppColors.warning,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'A previous-day shift was auto-closed so you can start fresh today.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.warning,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+      body: TrainingAnchor(
+        id: 'shifts.workspace',
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: () async => invalidateShiftProviders(ref),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text(
+                'Opening, closing, and drawer reconciliation live here.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
                 ),
               ),
+              if (access?.autoClosedShift != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.schedule_send_outlined,
+                        color: AppColors.warning,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'A previous-day shift was auto-closed so you can start fresh today.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: AppColors.warning,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              _CurrentShiftCard(
+                shift: currentShift,
+                summary: currentSummary,
+                requiresManagedShift: requiresManagedShift,
+                loading:
+                    accessAsync.isLoading ||
+                    currentShiftAsync.isLoading ||
+                    (currentShift != null && currentSummaryAsync.isLoading),
+                onOpenShift: () => _showOpenShiftDialog(context, ref),
+                onCashIn: currentShift == null
+                    ? null
+                    : () => _showCashMovementDialog(
+                        context,
+                        ref,
+                        shiftId: currentShift['id'] as String,
+                        type: 'cash_in',
+                      ),
+                onCashOut: currentShift == null
+                    ? null
+                    : () => _showCashMovementDialog(
+                        context,
+                        ref,
+                        shiftId: currentShift['id'] as String,
+                        type: 'cash_out',
+                      ),
+                onCloseShift: currentShift == null || currentSummary == null
+                    ? null
+                    : () => _showCloseShiftDialog(
+                        context,
+                        ref,
+                        shift: currentShift,
+                        summary: currentSummary,
+                      ),
+              ),
+              const SizedBox(height: 20),
+              _MovementCard(
+                movements: movementsAsync.valueOrNull ?? const [],
+                loading: currentShift != null && movementsAsync.isLoading,
+              ),
+              const SizedBox(height: 20),
+              _HistoryCard(
+                shifts: historyAsync.valueOrNull ?? const [],
+                loading: historyAsync.isLoading,
+              ),
             ],
-            const SizedBox(height: 20),
-            _CurrentShiftCard(
-              shift: currentShift,
-              summary: currentSummary,
-              requiresManagedShift: requiresManagedShift,
-              loading:
-                  accessAsync.isLoading ||
-                  currentShiftAsync.isLoading ||
-                  (currentShift != null && currentSummaryAsync.isLoading),
-              onOpenShift: () => _showOpenShiftDialog(context, ref),
-              onCashIn: currentShift == null
-                  ? null
-                  : () => _showCashMovementDialog(
-                      context,
-                      ref,
-                      shiftId: currentShift['id'] as String,
-                      type: 'cash_in',
-                    ),
-              onCashOut: currentShift == null
-                  ? null
-                  : () => _showCashMovementDialog(
-                      context,
-                      ref,
-                      shiftId: currentShift['id'] as String,
-                      type: 'cash_out',
-                    ),
-              onCloseShift: currentShift == null || currentSummary == null
-                  ? null
-                  : () => _showCloseShiftDialog(
-                      context,
-                      ref,
-                      shift: currentShift,
-                      summary: currentSummary,
-                    ),
-            ),
-            const SizedBox(height: 20),
-            _MovementCard(
-              movements: movementsAsync.valueOrNull ?? const [],
-              loading: currentShift != null && movementsAsync.isLoading,
-            ),
-            const SizedBox(height: 20),
-            _HistoryCard(
-              shifts: historyAsync.valueOrNull ?? const [],
-              loading: historyAsync.isLoading,
-            ),
-          ],
+          ),
         ),
       ),
     );

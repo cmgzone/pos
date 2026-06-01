@@ -202,6 +202,8 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       });
       if (result.status == 'paid') {
         await _refreshLicenseAndReload(market);
+      } else if (result.provider == 'mpesa' && result.paymentId.isNotEmpty) {
+        await _pollMpesaPayment(result.paymentId, market);
       }
     } catch (error) {
       if (!mounted) return;
@@ -215,6 +217,54 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       if (mounted) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<void> _pollMpesaPayment(
+    String paymentId,
+    SubscriptionMarket market,
+  ) async {
+    for (var attempt = 0; attempt < 24; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+
+      SubscriptionCheckoutResult payment;
+      try {
+        payment = await SubscriptionService.fetchPayment(paymentId: paymentId);
+      } catch (_) {
+        continue;
+      }
+      if (!mounted) return;
+
+      setState(() {
+        _checkout = payment;
+      });
+      if (payment.status == 'paid') {
+        setState(() => _message = 'Payment received. Activating your plan...');
+        await _refreshLicenseAndReload(market);
+        return;
+      }
+      if (payment.status == 'failed') {
+        setState(
+          () => _message =
+              'M-Pesa payment was not completed. Try again when you are ready.',
+        );
+        return;
+      }
+      if (payment.status == 'pending_configuration') {
+        setState(
+          () => _message =
+              'M-Pesa is not fully configured yet. Contact your administrator.',
+        );
+        return;
+      }
+    }
+
+    if (mounted) {
+      setState(
+        () => _message =
+            'M-Pesa payment is still pending. Reopen subscriptions shortly to refresh the result.',
+      );
     }
   }
 
@@ -294,7 +344,16 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
             ? const EdgeInsets.fromLTRB(28, 22, 28, 24)
             : const EdgeInsets.fromLTRB(18, 18, 18, 18);
         return Container(
-          color: _premiumBackground,
+          decoration: const BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment(0.0, -0.6),
+              radius: 1.4,
+              colors: [
+                Color(0xFF1B0C24), // Ambient deep purple glow
+                Color(0xFF09090E), // Base background
+              ],
+            ),
+          ),
           child: SafeArea(
             child: Column(
               children: [
@@ -491,28 +550,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: _pink.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.smart_toy_outlined, size: 17, color: Colors.white),
-                SizedBox(width: 8),
-                Text(
-                  'AI shop assistant included',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const _ShimmeringAiTag(),
           const SizedBox(height: 16),
           Text(
             'Run your shop smarter with Piki.',
@@ -592,65 +630,97 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         ),
       );
     }
+
+    final activeIndex = periods.indexOf(_selectedBillingPeriod ?? '');
+    final double alignX = periods.length > 1
+        ? -1.0 + (2.0 * activeIndex / (periods.length - 1))
+        : 0.0;
+
     return Container(
-      padding: const EdgeInsets.all(5),
+      height: 54,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(27),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
-      child: Row(
-        children: periods.map((period) {
-          final selected = period == _selectedBillingPeriod;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: TextButton(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        final market = _selectedMarket();
-                        final catalog = _catalog;
-                        if (market == null || catalog == null) return;
-                        final plans = _plansForBilling(
-                          _plansForMarket(catalog, market),
-                          market,
-                          period,
-                        );
-                        final selectedPlan = plans
-                            .where((plan) => plan.code == _selectedPlanCode)
-                            .firstOrNull;
-                        final nextPlan = selectedPlan ?? plans.firstOrNull;
-                        setState(() {
-                          _selectedBillingPeriod = period;
-                          _selectedPlanCode = nextPlan?.code;
-                          _selectedSellingMode = _sellingModeForPlan(
-                            nextPlan,
-                            _selectedSellingMode,
-                          );
-                          _featuresExpanded = false;
-                          _checkout = null;
-                          _message = null;
-                        });
-                      },
-                style: TextButton.styleFrom(
-                  backgroundColor: selected ? _pink : Colors.transparent,
-                  foregroundColor: selected
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.66),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                ),
-                child: Text(
-                  _periodLabel(period),
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+      child: Stack(
+        children: [
+          // Sliding background capsule
+          AnimatedAlign(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOutCubic,
+            alignment: Alignment(alignX, 0.0),
+            child: FractionallySizedBox(
+              widthFactor: 1.0 / periods.length,
+              heightFactor: 0.88,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [_pink, _fuchsia]),
+                  borderRadius: BorderRadius.circular(23),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _pink.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
               ),
             ),
-          );
-        }).toList(),
+          ),
+          // Buttons
+          Row(
+            children: periods.map((period) {
+              final selected = period == _selectedBillingPeriod;
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _busy
+                      ? null
+                      : () {
+                          final market = _selectedMarket();
+                          final catalog = _catalog;
+                          if (market == null || catalog == null) return;
+                          final plans = _plansForBilling(
+                            _plansForMarket(catalog, market),
+                            market,
+                            period,
+                          );
+                          final selectedPlan = plans
+                              .where((plan) => plan.code == _selectedPlanCode)
+                              .firstOrNull;
+                          final nextPlan = selectedPlan ?? plans.firstOrNull;
+                          setState(() {
+                            _selectedBillingPeriod = period;
+                            _selectedPlanCode = nextPlan?.code;
+                            _selectedSellingMode = _sellingModeForPlan(
+                              nextPlan,
+                              _selectedSellingMode,
+                            );
+                            _featuresExpanded = false;
+                            _checkout = null;
+                            _message = null;
+                          });
+                        },
+                  child: Center(
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 180),
+                      style: TextStyle(
+                        color: selected
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.6),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                      child: Text(_periodLabel(period)),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }
@@ -678,23 +748,59 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          const SizedBox(height: 12),
+          Row(
             children: modes.map((mode) {
               final selected = mode == _selectedSellingMode;
-              return ChoiceChip(
-                selected: selected,
-                avatar: Icon(_sellingModeIcon(mode), size: 17),
-                label: Text(_sellingModeLabel(mode)),
-                onSelected: _busy
-                    ? null
-                    : (_) => setState(() {
-                        _selectedSellingMode = mode;
-                        _checkout = null;
-                        _message = null;
-                      }),
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: InkWell(
+                    onTap: _busy
+                        ? null
+                        : () => setState(() {
+                            _selectedSellingMode = mode;
+                            _checkout = null;
+                            _message = null;
+                          }),
+                    borderRadius: BorderRadius.circular(16),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? _pink.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: selected
+                              ? _pink.withValues(alpha: 0.6)
+                              : Colors.white.withValues(alpha: 0.08),
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _sellingModeIcon(mode),
+                            size: 20,
+                            color: selected ? Colors.white : Colors.white60,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _sellingModeLabel(mode),
+                            style: TextStyle(
+                              color: selected ? Colors.white : Colors.white60,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               );
             }).toList(),
           ),
@@ -766,163 +872,178 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     final price = plan.priceFor(market, billingPeriod: billingPeriod);
     final isCurrent = plan.code == _currentPlanCode();
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(28),
-      onTap: _busy
-          ? null
-          : () => setState(() {
-              _selectedPlanCode = plan.code;
-              _selectedSellingMode = _sellingModeForPlan(
-                plan,
-                _selectedSellingMode,
-              );
-              _featuresExpanded = false;
-              _checkout = null;
-              _message = null;
-            }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: selected
-              ? LinearGradient(
-                  colors: [
-                    _pink.withValues(alpha: 0.22),
-                    _fuchsia.withValues(alpha: 0.08),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.05),
-                    Colors.white.withValues(alpha: 0.01),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: selected
-                ? Colors.white.withValues(alpha: 0.45)
-                : Colors.white.withValues(alpha: 0.08),
-            width: selected ? 1.5 : 1,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: _pink.withValues(alpha: 0.18),
-                    blurRadius: 30,
-                    offset: const Offset(0, 10),
+    return AnimatedScale(
+      scale: selected ? 1.025 : 0.985,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutBack,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: _busy
+            ? null
+            : () => setState(() {
+                _selectedPlanCode = plan.code;
+                _selectedSellingMode = _sellingModeForPlan(
+                  plan,
+                  _selectedSellingMode,
+                );
+                _featuresExpanded = false;
+                _checkout = null;
+                _message = null;
+              }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: selected
+                ? LinearGradient(
+                    colors: [
+                      _pink.withValues(alpha: 0.22),
+                      _fuchsia.withValues(alpha: 0.08),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.05),
+                      Colors.white.withValues(alpha: 0.01),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  BoxShadow(
-                    color: _fuchsia.withValues(alpha: 0.08),
-                    blurRadius: 30,
-                    offset: const Offset(0, -10),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: selected
-                          ? const [_pink, _fuchsia]
-                          : [
-                              Colors.white.withValues(alpha: 0.12),
-                              Colors.white.withValues(alpha: 0.05),
-                            ],
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.45)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: selected ? 1.5 : 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: _pink.withValues(alpha: 0.25),
+                      blurRadius: 36,
+                      spreadRadius: -2,
+                      offset: const Offset(0, 12),
                     ),
-                    borderRadius: BorderRadius.circular(18),
+                    BoxShadow(
+                      color: _fuchsia.withValues(alpha: 0.15),
+                      blurRadius: 36,
+                      spreadRadius: -2,
+                      offset: const Offset(0, -12),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: selected
+                            ? const [_pink, _fuchsia]
+                            : [
+                                Colors.white.withValues(alpha: 0.12),
+                                Colors.white.withValues(alpha: 0.05),
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(_planIcon(plan), color: Colors.white),
                   ),
-                  child: Icon(_planIcon(plan), color: Colors.white),
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              plan.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                plan.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
-                          ),
-                          if (isCurrent) ...[
-                            _tinyBadge('Current', color: AppColors.success),
-                            const SizedBox(width: 6),
+                            if (selected) ...[
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: AppColors.secondary,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            if (isCurrent) ...[
+                              _tinyBadge('Current', color: AppColors.success),
+                              const SizedBox(width: 6),
+                            ],
+                            if (plan.code == 'pro')
+                              _tinyBadge('Popular', color: AppColors.warning),
                           ],
-                          if (plan.code == 'pro')
-                            _tinyBadge('Popular', color: AppColors.warning),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          plan.description.isEmpty
+                              ? 'Configured by Super Admin.'
+                              : plan.description,
+                          style: const TextStyle(
+                            color: Color(0xB8F9DDF0),
+                            fontSize: 12,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
                       Text(
-                        plan.description.isEmpty
-                            ? 'Configured by Super Admin.'
-                            : plan.description,
+                        price?.displayAmount ?? 'Custom',
                         style: const TextStyle(
-                          color: Color(0xB8F9DDF0),
-                          fontSize: 12,
-                          height: 1.35,
-                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        '/${_periodShortLabel(billingPeriod)}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.52),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      price?.displayAmount ?? 'Custom',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      '/${_periodShortLabel(billingPeriod)}',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.52),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
+                ],
+              ),
+              if (selected) ...[
+                const SizedBox(height: 16),
+                _limitsGrid(plan),
+                const SizedBox(height: 16),
+                _featuresList(plan),
               ],
-            ),
-            if (selected) ...[
-              const SizedBox(height: 16),
-              _limitsGrid(plan),
-              const SizedBox(height: 16),
-              _featuresList(plan),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1057,8 +1178,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
             letterSpacing: 0.5,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         ...displayedFeatures.map((feature) {
+          final isAi =
+              feature.toLowerCase().contains('ai') ||
+              feature.toLowerCase().contains('intelligence');
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 5),
             child: Row(
@@ -1066,24 +1190,54 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: AppColors.secondary.withValues(alpha: 0.08),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     _featureIcon(feature),
                     size: 12,
-                    color: const Color(0xFFFFB6D1),
+                    color: AppColors.secondary,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    UserAccessProfile.featureLabel(feature),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          UserAccessProfile.featureLabel(feature),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (isAi) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _pink.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _pink.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: const Text(
+                            'AI',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
@@ -1755,5 +1909,78 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       default:
         return Icons.check_circle_outline;
     }
+  }
+}
+
+class _ShimmeringAiTag extends StatefulWidget {
+  const _ShimmeringAiTag();
+
+  @override
+  State<_ShimmeringAiTag> createState() => _ShimmeringAiTagState();
+}
+
+class _ShimmeringAiTagState extends State<_ShimmeringAiTag>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: const [
+                Color(0xFFFF2A6D),
+                Color(0xFFC72DFF),
+                Color(0xFFFF2A6D),
+              ],
+              stops: [0.0, _controller.value, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF2A6D).withValues(alpha: 0.15),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.auto_awesome, size: 15, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                'AI SHOP ASSISTANT INCLUDED',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

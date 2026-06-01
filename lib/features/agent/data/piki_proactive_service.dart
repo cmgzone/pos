@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
@@ -40,23 +41,41 @@ class PikiProactiveInsight {
       generatedAt: DateTime.tryParse(json['generatedAt'] as String? ?? ''),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'severity': severity,
+      'kind': kind,
+      'title': title,
+      'body': body,
+      'action': action,
+      'generatedAt': generatedAt?.toIso8601String(),
+    };
+  }
 }
 
 class PikiProactiveService {
   static const _timeout = Duration(seconds: 20);
+  static const _cacheKeyPrefix = 'piki_proactive_insights_cache_v1';
 
   static Future<List<PikiProactiveInsight>> fetchInsights({
     bool forceRefresh = false,
+    bool allowNetwork = true,
   }) async {
-    final backendUrl = SyncSettingsService.backendUrl;
-    if (backendUrl.isEmpty) return const <PikiProactiveInsight>[];
-
-    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
-    final license = await _ensureAccess(backendUrl, deviceId);
     final branchId = DatabaseService.currentBranchId;
-    final client = http.Client();
+    final cachedInsights = await _readCachedInsights(branchId);
+    if (!allowNetwork) return cachedInsights;
+
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) return cachedInsights;
+
+    http.Client? client;
 
     try {
+      final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+      final license = await _ensureAccess(backendUrl, deviceId);
+      client = http.Client();
       final response = forceRefresh
           ? await client
                 .post(
@@ -83,11 +102,40 @@ class PikiProactiveService {
 
       final body = jsonDecode(utf8.decode(response.bodyBytes));
       if (response.statusCode != 200 || body['ok'] != true) {
-        return const <PikiProactiveInsight>[];
+        return cachedInsights;
       }
       final rawInsights = body['insights'];
-      if (rawInsights is! List) return const <PikiProactiveInsight>[];
-      return rawInsights
+      if (rawInsights is! List) return cachedInsights;
+      final insights = rawInsights
+          .whereType<Map>()
+          .map(
+            (row) =>
+                PikiProactiveInsight.fromJson(Map<String, dynamic>.from(row)),
+          )
+          .toList();
+      await _cacheInsights(branchId, insights);
+      return insights;
+    } catch (_) {
+      return cachedInsights;
+    } finally {
+      client?.close();
+    }
+  }
+
+  static Future<List<PikiProactiveInsight>> _readCachedInsights(
+    String branchId,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey(branchId));
+      if (raw == null || raw.trim().isEmpty) {
+        return const <PikiProactiveInsight>[];
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return const <PikiProactiveInsight>[];
+      }
+      return decoded
           .whereType<Map>()
           .map(
             (row) =>
@@ -96,9 +144,27 @@ class PikiProactiveService {
           .toList();
     } catch (_) {
       return const <PikiProactiveInsight>[];
-    } finally {
-      client.close();
     }
+  }
+
+  static Future<void> _cacheInsights(
+    String branchId,
+    List<PikiProactiveInsight> insights,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _cacheKey(branchId),
+        jsonEncode(insights.map((insight) => insight.toJson()).toList()),
+      );
+    } catch (_) {
+      // Notifications should still work when local preferences are unavailable.
+    }
+  }
+
+  static String _cacheKey(String branchId) {
+    final businessId = SyncSettingsService.localBusinessId;
+    return '$_cacheKeyPrefix:${businessId.isEmpty ? 'local' : businessId}:$branchId';
   }
 
   static Future<bool> syncAlias({

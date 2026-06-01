@@ -10,7 +10,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 15;
+  static const int _databaseVersion = 16;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -76,6 +76,11 @@ class DatabaseService {
         await _runMigrations(database);
       },
       onUpgrade: (database, oldVersion, newVersion) async {
+        if (oldVersion < 16) {
+          // Drop barcode indexes to recreate them with the deleted_at IS NULL partial index condition
+          await database.execute('DROP INDEX IF EXISTS idx_products_barcode');
+          await database.execute('DROP INDEX IF EXISTS idx_product_variants_barcode');
+        }
         await _runMigrations(database);
       },
       onOpen: (database) async {
@@ -914,6 +919,7 @@ class DatabaseService {
       table: 'products',
       indexName: 'idx_products_barcode',
       columns: ['barcode'],
+      whereClause: 'deleted_at IS NULL',
     );
     await _createIndexIfColumnsExist(
       database,
@@ -1113,6 +1119,7 @@ class DatabaseService {
       table: 'product_variants',
       indexName: 'idx_product_variants_barcode',
       columns: ['barcode'],
+      whereClause: 'deleted_at IS NULL',
     );
     await _createIndexIfColumnsExist(
       database,
@@ -1134,6 +1141,32 @@ class DatabaseService {
       indexName: 'idx_stock_transfers_from_to_status',
       columns: ['from_branch_id', 'to_branch_id', 'status'],
     );
+    // Optimization indexes added in v16
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_variants',
+      indexName: 'idx_product_variants_product',
+      columns: ['product_id', 'deleted_at'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sale_items',
+      indexName: 'idx_sale_items_lookup',
+      columns: ['sale_id', 'product_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sales',
+      indexName: 'idx_sales_sync_branch',
+      columns: ['branch_id', 'deleted_at', 'created_at'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stock_batches',
+      indexName: 'idx_stock_batches_fifo',
+      columns: ['product_id', 'quantity_remaining', 'expiry_date', 'received_at'],
+      whereClause: 'deleted_at IS NULL',
+    );
   }
 
   static Future<void> _createIndexIfColumnsExist(
@@ -1142,6 +1175,7 @@ class DatabaseService {
     required String indexName,
     required List<String> columns,
     bool unique = false,
+    String? whereClause,
   }) async {
     final availableColumns = await _getColumnNames(database, table);
     if (!columns.every(availableColumns.contains)) {
@@ -1150,8 +1184,9 @@ class DatabaseService {
 
     final uniqueSql = unique ? 'UNIQUE ' : '';
     final columnSql = columns.join(', ');
+    final whereSql = whereClause != null ? ' WHERE $whereClause' : '';
     await database.execute(
-      'CREATE ${uniqueSql}INDEX IF NOT EXISTS $indexName ON $table($columnSql)',
+      'CREATE ${uniqueSql}INDEX IF NOT EXISTS $indexName ON $table($columnSql)$whereSql',
     );
   }
 

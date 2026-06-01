@@ -345,6 +345,20 @@ class SubscriptionService {
     return _requireOk(response)['data'] as Map<String, dynamic>;
   }
 
+  static Future<SubscriptionCheckoutResult> fetchPayment({
+    required String paymentId,
+  }) async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _getWithFallback(
+      'subscription/payments/${Uri.encodeComponent(paymentId)}',
+      queryParameters: {'deviceId': deviceId},
+      options: Options(headers: headers),
+    );
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    return SubscriptionCheckoutResult.fromJson(data);
+  }
+
   static Future<String> resolveReachableBackendUrl() async {
     final catalog = await fetchPlans();
     return catalog.backendUrl;

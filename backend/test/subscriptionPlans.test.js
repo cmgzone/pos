@@ -6,6 +6,9 @@ const {
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
   normalizeSellingMode,
+  normalizeTrialDays,
+  renewalBaseDate,
+  validatePaymentGatewayConfiguration,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
 
@@ -130,4 +133,42 @@ test('public catalog keeps free plans visible without an active payment gateway'
     ),
     true,
   );
+});
+
+test('active M-Pesa gateway requires a valid HTTPS callback URL', () => {
+  assert.throws(
+    () =>
+      validatePaymentGatewayConfiguration({
+        provider: 'mpesa',
+        isActive: true,
+        publicConfig: {
+          baseUrl: 'https://sandbox.safaricom.co.ke',
+          shortcode: '123456',
+          callbackUrl: 'superadmin@example.com',
+        },
+        secretConfig: {
+          consumerKey: 'key',
+          consumerSecret: 'secret',
+          passkey: 'passkey',
+        },
+      }),
+    /callback URL must be a valid HTTPS URL/,
+  );
+});
+
+test('renewal keeps remaining subscription time', () => {
+  const now = new Date('2026-05-31T00:00:00.000Z');
+  const futureExpiry = new Date('2026-06-15T00:00:00.000Z');
+  const expired = new Date('2026-05-01T00:00:00.000Z');
+
+  assert.equal(renewalBaseDate(futureExpiry, now).toISOString(), futureExpiry.toISOString());
+  assert.equal(renewalBaseDate(expired, now).toISOString(), now.toISOString());
+});
+
+test('trial period accepts whole days within the admin range', () => {
+  assert.equal(normalizeTrialDays(30), 30);
+  assert.equal(normalizeTrialDays('45'), 45);
+  assert.throws(() => normalizeTrialDays(0), /between 1 and 365 days/);
+  assert.throws(() => normalizeTrialDays(365.5), /between 1 and 365 days/);
+  assert.throws(() => normalizeTrialDays(366), /between 1 and 365 days/);
 });

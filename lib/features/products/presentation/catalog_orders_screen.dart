@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../sales/data/cart_provider.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/product_variant_repository.dart';
 
@@ -227,96 +228,100 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            color: AppColors.surface,
-            padding: EdgeInsets.fromLTRB(
-              isMobile ? 16 : 24,
-              0,
-              isMobile ? 16 : 24,
-              16,
+      body: TrainingAnchor(
+        id: 'orders.workspace',
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: AppColors.surface,
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 24,
+                0,
+                isMobile ? 16 : 24,
+                16,
+              ),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'pending',
+                    icon: Icon(Icons.pending_actions_outlined),
+                    label: Text('Pending'),
+                  ),
+                  ButtonSegment(
+                    value: 'accepted',
+                    icon: Icon(Icons.check_circle_outline),
+                    label: Text('Accepted'),
+                  ),
+                  ButtonSegment(
+                    value: 'all',
+                    icon: Icon(Icons.list_alt_outlined),
+                    label: Text('All'),
+                  ),
+                ],
+                selected: {_status},
+                onSelectionChanged: (values) {
+                  setState(() {
+                    _status = values.first;
+                    _ordersFuture = _loadOrders();
+                  });
+                },
+              ),
             ),
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'pending',
-                  icon: Icon(Icons.pending_actions_outlined),
-                  label: Text('Pending'),
-                ),
-                ButtonSegment(
-                  value: 'accepted',
-                  icon: Icon(Icons.check_circle_outline),
-                  label: Text('Accepted'),
-                ),
-                ButtonSegment(
-                  value: 'all',
-                  icon: Icon(Icons.list_alt_outlined),
-                  label: Text('All'),
-                ),
-              ],
-              selected: {_status},
-              onSelectionChanged: (values) {
-                setState(() {
-                  _status = values.first;
-                  _ordersFuture = _loadOrders();
-                });
-              },
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: FutureBuilder<List<CatalogOrder>>(
-              future: _ordersFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        AppErrorMessage.from(
-                          snapshot.error,
-                          fallback: 'Could not load catalog orders.',
+            const Divider(height: 1),
+            Expanded(
+              child: FutureBuilder<List<CatalogOrder>>(
+                future: _ordersFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          AppErrorMessage.from(
+                            snapshot.error,
+                            fallback: 'Could not load catalog orders.',
+                          ),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.error),
                         ),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: AppColors.error),
                       ),
+                    );
+                  }
+
+                  final orders = snapshot.data ?? const <CatalogOrder>[];
+                  if (orders.isEmpty) {
+                    return EmptyStateWidget(
+                      icon: Icons.receipt_long_outlined,
+                      title: 'No catalog orders',
+                      subtitle: _status == 'pending'
+                          ? 'New customer orders from the catalog link will appear here.'
+                          : 'No orders found for this filter.',
+                      actionLabel: 'Refresh',
+                      onAction: _refresh,
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: EdgeInsets.all(isMobile ? 12 : 20),
+                    itemCount: orders.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) => _CatalogOrderCard(
+                      order: orders[index],
+                      updating: _updating.contains(orders[index].id),
+                      onStatus: (status) =>
+                          _updateStatus(orders[index], status),
+                      onCheckout: () => _acceptAndCheckout(orders[index]),
                     ),
                   );
-                }
-
-                final orders = snapshot.data ?? const <CatalogOrder>[];
-                if (orders.isEmpty) {
-                  return EmptyStateWidget(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'No catalog orders',
-                    subtitle: _status == 'pending'
-                        ? 'New customer orders from the catalog link will appear here.'
-                        : 'No orders found for this filter.',
-                    actionLabel: 'Refresh',
-                    onAction: _refresh,
-                  );
-                }
-
-                return ListView.separated(
-                  padding: EdgeInsets.all(isMobile ? 12 : 20),
-                  itemCount: orders.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _CatalogOrderCard(
-                    order: orders[index],
-                    updating: _updating.contains(orders[index].id),
-                    onStatus: (status) => _updateStatus(orders[index], status),
-                    onCheckout: () => _acceptAndCheckout(orders[index]),
-                  ),
-                );
-              },
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

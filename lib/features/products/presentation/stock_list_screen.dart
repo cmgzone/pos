@@ -4,6 +4,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 
 class StockListScreen extends StatefulWidget {
@@ -54,66 +55,69 @@ class _StockListScreenState extends State<StockListScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            color: AppColors.surface,
-            padding: EdgeInsets.fromLTRB(
-              isMobile ? 16 : 24,
-              0,
-              isMobile ? 16 : 24,
-              16,
-            ),
-            child: TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _refresh(),
-              onChanged: (_) => _refresh(),
-              decoration: InputDecoration(
-                hintText: 'Search product, SKU, barcode, or batch...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          _refresh();
-                        },
-                      ),
+      body: TrainingAnchor(
+        id: 'stockList.workspace',
+        child: Column(
+          children: [
+            Container(
+              color: AppColors.surface,
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 24,
+                0,
+                isMobile ? 16 : 24,
+                16,
+              ),
+              child: TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _refresh(),
+                onChanged: (_) => _refresh(),
+                decoration: InputDecoration(
+                  hintText: 'Search product, SKU, barcode, or batch...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            _refresh();
+                          },
+                        ),
+                ),
               ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _stockFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            const Divider(height: 1),
+            Expanded(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _stockFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                final rows = snapshot.data ?? [];
-                if (rows.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No tracked stock found.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
+                  final rows = snapshot.data ?? [];
+                  if (rows.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No tracked stock found.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: EdgeInsets.all(isMobile ? 12 : 20),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) =>
+                        _StockListCard(row: rows[index], isMobile: isMobile),
                   );
-                }
-
-                return ListView.separated(
-                  padding: EdgeInsets.all(isMobile ? 12 : 20),
-                  itemCount: rows.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) =>
-                      _StockListCard(row: rows[index], isMobile: isMobile),
-                );
-              },
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

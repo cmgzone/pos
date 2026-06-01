@@ -106,8 +106,66 @@ class SaleRepository {
         .where((item) => (item['line_type'] as String? ?? '') == 'service')
         .toList();
 
-    // Fetch stock batches dynamically (variant items skip FIFO — they track
-    // stock directly on product_variants).
+    // Fetch products, variants, and stock batches in bulk (N+1 query fix)
+    final productIds = productItems.map((item) => item['product_id'] as String).toSet().toList();
+    final variantIds = productItems.map((item) => item['variant_id'] as String?).whereType<String>().toSet().toList();
+
+    final List<Map<String, dynamic>> productsList;
+    if (productIds.isNotEmpty) {
+      final placeholders = List.filled(productIds.length, '?').join(',');
+      productsList = await DatabaseService.rawQuery(
+        'SELECT * FROM products WHERE id IN ($placeholders)',
+        productIds,
+      );
+    } else {
+      productsList = [];
+    }
+    final productsMap = {for (final p in productsList) p['id'] as String: p};
+
+    final List<Map<String, dynamic>> variantsList;
+    if (variantIds.isNotEmpty) {
+      final placeholders = List.filled(variantIds.length, '?').join(',');
+      variantsList = await DatabaseService.rawQuery(
+        'SELECT * FROM product_variants WHERE id IN ($placeholders)',
+        variantIds,
+      );
+    } else {
+      variantsList = [];
+    }
+    final variantsMap = {for (final v in variantsList) v['id'] as String: v};
+
+    final nonVariantProductIds = productItems
+        .where((item) => item['variant_id'] == null)
+        .map((item) => item['product_id'] as String)
+        .toSet()
+        .toList();
+
+    final List<Map<String, dynamic>> allBatches;
+    if (nonVariantProductIds.isNotEmpty) {
+      final placeholders = List.filled(nonVariantProductIds.length, '?').join(',');
+      allBatches = await DatabaseService.rawQuery(
+        '''
+        SELECT * FROM stock_batches
+        WHERE product_id IN ($placeholders)
+          AND quantity_remaining > 0
+          AND COALESCE(branch_id, ?) = ?
+        ORDER BY
+          CASE WHEN expiry_date IS NULL OR TRIM(expiry_date) = '' THEN 1 ELSE 0 END ASC,
+          date(expiry_date) ASC,
+          received_at ASC
+        ''',
+        [...nonVariantProductIds, DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
+      );
+    } else {
+      allBatches = [];
+    }
+
+    final batchesMap = <String, List<Map<String, dynamic>>>{};
+    for (final batch in allBatches) {
+      final pid = batch['product_id'] as String;
+      batchesMap.putIfAbsent(pid, () => []).add(batch);
+    }
+
     final requiredBatches = <String, List<Map<String, dynamic>>>{};
     final tracksStockByProduct = <String, bool>{};
     for (final item in productItems) {
@@ -117,7 +175,7 @@ class SaleRepository {
       final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
           .toDouble();
       final stockQty = qty * saleToStockFactor;
-      final product = await DatabaseService.queryById('products', pid);
+      final product = productsMap[pid];
       if (product == null) throw Exception('Product not found');
       final tracksStock = UnitUtils.tracksStock(product);
       tracksStockByProduct[pid] = tracksStock;
@@ -128,10 +186,7 @@ class SaleRepository {
 
       if (variantId != null) {
         // Variant: validate stock directly, no FIFO batch lookup.
-        final variant = await DatabaseService.queryById(
-          'product_variants',
-          variantId,
-        );
+        final variant = variantsMap[variantId];
         if (variant == null) throw Exception('Product variant not found');
         final variantStock = (variant['stock'] as num? ?? 0).toDouble();
         if (variantStock < stockQty - 0.001) {
@@ -140,19 +195,7 @@ class SaleRepository {
         continue;
       }
 
-      final batches = await DatabaseService.rawQuery(
-        '''
-        SELECT * FROM stock_batches
-        WHERE product_id = ?
-          AND quantity_remaining > 0
-          AND COALESCE(branch_id, ?) = ?
-        ORDER BY
-          CASE WHEN expiry_date IS NULL OR TRIM(expiry_date) = '' THEN 1 ELSE 0 END ASC,
-          date(expiry_date) ASC,
-          received_at ASC
-        ''',
-        [pid, DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
-      );
+      final batches = batchesMap[pid] ?? [];
 
       final mutableBatches = List<Map<String, dynamic>>.from(batches);
       final batchStock = mutableBatches.fold<double>(
