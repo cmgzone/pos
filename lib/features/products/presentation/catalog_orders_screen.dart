@@ -11,6 +11,7 @@ import '../../sales/data/cart_provider.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/product_variant_repository.dart';
+import 'catalog_publish_section.dart';
 
 class CatalogOrdersScreen extends ConsumerStatefulWidget {
   final VoidCallback? onOpenPos;
@@ -232,6 +233,7 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
         id: 'orders.workspace',
         child: Column(
           children: [
+            const CatalogPublishSection(),
             Container(
               width: double.infinity,
               color: AppColors.surface,
