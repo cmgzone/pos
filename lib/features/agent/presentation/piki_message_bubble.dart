@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:fl_chart/fl_chart.dart';
 
@@ -631,7 +632,7 @@ class PikiMessageBubble extends StatelessWidget {
     return _AgentRow(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 340),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
           borderRadius: const BorderRadius.only(
@@ -642,13 +643,42 @@ class PikiMessageBubble extends StatelessWidget {
           ),
           border: Border.all(color: AppColors.border),
         ),
-        child: Text(
-          message.content,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 14,
-            height: 1.6,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MarkdownBody(
+              data: message.content,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+                listBullet: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                _CopyButton(text: message.content),
+                const SizedBox(width: 8),
+                Text(
+                  _timeLabel,
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.6),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1302,6 +1332,13 @@ class PikiMessageBubble extends StatelessWidget {
           border: Border.all(
             color: const Color(0xFF6B4EE6).withValues(alpha: 0.25),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6B4EE6).withValues(alpha: 0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1351,6 +1388,8 @@ class PikiMessageBubble extends StatelessWidget {
                     ),
                   ),
                 const Spacer(),
+                _CopyButton(text: message.content),
+                const SizedBox(width: 8),
                 Text(
                   _timeLabel,
                   style: TextStyle(
@@ -2321,6 +2360,57 @@ class _AnimatedDotsState extends State<_AnimatedDots>
           }),
         );
       },
+    );
+  }
+}
+
+class _CopyButton extends StatefulWidget {
+  final String text;
+  const _CopyButton({required this.text});
+
+  @override
+  State<_CopyButton> createState() => _CopyButtonState();
+}
+
+class _CopyButtonState extends State<_CopyButton> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() => _copied = false);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Tooltip(
+        message: 'Copy to clipboard',
+        child: InkWell(
+          onTap: _copy,
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                _copied ? Icons.check_rounded : Icons.copy_all_rounded,
+                key: ValueKey<bool>(_copied),
+                size: 14,
+                color: _copied
+                    ? AppColors.success
+                    : AppColors.textSecondary.withValues(alpha: 0.5),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
