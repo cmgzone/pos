@@ -342,65 +342,92 @@ class PikiAgentService {
   };
 
   static final _toolDescriptions = <String, String>{
-    toolLowStock: 'Read current inventory levels and minimum stock thresholds.',
-    toolTodaySummary: 'Read sales, revenue, and profit for a time period.',
-    toolRestockList: 'Build a reorder list from live low-stock products.',
-    toolSalesReport: 'List recent sales in a selected period.',
-    toolProductSearch: 'Look up products by name, barcode, or SKU.',
-    toolProfitSummary: 'Calculate profit for a selected period.',
-    toolShiftSummary: 'Review recently closed cashier shifts.',
-    toolExpiryCheck: 'Check batches for expired or soon-to-expire products.',
-    toolTopDebtors: 'Find customers with the highest outstanding balances.',
-    toolTopProducts: 'Rank best-selling products over a period.',
-    toolExpenseSummary: 'Summarize recent operating expenses.',
-    toolPurchaseHistory: 'Show recent stock-in and supplier history.',
+    toolLowStock:
+        'Read current inventory levels and minimum stock thresholds. Returns items[] with name, current_stock, low_stock_threshold, unit.',
+    toolTodaySummary:
+        'Read sales, revenue, and profit for a time period. Returns total_sales, total_revenue, total_profit.',
+    toolRestockList:
+        'Build a reorder list from live low-stock products. Returns items[] with name, current_stock, low_stock_threshold, suggested_qty.',
+    toolSalesReport:
+        'List recent sales in a selected period. Returns items[] with date, product_name, quantity, total, payment_type.',
+    toolProductSearch:
+        'Look up products by name, barcode, or SKU. Returns items[] with name, price, cost, stock, unit, barcode, category, image_url.',
+    toolProfitSummary:
+        'Calculate profit for a selected period. Returns total_revenue, total_cost, total_profit, margin_percent.',
+    toolShiftSummary:
+        'Review recently closed cashier shifts. Returns shifts[] with user_name, start, end, total_sales, total_revenue.',
+    toolExpiryCheck:
+        'Check batches for expired or soon-to-expire products. Returns items[] with product_name, batch_id, expiry_date, days_remaining, quantity.',
+    toolTopDebtors:
+        'Find customers with the highest outstanding balances. Returns items[] with customer_name, total_owed, last_payment_date.',
+    toolTopProducts:
+        'Rank best-selling products over a period. Returns items[] with name, total_qty_sold, total_revenue, image_url.',
+    toolExpenseSummary:
+        'Summarize recent operating expenses. Returns items[] with category, total_amount, count.',
+    toolPurchaseHistory:
+        'Show recent stock-in and supplier history. Returns items[] with date, supplier, product_name, quantity, cost.',
     toolPurchaseDraft:
-        'Build a purchase draft from low stock and recent supplier history.',
-    toolDailyBrief: 'Fetch a short market and business performance brief.',
+        'Build a purchase draft from low stock and recent supplier history. Returns items[] with product_name, suggested_qty, last_supplier, last_cost.',
+    toolDailyBrief:
+        'Fetch a short business performance brief for today. Returns summary text, sales count, revenue, and profit.',
     toolPredictiveRestock:
-        'Forecast products likely to run out from sales velocity, current stock, and low-stock thresholds.',
+        'Forecast products likely to run out from sales velocity, current stock, and low-stock thresholds. Returns items[] with name, days_until_stockout, daily_velocity, current_stock.',
     toolAnomalyAlerts:
-        'Find unusual sales, stock, Kopesha, expiry, and shift risks that need attention.',
+        'Find unusual sales, stock, Kopesha, expiry, and shift risks that need attention. Returns alerts[] with type, severity, message, details.',
     toolCustomerFollowups:
-        'Prepare WhatsApp/SMS-ready Kopesha reminder messages for due, overdue, or risky customers.',
+        'Prepare WhatsApp/SMS-ready Kopesha reminder messages for due, overdue, or risky customers. Returns items[] with customer_name, amount_owed, days_overdue, message.',
     toolDailyWhatsappReport:
-        'Draft an owner-ready daily WhatsApp report from sales, products, stock, and alerts.',
+        'Draft an owner-ready daily WhatsApp report from sales, products, stock, and alerts. Returns formatted report text.',
     toolCatalogOrders:
-        'Read customer orders submitted through the public catalog link.',
+        'Read customer orders submitted through the public catalog link. Returns orders[] with id, customer_name, items, total, status, created_at.',
     toolImageOrderDraft:
         'Analyze a product or order photo and draft item lines from the image.',
     toolVoiceCashierHelp:
         'Explain how cashiers can use hands-free voice commands in Sell Mode.',
-    toolCreateProduct: 'Create a product when name and price are known.',
+    toolCreateProduct:
+        'Create a product when name and price are known. Returns created product details.',
     toolDraftProduct:
         'Prepare a product with a web image for user approval before saving.',
     toolEnhanceProductImage:
         'Enhance an existing product photo and save the improved image on the product.',
     toolCreateService:
-        'Create a service template when name and price are known.',
+        'Create a service template when name and price are known. Returns created service details.',
     toolEditProduct:
-        'Edit an existing product\'s details like price, cost, name, or low stock threshold.',
-    toolAddVariant: 'Add a variant (size, color, etc.) to an existing product.',
+        'Edit an existing product\'s details like price, cost, name, or low stock threshold. Returns updated product.',
+    toolAddVariant:
+        'Add a variant (size, color, etc.) to an existing product. Returns created variant details.',
     toolRecordProductSale:
-        'Record a product sale immediately against inventory.',
-    toolRecordServiceSale: 'Record a service sale immediately.',
-    toolCreateCategory: 'Create a product category.',
-    toolCreateExpenseCategory: 'Create an expense category.',
-    toolCreateCustomer: 'Create a customer record.',
-    toolCreateSupplier: 'Create a supplier record.',
-    toolReconcileStock: 'Set a product stock count after a physical count.',
-    toolAddServiceField: 'Add a custom field to an existing service template.',
-    toolCustomerSearch: 'Look up customers by name, phone, or email.',
-    toolSupplierSearch: 'Look up suppliers by name, phone, or email.',
+        'Record a product sale immediately against inventory. Returns sale confirmation with total.',
+    toolRecordServiceSale:
+        'Record a service sale immediately. Returns sale confirmation with total.',
+    toolCreateCategory: 'Create a product category. Returns category id and name.',
+    toolCreateExpenseCategory:
+        'Create an expense category. Returns category id and name.',
+    toolCreateCustomer:
+        'Create a customer record. Returns customer id and name.',
+    toolCreateSupplier:
+        'Create a supplier record. Returns supplier id and name.',
+    toolReconcileStock:
+        'Set a product stock count after a physical count. Returns updated stock level.',
+    toolAddServiceField:
+        'Add a custom field to an existing service template.',
+    toolCustomerSearch:
+        'Look up customers by name, phone, or email. Returns items[] with name, phone, email, total_owed.',
+    toolSupplierSearch:
+        'Look up suppliers by name, phone, or email. Returns items[] with name, phone, email, address.',
     toolWebSearch:
-        'Search live web results for current prices, market context, regulations, supplier information, or other external facts not stored in the POS.',
-    toolAddToCart: 'Add products, variants, or services to the live POS cart.',
-    toolRemoveFromCart: 'Remove a line or quantity from the live POS cart.',
-    toolSetCartQuantity: 'Set an existing POS cart line to an exact quantity.',
+        'Search live web results for current prices, market context, regulations, supplier information, or other external facts not stored in the POS. Returns results[] with title, snippet, url, imageUrl.',
+    toolAddToCart:
+        'Add products, variants, or services to the live POS cart.',
+    toolRemoveFromCart:
+        'Remove a line or quantity from the live POS cart.',
+    toolSetCartQuantity:
+        'Set an existing POS cart line to an exact quantity.',
     toolRepeatLast: 'Add the last sold item again.',
     toolClearCart: 'Empty the cart.',
     toolCheckout: 'Go to checkout screen.',
-    toolHoldSale: 'Save the current cart as a held sale and clear the cart.',
+    toolHoldSale:
+        'Save the current cart as a held sale and clear the cart.',
     toolTeachAlias:
         'Remember a cashier phrase, nickname, or local term for a product query.',
   };
@@ -1289,8 +1316,11 @@ Example: ["detergent", "soap", "laundry"]
         }
       }
 
+      final shopName = ShopSettings.shopName;
+      final currency = ShopSettings.currency;
       final prompt =
           '''
+You are Piki, AI assistant for "$shopName" (currency: $currency).
 Analyze the following POS tool result and provide a single, punchy, actionable business insight (max 1 short sentence).
 Do not use markdown. Do not wrap in quotes.
 Tool Result:
@@ -1322,15 +1352,17 @@ ${jsonEncode(safeResult)}
     final profit = (s['total_profit'] as num? ?? 0).toDouble();
     final sales = (s['total_sales'] as num? ?? 0).toInt();
 
+    final shopName = ShopSettings.shopName;
+    final currency = ShopSettings.currency;
     final prompt =
         '''
-You are a business analyst. First, provide a very short, 2-sentence summary of today's general retail or business market news.
-Then, look at the user's POS business data for today:
+You are Piki, the AI assistant for "$shopName".
+Analyze today's POS business performance:
 - Sales Count: $sales
-- Revenue: $rev
-- Profit: $profit
-Write a brief paragraph comparing their performance to general market expectations and give them a short encouraging business brief.
-Do not use markdown.
+- Revenue: $currency${rev.toStringAsFixed(2)}
+- Profit: $currency${profit.toStringAsFixed(2)}
+Write a short encouraging business brief (2-3 sentences) with one actionable recommendation for tomorrow.
+Do not use markdown. Do not fabricate external market news or data you don't have.
 ''';
     String aiResponse;
     try {
@@ -1346,7 +1378,7 @@ Do not use markdown.
       }
     } catch (e) {
       aiResponse =
-          "Could not fetch market news right now. But you had $sales sales for ${ShopSettings.currency}${rev.toStringAsFixed(2)} revenue today!";
+          "Today you had $sales sales for $currency${rev.toStringAsFixed(2)} revenue. Keep up the momentum!";
     }
 
     return {
