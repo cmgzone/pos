@@ -57,12 +57,12 @@ test('normalizes SerpAPI response into safe web results', () => {
   assert.equal(result.relatedQuestions[0].question, 'What is unga?');
 });
 
-test('searchWithSerpApi calls the Google engine with protected key', async () => {
+test('searchWithSerpApi calls the Serper engine with protected key', async () => {
   let requestedUrl;
   let requestedOptions;
   const result = await searchWithSerpApi({
     apiKey: 'secret-key',
-    baseUrl: 'https://serpapi.com/search.json',
+    baseUrl: 'https://google.serper.dev/search',
     input: {
       query: 'VAT Kenya 2026',
       countryCode: 'KE',
@@ -89,14 +89,15 @@ test('searchWithSerpApi calls the Google engine with protected key', async () =>
     },
   });
 
-  const url = new URL(requestedUrl);
-  assert.equal(requestedOptions.method, 'GET');
-  assert.equal(url.origin + url.pathname, 'https://serpapi.com/search.json');
-  assert.equal(url.searchParams.get('engine'), 'google');
-  assert.equal(url.searchParams.get('api_key'), 'secret-key');
-  assert.equal(url.searchParams.get('q'), 'VAT Kenya 2026');
-  assert.equal(url.searchParams.get('gl'), 'ke');
-  assert.equal(url.searchParams.get('hl'), 'en');
-  assert.equal(url.searchParams.get('num'), '3');
+  assert.equal(requestedUrl, 'https://google.serper.dev/search');
+  assert.equal(requestedOptions.method, 'POST');
+  assert.equal(requestedOptions.headers['X-API-KEY'], 'secret-key');
+  assert.equal(requestedOptions.headers['Content-Type'], 'application/json');
+
+  const payload = JSON.parse(requestedOptions.body);
+  assert.equal(payload.q, 'VAT Kenya 2026');
+  assert.equal(payload.gl, 'ke');
+  assert.equal(payload.hl, 'en');
+  assert.equal(payload.num, 3);
   assert.equal(result.results.length, 1);
 });
