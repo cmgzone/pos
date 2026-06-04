@@ -36,39 +36,39 @@ class PikiMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (message.sender == PikiSender.user) return _buildUserBubble();
+    if (message.sender == PikiSender.user) return _buildUserBubble(context);
 
     Widget child;
     switch (message.messageType) {
       case PikiMessageType.thinking:
-        child = _buildThinkingCard();
+        child = _buildThinkingCard(context);
         break;
       case PikiMessageType.working:
-        child = _buildWorkingCard();
+        child = _buildWorkingCard(context);
         break;
       case PikiMessageType.taskComplete:
         child = _buildTaskCompleteCard();
         break;
       case PikiMessageType.productCard:
-        child = _buildProductCard();
+        child = _buildProductCard(context);
         break;
       case PikiMessageType.productDraftCard:
         child = _buildProductDraftCard(context);
         break;
       case PikiMessageType.error:
-        child = _buildErrorBubble();
+        child = _buildErrorBubble(context);
         break;
       case PikiMessageType.aiResponse:
-        child = _buildAiResponseBubble();
+        child = _buildAiResponseBubble(context);
         break;
       case PikiMessageType.alert:
-        child = _buildAlertBubble();
+        child = _buildAlertBubble(context);
         break;
       case PikiMessageType.chart:
-        child = _buildChartBubble();
+        child = _buildChartBubble(context);
         break;
       case PikiMessageType.text:
-        child = _buildAgentTextBubble();
+        child = _buildAgentTextBubble(context);
         break;
     }
 
@@ -147,7 +147,7 @@ class PikiMessageBubble extends StatelessWidget {
     return _PikiThoughtsExpander(notes: notes, runState: runState);
   }
 
-  Widget _buildAlertBubble() {
+  Widget _buildAlertBubble(BuildContext context) {
     final data = message.attachedData ?? {};
     final title = data['title'] as String? ?? 'Alert';
     final priority = data['priority'] as String? ?? 'medium';
@@ -156,10 +156,13 @@ class PikiMessageBubble extends StatelessWidget {
     final action = data['action'] as String?;
 
     final color = priority == 'high' ? AppColors.warning : AppColors.secondary;
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
 
     return _AgentRow(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
@@ -169,7 +172,7 @@ class PikiMessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(20),
             bottomRight: Radius.circular(20),
           ),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          border: isMobile ? null : Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,7 +276,7 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── Chart bubble ──────────────────────────────────────────────────────────
 
-  Widget _buildChartBubble() {
+  Widget _buildChartBubble(BuildContext context) {
     final data = message.attachedData ?? {};
     final results =
         (data['tool_results'] as List?)?.cast<Map<String, dynamic>>() ?? [];
@@ -282,7 +285,7 @@ class PikiMessageBubble extends StatelessWidget {
       orElse: () => {},
     );
 
-    if (chartData.isEmpty) return _buildAgentTextBubble();
+    if (chartData.isEmpty) return _buildAgentTextBubble(context);
 
     final title = chartData['title'] as String? ?? 'Data Visualization';
     final labels =
@@ -302,14 +305,18 @@ class PikiMessageBubble extends StatelessWidget {
       (max, value) => value.toDouble() > max ? value.toDouble() : max,
     );
 
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
+
     return _AgentRow(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border),
+          border: isMobile ? null : Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,12 +552,19 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── User bubble ────────────────────────────────────────────────────────
 
-  Widget _buildUserBubble() {
+  Widget _buildUserBubble(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 320.0;
+
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
-        margin: const EdgeInsets.only(bottom: 12, left: 48),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
+        margin: EdgeInsets.only(
+          bottom: 12,
+          left: isMobile ? 16 : 48,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -628,10 +642,14 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── Agent text bubble ──────────────────────────────────────────────────
 
-  Widget _buildAgentTextBubble() {
+  Widget _buildAgentTextBubble(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
+
     return _AgentRow(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
@@ -641,7 +659,7 @@ class PikiMessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(20),
             bottomRight: Radius.circular(20),
           ),
-          border: Border.all(color: AppColors.border),
+          border: isMobile ? null : Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -686,8 +704,12 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── Thinking card ──────────────────────────────────────────────────────
 
-  Widget _buildThinkingCard() {
+  Widget _buildThinkingCard(BuildContext context) {
     final steps = message.steps ?? [];
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
+
     return _AgentRow(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,11 +733,12 @@ class PikiMessageBubble extends StatelessWidget {
 
           // Task list
           Container(
+            constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.surfaceHighlight,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
+              border: isMobile ? null : Border.all(color: AppColors.border),
             ),
             child: Column(
               children: steps.map((step) {
@@ -761,17 +784,21 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── Working card ───────────────────────────────────────────────────────
 
-  Widget _buildWorkingCard() {
+  Widget _buildWorkingCard(BuildContext context) {
     final steps = message.steps ?? [];
     final current = steps.indexWhere((s) => s.status == PikiStepStatus.working);
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
 
     return _AgentRow(
       child: Container(
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
+          border: isMobile ? null : Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -919,14 +946,18 @@ class PikiMessageBubble extends StatelessWidget {
     final imageUrl = data['image_url'] as String?;
     final draftArgs = data['draft_args'] as Map<String, dynamic>? ?? {};
 
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
+
     return _AgentRow(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+          border: isMobile ? null : Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1104,11 +1135,15 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── Product card ───────────────────────────────────────────────────────
 
-  Widget _buildProductCard() {
+  Widget _buildProductCard(BuildContext context) {
     final data = message.attachedData ?? {};
     final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final type = data['type'] as String? ?? '';
     final isRestock = type == 'restock_list';
+
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
 
     // Summary-type results get a rich metric card instead of a product list
     const summaryTypes = {
@@ -1122,11 +1157,12 @@ class PikiMessageBubble extends StatelessWidget {
     if (summaryTypes.contains(type)) {
       return _AgentRow(
         child: Container(
+          constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: AppColors.surfaceHighlight,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
+            border: isMobile ? null : Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1148,11 +1184,12 @@ class PikiMessageBubble extends StatelessWidget {
 
     return _AgentRow(
       child: Container(
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
+          border: isMobile ? null : Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1279,15 +1316,19 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── Error bubble ───────────────────────────────────────────────────────
 
-  Widget _buildErrorBubble() {
+  Widget _buildErrorBubble(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 340.0;
+
     return _AgentRow(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppColors.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+          border: isMobile ? null : Border.all(color: AppColors.error.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -1307,7 +1348,7 @@ class PikiMessageBubble extends StatelessWidget {
 
   // ── AI Response bubble ─────────────────────────────────────────────────
 
-  Widget _buildAiResponseBubble() {
+  Widget _buildAiResponseBubble(BuildContext context) {
     final model = message.attachedData?['model'] as String? ?? '';
     final shortModel = model.contains('/') ? model.split('/').last : model;
     final citations =
@@ -1317,9 +1358,13 @@ class PikiMessageBubble extends StatelessWidget {
             .toList() ??
         const <Map<String, dynamic>>[];
 
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = isMobile ? screenWidth * 0.82 : 380.0;
+
     return _AgentRow(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 380),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
@@ -1329,9 +1374,11 @@ class PikiMessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(20),
             bottomRight: Radius.circular(20),
           ),
-          border: Border.all(
-            color: const Color(0xFF6B4EE6).withValues(alpha: 0.25),
-          ),
+          border: isMobile
+              ? null
+              : Border.all(
+                  color: const Color(0xFF6B4EE6).withValues(alpha: 0.25),
+                ),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF6B4EE6).withValues(alpha: 0.05),

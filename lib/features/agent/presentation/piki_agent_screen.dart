@@ -901,14 +901,16 @@ class _InsightBar extends StatelessWidget {
                 Expanded(
                   child: Text(
                     insight,
-                    maxLines: 1,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12,
+                      height: 1.3,
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   'View Details',
                   style: TextStyle(
@@ -1001,8 +1003,36 @@ class _BottomBar extends StatelessWidget {
     required this.onSelectMode,
   });
 
+  IconData _getModeIcon(PikiMode m) {
+    switch (m) {
+      case PikiMode.plan:
+        return Icons.route_rounded;
+      case PikiMode.fast:
+        return Icons.bolt_rounded;
+      case PikiMode.sell:
+        return Icons.point_of_sale_rounded;
+      case PikiMode.advice:
+        return Icons.lightbulb_rounded;
+    }
+  }
+
+  Color _getModeColor(PikiMode m) {
+    switch (m) {
+      case PikiMode.plan:
+        return AppColors.secondary;
+      case PikiMode.fast:
+        return AppColors.warning;
+      case PikiMode.sell:
+        return const Color(0xFF00C896);
+      case PikiMode.advice:
+        return const Color(0xFF9C27B0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+
     return SafeArea(
       top: false,
       child: Container(
@@ -1014,81 +1044,160 @@ class _BottomBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Mode toggle row
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _ModeToggle(
-                    label: 'Plan',
-                    icon: Icons.route_rounded,
-                    isActive: mode == PikiMode.plan,
-                    color: AppColors.secondary,
-                    onTap: () => onSelectMode(PikiMode.plan),
-                  ),
-                  const SizedBox(width: 8),
-                  _ModeToggle(
-                    label: 'Fast',
-                    icon: Icons.bolt_rounded,
-                    isActive: mode == PikiMode.fast,
-                    color: AppColors.warning,
-                    onTap: () => onSelectMode(PikiMode.fast),
-                  ),
-                  const SizedBox(width: 8),
-                  _ModeToggle(
-                    label: 'Sell',
-                    icon: Icons.point_of_sale_rounded,
-                    isActive: mode == PikiMode.sell,
-                    color: const Color(0xFF00C896),
-                    onTap: () => onSelectMode(PikiMode.sell),
-                  ),
-                  const SizedBox(width: 8),
-                  _ModeToggle(
-                    label: 'Advice',
-                    icon: Icons.lightbulb_rounded,
-                    isActive: mode == PikiMode.advice,
-                    color: const Color(0xFF9C27B0),
-                    onTap: () => onSelectMode(PikiMode.advice),
-                  ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: isAutoListening
-                        ? 'Stop auto listen'
-                        : 'Start auto listen',
-                    child: _ModeToggle(
-                      label: 'Auto',
-                      icon: isAutoListening
-                          ? Icons.hearing_rounded
-                          : Icons.hearing_outlined,
-                      isActive: isAutoListening,
-                      color: AppColors.primary,
-                      onTap: onAutoListenTap,
+            // Mode toggle row (Desktop/Tablet only)
+            if (!isMobile) ...[
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _ModeToggle(
+                      label: 'Plan',
+                      icon: Icons.route_rounded,
+                      isActive: mode == PikiMode.plan,
+                      color: AppColors.secondary,
+                      onTap: () => onSelectMode(PikiMode.plan),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    isAutoListening
-                        ? 'Auto-listening'
-                        : mode == PikiMode.plan
-                        ? 'Plans step-by-step'
-                        : mode == PikiMode.fast
-                        ? 'Instant results'
-                        : mode == PikiMode.advice
-                        ? 'Business Coach'
-                        : 'Voice-to-cart POS',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
+                    const SizedBox(width: 8),
+                    _ModeToggle(
+                      label: 'Fast',
+                      icon: Icons.bolt_rounded,
+                      isActive: mode == PikiMode.fast,
+                      color: AppColors.warning,
+                      onTap: () => onSelectMode(PikiMode.fast),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    _ModeToggle(
+                      label: 'Sell',
+                      icon: Icons.point_of_sale_rounded,
+                      isActive: mode == PikiMode.sell,
+                      color: const Color(0xFF00C896),
+                      onTap: () => onSelectMode(PikiMode.sell),
+                    ),
+                    const SizedBox(width: 8),
+                    _ModeToggle(
+                      label: 'Advice',
+                      icon: Icons.lightbulb_rounded,
+                      isActive: mode == PikiMode.advice,
+                      color: const Color(0xFF9C27B0),
+                      onTap: () => onSelectMode(PikiMode.advice),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: isAutoListening
+                          ? 'Stop auto listen'
+                          : 'Start auto listen',
+                      child: _ModeToggle(
+                        label: 'Auto',
+                        icon: isAutoListening
+                            ? Icons.hearing_rounded
+                            : Icons.hearing_outlined,
+                        isActive: isAutoListening,
+                        color: AppColors.primary,
+                        onTap: onAutoListenTap,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      isAutoListening
+                          ? 'Auto-listening'
+                          : mode == PikiMode.plan
+                          ? 'Plans step-by-step'
+                          : mode == PikiMode.fast
+                          ? 'Instant results'
+                          : mode == PikiMode.advice
+                          ? 'Business Coach'
+                          : 'Voice-to-cart POS',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
+              const SizedBox(height: 10),
+            ],
 
             // Input row
             Row(
               children: [
+                if (isMobile) ...[
+                  PopupMenuButton<PikiMode>(
+                    icon: Icon(
+                      _getModeIcon(mode),
+                      color: _getModeColor(mode),
+                      size: 24,
+                    ),
+                    tooltip: 'Switch Mode',
+                    onSelected: onSelectMode,
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: PikiMode.plan,
+                        child: Row(
+                          children: [
+                            Icon(Icons.route_rounded, color: AppColors.secondary, size: 18),
+                            const SizedBox(width: 12),
+                            const Text('Plan Mode', style: TextStyle(fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: PikiMode.fast,
+                        child: Row(
+                          children: [
+                            Icon(Icons.bolt_rounded, color: AppColors.warning, size: 18),
+                            const SizedBox(width: 12),
+                            const Text('Fast Mode', style: TextStyle(fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: PikiMode.sell,
+                        child: Row(
+                          children: [
+                            Icon(Icons.point_of_sale_rounded, color: const Color(0xFF00C896), size: 18),
+                            const SizedBox(width: 12),
+                            const Text('Sell Mode', style: TextStyle(fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: PikiMode.advice,
+                        child: Row(
+                          children: [
+                            Icon(Icons.lightbulb_rounded, color: const Color(0xFF9C27B0), size: 18),
+                            const SizedBox(width: 12),
+                            const Text('Advice Mode', style: TextStyle(fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: mode, // Keep value to avoid type errors but trigger toggle via onTap
+                        onTap: onAutoListenTap,
+                        child: Row(
+                          children: [
+                            Icon(
+                              isAutoListening
+                                  ? Icons.hearing_rounded
+                                  : Icons.hearing_outlined,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              isAutoListening
+                                  ? 'Stop Auto Listen'
+                                  : 'Start Auto Listen',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Expanded(
                   child: TextField(
                     controller: controller,
