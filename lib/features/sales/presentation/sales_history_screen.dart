@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/database_service.dart';
+import '../../../core/services/etims_service.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/error_messages.dart';
@@ -16,6 +19,8 @@ import '../../products/data/product_repository.dart';
 import '../../services/data/service_provider.dart';
 import '../../services/data/service_repository.dart';
 import '../../training/widgets/training_anchor.dart';
+import '../../customers/presentation/customer_message_dialog.dart';
+import '../../../widgets/compact_header_actions.dart';
 import '../data/sale_repository.dart';
 import 'receipt_service.dart';
 
@@ -157,20 +162,24 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         return Scaffold(
           appBar: AppBar(
             backgroundColor: AppColors.surface,
-            title: Text(_isCashierView ? 'My Sales' : 'Sales'),
+            toolbarHeight: 50,
+            title: Text(
+              _isCashierView ? 'My Sales' : 'Sales',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
             actions: [
-              IconButton(
+              CompactHeaderIconButton(
                 onPressed: _loadSales,
-                icon: const Icon(Icons.refresh),
+                icon: Icons.refresh,
                 tooltip: 'Refresh',
               ),
               if (!_isCashierView && !isMobile)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: FilledButton.icon(
+                  child: CompactHeaderButton(
                     onPressed: _showRecordBookSaleDialog,
-                    icon: const Icon(Icons.post_add_outlined, size: 18),
-                    label: const Text('Record Sale'),
+                    icon: Icons.post_add_outlined,
+                    label: 'Record Sale',
                   ),
                 ),
             ],
@@ -1343,6 +1352,23 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
           ),
+          if ((sale['etims_status'] as String?) != 'submitted')
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _submitEtimsForSale(sale);
+              },
+              icon: const Icon(Icons.account_balance_outlined, size: 18),
+              label: const Text('Submit eTIMS'),
+            ),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _sendReceiptMessage(sale);
+            },
+            icon: const Icon(Icons.send_outlined, size: 18),
+            label: const Text('Send Receipt'),
+          ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -1366,6 +1392,14 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                 dueDate: sale['due_date'] as String?,
                 cashierName: sale['cashier_name'] as String?,
                 documentDate: sale['created_at'] as String?,
+                etimsStatus: sale['etims_status'] as String?,
+                etimsInvoiceNumber: sale['etims_invoice_number'] as String?,
+                etimsControlUnitInvoiceNumber:
+                    sale['etims_control_unit_invoice_number'] as String?,
+                etimsControlUnitSerial:
+                    sale['etims_control_unit_serial'] as String?,
+                etimsVerificationUrl: sale['etims_verification_url'] as String?,
+                etimsQrCode: sale['etims_qr_code'] as String?,
                 showTenderedBreakdown: isCash,
               );
             },
@@ -1373,6 +1407,104 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _submitEtimsForSale(Map<String, dynamic> sale) async {
+    final saleId = (sale['id'] as String?)?.trim();
+    if (saleId == null || saleId.isEmpty) {
+      return;
+    }
+    try {
+      final result = await EtimsService.submitSale(saleId);
+      if (!mounted) {
+        return;
+      }
+      await _loadSales();
+      if (!mounted) {
+        return;
+      }
+      final submitted = result.status == 'submitted';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            submitted
+                ? 'KRA eTIMS submitted'
+                : 'KRA eTIMS marked ${result.status.replaceAll('_', ' ')}',
+          ),
+          backgroundColor: submitted ? AppColors.success : AppColors.warning,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              e,
+              fallback: 'Could not submit this sale to KRA eTIMS.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _sendReceiptMessage(Map<String, dynamic> sale) async {
+    final customerName =
+        (sale['customer_name'] as String?)?.trim().isNotEmpty == true
+        ? (sale['customer_name'] as String).trim()
+        : 'Customer';
+    String phone = '';
+    String email = '';
+    final customerId = (sale['customer_id'] as String?)?.trim();
+    if (customerId != null && customerId.isNotEmpty) {
+      final rows = await DatabaseService.rawQuery(
+        'SELECT phone, email FROM customers WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+        [customerId],
+      );
+      if (rows.isNotEmpty) {
+        phone = rows.first['phone'] as String? ?? '';
+        email = rows.first['email'] as String? ?? '';
+      }
+    }
+    if (phone.trim().isEmpty && email.trim().isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Add a customer phone number or email before sending receipt.',
+          ),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    final saleId = sale['id'] as String? ?? '';
+    final total = (sale['total_amount'] as num? ?? 0).toDouble();
+    final amount = '${ShopSettings.currency}${total.toStringAsFixed(2)}';
+    if (!mounted) {
+      return;
+    }
+    await CustomerMessageDialog.show(
+      context,
+      customerName: customerName,
+      phoneNumber: phone,
+      emailAddress: email,
+      initialMessage: MessagingService.receiptMessage(
+        customerName: customerName,
+        saleId: saleId.isEmpty
+            ? 'receipt'
+            : saleId.substring(0, saleId.length < 8 ? saleId.length : 8),
+        amount: amount,
+      ),
+      metadata: {'source': 'receipt', 'saleId': saleId, 'amount': total},
     );
   }
 
@@ -1824,6 +1956,14 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       useAbsoluteAmounts: true,
       cashierName: refundDetails['cashier_name'] as String?,
       documentDate: refundDetails['created_at'] as String?,
+      etimsStatus: refundDetails['etims_status'] as String?,
+      etimsInvoiceNumber: refundDetails['etims_invoice_number'] as String?,
+      etimsControlUnitInvoiceNumber:
+          refundDetails['etims_control_unit_invoice_number'] as String?,
+      etimsControlUnitSerial:
+          refundDetails['etims_control_unit_serial'] as String?,
+      etimsVerificationUrl: refundDetails['etims_verification_url'] as String?,
+      etimsQrCode: refundDetails['etims_qr_code'] as String?,
     );
   }
 
@@ -2009,10 +2149,10 @@ class _SalesHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final padding = EdgeInsets.fromLTRB(
-      isMobile ? 14 : 24,
-      isMobile ? 10 : 0,
-      isMobile ? 14 : 24,
-      isMobile ? 14 : 16,
+      isMobile ? 12 : 20,
+      isMobile ? 8 : 0,
+      isMobile ? 12 : 20,
+      isMobile ? 10 : 12,
     );
 
     return Container(
@@ -2041,16 +2181,16 @@ class _SalesHeader extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               '${ShopSettings.currency}${totalRevenue.toStringAsFixed(2)}',
               style: const TextStyle(
-                fontSize: 28,
+                fontSize: 22,
                 fontWeight: FontWeight.w900,
                 color: AppColors.textPrimary,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
           ],
           if (isMobile)
             Row(
@@ -2063,7 +2203,7 @@ class _SalesHeader extends StatelessWidget {
                     color: AppColors.primary,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _MiniSalesMetric(
                     label: 'Tax',
@@ -2078,7 +2218,7 @@ class _SalesHeader extends StatelessWidget {
           else
             Wrap(
               spacing: 16,
-              runSpacing: 16,
+              runSpacing: 10,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _StatCard(
@@ -2103,20 +2243,20 @@ class _SalesHeader extends StatelessWidget {
                 ),
               ],
             ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           _SalesFilterBar(
             selectedFilter: selectedFilter,
             onSelected: onFilterSelected,
             isMobile: isMobile,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _SaleTypeFilterBar(
             selectedType: selectedSaleType,
             onSelected: onSaleTypeSelected,
             isMobile: isMobile,
           ),
           if (isCashierView) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             const _CashierNotice(),
           ],
         ],
@@ -2149,7 +2289,7 @@ class _SalesFilterBar extends StatelessWidget {
 
     if (isMobile) {
       return SizedBox(
-        height: 42,
+        height: 36,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: filters.length,
@@ -2157,7 +2297,7 @@ class _SalesFilterBar extends StatelessWidget {
           itemBuilder: (context, index) {
             final filter = filters[index];
             return SizedBox(
-              width: filter.$1 == 'yesterday' || filter.$1 == 'date' ? 104 : 74,
+              width: filter.$1 == 'yesterday' || filter.$1 == 'date' ? 92 : 64,
               child: _CompactFilterButton(
                 label: filter.$2,
                 isSelected: selectedFilter == filter.$1,
@@ -2208,7 +2348,7 @@ class _CompactFilterButton extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isSelected ? Colors.white : AppColors.textSecondary,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -2241,11 +2381,11 @@ class _SaleTypeFilterBar extends StatelessWidget {
     ];
 
     return SizedBox(
-      height: 40,
+      height: 34,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: filters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (context, index) {
           final filter = filters[index];
           final selected = selectedType == filter.$1;
@@ -2283,25 +2423,25 @@ class _SaleTypeChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                size: 15,
+                size: 14,
                 color: isSelected
                     ? AppColors.background
                     : AppColors.textSecondary,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(
                 label,
                 style: TextStyle(
                   color: isSelected
                       ? AppColors.background
                       : AppColors.textSecondary,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -2329,7 +2469,7 @@ class _MiniSalesMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.surfaceHighlight,
         borderRadius: BorderRadius.circular(12),
@@ -2337,8 +2477,8 @@ class _MiniSalesMetric extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 7),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2347,7 +2487,7 @@ class _MiniSalesMetric extends StatelessWidget {
                   label,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -2948,7 +3088,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
@@ -2956,8 +3096,8 @@ class _StatCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2965,7 +3105,7 @@ class _StatCard extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: color.withValues(alpha: 0.7),
-                  fontSize: 11,
+                  fontSize: 10,
                 ),
               ),
               Text(
@@ -2973,7 +3113,7 @@ class _StatCard extends StatelessWidget {
                 style: TextStyle(
                   color: color,
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
+                  fontSize: 15,
                 ),
               ),
             ],
@@ -2997,7 +3137,7 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.only(left: 6),
       child: Material(
         color: isSelected ? AppColors.primary : AppColors.surfaceHighlight,
         borderRadius: BorderRadius.circular(8),
@@ -3005,12 +3145,12 @@ class _FilterChip extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Text(
               label,
               style: TextStyle(
                 color: isSelected ? Colors.white : AppColors.textSecondary,
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),

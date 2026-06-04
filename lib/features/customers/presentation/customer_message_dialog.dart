@@ -7,6 +7,7 @@ import '../../../core/utils/error_messages.dart';
 class CustomerMessageDialog extends StatefulWidget {
   final String customerName;
   final String phoneNumber;
+  final String emailAddress;
   final String initialMessage;
   final Map<String, dynamic>? metadata;
 
@@ -14,6 +15,7 @@ class CustomerMessageDialog extends StatefulWidget {
     super.key,
     required this.customerName,
     required this.phoneNumber,
+    this.emailAddress = '',
     required this.initialMessage,
     this.metadata,
   });
@@ -22,6 +24,7 @@ class CustomerMessageDialog extends StatefulWidget {
     BuildContext context, {
     required String customerName,
     required String phoneNumber,
+    String emailAddress = '',
     required String initialMessage,
     Map<String, dynamic>? metadata,
   }) {
@@ -30,6 +33,7 @@ class CustomerMessageDialog extends StatefulWidget {
       builder: (_) => CustomerMessageDialog(
         customerName: customerName,
         phoneNumber: phoneNumber,
+        emailAddress: emailAddress,
         initialMessage: initialMessage,
         metadata: metadata,
       ),
@@ -42,6 +46,7 @@ class CustomerMessageDialog extends StatefulWidget {
 
 class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
   late final TextEditingController _phoneController;
+  late final TextEditingController _emailController;
   late final TextEditingController _messageController;
   CustomerMessageChannel _channel = CustomerMessageChannel.whatsapp;
   bool _sending = false;
@@ -50,12 +55,18 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
   void initState() {
     super.initState();
     _phoneController = TextEditingController(text: widget.phoneNumber);
+    _emailController = TextEditingController(text: widget.emailAddress);
     _messageController = TextEditingController(text: widget.initialMessage);
+    if (widget.phoneNumber.trim().isEmpty &&
+        widget.emailAddress.trim().isNotEmpty) {
+      _channel = CustomerMessageChannel.email;
+    }
   }
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _emailController.dispose();
     _messageController.dispose();
     super.dispose();
   }
@@ -66,14 +77,14 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
       if (api) {
         await MessagingService.sendApi(
           channel: _channel,
-          phoneNumber: _phoneController.text,
+          phoneNumber: _recipient,
           message: _messageController.text,
           metadata: widget.metadata,
         );
       } else {
         await MessagingService.openManual(
           channel: _channel,
-          phoneNumber: _phoneController.text,
+          phoneNumber: _recipient,
           message: _messageController.text,
         );
       }
@@ -102,6 +113,10 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
     }
   }
 
+  String get _recipient => _channel == CustomerMessageChannel.email
+      ? _emailController.text
+      : _phoneController.text;
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -124,6 +139,11 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
                   icon: Icon(Icons.sms_outlined),
                   label: Text('SMS'),
                 ),
+                ButtonSegment(
+                  value: CustomerMessageChannel.email,
+                  icon: Icon(Icons.email_outlined),
+                  label: Text('Email'),
+                ),
               ],
               selected: {_channel},
               onSelectionChanged: _sending
@@ -132,11 +152,21 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone number',
-                prefixIcon: Icon(Icons.phone_outlined),
+              controller: _channel == CustomerMessageChannel.email
+                  ? _emailController
+                  : _phoneController,
+              keyboardType: _channel == CustomerMessageChannel.email
+                  ? TextInputType.emailAddress
+                  : TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: _channel == CustomerMessageChannel.email
+                    ? 'Email address'
+                    : 'Phone number',
+                prefixIcon: Icon(
+                  _channel == CustomerMessageChannel.email
+                      ? Icons.email_outlined
+                      : Icons.phone_outlined,
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -162,7 +192,8 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
           icon: const Icon(Icons.open_in_new_outlined),
           label: const Text('Open App'),
         ),
-        if (MessagingService.allowApiSend)
+        if (MessagingService.allowApiSend &&
+            _channel != CustomerMessageChannel.email)
           ElevatedButton.icon(
             onPressed: _sending ? null : () => _send(api: true),
             icon: _sending

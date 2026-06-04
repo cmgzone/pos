@@ -207,6 +207,27 @@ class CustomerRepository {
     return id;
   }
 
+  static Future<void> update({
+    required String id,
+    required String name,
+    String? phone,
+    String? email,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'update customers');
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw Exception('Customer name is required');
+    }
+
+    await DatabaseService.update(_table, {
+      'name': trimmedName,
+      'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
+      'email': email?.trim().isEmpty == true ? null : email?.trim(),
+      'updated_at': DateTime.now().toIso8601String(),
+      'sync_status': 'pending',
+    }, id);
+  }
+
   static Future<String> recordPayment({
     required String customerId,
     required double amount,

@@ -10,7 +10,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 16;
+  static const int _databaseVersion = 17;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -25,6 +25,9 @@ class DatabaseService {
     'held_sales',
     'suppliers',
     'purchase_invoices',
+    'supplier_payments',
+    'purchase_orders',
+    'purchase_order_items',
     'stock_batches',
     'stock_transfers',
     'credit_payments',
@@ -79,7 +82,9 @@ class DatabaseService {
         if (oldVersion < 16) {
           // Drop barcode indexes to recreate them with the deleted_at IS NULL partial index condition
           await database.execute('DROP INDEX IF EXISTS idx_products_barcode');
-          await database.execute('DROP INDEX IF EXISTS idx_product_variants_barcode');
+          await database.execute(
+            'DROP INDEX IF EXISTS idx_product_variants_barcode',
+          );
         }
         await _runMigrations(database);
       },
@@ -516,6 +521,15 @@ class DatabaseService {
         payment_reference TEXT,
         payment_status TEXT,
         payment_metadata_json TEXT,
+        etims_status TEXT,
+        etims_invoice_number TEXT,
+        etims_control_unit_invoice_number TEXT,
+        etims_control_unit_serial TEXT,
+        etims_verification_url TEXT,
+        etims_qr_code TEXT,
+        etims_submitted_at TEXT,
+        etims_error TEXT,
+        etims_response_json TEXT,
         refund_sale_id TEXT,
         refund_for_sale_id TEXT,
         refund_note TEXT,
@@ -636,12 +650,75 @@ class DatabaseService {
         supplier_name TEXT,
         invoice_number TEXT,
         total_amount REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        balance_due REAL NOT NULL DEFAULT 0,
+        due_date TEXT,
+        status TEXT NOT NULL DEFAULT 'unpaid',
         note TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
         sync_status TEXT NOT NULL DEFAULT 'pending',
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS supplier_payments (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        supplier_id TEXT NOT NULL,
+        purchase_id TEXT,
+        amount REAL NOT NULL DEFAULT 0,
+        payment_method TEXT,
+        reference TEXT,
+        note TEXT,
+        paid_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
+        FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        supplier_id TEXT,
+        supplier_name TEXT,
+        order_number TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        total_amount REAL NOT NULL DEFAULT 0,
+        expected_on TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        purchase_order_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        unit_cost REAL NOT NULL DEFAULT 0,
+        line_total REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
       )
     ''');
 
@@ -1055,6 +1132,30 @@ class DatabaseService {
     );
     await _createIndexIfColumnsExist(
       database,
+      table: 'supplier_payments',
+      indexName: 'idx_supplier_payments_supplier_id',
+      columns: ['supplier_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'supplier_payments',
+      indexName: 'idx_supplier_payments_purchase_id',
+      columns: ['purchase_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'purchase_orders',
+      indexName: 'idx_purchase_orders_supplier_id',
+      columns: ['supplier_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'purchase_order_items',
+      indexName: 'idx_purchase_order_items_order_id',
+      columns: ['purchase_order_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
       table: 'expenses',
       indexName: 'idx_expenses_incurred_on',
       columns: ['incurred_on'],
@@ -1164,7 +1265,12 @@ class DatabaseService {
       database,
       table: 'stock_batches',
       indexName: 'idx_stock_batches_fifo',
-      columns: ['product_id', 'quantity_remaining', 'expiry_date', 'received_at'],
+      columns: [
+        'product_id',
+        'quantity_remaining',
+        'expiry_date',
+        'received_at',
+      ],
       whereClause: 'deleted_at IS NULL',
     );
   }
@@ -1195,6 +1301,7 @@ class DatabaseService {
     await _ensureProductUnitConversionSchema(database);
     await _ensureUserProfileSchema(database);
     await _ensureSalesPaymentSchema(database);
+    await _ensureEtimsSalesSchema(database);
     await _ensureSalesCashDrawerSchema(database);
     await _ensureSalesRefundSchema(database);
     await _ensurePurchaseSchema(database);
@@ -1763,6 +1870,63 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureEtimsSalesSchema(DatabaseExecutor database) async {
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_status',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_invoice_number',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_control_unit_invoice_number',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_control_unit_serial',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_verification_url',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_qr_code',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_submitted_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_error',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sales',
+      column: 'etims_response_json',
+      definition: 'TEXT',
+    );
+  }
+
   static Future<void> _ensureSalesRefundSchema(
     DatabaseExecutor database,
   ) async {
@@ -1850,6 +2014,30 @@ class DatabaseService {
     await _ensureColumn(
       database,
       table: 'purchase_invoices',
+      column: 'amount_paid',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_invoices',
+      column: 'balance_due',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_invoices',
+      column: 'due_date',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_invoices',
+      column: 'status',
+      definition: "TEXT NOT NULL DEFAULT 'unpaid'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_invoices',
       column: 'note',
       definition: 'TEXT',
     );
@@ -1877,6 +2065,57 @@ class DatabaseService {
       column: 'note',
       definition: 'TEXT',
     );
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS supplier_payments (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        supplier_id TEXT NOT NULL,
+        purchase_id TEXT,
+        amount REAL NOT NULL DEFAULT 0,
+        payment_method TEXT,
+        reference TEXT,
+        note TEXT,
+        paid_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        supplier_id TEXT,
+        supplier_name TEXT,
+        order_number TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        total_amount REAL NOT NULL DEFAULT 0,
+        expected_on TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        purchase_order_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        unit_cost REAL NOT NULL DEFAULT 0,
+        line_total REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
   }
 
   static Future<void> _ensureCreditPaymentSchema(
@@ -1946,6 +2185,9 @@ class DatabaseService {
       'cash_movements',
       'suppliers',
       'purchase_invoices',
+      'supplier_payments',
+      'purchase_orders',
+      'purchase_order_items',
       'stock_batches',
       'stock_transfers',
       'credit_payments',

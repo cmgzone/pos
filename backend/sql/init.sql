@@ -411,7 +411,59 @@ CREATE TABLE IF NOT EXISTS purchase_invoices (
   supplier_name text,
   invoice_number text,
   total_amount double precision NOT NULL DEFAULT 0,
+  amount_paid double precision NOT NULL DEFAULT 0,
+  balance_due double precision NOT NULL DEFAULT 0,
+  due_date text,
+  status text NOT NULL DEFAULT 'unpaid',
   note text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id text PRIMARY KEY,
+  business_id text,
+  supplier_id text NOT NULL,
+  purchase_id text,
+  amount double precision NOT NULL DEFAULT 0,
+  payment_method text,
+  reference text,
+  note text,
+  paid_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id text PRIMARY KEY,
+  business_id text,
+  supplier_id text,
+  supplier_name text,
+  order_number text,
+  status text NOT NULL DEFAULT 'draft',
+  total_amount double precision NOT NULL DEFAULT 0,
+  expected_on text,
+  note text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id text PRIMARY KEY,
+  business_id text,
+  purchase_order_id text NOT NULL,
+  product_id text NOT NULL,
+  product_name text NOT NULL,
+  quantity double precision NOT NULL DEFAULT 0,
+  unit text NOT NULL DEFAULT 'pcs',
+  unit_cost double precision NOT NULL DEFAULT 0,
+  line_total double precision NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
@@ -479,6 +531,15 @@ CREATE TABLE IF NOT EXISTS sales (
   payment_reference text,
   payment_status text,
   payment_metadata_json jsonb,
+  etims_status text,
+  etims_invoice_number text,
+  etims_control_unit_invoice_number text,
+  etims_control_unit_serial text,
+  etims_verification_url text,
+  etims_qr_code text,
+  etims_submitted_at timestamptz,
+  etims_error text,
+  etims_response_json jsonb,
   refund_sale_id text,
   refund_for_sale_id text,
   refund_note text,
@@ -488,6 +549,60 @@ CREATE TABLE IF NOT EXISTS sales (
   deleted_at timestamptz,
   sync_status text NOT NULL DEFAULT 'synced'
 );
+
+CREATE TABLE IF NOT EXISTS platform_etims_config (
+  id integer PRIMARY KEY DEFAULT 1,
+  provider_name text NOT NULL DEFAULT 'KRA eTIMS OSCU/VSCU',
+  is_active boolean NOT NULL DEFAULT false,
+  base_url text NOT NULL DEFAULT '',
+  submit_path text NOT NULL DEFAULT '/invoices',
+  public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  CONSTRAINT platform_etims_config_single_row CHECK (id = 1)
+);
+
+INSERT INTO platform_etims_config (id)
+VALUES (1)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS business_etims_settings (
+  business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+  is_active boolean NOT NULL DEFAULT false,
+  taxpayer_pin text NOT NULL DEFAULT '',
+  vat_number text NOT NULL DEFAULT '',
+  solution_type text NOT NULL DEFAULT 'OSCU',
+  branch_code text NOT NULL DEFAULT '',
+  device_serial text NOT NULL DEFAULT '',
+  auto_submit boolean NOT NULL DEFAULT true,
+  public_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  secret_config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS etims_submissions (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  sale_id text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  provider_name text NOT NULL DEFAULT 'KRA eTIMS OSCU/VSCU',
+  invoice_number text,
+  control_unit_invoice_number text,
+  control_unit_serial text,
+  verification_url text,
+  qr_code text,
+  request_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  response_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  error_message text,
+  submitted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_etims_submissions_business_sale
+  ON etims_submissions(business_id, sale_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS sale_items (
   id text PRIMARY KEY,
@@ -1001,6 +1116,19 @@ ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_bran
 ALTER TABLE products ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS amount_paid double precision NOT NULL DEFAULT 0;
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS balance_due double precision NOT NULL DEFAULT 0;
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS due_date text;
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'unpaid';
+ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS batch_number text;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
@@ -1023,6 +1151,14 @@ CREATE INDEX IF NOT EXISTS idx_suppliers_branch_id ON suppliers(business_id, bra
 CREATE INDEX IF NOT EXISTS idx_products_branch_id ON products(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_product_variants_branch_id ON product_variants(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_invoices_branch_id ON purchase_invoices(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_business_revision ON supplier_payments(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_branch_id ON supplier_payments(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier_id ON supplier_payments(business_id, supplier_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_business_revision ON purchase_orders(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_branch_id ON purchase_orders(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier_id ON purchase_orders(business_id, supplier_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_business_revision ON purchase_order_items(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order_id ON purchase_order_items(business_id, purchase_order_id);
 CREATE INDEX IF NOT EXISTS idx_stock_batches_branch_id ON stock_batches(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_sales_branch_id ON sales(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_cash_movements_branch_id ON cash_movements(business_id, branch_id);

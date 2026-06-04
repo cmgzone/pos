@@ -5,14 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import 'package:pos_app/core/constants/app_constants.dart';
 import 'package:pos_app/core/services/backup_service.dart';
 import 'package:pos_app/core/services/branch_service.dart';
 import 'package:pos_app/core/services/database_service.dart';
 import 'package:pos_app/core/services/cash_drawer_service.dart';
+import 'package:pos_app/core/services/etims_service.dart';
 import 'package:pos_app/core/services/license_service.dart';
 import 'package:pos_app/core/services/session_service.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
+import 'package:pos_app/core/services/support_diagnostics_service.dart';
 import 'package:pos_app/core/services/sync_controller.dart';
 import 'package:pos_app/core/services/sync_settings_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
@@ -49,8 +53,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _footerController;
   late TextEditingController _baysController;
   late TextEditingController _cashDrawerPrinterPathController;
+  late TextEditingController _kraPinController;
+  late TextEditingController _etimsVatNumberController;
+  late TextEditingController _etimsBranchCodeController;
+  late TextEditingController _etimsDeviceSerialController;
   bool _autoSyncEnabled = true;
   bool _cashDrawerEnabled = false;
+  bool _etimsEnabled = false;
+  bool _etimsAutoSubmit = true;
+  bool _etimsLoading = false;
+  bool _etimsSaving = false;
+  bool _etimsPlatformActive = false;
+  String _etimsSolutionType = 'OSCU';
+  String _etimsProviderName = 'KRA eTIMS';
 
   bool _saving = false;
   bool _hasChanges = false;
@@ -91,10 +106,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _cashDrawerPrinterPathController = TextEditingController(
       text: ShopSettings.cashDrawerPrinterPath,
     )..addListener(_markChanged);
+    _kraPinController = TextEditingController(text: ShopSettings.kraPin);
+    _etimsVatNumberController = TextEditingController(
+      text: ShopSettings.etimsVatNumber,
+    );
+    _etimsBranchCodeController = TextEditingController(
+      text: ShopSettings.etimsBranchCode,
+    );
+    _etimsDeviceSerialController = TextEditingController(
+      text: ShopSettings.etimsDeviceSerial,
+    );
     _autoSyncEnabled = SyncSettingsService.autoSyncEnabled;
     _cashDrawerEnabled = ShopSettings.cashDrawerEnabled;
+    _etimsEnabled = ShopSettings.etimsEnabled;
+    _etimsAutoSubmit = ShopSettings.etimsAutoSubmit;
+    _etimsSolutionType = ShopSettings.etimsSolutionType;
 
     _loadBackups();
+    _loadEtimsSettings();
     if (_canManageUsers) {
       _loadTeamMembers();
     }
@@ -117,6 +146,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _footerController.dispose();
     _baysController.dispose();
     _cashDrawerPrinterPathController.dispose();
+    _kraPinController.dispose();
+    _etimsVatNumberController.dispose();
+    _etimsBranchCodeController.dispose();
+    _etimsDeviceSerialController.dispose();
     super.dispose();
   }
 
@@ -126,6 +159,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
     setState(() => _saving = true);
     try {
+      await LicenseService.ensureWriteAccess(action: 'save settings');
       await ShopSettings.setShopName(_nameController.text.trim());
       await ShopSettings.setShopAddress(_addressController.text.trim());
       await ShopSettings.setShopPhone(_phoneController.text.trim());
@@ -189,6 +223,77 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
     setState(() => _backups = backups);
+  }
+
+  Future<void> _loadEtimsSettings() async {
+    setState(() => _etimsLoading = true);
+    final settings = await EtimsService.fetchSettings();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _etimsEnabled = settings.isActive;
+      _etimsAutoSubmit = settings.autoSubmit;
+      _etimsPlatformActive = settings.platformActive;
+      _etimsProviderName = settings.providerName;
+      _etimsSolutionType = settings.solutionType;
+      _kraPinController.text = settings.taxpayerPin;
+      _etimsVatNumberController.text = settings.vatNumber;
+      _etimsBranchCodeController.text = settings.branchCode;
+      _etimsDeviceSerialController.text = settings.deviceSerial;
+      _etimsLoading = false;
+    });
+  }
+
+  Future<void> _saveEtimsSettings() async {
+    if (_etimsSaving) {
+      return;
+    }
+    setState(() => _etimsSaving = true);
+    try {
+      await LicenseService.ensureWriteAccess(action: 'save KRA eTIMS settings');
+      final settings = await EtimsService.saveSettings(
+        isActive: _etimsEnabled,
+        autoSubmit: _etimsAutoSubmit,
+        taxpayerPin: _kraPinController.text,
+        vatNumber: _etimsVatNumberController.text,
+        solutionType: _etimsSolutionType,
+        branchCode: _etimsBranchCodeController.text,
+        deviceSerial: _etimsDeviceSerialController.text,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _etimsEnabled = settings.isActive;
+        _etimsAutoSubmit = settings.autoSubmit;
+        _etimsPlatformActive = settings.platformActive;
+        _etimsProviderName = settings.providerName;
+        _etimsSolutionType = settings.solutionType;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('KRA eTIMS settings saved'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: 'Could not save KRA settings.'),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _etimsSaving = false);
+      }
+    }
   }
 
   Future<void> _loadTeamMembers() async {
@@ -1822,11 +1927,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: const Icon(Icons.lock_open_outlined, size: 18),
                 label: const Text('Test Open'),
               ),
+              OutlinedButton.icon(
+                onPressed: _showCashDrawerSetupGuide,
+                icon: const Icon(Icons.checklist_outlined, size: 18),
+                label: const Text('Setup Wizard'),
+              ),
               const Text(
                 'Test open is limited to managers and admins.',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCashDrawerSetupGuide() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Cash Drawer Setup'),
+        content: const SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('1. Connect the cash drawer to the receipt printer.'),
+              SizedBox(height: 8),
+              Text('2. Confirm the printer can print from Windows.'),
+              SizedBox(height: 8),
+              Text(
+                r'3. Enter the printer share, for example \\localhost\ReceiptPrinter, or a port like LPT1:.',
+              ),
+              SizedBox(height: 8),
+              Text('4. Save settings, then use Test Open.'),
+              SizedBox(height: 12),
+              Text(
+                'If the drawer does not open, check printer drivers, drawer cable type, and ESC/POS drawer command support.',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -2002,6 +2152,145 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _buildEtimsSettingsPage() {
+    if (_etimsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final statusColor = _etimsPlatformActive
+        ? AppColors.success
+        : AppColors.warning;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCard([
+          Row(
+            children: [
+              Icon(Icons.account_balance_outlined, color: statusColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _etimsPlatformActive
+                      ? 'Platform connector ready: $_etimsProviderName'
+                      : 'Platform connector not active yet. Ask super admin to configure the certified OSCU/VSCU provider.',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'KRA/eTIMS requires a certified OSCU or VSCU setup. Shop owners enter their taxpayer details here; provider credentials stay on the backend.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile.adaptive(
+            value: _etimsEnabled,
+            onChanged: (value) => setState(() => _etimsEnabled = value),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Enable KRA eTIMS'),
+            subtitle: const Text(
+              'When enabled, sales can be submitted to the configured eTIMS connector.',
+            ),
+          ),
+          SwitchListTile.adaptive(
+            value: _etimsAutoSubmit,
+            onChanged: _etimsEnabled
+                ? (value) => setState(() => _etimsAutoSubmit = value)
+                : null,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Auto-submit after each sale'),
+            subtitle: const Text(
+              'If offline or not configured, the sale is marked for follow-up instead of blocking checkout.',
+            ),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        _buildCard([
+          Row(
+            children: [
+              Expanded(
+                child: _buildField(
+                  'KRA PIN',
+                  'e.g. P000000000A',
+                  _kraPinController,
+                  Icons.badge_outlined,
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: _buildField(
+                  'VAT Number (optional)',
+                  'Leave blank if same as PIN',
+                  _etimsVatNumberController,
+                  Icons.receipt_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _etimsSolutionType == 'VSCU' ? 'VSCU' : 'OSCU',
+                  decoration: const InputDecoration(
+                    labelText: 'Solution Type',
+                    prefixIcon: Icon(Icons.memory_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'OSCU', child: Text('OSCU')),
+                    DropdownMenuItem(value: 'VSCU', child: Text('VSCU')),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() => _etimsSolutionType = value);
+                  },
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: _buildField(
+                  'Branch Code',
+                  'e.g. 00',
+                  _etimsBranchCodeController,
+                  Icons.store_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _buildField(
+            'OSCU/VSCU Device Serial',
+            'Device or virtual control unit serial',
+            _etimsDeviceSerialController,
+            Icons.confirmation_number_outlined,
+          ),
+        ]),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: _etimsSaving ? null : _saveEtimsSettings,
+            icon: _etimsSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined, size: 18),
+            label: Text(_etimsSaving ? 'Saving...' : 'Save KRA eTIMS'),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildOperationalSettingsPage() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2034,6 +2323,134 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 16),
         _buildSaveSettingsButton(),
       ],
+    );
+  }
+
+  Map<String, dynamic> _syncDiagnostics(SyncState syncState) {
+    return {
+      'label': syncState.shortLabel,
+      'online': syncState.isOnline,
+      'pendingChanges': syncState.pendingChanges,
+      'remoteChanges': syncState.remoteChanges,
+      'conflictCount': syncState.conflictCount,
+      'errorCount': syncState.errorCount,
+      'lastError': syncState.lastError,
+      'lastMessage': syncState.lastMessage,
+    };
+  }
+
+  Future<String> _buildDiagnosticsReport(SyncState syncState) {
+    return SupportDiagnosticsService.buildReport(
+      sync: _syncDiagnostics(syncState),
+    );
+  }
+
+  Future<void> _copyDiagnostics(SyncState syncState) async {
+    final report = await _buildDiagnosticsReport(syncState);
+    await Clipboard.setData(ClipboardData(text: report));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Diagnostics copied. You can paste them into support.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  Future<void> _contactSupport(SyncState syncState) async {
+    final report = await _buildDiagnosticsReport(syncState);
+    await Clipboard.setData(ClipboardData(text: report));
+    final uri = Uri(
+      scheme: 'mailto',
+      path: AppConstants.supportEmail,
+      queryParameters: {
+        'subject': 'Piki POS support - ${ShopSettings.shopName}',
+        'body':
+            'Hi Piki support,\n\nPlease help with this issue:\n\n\nDiagnostics have been copied to my clipboard. I can paste them here if needed.\n',
+      },
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Diagnostics copied. Email ${AppConstants.supportEmail} for support.',
+        ),
+        backgroundColor: AppColors.warning,
+      ),
+    );
+  }
+
+  Widget _buildSupportPage(SyncState syncState) {
+    return _buildCard([
+      const Text(
+        'When something feels wrong, send diagnostics before changing data. The report includes app, sync, license, and database counts but not passwords.',
+        style: TextStyle(color: AppColors.textSecondary),
+      ),
+      const SizedBox(height: 18),
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          FilledButton.icon(
+            onPressed: () => _contactSupport(syncState),
+            icon: const Icon(Icons.support_agent_outlined, size: 18),
+            label: const Text('Contact Support'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _copyDiagnostics(syncState),
+            icon: const Icon(Icons.bug_report_outlined, size: 18),
+            label: const Text('Copy Diagnostics'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 18),
+      _buildSyncStat('Sync', syncState.shortLabel),
+      const SizedBox(height: 12),
+      _buildSyncStat('Last Sync', _formatLastSync(syncState.lastSyncAt)),
+      const SizedBox(height: 12),
+      _buildSyncStat(
+        'Issues',
+        '${syncState.conflictCount + syncState.errorCount}',
+      ),
+      const SizedBox(height: 18),
+      Text(
+        'Support email: ${AppConstants.supportEmail}',
+        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      ),
+    ]);
+  }
+
+  Widget _buildBackupGuidanceCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.20)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Backup guidance',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Create a backup before major edits, before restoring another file, and before moving devices. On phones, copy the backup location and save the file to Drive, WhatsApp, or another safe storage location.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2081,6 +2498,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: 'Receipts',
                       icon: Icons.receipt_long_outlined,
                       child: _buildReceiptSettingsPage(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.account_balance_outlined,
+                    title: 'KRA eTIMS',
+                    subtitle: 'KRA PIN, OSCU/VSCU device, and auto-submit.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'KRA eTIMS',
+                      icon: Icons.account_balance_outlined,
+                      child: _buildEtimsSettingsPage(),
                     ),
                   ),
                 ),
@@ -2456,6 +2886,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                _buildFeaturePageCard(
+                  icon: Icons.support_agent_outlined,
+                  title: 'Support & Diagnostics',
+                  subtitle:
+                      'Contact support and copy a safe diagnostics report.',
+                  onTap: () => _openSettingsMiniPage(
+                    title: 'Support & Diagnostics',
+                    icon: Icons.support_agent_outlined,
+                    child: _buildSupportPage(syncState),
+                  ),
+                ),
                 if (!_canManageOperationalSettings) ...[
                   const SizedBox(height: 32),
                   Container(
@@ -2680,6 +3122,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildBackupCard() {
     return _buildCard([
+      _buildBackupGuidanceCard(),
+      const SizedBox(height: 18),
       Wrap(
         spacing: 12,
         runSpacing: 12,

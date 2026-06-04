@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../../widgets/compact_header_actions.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../products/data/product_repository.dart';
 import '../data/purchase_repository.dart';
@@ -837,6 +838,13 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
     }
 
     final items = details['items'] as List<Map<String, dynamic>>? ?? [];
+    final supplierId = details['supplier_id'] as String?;
+    final supplier = supplierId == null
+        ? null
+        : _suppliers.cast<Map<String, dynamic>?>().firstWhere(
+            (item) => item?['id'] == supplierId,
+            orElse: () => null,
+          );
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -981,6 +989,15 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
           ),
         ),
         actions: [
+          if (supplier != null)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showSupplierPaymentDialog(supplier);
+              },
+              icon: const Icon(Icons.add_card_outlined),
+              label: const Text('Record Payment'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
@@ -1025,27 +1042,35 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
-        title: const Text('Purchases & Suppliers'),
+        toolbarHeight: 50,
+        title: const Text(
+          'Purchases & Suppliers',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(kTextTabBarHeight),
+          preferredSize: const Size.fromHeight(42),
           child: TrainingAnchor(
             id: 'purchases.tabs',
             child: TabBar(
               controller: _tabController,
+              labelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
               tabs: const [
-                Tab(text: 'Purchases'),
-                Tab(text: 'Suppliers'),
+                Tab(height: 40, text: 'Purchases'),
+                Tab(height: 40, text: 'Suppliers'),
               ],
             ),
           ),
         ),
         actions: [
-          IconButton(
+          CompactHeaderIconButton(
             onPressed: _isLoading ? null : _loadData,
-            icon: const Icon(Icons.refresh),
+            icon: Icons.refresh,
             tooltip: 'Refresh',
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
         ],
       ),
       body: Column(
@@ -1138,6 +1163,8 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
       itemBuilder: (context, index) {
         final purchase = _purchases[index];
         final invoiceNumber = (purchase['invoice_number'] as String?)?.trim();
+        final balanceDue = (purchase['balance_due'] as num? ?? 0).toDouble();
+        final status = purchase['status'] as String? ?? 'unpaid';
         return InkWell(
           onTap: () => _showPurchaseDetails(purchase['id'] as String),
           borderRadius: BorderRadius.circular(16),
@@ -1210,6 +1237,27 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                         fontSize: 12,
                       ),
                     ),
+                    if (balanceDue > 0.009) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Due ${ShopSettings.currency}${balanceDue.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: AppColors.warning,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        status == 'paid' ? 'Paid' : status,
+                        style: const TextStyle(
+                          color: AppColors.success,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1299,18 +1347,223 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
                   ),
                 ),
               const SizedBox(height: 10),
-              Text(
-                '${supplier['purchase_count']} purchase invoices',
-                style: const TextStyle(
-                  color: AppColors.primaryLight,
-                  fontWeight: FontWeight.w600,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${supplier['purchase_count']} purchase invoices',
+                      style: const TextStyle(
+                        color: AppColors.primaryLight,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _showSupplierLedger(supplier),
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
+                    label: const Text('Ledger'),
+                  ),
+                ],
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _showSupplierLedger(Map<String, dynamic> supplier) async {
+    final supplierId = supplier['id'] as String? ?? '';
+    final entries = await PurchaseRepository.getSupplierLedger(supplierId);
+    if (!mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('${supplier['name'] ?? 'Supplier'} Ledger'),
+        content: SizedBox(
+          width: 560,
+          child: entries.isEmpty
+              ? const Text('No ledger entries yet.')
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: entries.length,
+                  separatorBuilder: (_, _) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    final type = entry['entry_type'] as String? ?? '';
+                    final debit = (entry['debit'] as num? ?? 0).toDouble();
+                    final credit = (entry['credit'] as num? ?? 0).toDouble();
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        type == 'payment'
+                            ? Icons.payments_outlined
+                            : Icons.receipt_long_outlined,
+                        color: type == 'payment'
+                            ? AppColors.success
+                            : AppColors.primaryLight,
+                      ),
+                      title: Text(
+                        type == 'payment' ? 'Supplier payment' : 'Purchase',
+                      ),
+                      subtitle: Text(
+                        [
+                              entry['reference']?.toString(),
+                              _friendlyDate(entry['entry_at'] as String?),
+                              entry['status']?.toString(),
+                            ]
+                            .where((item) => item?.trim().isNotEmpty == true)
+                            .join(' - '),
+                      ),
+                      trailing: Text(
+                        type == 'payment'
+                            ? '-${ShopSettings.currency}${credit.toStringAsFixed(2)}'
+                            : '${ShopSettings.currency}${debit.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: type == 'payment'
+                              ? AppColors.success
+                              : AppColors.warning,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showSupplierPaymentDialog(Map<String, dynamic> supplier) async {
+    final amountController = TextEditingController();
+    final referenceController = TextEditingController();
+    final noteController = TextEditingController();
+    String method = 'cash';
+    bool saving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('Pay ${supplier['name'] ?? 'Supplier'}'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    prefixText: ShopSettings.currency,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: method,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment method',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                    DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
+                    DropdownMenuItem(value: 'bank', child: Text('Bank')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: saving
+                      ? null
+                      : (value) =>
+                            setDialogState(() => method = value ?? 'cash'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(labelText: 'Reference'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Note'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDialogState(() => saving = true);
+                      try {
+                        await PurchaseRepository.recordSupplierPayment(
+                          supplierId: supplier['id'] as String,
+                          amount:
+                              double.tryParse(amountController.text.trim()) ??
+                              0,
+                          paymentMethod: method,
+                          reference: referenceController.text,
+                          note: noteController.text,
+                        );
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx, true);
+                        }
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                AppErrorMessage.from(
+                                  error,
+                                  fallback:
+                                      'Supplier payment could not be saved.',
+                                ),
+                              ),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                        setDialogState(() => saving = false);
+                      }
+                    },
+              child: Text(saving ? 'Saving...' : 'Save Payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    amountController.dispose();
+    referenceController.dispose();
+    noteController.dispose();
+
+    if (saved == true) {
+      await _loadData();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Supplier payment recorded'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
   }
 
   String _friendlyDate(String? raw) {

@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/catalog_order_service.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../sales/data/cart_provider.dart';
+import '../../customers/presentation/customer_message_dialog.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/product_variant_repository.dart';
@@ -59,6 +62,59 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
             AppErrorMessage.from(
               error,
               fallback: 'Could not update catalog order.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _updating.remove(order.id));
+      }
+    }
+  }
+
+  Future<void> _requestPayment(CatalogOrder order) async {
+    if (_updating.contains(order.id)) {
+      return;
+    }
+    setState(() => _updating.add(order.id));
+    try {
+      final result = await CatalogOrderService.requestPayment(
+        orderId: order.id,
+        sendViaApi: false,
+      );
+      final message =
+          result['message']?.toString() ??
+          MessagingService.receiptMessage(
+            customerName: order.customerName,
+            saleId: order.orderNumber,
+            amount:
+                '${ShopSettings.currency}${order.subtotal.toStringAsFixed(2)}',
+          );
+      if (!mounted) {
+        return;
+      }
+      _refresh();
+      await CustomerMessageDialog.show(
+        context,
+        customerName: order.customerName,
+        phoneNumber: result['recipient']?.toString() ?? order.phone,
+        initialMessage: message,
+        metadata: {
+          'source': 'catalog_payment_request',
+          'orderId': order.id,
+          'orderNumber': order.orderNumber,
+        },
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(
+              error,
+              fallback: 'Could not request payment for this order.',
             ),
           ),
           backgroundColor: AppColors.error,
@@ -219,14 +275,18 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
-        title: const Text('Catalog Orders'),
+        toolbarHeight: 50,
+        title: const Text(
+          'Catalog Orders',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         actions: [
-          IconButton(
+          CompactHeaderIconButton(
             tooltip: 'Refresh',
             onPressed: _refresh,
-            icon: const Icon(Icons.refresh_outlined),
+            icon: Icons.refresh_outlined,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
         ],
       ),
       body: TrainingAnchor(
@@ -316,6 +376,7 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
                       updating: _updating.contains(orders[index].id),
                       onStatus: (status) =>
                           _updateStatus(orders[index], status),
+                      onPaymentRequest: () => _requestPayment(orders[index]),
                       onCheckout: () => _acceptAndCheckout(orders[index]),
                     ),
                   );
@@ -333,12 +394,14 @@ class _CatalogOrderCard extends StatelessWidget {
   final CatalogOrder order;
   final bool updating;
   final ValueChanged<String> onStatus;
+  final VoidCallback onPaymentRequest;
   final VoidCallback onCheckout;
 
   const _CatalogOrderCard({
     required this.order,
     required this.updating,
     required this.onStatus,
+    required this.onPaymentRequest,
     required this.onCheckout,
   });
 
@@ -399,6 +462,15 @@ class _CatalogOrderCard extends StatelessWidget {
             const SizedBox(height: 12),
             _InfoLine(icon: Icons.place_outlined, text: order.deliveryAddress),
           ],
+          const SizedBox(height: 8),
+          _InfoLine(
+            icon: order.fulfillmentMethod == 'pickup'
+                ? Icons.storefront_outlined
+                : Icons.local_shipping_outlined,
+            text: order.fulfillmentMethod == 'pickup'
+                ? 'Pickup order'
+                : 'Delivery order',
+          ),
           if (order.note.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             _InfoLine(icon: Icons.notes_outlined, text: order.note),
@@ -468,11 +540,24 @@ class _CatalogOrderCard extends StatelessWidget {
                   icon: const Icon(Icons.check_outlined),
                   label: const Text('Accept Only'),
                 ),
-              if (order.status != 'completed')
+              if (order.status == 'accepted' ||
+                  order.status == 'payment_requested')
                 OutlinedButton.icon(
-                  onPressed: updating ? null : () => onStatus('completed'),
+                  onPressed: updating ? null : onPaymentRequest,
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Request Payment'),
+                ),
+              if (order.status != 'fulfilled')
+                OutlinedButton.icon(
+                  onPressed: updating ? null : () => onStatus('fulfilled'),
                   icon: const Icon(Icons.done_all_outlined),
-                  label: const Text('Complete'),
+                  label: const Text('Fulfill'),
+                ),
+              if (order.status != 'rejected' && order.status == 'pending')
+                TextButton.icon(
+                  onPressed: updating ? null : () => onStatus('rejected'),
+                  icon: const Icon(Icons.block_outlined),
+                  label: const Text('Reject'),
                 ),
               if (order.status != 'cancelled')
                 TextButton.icon(
@@ -539,8 +624,14 @@ String _statusLabel(String status) {
   switch (status) {
     case 'accepted':
       return 'Accepted';
+    case 'payment_requested':
+      return 'Payment Requested';
+    case 'fulfilled':
+      return 'Fulfilled';
     case 'completed':
-      return 'Completed';
+      return 'Fulfilled';
+    case 'rejected':
+      return 'Rejected';
     case 'cancelled':
       return 'Cancelled';
     default:
@@ -552,8 +643,12 @@ Color _statusColor(String status) {
   switch (status) {
     case 'accepted':
       return AppColors.primary;
+    case 'payment_requested':
+      return AppColors.secondary;
+    case 'fulfilled':
     case 'completed':
       return AppColors.success;
+    case 'rejected':
     case 'cancelled':
       return AppColors.error;
     default:

@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/license_service.dart';
+import '../../../core/services/etims_service.dart';
 import '../../../core/services/pos_payment_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -2746,6 +2747,52 @@ class _CartSide extends ConsumerWidget {
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
+                                    onPressed: () => _showDiscountDialog(
+                                      context,
+                                      ref,
+                                      subtotal,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.local_offer_outlined,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      discount > 0
+                                          ? 'Edit Discount'
+                                          : 'Discount',
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      textStyle: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ),
+                                if (discount > 0) ...[
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Clear discount',
+                                    onPressed: () =>
+                                        ref
+                                                .read(discountProvider.notifier)
+                                                .state =
+                                            0,
+                                    icon: const Icon(
+                                      Icons.close,
+                                      size: 18,
+                                      color: AppColors.error,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
                                     onPressed: () =>
                                         _holdCurrentSale(context, ref),
                                     icon: const Icon(
@@ -2815,6 +2862,40 @@ class _CartSide extends ConsumerWidget {
                                 isDiscount: true,
                               ),
                             ],
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _showDiscountDialog(
+                                      context,
+                                      ref,
+                                      subtotal,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.local_offer_outlined,
+                                    ),
+                                    label: Text(
+                                      discount > 0
+                                          ? 'Edit Discount'
+                                          : 'Add Discount / Promo',
+                                    ),
+                                  ),
+                                ),
+                                if (discount > 0) ...[
+                                  const SizedBox(width: 12),
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        ref
+                                                .read(discountProvider.notifier)
+                                                .state =
+                                            0,
+                                    icon: const Icon(Icons.close, size: 18),
+                                    label: const Text('Clear'),
+                                  ),
+                                ],
+                              ],
+                            ),
                             const SizedBox(height: 16),
                             const Divider(),
                             const SizedBox(height: 16),
@@ -3001,6 +3082,108 @@ class _CartSide extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showDiscountDialog(
+    BuildContext context,
+    WidgetRef ref,
+    double subtotal,
+  ) async {
+    final controller = TextEditingController();
+    var mode = 'amount';
+    final currentDiscount = ref.read(discountProvider);
+    if (currentDiscount > 0) {
+      controller.text = currentDiscount.toStringAsFixed(2);
+    }
+
+    final discount = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Discount / Promotion'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'amount',
+                      icon: Icon(Icons.payments_outlined),
+                      label: Text('Amount'),
+                    ),
+                    ButtonSegment(
+                      value: 'percent',
+                      icon: Icon(Icons.percent_outlined),
+                      label: Text('Percent'),
+                    ),
+                  ],
+                  selected: {mode},
+                  onSelectionChanged: (values) =>
+                      setDialogState(() => mode = values.first),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: mode == 'amount'
+                        ? 'Discount amount'
+                        : 'Discount %',
+                    prefixText: mode == 'amount' ? ShopSettings.currency : '',
+                    suffixText: mode == 'percent' ? '%' : '',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Subtotal: ${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 0.0),
+              child: const Text('Clear'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value =
+                    double.tryParse(controller.text.trim())?.abs() ?? 0;
+                final computed = mode == 'percent'
+                    ? subtotal * (value.clamp(0, 100) / 100)
+                    : value;
+                Navigator.pop(
+                  dialogContext,
+                  computed.clamp(0, subtotal).toDouble(),
+                );
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (discount == null) {
+      return;
+    }
+    ref.read(discountProvider.notifier).state = discount;
   }
 
   Future<void> _showHeldSalesDialog(
@@ -3790,6 +3973,7 @@ class _CartSide extends ConsumerWidget {
       if (serviceOrderIds.isNotEmpty) {
         ref.invalidate(serviceOrdersProvider);
       }
+      final etimsResult = await EtimsService.submitSaleIfEnabled(saleId);
       // ──────────────────────────────────────────────────────────────────
 
       if (context.mounted) {
@@ -3812,6 +3996,7 @@ class _CartSide extends ConsumerWidget {
           balanceDue: isCredit ? total : 0,
           dueDate: dueDate,
           cashierName: SessionService.currentUserName,
+          etimsResult: etimsResult,
         );
       }
       return saleId;
@@ -3858,6 +4043,7 @@ class _CartSide extends ConsumerWidget {
     double balanceDue = 0,
     String? dueDate,
     required String cashierName,
+    EtimsSubmissionResult? etimsResult,
   }) {
     final isKopesha = paymentType.toLowerCase() == 'kopesha';
     final hasAmountTendered = amountTendered > 0;
@@ -3917,6 +4103,28 @@ class _CartSide extends ConsumerWidget {
                 fontSize: 12,
               ),
             ),
+            if (etimsResult != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                etimsResult.status == 'submitted'
+                    ? 'KRA eTIMS submitted: ${etimsResult.controlUnitInvoiceNumber ?? etimsResult.invoiceNumber ?? 'received'}'
+                    : 'KRA eTIMS: ${etimsResult.status.replaceAll('_', ' ')}',
+                style: TextStyle(
+                  color: etimsResult.status == 'submitted'
+                      ? AppColors.success
+                      : AppColors.warning,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if ((etimsResult.errorMessage ?? '').isNotEmpty)
+                Text(
+                  etimsResult.errorMessage!,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+            ],
             if (customerName != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -3967,6 +4175,13 @@ class _CartSide extends ConsumerWidget {
                 dueDate: dueDate,
                 cashierName: cashierName,
                 documentDate: DateTime.now().toIso8601String(),
+                etimsStatus: etimsResult?.status,
+                etimsInvoiceNumber: etimsResult?.invoiceNumber,
+                etimsControlUnitInvoiceNumber:
+                    etimsResult?.controlUnitInvoiceNumber,
+                etimsControlUnitSerial: etimsResult?.controlUnitSerial,
+                etimsVerificationUrl: etimsResult?.verificationUrl,
+                etimsQrCode: etimsResult?.qrCode,
                 showTenderedBreakdown: hasAmountTendered,
               );
             },

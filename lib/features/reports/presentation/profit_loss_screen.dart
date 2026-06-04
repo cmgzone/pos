@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
+import '../../../widgets/compact_header_actions.dart';
 import '../data/expense_repository.dart';
 
 class ProfitLossScreen extends StatefulWidget {
@@ -452,6 +453,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
+        toolbarHeight: 50,
         leading: isMobile
             ? IconButton(
                 icon: const Icon(Icons.menu),
@@ -460,10 +462,17 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
               )
             : null,
         automaticallyImplyLeading: false,
-        title: const Text('Profit & Loss'),
+        title: const Text(
+          'Profit & Loss',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
-          SizedBox(width: isMobile ? 4 : 16),
+          CompactHeaderIconButton(
+            icon: Icons.refresh,
+            tooltip: 'Refresh',
+            onPressed: _loadData,
+          ),
+          SizedBox(width: isMobile ? 4 : 8),
         ],
       ),
       body: _isLoading

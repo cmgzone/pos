@@ -16,6 +16,31 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
+class _ReportTab extends StatelessWidget {
+  final Icon icon;
+  final String label;
+
+  const _ReportTab({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      height: 42,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon.icon, size: 15),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReportsScreenState extends State<ReportsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
@@ -27,7 +52,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     return role == RolePermissions.admin || role == RolePermissions.manager;
   }
 
-  int get _tabCount => _isManagerOrAdmin ? 6 : 5;
+  int get _tabCount => _isManagerOrAdmin ? 7 : 5;
 
   @override
   void initState() {
@@ -48,6 +73,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
+        toolbarHeight: 50,
         leading: isMobile
             ? IconButton(
                 icon: const Icon(Icons.menu),
@@ -56,22 +82,25 @@ class _ReportsScreenState extends State<ReportsScreen>
               )
             : null,
         automaticallyImplyLeading: false,
-        title: const Text('Reports'),
+        title: const Text(
+          'Reports',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         actions: [
           if (_isManagerOrAdmin)
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: 8),
               child: SegmentedButton<ReportBranchScope>(
                 segments: const [
                   ButtonSegment(
                     value: ReportBranchScope.current,
-                    icon: Icon(Icons.store_outlined, size: 16),
-                    label: Text('Current', style: TextStyle(fontSize: 12)),
+                    icon: Icon(Icons.store_outlined, size: 14),
+                    label: Text('Current', style: TextStyle(fontSize: 11)),
                   ),
                   ButtonSegment(
                     value: ReportBranchScope.all,
-                    icon: Icon(Icons.business_outlined, size: 16),
-                    label: Text('All', style: TextStyle(fontSize: 12)),
+                    icon: Icon(Icons.business_outlined, size: 14),
+                    label: Text('All', style: TextStyle(fontSize: 11)),
                   ),
                 ],
                 selected: {_branchScope},
@@ -82,33 +111,55 @@ class _ReportsScreenState extends State<ReportsScreen>
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  minimumSize: WidgetStateProperty.all(const Size(0, 32)),
+                  padding: WidgetStateProperty.all(
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  ),
                 ),
               ),
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(isMobile ? 72 : 48),
+          preferredSize: const Size.fromHeight(46),
           child: TrainingAnchor(
             id: 'reports.tabs',
             child: TabBar(
               controller: _tabs,
               isScrollable: isMobile || _isManagerOrAdmin,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
               indicatorColor: AppColors.primary,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               tabs: [
-                const Tab(icon: Icon(Icons.badge_outlined), text: 'Cashier Summary'),
-                const Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Top Products'),
-                const Tab(icon: Icon(Icons.people_outline), text: 'Top Debtors'),
-                const Tab(icon: Icon(Icons.schedule_outlined), text: 'Overdue Aging'),
-                const Tab(
+                const _ReportTab(
+                  icon: Icon(Icons.badge_outlined),
+                  label: 'Cashier Summary',
+                ),
+                const _ReportTab(
+                  icon: Icon(Icons.bar_chart_rounded),
+                  label: 'Top Products',
+                ),
+                const _ReportTab(
+                  icon: Icon(Icons.people_outline),
+                  label: 'Top Debtors',
+                ),
+                const _ReportTab(
+                  icon: Icon(Icons.schedule_outlined),
+                  label: 'Overdue Aging',
+                ),
+                const _ReportTab(
                   icon: Icon(Icons.swap_vert_rounded),
-                  text: 'Stock Movement',
+                  label: 'Stock Movement',
                 ),
                 if (_isManagerOrAdmin)
-                  const Tab(
+                  const _ReportTab(
+                    icon: Icon(Icons.receipt_long_outlined),
+                    label: 'Kenya Reports',
+                  ),
+                if (_isManagerOrAdmin)
+                  const _ReportTab(
                     icon: Icon(Icons.compare_arrows_rounded),
-                    text: 'Compare Branches',
+                    label: 'Compare Branches',
                   ),
               ],
             ),
@@ -129,6 +180,7 @@ class _ReportsScreenState extends State<ReportsScreen>
             const _TopDebtorsTab(),
             const _OverdueAgingTab(),
             _StockMovementTab(branchScope: _branchScope),
+            if (_isManagerOrAdmin) _KenyaReportsTab(branchScope: _branchScope),
             if (_isManagerOrAdmin) const _BranchComparisonTab(),
           ],
         ),
@@ -483,7 +535,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           _SummaryMetricCard(
                             label: 'Revenue',
                             value: _displayMoney(_summary['total_revenue']),
-                            compactValue: NumberUtils.formatCompact(_summary['total_revenue'] as num?, isCurrency: true),
+                            compactValue: NumberUtils.formatCompact(
+                              _summary['total_revenue'] as num?,
+                              isCurrency: true,
+                            ),
                             color: AppColors.success,
                             icon: Icons.attach_money,
                           ),
@@ -491,14 +546,19 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             label: 'Sales',
                             value:
                                 '${(_summary['total_sales'] as num? ?? 0).toInt()}',
-                            compactValue: NumberUtils.formatCompact(_summary['total_sales'] as num?),
+                            compactValue: NumberUtils.formatCompact(
+                              _summary['total_sales'] as num?,
+                            ),
                             color: AppColors.primary,
                             icon: Icons.receipt_long_outlined,
                           ),
                           _SummaryMetricCard(
                             label: 'Gross Profit',
                             value: _displayMoney(_summary['gross_profit']),
-                            compactValue: NumberUtils.formatCompact(_summary['gross_profit'] as num?, isCurrency: true),
+                            compactValue: NumberUtils.formatCompact(
+                              _summary['gross_profit'] as num?,
+                              isCurrency: true,
+                            ),
                             color: AppColors.primaryLight,
                             icon: Icons.trending_up_rounded,
                           ),
@@ -1060,7 +1120,11 @@ class _TopProductsTab extends StatefulWidget {
   final ValueChanged<int> onDaysChanged;
   final ReportBranchScope branchScope;
 
-  const _TopProductsTab({required this.daysRange, required this.onDaysChanged, this.branchScope = ReportBranchScope.current});
+  const _TopProductsTab({
+    required this.daysRange,
+    required this.onDaysChanged,
+    this.branchScope = ReportBranchScope.current,
+  });
 
   @override
   State<_TopProductsTab> createState() => _TopProductsTabState();
@@ -1821,7 +1885,10 @@ class _StockMovementTabState extends State<_StockMovementTab> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    _data = await ReportRepository.getStockMovement(daysRange: _days, branchScope: widget.branchScope);
+    _data = await ReportRepository.getStockMovement(
+      daysRange: _days,
+      branchScope: widget.branchScope,
+    );
     if (mounted) setState(() => _loading = false);
   }
 
@@ -2037,6 +2104,134 @@ class _Chip extends StatelessWidget {
   }
 }
 
+class _KenyaReportsTab extends StatefulWidget {
+  final ReportBranchScope branchScope;
+
+  const _KenyaReportsTab({this.branchScope = ReportBranchScope.current});
+
+  @override
+  State<_KenyaReportsTab> createState() => _KenyaReportsTabState();
+}
+
+class _KenyaReportsTabState extends State<_KenyaReportsTab> {
+  bool _loading = true;
+  Map<String, dynamic> _zReport = {};
+  Map<String, dynamic> _vat = {};
+  Map<String, dynamic> _etims = {};
+  List<Map<String, dynamic>> _exportRows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_KenyaReportsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.branchScope != widget.branchScope) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final zReport = await ReportRepository.getZReport(
+      branchScope: widget.branchScope,
+    );
+    final vat = await ReportRepository.getKenyaVatSummary(
+      branchScope: widget.branchScope,
+    );
+    final etims = await ReportRepository.getEtimsSummary(
+      branchScope: widget.branchScope,
+    );
+    final exportRows = await ReportRepository.getAccountantExportRows(
+      branchScope: widget.branchScope,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _zReport = zReport;
+      _vat = vat;
+      _etims = etims;
+      _exportRows = exportRows;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          const Text(
+            'Kenya Launch Reports',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Z-report, VAT-ready summary, KRA eTIMS status, and accountant export counts.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _SummaryMetricCard(
+                label: 'Today Sales',
+                value: _money(_zReport['total_sales']),
+                color: AppColors.success,
+                icon: Icons.point_of_sale_outlined,
+                subtitle: '${_zReport['sale_count'] ?? 0} receipts',
+              ),
+              _SummaryMetricCard(
+                label: 'Today Tax',
+                value: _money(_zReport['total_tax']),
+                color: AppColors.primaryLight,
+                icon: Icons.receipt_long_outlined,
+              ),
+              _SummaryMetricCard(
+                label: 'Output VAT',
+                value: _money(_vat['output_vat']),
+                color: AppColors.warning,
+                icon: Icons.account_balance_outlined,
+                subtitle: '${_vat['receipt_count'] ?? 0} receipts this period',
+              ),
+              _SummaryMetricCard(
+                label: 'eTIMS Submitted',
+                value: '${_etims['submitted_count'] ?? 0}',
+                color: AppColors.success,
+                icon: Icons.fact_check_outlined,
+                subtitle:
+                    '${_etims['pending_count'] ?? 0} pending, ${_etims['failed_count'] ?? 0} failed',
+              ),
+              _SummaryMetricCard(
+                label: 'Export Rows',
+                value: '${_exportRows.length}',
+                color: AppColors.secondary,
+                icon: Icons.file_download_outlined,
+                subtitle: 'CSV/PDF-ready records',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _money(Object? value) {
+    final amount = (value as num? ?? 0).toDouble();
+    return '${ShopSettings.currency}${NumberUtils.formatCompact(amount)}';
+  }
+}
+
 class _SummaryMetricCard extends StatefulWidget {
   final String label;
   final String value;
@@ -2063,13 +2258,17 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
 
   @override
   Widget build(BuildContext context) {
-    final displayValue = (_showExact || widget.compactValue == null) ? widget.value : widget.compactValue!;
+    final displayValue = (_showExact || widget.compactValue == null)
+        ? widget.value
+        : widget.compactValue!;
     return GestureDetector(
-      onTap: widget.compactValue != null ? () {
-        setState(() {
-          _showExact = !_showExact;
-        });
-      } : null,
+      onTap: widget.compactValue != null
+          ? () {
+              setState(() {
+                _showExact = !_showExact;
+              });
+            }
+          : null,
       child: Container(
         width: 220,
         padding: const EdgeInsets.all(16),
@@ -2148,33 +2347,33 @@ class _CashierStatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 11,
-              ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
             ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: TextStyle(color: color, fontWeight: FontWeight.w700),
-              ),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(color: color, fontWeight: FontWeight.w700),
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2380,184 +2579,177 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _branches.isEmpty
-                  ? const _EmptyState(
-                      icon: Icons.compare_arrows_rounded,
-                      message: 'No branches found',
-                      subtitle:
-                          'Create branches in Settings to compare performance.',
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: _branches.length,
-                      separatorBuilder: (context, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final b = _branches[index];
-                        final name = b['branch_name'] as String? ?? 'Branch';
-                        final revenue =
-                            (b['revenue'] as num? ?? 0).toDouble();
-                        final grossProfit =
-                            (b['gross_profit'] as num? ?? 0).toDouble();
-                        final netProfit =
-                            (b['net_profit'] as num? ?? 0).toDouble();
-                        final expenses =
-                            (b['total_expenses'] as num? ?? 0).toDouble();
-                        final productRev =
-                            (b['product_revenue'] as num? ?? 0).toDouble();
-                        final serviceRev =
-                            (b['service_revenue'] as num? ?? 0).toDouble();
-                        final saleCount =
-                            (b['sale_count'] as num? ?? 0).toInt();
-                        final refundTotal =
-                            (b['refund_total'] as num? ?? 0).toDouble();
-                        final refundCount =
-                            (b['refund_count'] as num? ?? 0).toInt();
+              ? const _EmptyState(
+                  icon: Icons.compare_arrows_rounded,
+                  message: 'No branches found',
+                  subtitle:
+                      'Create branches in Settings to compare performance.',
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: _branches.length,
+                  separatorBuilder: (context, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final b = _branches[index];
+                    final name = b['branch_name'] as String? ?? 'Branch';
+                    final revenue = (b['revenue'] as num? ?? 0).toDouble();
+                    final grossProfit = (b['gross_profit'] as num? ?? 0)
+                        .toDouble();
+                    final netProfit = (b['net_profit'] as num? ?? 0).toDouble();
+                    final expenses = (b['total_expenses'] as num? ?? 0)
+                        .toDouble();
+                    final productRev = (b['product_revenue'] as num? ?? 0)
+                        .toDouble();
+                    final serviceRev = (b['service_revenue'] as num? ?? 0)
+                        .toDouble();
+                    final saleCount = (b['sale_count'] as num? ?? 0).toInt();
+                    final refundTotal = (b['refund_total'] as num? ?? 0)
+                        .toDouble();
+                    final refundCount = (b['refund_count'] as num? ?? 0)
+                        .toInt();
 
-                        // Rank badge colors
-                        final rankColor = index == 0
-                            ? AppColors.primary
-                            : index == 1
-                                ? AppColors.primaryLight
-                                : AppColors.textSecondary;
+                    // Rank badge colors
+                    final rankColor = index == 0
+                        ? AppColors.primary
+                        : index == 1
+                        ? AppColors.primaryLight
+                        : AppColors.textSecondary;
 
-                        return Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: index == 0
-                                  ? AppColors.primary.withValues(alpha: 0.3)
-                                  : AppColors.border,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    return Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: index == 0
+                              ? AppColors.primary.withValues(alpha: 0.3)
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          Row(
                             children: [
-                              // Header
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 36,
-                                    height: 36,
-                                    decoration: BoxDecoration(
-                                      color:
-                                          rankColor.withValues(alpha: 0.15),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '#${index + 1}',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: rankColor,
-                                        ),
-                                      ),
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: rankColor.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '#${index + 1}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: rankColor,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        Text(
-                                          '$saleCount sales · $_days day period',
-                                          style: const TextStyle(
-                                            color: AppColors.textSecondary,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        _money(revenue),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.primaryLight,
-                                          fontSize: 18,
-                                        ),
-                                      ),
-                                      const Text(
-                                        'Revenue',
-                                        style: TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                ),
                               ),
-                              const SizedBox(height: 16),
-                              // Metrics grid
-                              Row(
-                                children: [
-                                  _BranchMetric(
-                                    label: 'Gross Profit',
-                                    value: _money(grossProfit),
-                                    color: grossProfit >= 0
-                                        ? AppColors.success
-                                        : AppColors.error,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _BranchMetric(
-                                    label: 'Expenses',
-                                    value: _money(expenses),
-                                    color: AppColors.warning,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _BranchMetric(
-                                    label: 'Net Profit',
-                                    value: _money(netProfit),
-                                    color: netProfit >= 0
-                                        ? AppColors.success
-                                        : AppColors.error,
-                                  ),
-                                ],
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    Text(
+                                      '$saleCount sales · $_days day period',
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 10),
-                              Row(
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  _BranchMetric(
-                                    label: 'Products',
-                                    value: _money(productRev),
-                                    color: AppColors.primary,
+                                  Text(
+                                    _money(revenue),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primaryLight,
+                                      fontSize: 18,
+                                    ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  _BranchMetric(
-                                    label: 'Services',
-                                    value: _money(serviceRev),
-                                    color: AppColors.secondary,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _BranchMetric(
-                                    label: 'Refunds',
-                                    value: refundCount > 0
-                                        ? '$refundCount (${_money(refundTotal)})'
-                                        : '0',
-                                    color: AppColors.error,
+                                  const Text(
+                                    'Revenue',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 11,
+                                    ),
                                   ),
                                 ],
                               ),
                             ],
                           ),
-                        );
-                      },
-                    ),
+                          const SizedBox(height: 16),
+                          // Metrics grid
+                          Row(
+                            children: [
+                              _BranchMetric(
+                                label: 'Gross Profit',
+                                value: _money(grossProfit),
+                                color: grossProfit >= 0
+                                    ? AppColors.success
+                                    : AppColors.error,
+                              ),
+                              const SizedBox(width: 10),
+                              _BranchMetric(
+                                label: 'Expenses',
+                                value: _money(expenses),
+                                color: AppColors.warning,
+                              ),
+                              const SizedBox(width: 10),
+                              _BranchMetric(
+                                label: 'Net Profit',
+                                value: _money(netProfit),
+                                color: netProfit >= 0
+                                    ? AppColors.success
+                                    : AppColors.error,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _BranchMetric(
+                                label: 'Products',
+                                value: _money(productRev),
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              _BranchMetric(
+                                label: 'Services',
+                                value: _money(serviceRev),
+                                color: AppColors.secondary,
+                              ),
+                              const SizedBox(width: 10),
+                              _BranchMetric(
+                                label: 'Refunds',
+                                value: refundCount > 0
+                                    ? '$refundCount (${_money(refundTotal)})'
+                                    : '0',
+                                color: AppColors.error,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -2579,14 +2771,14 @@ class _BranchMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
               label,
               style: const TextStyle(

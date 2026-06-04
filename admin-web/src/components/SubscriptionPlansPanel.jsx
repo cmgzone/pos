@@ -79,6 +79,21 @@ const MESSAGE_GATEWAY_FIELDS = {
   },
 }
 
+const DEFAULT_ETIMS_CONFIG = {
+  providerName: 'KRA eTIMS OSCU/VSCU',
+  isActive: false,
+  baseUrl: '',
+  submitPath: '/invoices',
+  publicConfig: {
+    authHeaderName: 'Authorization',
+    authHeaderPrefix: 'Bearer',
+    timeoutMs: '20000',
+  },
+  secretConfig: {
+    apiKey: '',
+  },
+}
+
 function clonePlan(plan) {
   if (!plan) return null
   return JSON.parse(JSON.stringify(plan))
@@ -178,19 +193,30 @@ export default function SubscriptionPlansPanel({ token }) {
   const [features, setFeatures] = useState(defaultFeatures)
   const [subscriptionSettings, setSubscriptionSettings] = useState({
     trialDays: 30,
+    graceDays: 5,
   })
+  const [appVersion, setAppVersion] = useState({
+    latestVersion: '',
+    minimumVersion: '',
+    apkUrl: '',
+    releaseNotes: '',
+  })
+  const [readiness, setReadiness] = useState(null)
   const [gateways, setGateways] = useState([])
   const [gatewayDrafts, setGatewayDrafts] = useState({})
   const [messageGateways, setMessageGateways] = useState([])
   const [messageGatewayDrafts, setMessageGatewayDrafts] = useState({})
+  const [etimsConfig, setEtimsConfig] = useState(DEFAULT_ETIMS_CONFIG)
   const [selectedCode, setSelectedCode] = useState('')
   const [draft, setDraft] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingSubscriptionSettings, setSavingSubscriptionSettings] =
     useState(false)
+  const [savingAppVersion, setSavingAppVersion] = useState(false)
   const [savingGateway, setSavingGateway] = useState('')
   const [savingMessageGateway, setSavingMessageGateway] = useState('')
+  const [savingEtimsConfig, setSavingEtimsConfig] = useState(false)
   const [message, setMessage] = useState('')
 
   const selectedPlan = useMemo(
@@ -216,12 +242,18 @@ export default function SubscriptionPlansPanel({ token }) {
         subscriptionSettingsResult,
         gatewayResult,
         messageGatewayResult,
+        etimsResult,
+        appVersionResult,
+        readinessResult,
       ] =
         await Promise.allSettled([
           loadApi('/api/platform/plans'),
           loadApi('/api/platform/subscription-settings'),
           loadApi('/api/platform/payment-gateways'),
           loadApi('/api/platform/message-gateways'),
+          loadApi('/api/platform/etims-config'),
+          loadApi('/api/platform/app-version'),
+          loadApi('/api/platform/readiness'),
         ])
       if (plansResult.status === 'rejected') {
         throw plansResult.reason
@@ -258,10 +290,33 @@ export default function SubscriptionPlansPanel({ token }) {
           ),
         )
       }
+      if (etimsResult.status === 'fulfilled') {
+        setEtimsConfig({
+          ...DEFAULT_ETIMS_CONFIG,
+          ...(etimsResult.value.data || {}),
+          publicConfig: {
+            ...DEFAULT_ETIMS_CONFIG.publicConfig,
+            ...((etimsResult.value.data || {}).publicConfig || {}),
+          },
+          secretConfig: {
+            ...DEFAULT_ETIMS_CONFIG.secretConfig,
+            ...((etimsResult.value.data || {}).secretConfig || {}),
+          },
+        })
+      }
+      if (appVersionResult.status === 'fulfilled') {
+        setAppVersion(appVersionResult.value.data)
+      }
+      if (readinessResult.status === 'fulfilled') {
+        setReadiness(readinessResult.value.data)
+      }
       const failures = [
         subscriptionSettingsResult,
         gatewayResult,
         messageGatewayResult,
+        etimsResult,
+        appVersionResult,
+        readinessResult,
       ]
         .filter((item) => item.status === 'rejected')
         .map((item) => friendlyError(item.reason, 'Some settings could not be loaded.'))
@@ -312,6 +367,31 @@ export default function SubscriptionPlansPanel({ token }) {
       setMessage(friendlyError(error, 'Could not save subscription settings.'))
     } finally {
       setSavingSubscriptionSettings(false)
+    }
+  }
+
+  const saveAppVersion = async () => {
+    setSavingAppVersion(true)
+    setMessage('')
+    try {
+      const response = await fetch('/api/platform/app-version', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(appVersion),
+      })
+      const body = await response.json()
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error || 'Could not save app version settings')
+      }
+      setAppVersion(body.data)
+      setMessage('App release settings saved')
+    } catch (error) {
+      setMessage(friendlyError(error, 'Could not save app release settings.'))
+    } finally {
+      setSavingAppVersion(false)
     }
   }
 
@@ -528,6 +608,60 @@ export default function SubscriptionPlansPanel({ token }) {
     }
   }
 
+  const updateEtimsConfig = (patch) => {
+    setEtimsConfig((current) => ({ ...current, ...patch }))
+  }
+
+  const updateEtimsConfigGroup = (group, key, value) => {
+    setEtimsConfig((current) => ({
+      ...current,
+      [group]: {
+        ...(current[group] || {}),
+        [key]: value,
+      },
+    }))
+  }
+
+  const saveEtimsConfig = async () => {
+    setSavingEtimsConfig(true)
+    setMessage('')
+    try {
+      if (etimsConfig.isActive && !isHttpsUrl(etimsConfig.baseUrl)) {
+        throw new Error('KRA/eTIMS provider URL must be a valid HTTPS URL.')
+      }
+      const response = await fetch('/api/platform/etims-config', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(etimsConfig),
+      })
+      const body = await response.json()
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error || 'Could not save KRA/eTIMS configuration')
+      }
+      setEtimsConfig({
+        ...DEFAULT_ETIMS_CONFIG,
+        ...body.data,
+        publicConfig: {
+          ...DEFAULT_ETIMS_CONFIG.publicConfig,
+          ...(body.data.publicConfig || {}),
+        },
+        secretConfig: {
+          ...DEFAULT_ETIMS_CONFIG.secretConfig,
+          ...(body.data.secretConfig || {}),
+        },
+      })
+      setMessage('KRA/eTIMS connector saved')
+      loadPlans()
+    } catch (error) {
+      setMessage(friendlyError(error, 'Could not save KRA/eTIMS configuration.'))
+    } finally {
+      setSavingEtimsConfig(false)
+    }
+  }
+
   if (loading) {
     return <div style={{ color: 'var(--text-muted)' }}>Loading plans...</div>
   }
@@ -542,13 +676,51 @@ export default function SubscriptionPlansPanel({ token }) {
 
   return (
     <div className="subscription-admin-stack">
+      {readiness && (
+        <section className="gateway-panel">
+          <div className="gateway-panel-header">
+            <div>
+              <h3>Production Readiness</h3>
+              <p>
+                Launch status: {readiness.status === 'ready'
+                  ? 'ready'
+                  : readiness.status === 'blocked'
+                    ? 'blocked'
+                    : 'needs attention'}.
+                {' '}
+                {readiness.criticalCount || 0} critical,
+                {' '}
+                {readiness.warningCount || 0} warning.
+              </p>
+            </div>
+          </div>
+          <div className="gateway-grid">
+            {(readiness.checks || []).map((check) => (
+              <div className="gateway-card" key={check.key}>
+                <div className="gateway-card-header">
+                  <strong>{check.label}</strong>
+                  <span className="gateway-status">
+                    {check.status === 'pass'
+                      ? 'OK'
+                      : check.status === 'fail'
+                        ? 'Blocker'
+                        : 'Warning'}
+                  </span>
+                </div>
+                <p>{check.message}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="gateway-panel">
         <div className="gateway-panel-header">
           <div>
             <h3>New Shop Trial</h3>
             <p>
-              Choose how long new shops can use the trial plan. Existing
-              subscriptions keep their current expiry dates.
+              Choose how long new shops can use the trial plan and how long
+              they can keep working before the app becomes read-only.
             </p>
           </div>
         </div>
@@ -570,18 +742,253 @@ export default function SubscriptionPlansPanel({ token }) {
               }
             />
           </label>
+          <label className="form-group">
+            <span className="form-label">Grace Period (days)</span>
+            <input
+              className="form-input"
+              type="number"
+              min="0"
+              max="30"
+              step="1"
+              value={subscriptionSettings.graceDays ?? 5}
+              onChange={(event) =>
+                setSubscriptionSettings((current) => ({
+                  ...current,
+                  graceDays: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
         </div>
         <div className="editor-actions">
           <span className="gateway-status">
-            Applies when a new business starts its free trial.
+            Existing subscriptions keep their current expiry dates.
           </span>
           <button
             className="btn btn-primary"
             disabled={savingSubscriptionSettings}
             onClick={saveSubscriptionSettings}
           >
-            {savingSubscriptionSettings ? 'Saving...' : 'Save Trial Period'}
+            {savingSubscriptionSettings ? 'Saving...' : 'Save Trial Settings'}
           </button>
+        </div>
+      </section>
+
+      <section className="gateway-panel">
+        <div className="gateway-panel-header">
+          <div>
+            <h3>Signed APK Release</h3>
+            <p>
+              Configure the public version endpoint used by the app update
+              notice and direct shop rollout.
+            </p>
+          </div>
+        </div>
+        <div className="editor-grid">
+          <label className="form-group">
+            <span className="form-label">Latest Version</span>
+            <input
+              className="form-input"
+              value={appVersion.latestVersion || ''}
+              onChange={(event) =>
+                setAppVersion((current) => ({
+                  ...current,
+                  latestVersion: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label className="form-group">
+            <span className="form-label">Minimum Supported Version</span>
+            <input
+              className="form-input"
+              value={appVersion.minimumVersion || ''}
+              onChange={(event) =>
+                setAppVersion((current) => ({
+                  ...current,
+                  minimumVersion: event.target.value,
+                }))
+              }
+            />
+          </label>
+        </div>
+        <label className="form-group">
+          <span className="form-label">APK Download URL</span>
+          <input
+            className="form-input"
+            placeholder="https://..."
+            value={appVersion.apkUrl || ''}
+            onChange={(event) =>
+              setAppVersion((current) => ({
+                ...current,
+                apkUrl: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label className="form-group">
+          <span className="form-label">Release Notes</span>
+          <textarea
+            className="form-input"
+            rows="3"
+            value={appVersion.releaseNotes || ''}
+            onChange={(event) =>
+              setAppVersion((current) => ({
+                ...current,
+                releaseNotes: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <div className="editor-actions">
+          <span className="gateway-status">
+            {appVersion.latestVersion && appVersion.apkUrl
+              ? 'Release endpoint is configured.'
+              : 'Add latest version and APK URL before production rollout.'}
+          </span>
+          <button
+            className="btn btn-primary"
+            disabled={savingAppVersion}
+            onClick={saveAppVersion}
+          >
+            {savingAppVersion ? 'Saving...' : 'Save Release Settings'}
+          </button>
+        </div>
+      </section>
+
+      <section className="gateway-panel">
+        <div className="gateway-panel-header">
+          <div>
+            <h3>KRA eTIMS Connector</h3>
+            <p>
+              Configure the certified OSCU/VSCU provider endpoint. Shops only
+              enter their KRA PIN and device serial inside the POS app.
+            </p>
+          </div>
+        </div>
+        <div className="gateway-card">
+          <div className="gateway-card-header">
+            <label className="feature-toggle">
+              <input
+                type="checkbox"
+                checked={etimsConfig.isActive === true}
+                onChange={(event) =>
+                  updateEtimsConfig({ isActive: event.target.checked })
+                }
+              />
+              <span>{etimsConfig.providerName || 'KRA eTIMS OSCU/VSCU'}</span>
+            </label>
+            <small>{etimsConfig.isActive ? 'Active' : 'Inactive'}</small>
+          </div>
+          <div className="editor-grid">
+            <label className="form-group">
+              <span className="form-label">Provider Name</span>
+              <input
+                className="form-input"
+                value={etimsConfig.providerName || ''}
+                onChange={(event) =>
+                  updateEtimsConfig({ providerName: event.target.value })
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Provider Base URL</span>
+              <input
+                className="form-input"
+                type="url"
+                placeholder="https://..."
+                value={etimsConfig.baseUrl || ''}
+                onChange={(event) =>
+                  updateEtimsConfig({ baseUrl: event.target.value })
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Submit Path</span>
+              <input
+                className="form-input"
+                value={etimsConfig.submitPath || '/invoices'}
+                onChange={(event) =>
+                  updateEtimsConfig({ submitPath: event.target.value })
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Timeout (ms)</span>
+              <input
+                className="form-input"
+                type="number"
+                min="5000"
+                step="1000"
+                value={etimsConfig.publicConfig?.timeoutMs || '20000'}
+                onChange={(event) =>
+                  updateEtimsConfigGroup(
+                    'publicConfig',
+                    'timeoutMs',
+                    event.target.value,
+                  )
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Auth Header</span>
+              <input
+                className="form-input"
+                value={etimsConfig.publicConfig?.authHeaderName || 'Authorization'}
+                onChange={(event) =>
+                  updateEtimsConfigGroup(
+                    'publicConfig',
+                    'authHeaderName',
+                    event.target.value,
+                  )
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Auth Prefix</span>
+              <input
+                className="form-input"
+                placeholder="Bearer"
+                value={etimsConfig.publicConfig?.authHeaderPrefix || ''}
+                onChange={(event) =>
+                  updateEtimsConfigGroup(
+                    'publicConfig',
+                    'authHeaderPrefix',
+                    event.target.value,
+                  )
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">API Key / Token</span>
+              <input
+                className="form-input"
+                type="password"
+                value={etimsConfig.secretConfig?.apiKey || ''}
+                onChange={(event) =>
+                  updateEtimsConfigGroup(
+                    'secretConfig',
+                    'apiKey',
+                    event.target.value,
+                  )
+                }
+              />
+            </label>
+          </div>
+          <div className="editor-actions">
+            <span className="gateway-status">
+              {etimsConfig.isActive
+                ? 'Provider will be used for live KRA/eTIMS sale submissions.'
+                : 'Inactive: shops can save KRA details but submissions remain pending configuration.'}
+            </span>
+            <button
+              className="btn btn-primary"
+              disabled={savingEtimsConfig}
+              onClick={saveEtimsConfig}
+            >
+              {savingEtimsConfig ? 'Saving...' : 'Save KRA eTIMS'}
+            </button>
+          </div>
         </div>
       </section>
 

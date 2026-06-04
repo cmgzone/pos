@@ -42,6 +42,148 @@ class ReportRepository {
     args.addAll(_currentBranchArgs);
   }
 
+  static Future<Map<String, dynamic>> getZReport({
+    DateTime? day,
+    ReportBranchScope branchScope = ReportBranchScope.current,
+  }) async {
+    final target = day ?? DateTime.now();
+    final date = _dateOnly(target);
+    final clauses = <String>[
+      'date(s.created_at) = ?',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+    ];
+    final args = <dynamic>[date];
+    _addBranchFilter(clauses, args, 's', branchScope);
+
+    final rows = await DatabaseService.rawQuery('''
+      SELECT
+        COUNT(s.id) as sale_count,
+        COALESCE(SUM(s.total_amount), 0) as total_sales,
+        COALESCE(SUM(s.tax), 0) as total_tax,
+        COALESCE(SUM(s.discount), 0) as total_discount,
+        COALESCE(SUM(s.amount_paid), 0) as amount_paid,
+        COALESCE(SUM(s.balance_due), 0) as balance_due,
+        COALESCE(SUM(CASE WHEN s.payment_type = 'cash' THEN s.total_amount ELSE 0 END), 0) as cash_sales,
+        COALESCE(SUM(CASE WHEN s.payment_type LIKE '%mpesa%' THEN s.total_amount ELSE 0 END), 0) as mpesa_sales,
+        COALESCE(SUM(CASE WHEN s.payment_type NOT IN ('cash') AND s.payment_type NOT LIKE '%mpesa%' THEN s.total_amount ELSE 0 END), 0) as other_sales
+      FROM sales s
+      WHERE ${clauses.join(' AND ')}
+      ''', args);
+    return {
+      'date': date,
+      ...Map<String, dynamic>.from(rows.isEmpty ? const {} : rows.first),
+    };
+  }
+
+  static Future<Map<String, dynamic>> getKenyaVatSummary({
+    DateTime? from,
+    DateTime? to,
+    ReportBranchScope branchScope = ReportBranchScope.current,
+  }) async {
+    final start = from ?? DateTime(DateTime.now().year, DateTime.now().month);
+    final end = to ?? DateTime.now();
+    final clauses = <String>[
+      'date(s.created_at) BETWEEN ? AND ?',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+    ];
+    final args = <dynamic>[_dateOnly(start), _dateOnly(end)];
+    _addBranchFilter(clauses, args, 's', branchScope);
+
+    final rows = await DatabaseService.rawQuery('''
+      SELECT
+        COALESCE(SUM(s.total_amount), 0) as gross_sales,
+        COALESCE(SUM(s.tax), 0) as output_vat,
+        COALESCE(SUM(s.total_amount - s.tax), 0) as net_sales,
+        COALESCE(SUM(s.discount), 0) as discounts,
+        COUNT(s.id) as receipt_count
+      FROM sales s
+      WHERE ${clauses.join(' AND ')}
+      ''', args);
+    return {
+      'from': _dateOnly(start),
+      'to': _dateOnly(end),
+      'country': 'KE',
+      'currency': 'KES',
+      ...Map<String, dynamic>.from(rows.isEmpty ? const {} : rows.first),
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> getAccountantExportRows({
+    DateTime? from,
+    DateTime? to,
+    ReportBranchScope branchScope = ReportBranchScope.current,
+  }) async {
+    final start = from ?? DateTime(DateTime.now().year, DateTime.now().month);
+    final end = to ?? DateTime.now();
+    final clauses = <String>[
+      'date(s.created_at) BETWEEN ? AND ?',
+      's.deleted_at IS NULL',
+    ];
+    final args = <dynamic>[_dateOnly(start), _dateOnly(end)];
+    _addBranchFilter(clauses, args, 's', branchScope);
+    return DatabaseService.rawQuery('''
+      SELECT
+        s.id,
+        s.created_at,
+        s.customer_name,
+        s.payment_type,
+        s.total_amount,
+        s.tax,
+        s.discount,
+        s.amount_paid,
+        s.balance_due,
+        s.payment_reference,
+        s.etims_status,
+        s.etims_invoice_number,
+        s.etims_control_unit_invoice_number,
+        s.etims_control_unit_serial,
+        s.etims_submitted_at,
+        s.etims_error,
+        s.refund_for_sale_id,
+        s.refund_note
+      FROM sales s
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY s.created_at ASC
+      ''', args);
+  }
+
+  static Future<Map<String, dynamic>> getEtimsSummary({
+    DateTime? from,
+    DateTime? to,
+    ReportBranchScope branchScope = ReportBranchScope.current,
+  }) async {
+    final start = from ?? DateTime(DateTime.now().year, DateTime.now().month);
+    final end = to ?? DateTime.now();
+    final clauses = <String>[
+      'date(s.created_at) BETWEEN ? AND ?',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+    ];
+    final args = <dynamic>[_dateOnly(start), _dateOnly(end)];
+    _addBranchFilter(clauses, args, 's', branchScope);
+
+    final rows = await DatabaseService.rawQuery('''
+      SELECT
+        COUNT(s.id) as receipt_count,
+        COALESCE(SUM(CASE WHEN s.etims_status = 'submitted' THEN 1 ELSE 0 END), 0) as submitted_count,
+        COALESCE(SUM(CASE WHEN s.etims_status IN ('pending_sync', 'pending_configuration', 'not_submitted') OR s.etims_status IS NULL THEN 1 ELSE 0 END), 0) as pending_count,
+        COALESCE(SUM(CASE WHEN s.etims_status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count
+      FROM sales s
+      WHERE ${clauses.join(' AND ')}
+      ''', args);
+    return {
+      'from': _dateOnly(start),
+      'to': _dateOnly(end),
+      ...Map<String, dynamic>.from(rows.isEmpty ? const {} : rows.first),
+    };
+  }
+
+  static String _dateOnly(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
   // ── Top Debtors ────────────────────────────────────────────────────────────
 
   /// Customers sorted by outstanding Kopesha balance descending.

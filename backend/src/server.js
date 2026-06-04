@@ -53,6 +53,7 @@ const {
   resolvePlanPrice,
   savePaymentGateway,
   savePlatformSubscriptionSettings,
+  validatePaymentGatewayConfiguration,
   validateSellingModeEntitlement,
 } = require('./subscriptionPlans');
 const {
@@ -74,6 +75,16 @@ const {
   linkPosPaymentToSale,
   handlePosMpesaCallback,
 } = require('./posPayments');
+const {
+  ensureEtimsSchema,
+  loadPlatformEtimsConfig,
+  savePlatformEtimsConfig,
+  getBusinessEtimsSettings,
+  saveBusinessEtimsSettings,
+  submitEtimsSale,
+  listEtimsSubmissions,
+  platformEtimsReadinessErrors,
+} = require('./etims');
 const { searchWithSerpApi } = require('./serpApi');
 
 const app = express();
@@ -270,7 +281,7 @@ app.post('/api/auth/register', async (req, res, next) => {
           ? subscriptionSettings.trialDays
           : billingPeriodDays(selectedPrice.billingPeriod);
       const expiresAt = addDays(now, subscriptionDays);
-      const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
+      const graceUntil = addDays(expiresAt, subscriptionSettings.graceDays);
       await client.query(
         `INSERT INTO subscriptions (
            business_id, plan, status, expires_at, grace_until,
@@ -1116,6 +1127,24 @@ app.get('/api/platform/subscription-settings', requirePlatformAdmin, async (req,
   }
 });
 
+app.get('/api/platform/readiness', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const readiness = await loadPlatformReadiness();
+    res.json({ ok: true, data: readiness });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/app/version', async (req, res, next) => {
+  try {
+    const version = await loadAppVersionConfig();
+    res.json({ ok: true, data: version });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.put('/api/platform/subscription-settings', requirePlatformAdmin, async (req, res, next) => {
   try {
     const settings = await savePlatformSubscriptionSettings(req.body || {});
@@ -1182,6 +1211,42 @@ app.put('/api/platform/message-gateways/:provider', requirePlatformAdmin, async 
   }
 });
 
+app.get('/api/platform/etims-config', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const config = await loadPlatformEtimsConfig({ includeSecrets: false });
+    res.json({ ok: true, data: config });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/platform/etims-config', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const config = await savePlatformEtimsConfig(req.body || {});
+    res.json({ ok: true, data: config });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/platform/app-version', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const version = await loadAppVersionConfig();
+    res.json({ ok: true, data: version });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/platform/app-version', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const version = await saveAppVersionConfig(req.body || {});
+    res.json({ ok: true, data: version });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmin, async (req, res, next) => {
   try {
     await ensureSubscriptionSchema();
@@ -1230,7 +1295,7 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
       addDays(now, plan === 'trial' ? subscriptionSettings.trialDays : 30);
     const graceUntil =
       parseOptionalDate(req.body?.graceUntil || req.body?.grace_until) ||
-      addDays(expiresAt, config.subscriptionGraceDays);
+      addDays(expiresAt, subscriptionSettings.graceDays);
 
     const result = await withTransaction(async (client) => {
       await client.query(
@@ -1515,7 +1580,9 @@ app.get('/api/subscription/plans', async (req, res, next) => {
 
 app.get('/api/subscription/current', async (req, res, next) => {
   try {
-    const businessContext = await requireBusinessContext(req);
+    const businessContext = await requireBusinessContext(req, {
+      allowExpired: true,
+    });
     const countryCode =
       normalizeOptionalText(req.query?.countryCode) ||
       businessContext.countryCode ||
@@ -1534,7 +1601,9 @@ app.get('/api/subscription/current', async (req, res, next) => {
 
 app.get('/api/subscription/payments/:paymentId', async (req, res, next) => {
   try {
-    const businessContext = await requireBusinessContext(req);
+    const businessContext = await requireBusinessContext(req, {
+      allowExpired: true,
+    });
     const payment = await loadSubscriptionPayment(
       businessContext.businessId,
       req.params.paymentId,
@@ -1550,7 +1619,9 @@ app.get('/api/subscription/payments/:paymentId', async (req, res, next) => {
 
 app.post('/api/subscription/checkout', async (req, res, next) => {
   try {
-    const businessContext = await requireBusinessContext(req);
+    const businessContext = await requireBusinessContext(req, {
+      allowExpired: true,
+    });
     const planCode = normalizeOptionalText(req.body?.planCode || req.body?.plan);
     const billingPeriod = normalizeOptionalText(req.body?.billingPeriod) || 'monthly';
     const requestedSellingMode = normalizeSellingMode(
@@ -1655,7 +1726,9 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
 
 app.post('/api/subscription/google-pay/confirm', async (req, res, next) => {
   try {
-    const businessContext = await requireBusinessContext(req);
+    const businessContext = await requireBusinessContext(req, {
+      allowExpired: true,
+    });
     const paymentId = normalizeOptionalText(req.body?.paymentId);
     const paymentData = req.body?.paymentData || req.body?.googlePayToken;
     if (!paymentId || !paymentData) {
@@ -1732,6 +1805,85 @@ app.put('/api/business/payment-gateways/:provider', async (req, res, next) => {
       req.body || {},
     );
     res.json({ ok: true, data: gateway });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/business/etims-settings', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const settings = await getBusinessEtimsSettings(
+      businessContext.businessId,
+      { includeSecrets: false },
+    );
+    const platformConfig = await loadPlatformEtimsConfig({
+      includeSecrets: false,
+    });
+    res.json({
+      ok: true,
+      data: {
+        ...settings,
+        platformActive: platformConfig.isActive === true,
+        providerName: platformConfig.providerName,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/business/etims-settings', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const settings = await saveBusinessEtimsSettings(
+      businessContext.businessId,
+      req.body || {},
+    );
+    const platformConfig = await loadPlatformEtimsConfig({
+      includeSecrets: false,
+    });
+    res.json({
+      ok: true,
+      data: {
+        ...settings,
+        platformActive: platformConfig.isActive === true,
+        providerName: platformConfig.providerName,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/etims/submit-sale', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const sale =
+      req.body && typeof req.body === 'object' ? req.body.sale : null;
+    if (!sale || typeof sale !== 'object' || Array.isArray(sale)) {
+      throw createHttpError(400, 'sale payload is required');
+    }
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const submission = await submitEtimsSale({
+      businessContext,
+      sale,
+      items,
+      userId: req.body?.userId,
+    });
+    res.json({ ok: true, data: submission });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/etims/submissions', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const submissions = await listEtimsSubmissions(businessContext.businessId, {
+      limit: req.query?.limit,
+    });
+    res.json({ ok: true, data: submissions });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -2652,6 +2804,28 @@ app.put('/api/catalog/orders/:orderId/status', async (req, res, next) => {
   }
 });
 
+app.post('/api/catalog/orders/:orderId/payment-request', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const orderId = normalizeOptionalText(req.params.orderId);
+    if (!orderId) {
+      throw createHttpError(400, 'Order id is required');
+    }
+    const result = await requestPublicCatalogOrderPayment({
+      businessContext,
+      orderId,
+      channel: req.body?.channel,
+      recipient: req.body?.recipient,
+      body: req.body?.body || req.body?.message,
+      userId: req.body?.userId,
+      sendViaApi: req.body?.sendViaApi === true || req.body?.send_via_api === true,
+    });
+    res.json({ ok: true, data: result });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/public/catalog/:businessId/orders', async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.params.businessId);
@@ -2661,6 +2835,29 @@ app.post('/api/public/catalog/:businessId/orders', async (req, res, next) => {
 
     const order = await createPublicCatalogOrder(businessId, req.body || {});
     res.status(201).json({ ok: true, data: order });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/public/catalog/:businessId/orders/:orderNumber', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.params.businessId);
+    const orderNumber = normalizeOptionalText(req.params.orderNumber);
+    const phone = normalizeOptionalText(req.query?.phone);
+    if (!businessId || !orderNumber) {
+      throw createHttpError(400, 'Order tracking link is invalid');
+    }
+    if (!phone) {
+      throw createHttpError(400, 'Phone number is required to track an order');
+    }
+
+    const order = await loadPublicCatalogOrderForCustomer({
+      businessId,
+      orderNumber,
+      phone,
+    });
+    res.json({ ok: true, data: order });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -2702,7 +2899,7 @@ app.listen(config.port, () => {
   );
 });
 
-ensureSubscriptionSchema()
+Promise.all([ensureSubscriptionSchema(), ensureEtimsSchema()])
   .then(() =>
     startPikiProactiveWorker({
       query,
@@ -2712,10 +2909,10 @@ ensureSubscriptionSchema()
     }),
   )
   .catch((error) => {
-    console.error('Could not initialize subscription schema:', error.message);
+    console.error('Could not initialize backend schema:', error.message);
   });
 
-async function requireBusinessContext(req) {
+async function requireBusinessContext(req, { allowExpired = false } = {}) {
   const accessToken = parseBearerToken(req.headers.authorization);
   if (!accessToken) {
     throw createHttpError(401, 'Authorization token is required');
@@ -2735,7 +2932,7 @@ async function requireBusinessContext(req) {
   if (!businessContext) {
     throw createHttpError(401, 'Invalid business access token or device');
   }
-  if (!businessContext.usable) {
+  if (!businessContext.usable && !allowExpired) {
     throw createHttpError(
       402,
       'Subscription expired. Renew the business subscription to continue syncing.',
@@ -3087,7 +3284,8 @@ async function activateSubscriptionFromPayment(client, paymentId) {
     renewalStartsAt,
     billingPeriodDays(payment.billing_period),
   );
-  const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
+  const subscriptionSettings = await loadPlatformSubscriptionSettings(client);
+  const graceUntil = addDays(expiresAt, subscriptionSettings.graceDays);
   await client.query(
     `
     UPDATE businesses
@@ -3912,6 +4110,12 @@ async function createPublicCatalogOrder(businessId, payload) {
   const customerName = normalizeOptionalText(payload.customerName || payload.customer_name);
   const phone = normalizeOptionalText(payload.phone || payload.phoneNumber || payload.phone_number);
   const deliveryAddress = normalizeOptionalText(payload.deliveryAddress || payload.delivery_address);
+  const fulfillmentMethod = normalizeFulfillmentMethod(
+    payload.fulfillmentMethod ||
+      payload.fulfillment_method ||
+      payload.deliveryMethod ||
+      payload.delivery_method,
+  );
   const note = normalizeOptionalText(payload.note);
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
 
@@ -3972,6 +4176,7 @@ async function createPublicCatalogOrder(businessId, payload) {
         business_id,
         customer_name,
         phone,
+        fulfillment_method,
         delivery_address,
         note,
         status,
@@ -3981,13 +4186,14 @@ async function createPublicCatalogOrder(businessId, payload) {
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, 'catalog_link', $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, 'catalog_link', $10, $11)
       `,
       [
         orderId,
         businessId,
         customerName,
         phone,
+        fulfillmentMethod,
         deliveryAddress,
         note,
         subtotal,
@@ -4038,6 +4244,7 @@ async function createPublicCatalogOrder(businessId, payload) {
     businessName: business.name,
     customerName,
     phone,
+    fulfillmentMethod,
     deliveryAddress,
     note,
     status: 'pending',
@@ -4079,12 +4286,54 @@ async function listPublicCatalogOrders(businessId, { status = 'pending' } = {}) 
   return attachPublicCatalogOrderItems(ordersResult.rows);
 }
 
+async function loadPublicCatalogOrderForCustomer({
+  businessId,
+  orderNumber,
+  phone,
+}) {
+  await ensurePublicCatalogOrderSchema(query);
+  const cleanOrderNumber = normalizeOptionalText(orderNumber)
+    ?.replace(/[^a-zA-Z0-9-]/g, '')
+    .replace(/^#/, '')
+    .toLowerCase();
+  const cleanPhone = normalizePhoneForMatch(phone);
+  if (!cleanOrderNumber || cleanOrderNumber.length < 4 || !cleanPhone) {
+    throw createHttpError(400, 'Order number and phone are required');
+  }
+  const phoneCandidates = phoneMatchCandidates(phone);
+
+  const result = await query(
+    `
+    SELECT *
+    FROM public_catalog_orders
+    WHERE business_id = $1
+      AND LOWER(SUBSTRING(id FROM 1 FOR 8)) = $2
+      AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = ANY($3::text[])
+    LIMIT 1
+    `,
+    [businessId, cleanOrderNumber.slice(0, 8), phoneCandidates],
+  );
+  if (result.rows.length === 0) {
+    throw createHttpError(404, 'Order not found. Check the order number and phone.');
+  }
+  const orders = await attachPublicCatalogOrderItems(result.rows);
+  return orders[0];
+}
+
 async function updatePublicCatalogOrderStatus({ businessId, orderId, status }) {
   await ensurePublicCatalogOrderSchema(query);
   const result = await query(
     `
     UPDATE public_catalog_orders
     SET status = $3,
+        payment_requested_at = CASE
+          WHEN $3 = 'payment_requested' THEN NOW()
+          ELSE payment_requested_at
+        END,
+        fulfilled_at = CASE
+          WHEN $3 = 'fulfilled' THEN NOW()
+          ELSE fulfilled_at
+        END,
         updated_at = NOW()
     WHERE business_id = $1
       AND id = $2
@@ -4097,6 +4346,61 @@ async function updatePublicCatalogOrderStatus({ businessId, orderId, status }) {
   }
   const orders = await attachPublicCatalogOrderItems(result.rows);
   return orders[0];
+}
+
+async function requestPublicCatalogOrderPayment({
+  businessContext,
+  orderId,
+  channel,
+  recipient,
+  body,
+  userId,
+  sendViaApi,
+}) {
+  const order = await updatePublicCatalogOrderStatus({
+    businessId: businessContext.businessId,
+    orderId,
+    status: 'payment_requested',
+  });
+  const cleanRecipient = normalizeOptionalText(recipient) || order.phone;
+  const cleanBody = normalizeOptionalText(body) || buildCatalogPaymentMessage(order);
+  let messageLog = null;
+  let messageError = null;
+
+  if (sendViaApi) {
+    try {
+      messageLog = await sendBusinessMessage({
+        businessContext,
+        userId,
+        channel: normalizeOptionalText(channel) || 'whatsapp',
+        recipient: cleanRecipient,
+        body: cleanBody,
+        metadata: {
+          source: 'catalog_payment_request',
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+        },
+      });
+    } catch (error) {
+      messageError = error.message || 'Payment request message could not be sent.';
+    }
+  }
+
+  return {
+    order,
+    message: cleanBody,
+    recipient: cleanRecipient,
+    messageLog,
+    messageError,
+  };
+}
+
+function buildCatalogPaymentMessage(order) {
+  return [
+    `Hello ${order.customerName || 'Customer'}, your order #${order.orderNumber} has been accepted.`,
+    `Amount: ${Number(order.subtotal || 0).toFixed(2)}`,
+    'Please complete payment so the shop can prepare your order.',
+  ].join('\n');
 }
 
 async function attachPublicCatalogOrderItems(orderRows) {
@@ -4130,12 +4434,15 @@ function normalizePublicCatalogOrder(row, items) {
     orderNumber: shortOrderNumber(row.id),
     customerName: row.customer_name,
     phone: row.phone,
+    fulfillmentMethod: row.fulfillment_method || 'delivery',
     deliveryAddress: row.delivery_address || '',
     note: row.note || '',
     status: row.status,
     subtotal: Number(row.subtotal || 0),
     itemCount: Number(row.item_count || 0),
     source: row.source || 'catalog_link',
+    paymentRequestedAt: toIsoString(row.payment_requested_at),
+    fulfilledAt: toIsoString(row.fulfilled_at),
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
     items,
@@ -4162,14 +4469,34 @@ function normalizeCatalogOrderStatus(value, { allowAll = false, fallback = null 
     return fallback;
   }
   const clean = String(status || '').toLowerCase();
-  const allowed = ['pending', 'accepted', 'completed', 'cancelled'];
+  const allowed = [
+    'pending',
+    'accepted',
+    'payment_requested',
+    'fulfilled',
+    'rejected',
+    'cancelled',
+  ];
   if (allowAll && clean === 'all') {
     return 'all';
+  }
+  if (clean === 'completed') {
+    return 'fulfilled';
   }
   if (allowed.includes(clean)) {
     return clean;
   }
   throw createHttpError(400, 'Invalid catalog order status');
+}
+
+function normalizeFulfillmentMethod(value) {
+  const clean = normalizeOptionalText(value)
+    ?.toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_');
+  if (clean === 'pickup' || clean === 'collection') {
+    return 'pickup';
+  }
+  return 'delivery';
 }
 
 async function resolvePublicCatalogOrderItem({
@@ -4247,12 +4574,15 @@ async function ensurePublicCatalogOrderSchema(target = query) {
       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
       customer_name text NOT NULL,
       phone text NOT NULL,
+      fulfillment_method text NOT NULL DEFAULT 'delivery',
       delivery_address text,
       note text,
       status text NOT NULL DEFAULT 'pending',
       subtotal double precision NOT NULL DEFAULT 0,
       item_count double precision NOT NULL DEFAULT 0,
       source text NOT NULL DEFAULT 'catalog_link',
+      payment_requested_at timestamptz,
+      fulfilled_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
@@ -4275,6 +4605,21 @@ async function ensurePublicCatalogOrderSchema(target = query) {
       created_at timestamptz NOT NULL DEFAULT NOW()
     )
     `,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_orders
+     ADD COLUMN IF NOT EXISTS fulfillment_method text NOT NULL DEFAULT 'delivery'`,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_orders
+     ADD COLUMN IF NOT EXISTS payment_requested_at timestamptz`,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_orders
+     ADD COLUMN IF NOT EXISTS fulfilled_at timestamptz`,
   );
   await runDbQuery(
     target,
@@ -4628,6 +4973,20 @@ function renderPublicCatalogPage(catalog) {
       font-size: 13px;
       font-weight: 700;
     }
+    .choice-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .choice-row label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-weight: 800;
+    }
     .order-form textarea {
       width: 100%;
       min-height: 74px;
@@ -4657,6 +5016,52 @@ function renderPublicCatalogPage(catalog) {
       color: var(--muted);
       font-size: 13px;
       line-height: 1.4;
+    }
+    .tracking-panel {
+      margin: 0 0 48px;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .tracking-panel h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+    .tracking-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-top: 14px;
+    }
+    .tracking-form label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .track-order {
+      min-height: 46px;
+      border: 0;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+      border-radius: 8px;
+      background: var(--ink);
+      color: white;
+      padding: 0 16px;
+    }
+    .tracking-result {
+      display: none;
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(236, 34, 87, 0.08);
+      border: 1px solid rgba(236, 34, 87, 0.18);
+      line-height: 1.45;
     }
     .success {
       display: none;
@@ -4703,6 +5108,9 @@ function renderPublicCatalogPage(catalog) {
         left: 16px;
         width: auto;
       }
+      .tracking-form {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -4727,6 +5135,22 @@ function renderPublicCatalogPage(catalog) {
   <main class="wrap">
     <section id="grid" class="grid"></section>
     <p id="empty" class="empty">No products match your search.</p>
+    <section class="tracking-panel" aria-label="Track order">
+      <h2>Track your order</h2>
+      <p class="notice">Enter the order number and phone number you used at checkout.</p>
+      <form id="tracking-form" class="tracking-form">
+        <label>
+          Order number
+          <input id="tracking-order-number" maxlength="12" placeholder="e.g. A1B2C3D4" />
+        </label>
+        <label>
+          Phone number
+          <input id="tracking-phone" maxlength="40" autocomplete="tel" />
+        </label>
+        <button id="track-order" class="track-order" type="submit">Track</button>
+      </form>
+      <div id="tracking-result" class="tracking-result"></div>
+    </section>
   </main>
   <aside id="cart-panel" class="cart-panel" aria-label="Order cart">
     <div class="cart-head">
@@ -4747,6 +5171,10 @@ function renderPublicCatalogPage(catalog) {
         Phone number
         <input id="customer-phone" name="phone" required maxlength="40" autocomplete="tel" />
       </label>
+      <div class="choice-row" role="radiogroup" aria-label="Delivery method">
+        <label><input type="radio" name="fulfillmentMethod" value="delivery" checked /> Delivery</label>
+        <label><input type="radio" name="fulfillmentMethod" value="pickup" /> Pickup</label>
+      </div>
       <label>
         Delivery address or pickup note
         <input id="delivery-address" name="deliveryAddress" maxlength="240" autocomplete="street-address" />
@@ -4785,6 +5213,10 @@ function renderPublicCatalogPage(catalog) {
     const successBox = document.getElementById('order-success');
     const errorBox = document.getElementById('order-error');
     const whatsappOrder = document.getElementById('whatsapp-order');
+    const trackingForm = document.getElementById('tracking-form');
+    const trackingOrderNumber = document.getElementById('tracking-order-number');
+    const trackingPhone = document.getElementById('tracking-phone');
+    const trackingResult = document.getElementById('tracking-result');
     const currencyCode = catalog.currencyCode || catalog.currency || 'KES';
     const currencySymbol = String(catalog.currencySymbol || '').trim();
     let formatter = null;
@@ -4956,6 +5388,7 @@ function renderPublicCatalogPage(catalog) {
       return {
         customerName: document.getElementById('customer-name').value.trim(),
         phone: document.getElementById('customer-phone').value.trim(),
+        fulfillmentMethod: (new FormData(orderForm).get('fulfillmentMethod') || 'delivery'),
         deliveryAddress: document.getElementById('delivery-address').value.trim(),
         note: document.getElementById('order-note').value.trim(),
         items: Array.from(cart.values()).map((item) => ({
@@ -4973,6 +5406,7 @@ function renderPublicCatalogPage(catalog) {
         'Customer: ' + order.customerName,
         'Phone: ' + order.phone,
       ];
+      lines.push('Method: ' + (order.fulfillmentMethod === 'pickup' ? 'Pickup' : 'Delivery'));
       if (order.deliveryAddress) lines.push('Address: ' + order.deliveryAddress);
       lines.push('', 'Items:');
       for (const item of order.items) {
@@ -4982,6 +5416,59 @@ function renderPublicCatalogPage(catalog) {
       lines.push('', 'Total: ' + formatMoney(order.subtotal));
       if (order.note) lines.push('Note: ' + order.note);
       return lines.join('\\n');
+    }
+
+    function statusLabel(status) {
+      return ({
+        pending: 'Waiting for shop confirmation',
+        accepted: 'Accepted by shop',
+        payment_requested: 'Payment requested',
+        fulfilled: 'Fulfilled',
+        rejected: 'Rejected',
+        cancelled: 'Cancelled',
+      })[status] || status;
+    }
+
+    function renderTrackedOrder(order) {
+      const method = order.fulfillmentMethod === 'pickup' ? 'Pickup' : 'Delivery';
+      const items = (order.items || []).map((item) => {
+        const label = item.variantName ? item.productName + ' - ' + item.variantName : item.productName;
+        return '<li>' + escapeText(item.quantity + ' x ' + label) + '</li>';
+      }).join('');
+      trackingResult.innerHTML =
+        '<strong>Order #' + escapeText(order.orderNumber) + '</strong><br>' +
+        'Status: <strong>' + escapeText(statusLabel(order.status)) + '</strong><br>' +
+        'Method: ' + escapeText(method) + '<br>' +
+        'Total: ' + escapeText(formatMoney(order.subtotal)) +
+        (items ? '<ul>' + items + '</ul>' : '');
+      trackingResult.style.display = 'block';
+    }
+
+    async function submitTracking(event) {
+      event.preventDefault();
+      const orderNumber = trackingOrderNumber.value.trim().replace(/^#/, '');
+      const phone = trackingPhone.value.trim();
+      if (!orderNumber || !phone) {
+        trackingResult.textContent = 'Enter both order number and phone number.';
+        trackingResult.style.display = 'block';
+        return;
+      }
+      trackingResult.textContent = 'Checking order...';
+      trackingResult.style.display = 'block';
+      try {
+        const response = await fetch(
+          '/api/public/catalog/' + encodeURIComponent(catalog.business.id) +
+            '/orders/' + encodeURIComponent(orderNumber) +
+            '?phone=' + encodeURIComponent(phone)
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.ok !== true) {
+          throw new Error(body.error || 'Order could not be found.');
+        }
+        renderTrackedOrder(body.data);
+      } catch (error) {
+        trackingResult.textContent = error.message || 'Order could not be found.';
+      }
     }
 
     async function submitCatalogOrder(event) {
@@ -5012,6 +5499,8 @@ function renderPublicCatalogPage(catalog) {
         const order = body.data;
         successBox.textContent = 'Order #' + order.orderNumber + ' received. The shop will confirm availability and payment.';
         successBox.style.display = 'block';
+        trackingOrderNumber.value = order.orderNumber || '';
+        trackingPhone.value = order.phone || payload.phone || '';
         if (shopWhatsApp) {
           whatsappOrder.href = 'https://wa.me/' + shopWhatsApp + '?text=' + encodeURIComponent(buildOrderMessage(order));
           whatsappOrder.style.display = 'flex';
@@ -5030,6 +5519,7 @@ function renderPublicCatalogPage(catalog) {
 
     search.addEventListener('input', render);
     category.addEventListener('change', render);
+    trackingForm.addEventListener('submit', submitTracking);
     grid.addEventListener('click', (event) => {
       const button = event.target.closest('[data-product-id]');
       const interactive = event.target.closest('select, option, input, textarea, a');
@@ -5144,6 +5634,23 @@ function normalizePublicPhone(value) {
     return `254${digits.slice(1)}`;
   }
   return digits;
+}
+
+function normalizePhoneForMatch(value) {
+  return normalizePublicPhone(value);
+}
+
+function phoneMatchCandidates(value) {
+  const raw = String(value || '').replace(/\D/g, '');
+  const normalized = normalizePhoneForMatch(value);
+  const candidates = new Set([raw, normalized].filter(Boolean));
+  if (normalized.startsWith('254') && normalized.length === 12) {
+    candidates.add(`0${normalized.slice(3)}`);
+  }
+  if (raw.startsWith('0') && raw.length === 10) {
+    candidates.add(`254${raw.slice(1)}`);
+  }
+  return [...candidates];
 }
 
 function escapeHtml(value) {
@@ -5365,6 +5872,271 @@ function normalizeLearningRow(row) {
     metadata: row.metadata_json || {},
     updatedAt: toIsoString(row.updated_at),
   };
+}
+
+async function ensureAppVersionSchema(target = query) {
+  await runDbQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS platform_app_version (
+      id integer PRIMARY KEY DEFAULT 1,
+      latest_version text NOT NULL DEFAULT '',
+      minimum_version text NOT NULL DEFAULT '',
+      apk_url text NOT NULL DEFAULT '',
+      release_notes text NOT NULL DEFAULT '',
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      CONSTRAINT platform_app_version_single_row CHECK (id = 1)
+    )
+    `,
+  );
+  await runDbQuery(
+    target,
+    `
+    INSERT INTO platform_app_version (
+      id,
+      latest_version,
+      minimum_version,
+      apk_url,
+      release_notes
+    )
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (id) DO NOTHING
+    `,
+    [
+      1,
+      process.env.APP_LATEST_VERSION || '',
+      process.env.APP_MINIMUM_VERSION || '',
+      process.env.APP_APK_URL || '',
+      process.env.APP_RELEASE_NOTES || '',
+    ],
+  );
+}
+
+async function loadAppVersionConfig(target = query) {
+  await ensureAppVersionSchema(target);
+  const result = await runDbQuery(
+    target,
+    `
+    SELECT latest_version, minimum_version, apk_url, release_notes, updated_at
+    FROM platform_app_version
+    WHERE id = 1
+    LIMIT 1
+    `,
+  );
+  return normalizeAppVersionRow(result.rows[0] || {});
+}
+
+async function saveAppVersionConfig(input = {}, target = query) {
+  await ensureAppVersionSchema(target);
+  const latestVersion = normalizeOptionalText(input.latestVersion || input.latest_version) || '';
+  const minimumVersion = normalizeOptionalText(input.minimumVersion || input.minimum_version) || '';
+  const apkUrl = normalizeOptionalText(input.apkUrl || input.apk_url) || '';
+  const releaseNotes = normalizeOptionalText(input.releaseNotes || input.release_notes) || '';
+  if (apkUrl && !isHttpsUrl(apkUrl)) {
+    throw createHttpError(400, 'APK URL must be a valid HTTPS URL.');
+  }
+  const result = await runDbQuery(
+    target,
+    `
+    INSERT INTO platform_app_version (
+      id,
+      latest_version,
+      minimum_version,
+      apk_url,
+      release_notes,
+      updated_at
+    )
+    VALUES (1, $1, $2, $3, $4, NOW())
+    ON CONFLICT (id) DO UPDATE
+    SET latest_version = EXCLUDED.latest_version,
+        minimum_version = EXCLUDED.minimum_version,
+        apk_url = EXCLUDED.apk_url,
+        release_notes = EXCLUDED.release_notes,
+        updated_at = NOW()
+    RETURNING latest_version, minimum_version, apk_url, release_notes, updated_at
+    `,
+    [latestVersion, minimumVersion, apkUrl, releaseNotes],
+  );
+  return normalizeAppVersionRow(result.rows[0]);
+}
+
+function normalizeAppVersionRow(row) {
+  return {
+    latestVersion: row.latest_version || '',
+    minimumVersion: row.minimum_version || '',
+    apkUrl: row.apk_url || '',
+    releaseNotes: row.release_notes || '',
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+async function loadPlatformReadiness() {
+  const checks = [];
+  const pushCheck = ({ key, label, status, severity = 'warning', message }) => {
+    checks.push({ key, label, status, severity, message });
+  };
+
+  pushCheck({
+    key: 'environment',
+    label: 'Production Environment',
+    status: config.nodeEnv === 'production' ? 'pass' : 'warning',
+    severity: config.nodeEnv === 'production' ? 'info' : 'warning',
+    message:
+      config.nodeEnv === 'production'
+        ? 'Backend is running in production mode.'
+        : `Backend is running in ${config.nodeEnv}. Set NODE_ENV=production for launch.`,
+  });
+
+  pushCheck({
+    key: 'platform_admin',
+    label: 'Platform Admin Account',
+    status:
+      config.platformAdminEmail === 'superadmin@velora.pos'
+        ? 'warning'
+        : 'pass',
+    severity: 'warning',
+    message:
+      config.platformAdminEmail === 'superadmin@velora.pos'
+        ? 'Replace the default platform admin email before production.'
+        : 'Platform admin email is customized.',
+  });
+
+  const paymentGateways = await listPaymentGateways({ includeSecrets: true });
+  const activePaymentGateways = paymentGateways.filter(
+    (gateway) => gateway.isActive === true,
+  );
+  if (activePaymentGateways.length === 0) {
+    pushCheck({
+      key: 'payment_gateways',
+      label: 'Payment Gateways',
+      status: 'warning',
+      severity: 'warning',
+      message:
+        'No platform payment gateway is active. Shops can still use offline/manual payments, but subscription checkout will be limited.',
+    });
+  }
+  for (const gateway of activePaymentGateways) {
+    const errors = paymentGatewayReadinessErrors(gateway);
+    pushCheck({
+      key: `payment_${gateway.provider}`,
+      label: `${gateway.displayName || gateway.provider} Gateway`,
+      status: errors.length === 0 ? 'pass' : 'fail',
+      severity: errors.length === 0 ? 'info' : 'critical',
+      message:
+        errors.length === 0
+          ? 'Gateway is active and has required production fields.'
+          : `Complete gateway setup: ${errors.join(', ')}.`,
+    });
+  }
+
+  const messageGateways = await listMessageGateways({ includeSecrets: true });
+  const activeMessageGateways = messageGateways.filter(
+    (gateway) => gateway.isActive === true,
+  );
+  if (activeMessageGateways.length === 0) {
+    pushCheck({
+      key: 'message_gateways',
+      label: 'WhatsApp/SMS API Sending',
+      status: 'warning',
+      severity: 'warning',
+      message:
+        'No WhatsApp or SMS API gateway is active. The app can still open WhatsApp/SMS manually.',
+    });
+  }
+  for (const gateway of activeMessageGateways) {
+    const errors = messageGatewayReadinessErrors(gateway);
+    pushCheck({
+      key: `message_${gateway.provider}`,
+      label: `${gateway.displayName || gateway.provider} Messaging`,
+      status: errors.length === 0 ? 'pass' : 'fail',
+      severity: errors.length === 0 ? 'info' : 'critical',
+      message:
+        errors.length === 0
+          ? 'Message gateway is active and configured.'
+          : `Complete message gateway setup: ${errors.join(', ')}.`,
+    });
+  }
+
+  const etimsConfig = await loadPlatformEtimsConfig({ includeSecrets: true });
+  const etimsErrors = platformEtimsReadinessErrors(etimsConfig);
+  pushCheck({
+    key: 'kra_etims',
+    label: 'KRA eTIMS Connector',
+    status: etimsErrors.length === 0 ? 'pass' : 'warning',
+    severity: 'warning',
+    message:
+      etimsErrors.length === 0
+        ? 'KRA/eTIMS provider connector is active.'
+        : `Complete KRA/eTIMS setup: ${etimsErrors.join(' ')}`,
+  });
+
+  const appVersion = await loadAppVersionConfig();
+  pushCheck({
+    key: 'app_version',
+    label: 'App Version Rollout',
+    status: appVersion.latestVersion && appVersion.apkUrl ? 'pass' : 'warning',
+    severity: 'warning',
+    message:
+      appVersion.latestVersion && appVersion.apkUrl
+        ? `Latest app version is ${appVersion.latestVersion}.`
+        : 'Add latest version and HTTPS APK URL before shop rollout.',
+  });
+
+  const monitoringConfigured =
+    Boolean(process.env.SENTRY_DSN?.trim()) ||
+    Boolean(process.env.BACKEND_MONITORING_URL?.trim()) ||
+    Boolean(process.env.UPTIME_MONITOR_URL?.trim());
+  pushCheck({
+    key: 'monitoring',
+    label: 'Monitoring & Alerts',
+    status: monitoringConfigured ? 'pass' : 'warning',
+    severity: 'warning',
+    message: monitoringConfigured
+      ? 'Monitoring environment configuration is present.'
+      : 'Add SENTRY_DSN, BACKEND_MONITORING_URL, or UPTIME_MONITOR_URL for production alerting.',
+  });
+
+  const criticalCount = checks.filter(
+    (check) => check.status === 'fail' || check.severity === 'critical',
+  ).length;
+  const warningCount = checks.filter((check) => check.status === 'warning').length;
+  return {
+    status:
+      criticalCount > 0 ? 'blocked' : warningCount > 0 ? 'needs_attention' : 'ready',
+    criticalCount,
+    warningCount,
+    checks,
+  };
+}
+
+function messageGatewayReadinessErrors(gateway) {
+  const publicConfig = gateway.publicConfig || {};
+  const secretConfig = gateway.secretConfig || {};
+  const errors = [];
+  if (gateway.provider === 'whatsapp') {
+    if (!publicConfig.baseUrl || !isHttpsUrl(publicConfig.baseUrl)) {
+      errors.push('valid Graph API base URL');
+    }
+    if (!publicConfig.phoneNumberId) errors.push('phone number ID');
+    if (!secretConfig.accessToken) errors.push('access token');
+  } else if (gateway.provider === 'africas_talking') {
+    if (!publicConfig.baseUrl || !isHttpsUrl(publicConfig.baseUrl)) {
+      errors.push('valid messaging URL');
+    }
+    if (!publicConfig.username) errors.push('username');
+    if (!secretConfig.apiKey) errors.push('API key');
+  }
+  return errors;
+}
+
+function paymentGatewayReadinessErrors(gateway) {
+  try {
+    validatePaymentGatewayConfiguration(gateway);
+    return [];
+  } catch (error) {
+    const message = error.message || 'Payment gateway is incomplete.';
+    return [message.replace(/^Complete [^:]+:\s*/i, '')];
+  }
 }
 
 function createHttpError(statusCode, message) {

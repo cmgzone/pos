@@ -47,11 +47,14 @@ class CatalogOrder {
   final String customerName;
   final String phone;
   final String deliveryAddress;
+  final String fulfillmentMethod;
   final String note;
   final String status;
   final double subtotal;
   final double itemCount;
   final DateTime? createdAt;
+  final DateTime? paymentRequestedAt;
+  final DateTime? fulfilledAt;
   final List<CatalogOrderItem> items;
 
   const CatalogOrder({
@@ -60,11 +63,14 @@ class CatalogOrder {
     required this.customerName,
     required this.phone,
     required this.deliveryAddress,
+    required this.fulfillmentMethod,
     required this.note,
     required this.status,
     required this.subtotal,
     required this.itemCount,
     required this.createdAt,
+    required this.paymentRequestedAt,
+    required this.fulfilledAt,
     required this.items,
   });
 
@@ -76,11 +82,16 @@ class CatalogOrder {
       customerName: json['customerName']?.toString() ?? 'Customer',
       phone: json['phone']?.toString() ?? '',
       deliveryAddress: json['deliveryAddress']?.toString() ?? '',
+      fulfillmentMethod: json['fulfillmentMethod']?.toString() ?? 'delivery',
       note: json['note']?.toString() ?? '',
       status: json['status']?.toString() ?? 'pending',
       subtotal: _readDouble(json['subtotal']),
       itemCount: _readDouble(json['itemCount']),
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      paymentRequestedAt: DateTime.tryParse(
+        json['paymentRequestedAt']?.toString() ?? '',
+      ),
+      fulfilledAt: DateTime.tryParse(json['fulfilledAt']?.toString() ?? ''),
       items: rawItems is List
           ? rawItems
                 .whereType<Map>()
@@ -128,6 +139,7 @@ class CatalogOrderService {
     required String orderId,
     required String status,
   }) async {
+    await LicenseService.ensureWriteAccess(action: 'update catalog orders');
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
     final response = await _dio.put<Map<String, dynamic>>(
@@ -138,6 +150,33 @@ class CatalogOrderService {
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
     return CatalogOrder.fromJson(data);
+  }
+
+  static Future<Map<String, dynamic>> requestPayment({
+    required String orderId,
+    String channel = 'whatsapp',
+    String? recipient,
+    String? message,
+    bool sendViaApi = false,
+  }) async {
+    await LicenseService.ensureWriteAccess(
+      action: 'request catalog order payments',
+    );
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.post<Map<String, dynamic>>(
+      _url('catalog/orders/$orderId/payment-request'),
+      queryParameters: {'deviceId': deviceId},
+      data: {
+        'channel': channel,
+        'recipient': recipient,
+        'message': message,
+        'sendViaApi': sendViaApi,
+      },
+      options: Options(headers: headers),
+    );
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    return data;
   }
 
   static String _url(String path) {

@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'license_service.dart';
 import 'sync_settings_service.dart';
 
-enum CustomerMessageChannel { whatsapp, sms }
+enum CustomerMessageChannel { whatsapp, sms, email }
 
 class MessagingService {
   /// Cached flag — updated by fetchSettings / saveSettings.
@@ -23,6 +23,23 @@ class MessagingService {
     required String phoneNumber,
     required String message,
   }) async {
+    if (channel == CustomerMessageChannel.email) {
+      final email = phoneNumber.trim();
+      if (email.isEmpty || !email.contains('@')) {
+        throw Exception('Customer email address is required.');
+      }
+      final uri = Uri(
+        scheme: 'mailto',
+        path: email,
+        queryParameters: {'subject': 'Receipt from Piki POS', 'body': message},
+      );
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+      throw Exception('No email app is available to open this receipt.');
+    }
+
     final phone = _normalizePhone(phoneNumber);
     if (phone.isEmpty) {
       throw Exception('Customer phone number is required.');
@@ -50,6 +67,11 @@ class MessagingService {
     required String message,
     Map<String, dynamic>? metadata,
   }) async {
+    if (channel == CustomerMessageChannel.email) {
+      throw Exception(
+        'Email API sending is not configured yet. Open the email app instead.',
+      );
+    }
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
     final response = await _dio.post<Map<String, dynamic>>(

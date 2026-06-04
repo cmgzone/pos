@@ -18,6 +18,13 @@ class ShopSettings {
   static const _keyCarwashBays = 'carwash_bays_count';
   static const _keyCashDrawerEnabled = 'cash_drawer_enabled';
   static const _keyCashDrawerPrinterPath = 'cash_drawer_printer_path';
+  static const _keyEtimsEnabled = 'etims_enabled';
+  static const _keyEtimsAutoSubmit = 'etims_auto_submit';
+  static const _keyKraPin = 'kra_pin';
+  static const _keyEtimsVatNumber = 'etims_vat_number';
+  static const _keyEtimsSolutionType = 'etims_solution_type';
+  static const _keyEtimsBranchCode = 'etims_branch_code';
+  static const _keyEtimsDeviceSerial = 'etims_device_serial';
 
   static SharedPreferences? _prefs;
 
@@ -50,6 +57,18 @@ class ShopSettings {
       _prefs?.getBool(_keyCashDrawerEnabled) ?? false;
   static String get cashDrawerPrinterPath =>
       _prefs?.getString(_keyCashDrawerPrinterPath) ?? '';
+  static bool get etimsEnabled => _prefs?.getBool(_keyEtimsEnabled) ?? false;
+  static bool get etimsAutoSubmit =>
+      _prefs?.getBool(_keyEtimsAutoSubmit) ?? true;
+  static String get kraPin => _prefs?.getString(_keyKraPin) ?? '';
+  static String get etimsVatNumber =>
+      _prefs?.getString(_keyEtimsVatNumber) ?? '';
+  static String get etimsSolutionType =>
+      _prefs?.getString(_keyEtimsSolutionType) ?? 'OSCU';
+  static String get etimsBranchCode =>
+      _prefs?.getString(_keyEtimsBranchCode) ?? '';
+  static String get etimsDeviceSerial =>
+      _prefs?.getString(_keyEtimsDeviceSerial) ?? '';
 
   // Setters
   static Future<void> setShopName(String value) =>
@@ -79,6 +98,27 @@ class ShopSettings {
     await _prefs!.setString(_keyCashDrawerPrinterPath, cleanValue);
   }
 
+  static Future<void> setEtimsEnabled(bool value) =>
+      _prefs!.setBool(_keyEtimsEnabled, value);
+  static Future<void> setEtimsAutoSubmit(bool value) =>
+      _prefs!.setBool(_keyEtimsAutoSubmit, value);
+  static Future<void> setKraPin(String value) =>
+      _prefs!.setString(_keyKraPin, value.trim().toUpperCase());
+  static Future<void> setEtimsVatNumber(String value) =>
+      _prefs!.setString(_keyEtimsVatNumber, value.trim());
+  static Future<void> setEtimsSolutionType(String value) {
+    final clean = value.trim().toUpperCase();
+    return _prefs!.setString(
+      _keyEtimsSolutionType,
+      clean == 'VSCU' ? 'VSCU' : 'OSCU',
+    );
+  }
+
+  static Future<void> setEtimsBranchCode(String value) =>
+      _prefs!.setString(_keyEtimsBranchCode, value.trim());
+  static Future<void> setEtimsDeviceSerial(String value) =>
+      _prefs!.setString(_keyEtimsDeviceSerial, value.trim());
+
   static Future<void> resetForBusinessSwitch() async {
     await init();
     await _prefs!.remove(_keyShopName);
@@ -90,6 +130,13 @@ class ShopSettings {
     await _prefs!.remove(_keyReceiptFooter);
     await _prefs!.remove(_keyCashDrawerEnabled);
     await _prefs!.remove(_keyCashDrawerPrinterPath);
+    await _prefs!.remove(_keyEtimsEnabled);
+    await _prefs!.remove(_keyEtimsAutoSubmit);
+    await _prefs!.remove(_keyKraPin);
+    await _prefs!.remove(_keyEtimsVatNumber);
+    await _prefs!.remove(_keyEtimsSolutionType);
+    await _prefs!.remove(_keyEtimsBranchCode);
+    await _prefs!.remove(_keyEtimsDeviceSerial);
   }
 
   /// Check if shop has been set up

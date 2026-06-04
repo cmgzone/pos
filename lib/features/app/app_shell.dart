@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/services/database_service.dart';
+import '../../core/services/app_version_service.dart';
+import '../../core/services/device_notification_service.dart';
 import '../../core/services/session_service.dart';
 import '../../core/services/shop_settings.dart';
 import '../../core/services/branch_service.dart';
 import '../../core/services/sync_controller.dart';
+import '../../core/services/sync_settings_service.dart';
 import '../../core/services/license_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../agent/data/piki_models.dart';
@@ -14,6 +19,7 @@ import '../agent/presentation/piki_agent_screen.dart';
 import '../training/application/training_controller.dart';
 import '../training/presentation/training_hub_screen.dart';
 import '../training/widgets/training_anchor.dart';
+import '../customers/presentation/contacts_screen.dart';
 import '../customers/presentation/kopesha_screen.dart';
 import '../products/presentation/catalog_orders_screen.dart';
 import '../products/presentation/category_management_screen.dart';
@@ -56,6 +62,11 @@ class AppShellState extends ConsumerState<AppShell> {
   late int _selectedIndex;
   String _trainingPromptUserId = '';
   bool _subscriptionPromptShown = false;
+  bool _setupPromptShown = false;
+  Set<String> _seenNotificationIds = const <String>{};
+  Set<String> _deviceNotifiedIds = const <String>{};
+  bool _deviceNotificationBusy = false;
+  AppVersionInfo? _appVersionInfo;
 
   final _destinations = const [
     _NavDestination(
@@ -194,6 +205,15 @@ class AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 18,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.contacts_outlined,
+        selectedIcon: Icons.contacts_rounded,
+        label: 'Contacts',
+      ),
+    ),
+    _NavDestination(
       index: 9,
       section: _NavSection.system,
       item: _NavItem(
@@ -248,6 +268,10 @@ class AppShellState extends ConsumerState<AppShell> {
               UserAccessProfile.featureProducts,
             ))) {
       indices.add(17);
+    }
+    if (SessionService.canAccessFeature(UserAccessProfile.featureKopesha) ||
+        SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
+      indices.add(18);
     }
     final allowed = indices
         .where(_isAllowedForCurrentSellingMode)
@@ -330,6 +354,9 @@ class AppShellState extends ConsumerState<AppShell> {
     super.initState();
     _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSeenNotifications();
+      _loadDeviceNotificationIds();
+      _loadAppVersionNotice();
       _showStartupPrompts();
     });
   }
@@ -368,6 +395,22 @@ class AppShellState extends ConsumerState<AppShell> {
   }) {
     final notifications = <_AppNotification>[];
     final license = syncState.licenseSnapshot;
+    final appVersion = _appVersionInfo;
+
+    if (appVersion?.hasUpdate == true) {
+      notifications.add(
+        _AppNotification(
+          id: 'app_update_${appVersion!.latestVersion}',
+          icon: Icons.system_update_alt_outlined,
+          color: AppColors.primaryLight,
+          title: 'App update available',
+          message: appVersion.releaseNotes.trim().isEmpty
+              ? 'Version ${appVersion.latestVersion} is ready to install.'
+              : appVersion.releaseNotes,
+          destinationIndex: 9,
+        ),
+      );
+    }
 
     switch (license.accessStatus) {
       case LicenseAccessStatus.grace:
@@ -380,6 +423,7 @@ class AppShellState extends ConsumerState<AppShell> {
                 license.detail ??
                 'Renew the subscription before the grace period ends.',
             destinationIndex: 9,
+            severity: _AppNotificationSeverity.warning,
           ),
         );
       case LicenseAccessStatus.expired:
@@ -392,6 +436,8 @@ class AppShellState extends ConsumerState<AppShell> {
                 license.detail ??
                 'Renew the subscription to record sales and make changes.',
             destinationIndex: 9,
+            severity: _AppNotificationSeverity.critical,
+            deviceNotify: true,
           ),
         );
       case LicenseAccessStatus.invalid:
@@ -404,6 +450,8 @@ class AppShellState extends ConsumerState<AppShell> {
                 license.detail ??
                 'Reconnect this device to refresh the subscription license.',
             destinationIndex: 9,
+            severity: _AppNotificationSeverity.critical,
+            deviceNotify: true,
           ),
         );
       case LicenseAccessStatus.localOnly:
@@ -430,6 +478,8 @@ class AppShellState extends ConsumerState<AppShell> {
           title: 'Cloud sync failed',
           message: syncState.lastError!,
           destinationIndex: 9,
+          severity: _AppNotificationSeverity.critical,
+          deviceNotify: true,
         ),
       );
     }
@@ -444,6 +494,8 @@ class AppShellState extends ConsumerState<AppShell> {
           message:
               '$issueCount sync issue${issueCount == 1 ? '' : 's'} need attention in Settings.',
           destinationIndex: 9,
+          severity: _AppNotificationSeverity.critical,
+          deviceNotify: true,
         ),
       );
     }
@@ -480,6 +532,10 @@ class AppShellState extends ConsumerState<AppShell> {
           message: insight.body,
           destinationIndex: 16,
           pikiInsight: insight,
+          severity: insight.severity.toLowerCase() == 'high'
+              ? _AppNotificationSeverity.critical
+              : _AppNotificationSeverity.warning,
+          deviceNotify: insight.severity.toLowerCase() == 'high',
         ),
       );
     }
@@ -494,6 +550,115 @@ class AppShellState extends ConsumerState<AppShell> {
         return AppColors.warning;
       default:
         return AppColors.primaryLight;
+    }
+  }
+
+  Future<void> _loadSeenNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _seenNotificationIds =
+          prefs.getStringList('seen_app_notifications_v1')?.toSet() ??
+          const <String>{};
+    });
+  }
+
+  Future<void> _loadDeviceNotificationIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _deviceNotifiedIds =
+          prefs
+              .getStringList('device_notified_app_notifications_v1')
+              ?.toSet() ??
+          const <String>{};
+    });
+  }
+
+  Future<void> _loadAppVersionNotice() async {
+    try {
+      final info = await AppVersionService.fetch();
+      if (mounted) {
+        setState(() => _appVersionInfo = info);
+      }
+    } catch (_) {
+      // Update checks should never block app startup.
+    }
+  }
+
+  Future<void> _markNotificationsSeen(
+    List<_AppNotification> notifications,
+  ) async {
+    final ids = notifications.map((item) => item.id).toSet();
+    if (ids.isEmpty) {
+      return;
+    }
+    final next = {..._seenNotificationIds, ...ids};
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'seen_app_notifications_v1',
+      next.take(200).toList(),
+    );
+    if (mounted) {
+      setState(() => _seenNotificationIds = next);
+    }
+  }
+
+  int _unseenNotificationCount(List<_AppNotification> notifications) {
+    return notifications
+        .where(
+          (notification) => !_seenNotificationIds.contains(notification.id),
+        )
+        .length;
+  }
+
+  void _queueDeviceNotifications(List<_AppNotification> notifications) {
+    final pending = notifications
+        .where(
+          (notification) =>
+              notification.deviceNotify &&
+              !_deviceNotifiedIds.contains(notification.id) &&
+              !_seenNotificationIds.contains(notification.id),
+        )
+        .toList(growable: false);
+    if (pending.isEmpty || _deviceNotificationBusy) {
+      return;
+    }
+    _deviceNotificationBusy = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sendDeviceNotifications(pending);
+    });
+  }
+
+  Future<void> _sendDeviceNotifications(
+    List<_AppNotification> notifications,
+  ) async {
+    if (notifications.isEmpty) {
+      _deviceNotificationBusy = false;
+      return;
+    }
+    await DeviceNotificationService.requestPermissionIfNeeded();
+    final nextIds = {..._deviceNotifiedIds};
+    for (final notification in notifications.take(3)) {
+      await DeviceNotificationService.showImportant(
+        id: notification.id,
+        title: notification.title,
+        body: notification.message,
+      );
+      nextIds.add(notification.id);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'device_notified_app_notifications_v1',
+      nextIds.take(200).toList(),
+    );
+    _deviceNotificationBusy = false;
+    if (mounted) {
+      setState(() => _deviceNotifiedIds = nextIds);
     }
   }
 
@@ -698,13 +863,14 @@ class AppShellState extends ConsumerState<AppShell> {
         ),
       ),
     );
+    await _markNotificationsSeen(notifications);
   }
 
   Widget _buildNotificationIcon(
     List<_AppNotification> notifications, {
     Color? color,
   }) {
-    final count = notifications.length;
+    final count = _unseenNotificationCount(notifications);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -744,7 +910,145 @@ class AppShellState extends ConsumerState<AppShell> {
   Future<void> _showStartupPrompts() async {
     await _maybeShowSubscriptionPrompt();
     if (mounted) {
+      await _maybeShowSetupChecklistPrompt();
+    }
+    if (mounted) {
       await _maybeShowTrainingPrompt();
+    }
+  }
+
+  Future<void> _maybeShowSetupChecklistPrompt() async {
+    if (_setupPromptShown ||
+        !RolePermissions.canManageOperationalSettings(
+          SessionService.currentUserRole,
+        )) {
+      return;
+    }
+    _setupPromptShown = true;
+    await SyncSettingsService.init();
+    final businessKey = SyncSettingsService.localBusinessId.isEmpty
+        ? SessionService.currentUserId
+        : SyncSettingsService.localBusinessId;
+    final prefs = await SharedPreferences.getInstance();
+    final dismissedKey = 'setup_checklist_dismissed_$businessKey';
+    if (prefs.getBool(dismissedKey) == true) {
+      return;
+    }
+
+    final checklist = await _loadSetupChecklist();
+    if (!mounted || checklist.every((item) => item.done)) {
+      await prefs.setBool(dismissedKey, true);
+      return;
+    }
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        icon: const Icon(Icons.checklist_rounded, color: AppColors.primary),
+        title: const Text('Finish shop setup'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: checklist
+                .map(
+                  (item) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      item.done
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: item.done
+                          ? AppColors.success
+                          : AppColors.textSecondary,
+                    ),
+                    title: Text(item.title),
+                    subtitle: Text(item.subtitle),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'dismiss'),
+            child: const Text('Later'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, 'orders'),
+            child: const Text('Open Orders'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'settings'),
+            child: const Text('Open Setup'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (action == 'dismiss') {
+      await prefs.setBool(dismissedKey, true);
+      return;
+    }
+    if (action == 'orders') {
+      _selectIndex(17);
+      return;
+    }
+    if (action == 'settings') {
+      _selectIndex(9);
+    }
+  }
+
+  Future<List<_SetupChecklistItem>> _loadSetupChecklist() async {
+    final productCount = await _countRows('products');
+    final serviceCount = await _countRows('services');
+    final staffCount = await _countRows('users');
+    return [
+      _SetupChecklistItem(
+        title: 'Business profile and currency',
+        subtitle: '${ShopSettings.shopName} - ${ShopSettings.currency}',
+        done:
+            ShopSettings.isConfigured &&
+            ShopSettings.currency.trim().isNotEmpty,
+      ),
+      _SetupChecklistItem(
+        title: 'Add your first product or service',
+        subtitle: '$productCount products, $serviceCount services',
+        done: productCount > 0 || serviceCount > 0,
+      ),
+      _SetupChecklistItem(
+        title: 'Publish catalog QR or order link',
+        subtitle: 'Open Orders to share the customer catalog.',
+        done: false,
+      ),
+      _SetupChecklistItem(
+        title: 'Add staff accounts',
+        subtitle: '$staffCount team member${staffCount == 1 ? '' : 's'}',
+        done: staffCount > 1,
+      ),
+      _SetupChecklistItem(
+        title: 'Sync and backup',
+        subtitle: SyncSettingsService.lastSyncAt == null
+            ? 'Not synced yet'
+            : 'Last synced ${SyncSettingsService.lastSyncAt}',
+        done: SyncSettingsService.lastSyncAt != null,
+      ),
+    ];
+  }
+
+  Future<int> _countRows(String table) async {
+    try {
+      final rows = await DatabaseService.rawQuery(
+        'SELECT COUNT(*) AS count FROM $table WHERE deleted_at IS NULL',
+      );
+      return (rows.first['count'] as num? ?? 0).toInt();
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -942,6 +1246,7 @@ class AppShellState extends ConsumerState<AppShell> {
       syncState,
       pikiInsights: pikiInsights,
     );
+    _queueDeviceNotifications(notifications);
     final isWide = MediaQuery.of(context).size.width > 800;
     final currentIndex = _currentIndex;
     final mobileBottomDestinations = _mobileBottomDestinations;
@@ -1292,6 +1597,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return const PikiAgentScreen();
       case 17:
         return CatalogOrdersScreen(onOpenPos: () => _selectIndex(0));
+      case 18:
+        return const ContactsScreen();
       default:
         return const PosScreen();
     }
@@ -1328,21 +1635,41 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 }
 
+enum _AppNotificationSeverity { info, warning, critical }
+
 class _AppNotification {
+  final String id;
   final IconData icon;
   final Color color;
   final String title;
   final String message;
   final int? destinationIndex;
   final PikiProactiveInsight? pikiInsight;
+  final _AppNotificationSeverity severity;
+  final bool deviceNotify;
 
   const _AppNotification({
+    String? id,
     required this.icon,
     required this.color,
     required this.title,
     required this.message,
     this.destinationIndex,
     this.pikiInsight,
+    this.severity = _AppNotificationSeverity.info,
+    this.deviceNotify = false,
+  }) : id = id ?? '$title|$message';
+}
+
+class _SetupChecklistItem {
+  final String title;
+  final String subtitle;
+  final bool done;
+
+  const _SetupChecklistItem({
+    required this.title,
+    required this.subtitle,
+    required this.done,
   });
 }
 

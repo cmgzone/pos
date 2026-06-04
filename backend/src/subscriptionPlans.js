@@ -228,9 +228,11 @@ async function ensureSubscriptionSchema(target = query) {
     CREATE TABLE IF NOT EXISTS platform_subscription_settings (
       id integer PRIMARY KEY DEFAULT 1,
       trial_days integer NOT NULL DEFAULT 30,
+      grace_days integer NOT NULL DEFAULT 5,
       updated_at timestamptz NOT NULL DEFAULT NOW(),
       CONSTRAINT platform_subscription_settings_single_row CHECK (id = 1),
-      CONSTRAINT platform_subscription_settings_trial_days CHECK (trial_days BETWEEN 1 AND 365)
+      CONSTRAINT platform_subscription_settings_trial_days CHECK (trial_days BETWEEN 1 AND 365),
+      CONSTRAINT platform_subscription_settings_grace_days CHECK (grace_days BETWEEN 0 AND 30)
     )
     `,
   );
@@ -238,11 +240,19 @@ async function ensureSubscriptionSchema(target = query) {
   await runQuery(
     target,
     `
-    INSERT INTO platform_subscription_settings (id, trial_days)
-    VALUES (1, $1)
+    ALTER TABLE platform_subscription_settings
+      ADD COLUMN IF NOT EXISTS grace_days integer NOT NULL DEFAULT 5
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    INSERT INTO platform_subscription_settings (id, trial_days, grace_days)
+    VALUES (1, $1, $2)
     ON CONFLICT (id) DO NOTHING
     `,
-    [configuredTrialDays()],
+    [configuredTrialDays(), configuredGraceDays()],
   );
 
   await runQuery(
@@ -445,7 +455,7 @@ async function loadPlatformSubscriptionSettings(target = query) {
   const result = await runQuery(
     target,
     `
-    SELECT trial_days, updated_at
+    SELECT trial_days, grace_days, updated_at
     FROM platform_subscription_settings
     WHERE id = 1
     LIMIT 1
@@ -454,28 +464,39 @@ async function loadPlatformSubscriptionSettings(target = query) {
   const row = result.rows[0];
   return {
     trialDays: normalizeTrialDays(row?.trial_days, configuredTrialDays()),
+    graceDays: normalizeGraceDays(row?.grace_days, configuredGraceDays()),
     updatedAt: toIsoString(row?.updated_at),
   };
 }
 
 async function savePlatformSubscriptionSettings(input = {}, target = query) {
   await ensureSubscriptionSchema(target);
-  const trialDays = normalizeTrialDays(input.trialDays ?? input.trial_days);
+  const current = await loadPlatformSubscriptionSettings(target);
+  const trialDays = normalizeTrialDays(
+    input.trialDays ?? input.trial_days,
+    current.trialDays,
+  );
+  const graceDays = normalizeGraceDays(
+    input.graceDays ?? input.grace_days,
+    current.graceDays,
+  );
   const result = await runQuery(
     target,
     `
-    INSERT INTO platform_subscription_settings (id, trial_days, updated_at)
-    VALUES (1, $1, NOW())
+    INSERT INTO platform_subscription_settings (id, trial_days, grace_days, updated_at)
+    VALUES (1, $1, $2, NOW())
     ON CONFLICT (id) DO UPDATE
     SET trial_days = EXCLUDED.trial_days,
+        grace_days = EXCLUDED.grace_days,
         updated_at = NOW()
-    RETURNING trial_days, updated_at
+    RETURNING trial_days, grace_days, updated_at
     `,
-    [trialDays],
+    [trialDays, graceDays],
   );
   const row = result.rows[0];
   return {
     trialDays: normalizeTrialDays(row.trial_days),
+    graceDays: normalizeGraceDays(row.grace_days),
     updatedAt: toIsoString(row.updated_at),
   };
 }
@@ -1418,6 +1439,23 @@ function configuredTrialDays() {
   return normalizeTrialDays(config.subscriptionTrialDays, 30);
 }
 
+function normalizeGraceDays(value, fallback = null) {
+  const candidate =
+    value == null || String(value).trim() === '' ? fallback : value;
+  const parsed = Number(candidate);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 30) {
+    throw createError(
+      400,
+      'Grace period must be a whole number between 0 and 30 days.',
+    );
+  }
+  return parsed;
+}
+
+function configuredGraceDays() {
+  return normalizeGraceDays(config.subscriptionGraceDays, 5);
+}
+
 function toIsoString(value) {
   if (!value) return null;
   const parsed = new Date(value);
@@ -1471,6 +1509,7 @@ module.exports = {
   normalizePriceRow,
   normalizeProvider,
   normalizeSellingMode,
+  normalizeGraceDays,
   normalizeTrialDays,
   providerForCountry,
   renewalBaseDate,

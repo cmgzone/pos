@@ -107,8 +107,15 @@ class SaleRepository {
         .toList();
 
     // Fetch products, variants, and stock batches in bulk (N+1 query fix)
-    final productIds = productItems.map((item) => item['product_id'] as String).toSet().toList();
-    final variantIds = productItems.map((item) => item['variant_id'] as String?).whereType<String>().toSet().toList();
+    final productIds = productItems
+        .map((item) => item['product_id'] as String)
+        .toSet()
+        .toList();
+    final variantIds = productItems
+        .map((item) => item['variant_id'] as String?)
+        .whereType<String>()
+        .toSet()
+        .toList();
 
     final List<Map<String, dynamic>> productsList;
     if (productIds.isNotEmpty) {
@@ -142,7 +149,10 @@ class SaleRepository {
 
     final List<Map<String, dynamic>> allBatches;
     if (nonVariantProductIds.isNotEmpty) {
-      final placeholders = List.filled(nonVariantProductIds.length, '?').join(',');
+      final placeholders = List.filled(
+        nonVariantProductIds.length,
+        '?',
+      ).join(',');
       allBatches = await DatabaseService.rawQuery(
         '''
         SELECT * FROM stock_batches
@@ -154,7 +164,11 @@ class SaleRepository {
           date(expiry_date) ASC,
           received_at ASC
         ''',
-        [...nonVariantProductIds, DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
+        [
+          ...nonVariantProductIds,
+          DatabaseService.defaultBranchId,
+          DatabaseService.currentBranchId,
+        ],
       );
     } else {
       allBatches = [];
@@ -243,6 +257,7 @@ class SaleRepository {
       'payment_metadata_json': paymentMetadata == null
           ? null
           : jsonEncode(paymentMetadata),
+      'etims_status': 'not_submitted',
       'created_at': saleTimestamp,
       'updated_at': now,
       'sync_status': 'pending',

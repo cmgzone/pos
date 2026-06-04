@@ -7,6 +7,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
+import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../purchases/presentation/purchase_management_screen.dart';
@@ -48,6 +49,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
+        toolbarHeight: 50,
         leading: isMobile
             ? IconButton(
                 icon: const Icon(Icons.menu),
@@ -56,31 +58,36 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               )
             : null,
         automaticallyImplyLeading: false,
-        title: Text(isMobile ? 'Products' : 'Product Management'),
+        title: Text(
+          isMobile ? 'Products' : 'Product Management',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         actions: [
           if (!isMobile)
-            OutlinedButton.icon(
+            CompactHeaderButton(
               onPressed: _openCatalogOrders,
-              icon: const Icon(Icons.receipt_long_outlined, size: 18),
-              label: const Text('Catalog Orders'),
+              icon: Icons.receipt_long_outlined,
+              label: 'Catalog Orders',
+              filled: false,
             ),
-          if (!isMobile) const SizedBox(width: 8),
+          if (!isMobile) const SizedBox(width: 6),
           if (!isMobile)
-            OutlinedButton.icon(
+            CompactHeaderButton(
               onPressed: _openStockList,
-              icon: const Icon(Icons.fact_check_outlined, size: 18),
-              label: const Text('Stock List'),
+              icon: Icons.fact_check_outlined,
+              label: 'Stock List',
+              filled: false,
             ),
-          if (!isMobile) const SizedBox(width: 8),
+          if (!isMobile) const SizedBox(width: 4),
           if (!isMobile)
-            IconButton(
-              icon: const Icon(Icons.local_shipping_outlined),
+            CompactHeaderIconButton(
+              icon: Icons.local_shipping_outlined,
               tooltip: 'Purchases & Suppliers',
               onPressed: _openPurchases,
             ),
           if (!isMobile)
-            IconButton(
-              icon: const Icon(Icons.category_outlined),
+            CompactHeaderIconButton(
+              icon: Icons.category_outlined,
               tooltip: 'Manage Categories',
               onPressed: _openCategories,
             ),
@@ -92,13 +99,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     onPressed: _addProduct,
                     icon: const Icon(Icons.add_circle_outline),
                   )
-                : FilledButton.icon(
+                : CompactHeaderButton(
                     onPressed: _addProduct,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add Product'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                    ),
+                    icon: Icons.add,
+                    label: 'Add Product',
                   ),
           ),
           if (isMobile)

@@ -8,6 +8,10 @@ class AppConstants {
   static const String _defaultSocketUrl = 'https://pos-e0hs.onrender.com';
   static const String _defaultLicenseSigningSecret =
       'velora-pos-dev-license-secret-change-me';
+  static const String supportEmail = String.fromEnvironment(
+    'SUPPORT_EMAIL',
+    defaultValue: 'support@pikipos.co.ke',
+  );
 
   // App-managed API endpoints
   static String get apiBaseUrl {

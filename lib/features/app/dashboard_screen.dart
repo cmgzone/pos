@@ -97,10 +97,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _formatCompact(num? val, {bool isCurrency = false}) {
-    if (val == null) return isCurrency ? '${ShopSettings.currency}0' : '0';
+    if (val == null) {
+      return isCurrency ? '${ShopSettings.currency}0' : '0';
+    }
     double v = val.toDouble();
-    if (v.abs() < 1000) return isCurrency ? '${ShopSettings.currency}${v.toStringAsFixed(2)}' : v.toInt().toString();
-    
+    if (v.abs() < 1000) {
+      return isCurrency
+          ? '${ShopSettings.currency}${v.toStringAsFixed(2)}'
+          : v.toInt().toString();
+    }
+
     String suffix = '';
     if (v.abs() >= 1000000) {
       v = v / 1000000;
@@ -109,8 +115,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       v = v / 1000;
       suffix = 'K';
     }
-    
-    String formatted = v.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '') + suffix;
+
+    String formatted =
+        v.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '') + suffix;
     return isCurrency ? '${ShopSettings.currency}$formatted' : formatted;
   }
 
@@ -312,12 +319,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: AppColors.warning,
         onTap: () => AppShell.selectIndex(8),
       ),
-      _DashboardAction(
-        icon: Icons.auto_awesome_outlined,
-        label: 'Ask Piki AI',
-        color: const Color(0xFF9B5CFF),
-        onTap: () => AppShell.selectIndex(16),
-      ),
     ];
 
     if (isMobile) {
@@ -341,112 +342,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildPikiBanner() {
-    return GestureDetector(
-      onTap: () => AppShell.selectIndex(16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1A0A2E), Color(0xFF2D1060)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: const Color(0xFF9B5CFF).withValues(alpha: 0.35),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF9B5CFF).withValues(alpha: 0.15),
-              blurRadius: 24,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // AI Icon glow
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF9B5CFF), Color(0xFFFF2A5F)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF9B5CFF).withValues(alpha: 0.4),
-                    blurRadius: 18,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Text(
-                  'P',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 26,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Piki AI Agent',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Ask about stock, profits, sales or restock needs — Piki plans and acts for you.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.65),
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                color: const Color(0xFF9B5CFF).withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: const Color(0xFF9B5CFF).withValues(alpha: 0.5),
-                ),
-              ),
-              child: const Text(
-                'Ask now →',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildServiceSnapshot(bool isMobile) {
     final serviceSales = (_saleTypeSummary['service_sales'] as num? ?? 0)
         .toInt();
@@ -465,14 +360,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label: 'Service Sales',
         value:
             '$serviceSales • ${ShopSettings.currency}${serviceRevenue.toStringAsFixed(2)}',
-        compactValue: '$serviceSales • ${_formatCompact(serviceRevenue, isCurrency: true)}',
+        compactValue:
+            '$serviceSales • ${_formatCompact(serviceRevenue, isCurrency: true)}',
         color: AppColors.secondary,
       ),
       _MiniStat(
         label: 'Product Sales',
         value:
             '$productSales • ${ShopSettings.currency}${productRevenue.toStringAsFixed(2)}',
-        compactValue: '$productSales • ${_formatCompact(productRevenue, isCurrency: true)}',
+        compactValue:
+            '$productSales • ${_formatCompact(productRevenue, isCurrency: true)}',
         color: AppColors.primary,
         compact: isMobile,
       ),
@@ -480,7 +377,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label: 'Mixed Sales',
         value:
             '$mixedSales • ${ShopSettings.currency}${mixedRevenue.toStringAsFixed(2)}',
-        compactValue: '$mixedSales • ${_formatCompact(mixedRevenue, isCurrency: true)}',
+        compactValue:
+            '$mixedSales • ${_formatCompact(mixedRevenue, isCurrency: true)}',
         color: AppColors.warning,
         compact: isMobile,
       ),
@@ -675,7 +573,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, color: Color(0xFF9B5CFF), size: 24),
+              const Icon(
+                Icons.auto_awesome,
+                color: Color(0xFF9B5CFF),
+                size: 24,
+              ),
               const SizedBox(width: 12),
               const Text(
                 'Daily Business News & Brief',
@@ -692,7 +594,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9B5CFF)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF9B5CFF),
+                    ),
                   ),
                 ),
             ],
@@ -701,7 +605,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (_isBriefLoading)
             Text(
               'Fetching today\'s market news and analyzing your performance...',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 14,
+              ),
             )
           else
             Text(
@@ -923,7 +830,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               label: revenueLabel,
                               value:
                                   '${ShopSettings.currency}${(_todaySummary['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
-                              compactValue: _formatCompact(_todaySummary['total_revenue'] as num?, isCurrency: true),
+                              compactValue: _formatCompact(
+                                _todaySummary['total_revenue'] as num?,
+                                isCurrency: true,
+                              ),
                               color: AppColors.success,
                               compact: true,
                             ),
@@ -932,7 +842,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               label: profitLabel,
                               value:
                                   '${ShopSettings.currency}${(_todaySummary['total_profit'] as num? ?? 0).toStringAsFixed(2)}',
-                              compactValue: _formatCompact(_todaySummary['total_profit'] as num?, isCurrency: true),
+                              compactValue: _formatCompact(
+                                _todaySummary['total_profit'] as num?,
+                                isCurrency: true,
+                              ),
                               color:
                                   ((_todaySummary['total_profit'] as num? ??
                                           0) >=
@@ -982,7 +895,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 label: revenueLabel,
                                 value:
                                     '${ShopSettings.currency}${(_todaySummary['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
-                                compactValue: _formatCompact(_todaySummary['total_revenue'] as num?, isCurrency: true),
+                                compactValue: _formatCompact(
+                                  _todaySummary['total_revenue'] as num?,
+                                  isCurrency: true,
+                                ),
                                 color: AppColors.success,
                               ),
                             ),
@@ -993,7 +909,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 label: profitLabel,
                                 value:
                                     '${ShopSettings.currency}${(_todaySummary['total_profit'] as num? ?? 0).toStringAsFixed(2)}',
-                                compactValue: _formatCompact(_todaySummary['total_profit'] as num?, isCurrency: true),
+                                compactValue: _formatCompact(
+                                  _todaySummary['total_profit'] as num?,
+                                  isCurrency: true,
+                                ),
                                 color:
                                     ((_todaySummary['total_profit'] as num? ??
                                             0) >=
@@ -1045,9 +964,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: _buildQuickActions(isMobile),
                   ),
                 ),
-
-                const SizedBox(height: 24),
-                _buildPikiBanner(),
 
                 const SizedBox(height: 24),
                 _buildServiceSnapshot(isMobile),
@@ -1205,14 +1121,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       label: 'Counted Cash',
                                       value:
                                           '${ShopSettings.currency}${((_closedShiftSummary['counted_cash_total'] as num?) ?? 0).toStringAsFixed(2)}',
-                                      compactValue: _formatCompact(_closedShiftSummary['counted_cash_total'] as num?, isCurrency: true),
+                                      compactValue: _formatCompact(
+                                        _closedShiftSummary['counted_cash_total']
+                                            as num?,
+                                        isCurrency: true,
+                                      ),
                                       color: AppColors.success,
                                     ),
                                     _MiniStat(
                                       label: 'Net Over/Short',
                                       value:
                                           '${ShopSettings.currency}${((_closedShiftSummary['net_difference'] as num?) ?? 0).toStringAsFixed(2)}',
-                                      compactValue: _formatCompact(_closedShiftSummary['net_difference'] as num?, isCurrency: true),
+                                      compactValue: _formatCompact(
+                                        _closedShiftSummary['net_difference']
+                                            as num?,
+                                        isCurrency: true,
+                                      ),
                                       color: _shiftDifferenceColor(
                                         _closedShiftSummary['net_difference']
                                             as num?,
@@ -1744,8 +1668,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 32),
 
-                if (!_isCashierView)
-                  _buildDailyBriefCard(),
+                if (!_isCashierView) _buildDailyBriefCard(),
 
                 // ── Recent Sales ──
                 TrainingAnchor(
@@ -1875,13 +1798,17 @@ class _KpiCardState extends State<_KpiCard> {
 
   @override
   Widget build(BuildContext context) {
-    final displayValue = (_showExact || widget.compactValue == null) ? widget.value : widget.compactValue!;
+    final displayValue = (_showExact || widget.compactValue == null)
+        ? widget.value
+        : widget.compactValue!;
     return GestureDetector(
-      onTap: widget.compactValue != null ? () {
-        setState(() {
-          _showExact = !_showExact;
-        });
-      } : null,
+      onTap: widget.compactValue != null
+          ? () {
+              setState(() {
+                _showExact = !_showExact;
+              });
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.all(widget.compact ? 12 : 20),
         decoration: BoxDecoration(
@@ -1906,7 +1833,9 @@ class _KpiCardState extends State<_KpiCard> {
                   padding: EdgeInsets.all(widget.compact ? 8 : 12),
                   decoration: BoxDecoration(
                     color: widget.color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(widget.compact ? 10 : 14),
+                    borderRadius: BorderRadius.circular(
+                      widget.compact ? 10 : 14,
+                    ),
                   ),
                   child: BeautifulIcon(
                     widget.icon,
@@ -1981,13 +1910,17 @@ class _MiniStatState extends State<_MiniStat> {
 
   @override
   Widget build(BuildContext context) {
-    final displayValue = (_showExact || widget.compactValue == null) ? widget.value : widget.compactValue!;
+    final displayValue = (_showExact || widget.compactValue == null)
+        ? widget.value
+        : widget.compactValue!;
     return GestureDetector(
-      onTap: widget.compactValue != null ? () {
-        setState(() {
-          _showExact = !_showExact;
-        });
-      } : null,
+      onTap: widget.compactValue != null
+          ? () {
+              setState(() {
+                _showExact = !_showExact;
+              });
+            }
+          : null,
       child: Container(
         width: widget.compact ? null : 170,
         padding: EdgeInsets.all(widget.compact ? 10 : 14),

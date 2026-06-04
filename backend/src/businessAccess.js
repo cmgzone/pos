@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 
-const { config } = require('./config');
 const { query, withTransaction } = require('./db');
 const { issueLicense, resolveSubscriptionState } = require('./licenseTokens');
 const {
@@ -63,7 +62,7 @@ async function activateBusinessAccess({
       );
 
       const expiresAt = addDays(now, subscriptionSettings.trialDays);
-      const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
+      const graceUntil = addDays(expiresAt, subscriptionSettings.graceDays);
       await client.query(
         `
         INSERT INTO subscriptions (
@@ -111,6 +110,7 @@ async function activateBusinessAccess({
         businessId,
         now,
         subscriptionSettings.trialDays,
+        subscriptionSettings.graceDays,
       );
     }
 
@@ -284,7 +284,7 @@ function parseBearerToken(headerValue) {
   return normalizeText(raw.slice(7));
 }
 
-async function ensureSubscriptionRow(client, businessId, now, trialDays) {
+async function ensureSubscriptionRow(client, businessId, now, trialDays, graceDays) {
   const result = await client.query(
     'SELECT business_id FROM subscriptions WHERE business_id = $1 LIMIT 1',
     [businessId],
@@ -294,7 +294,7 @@ async function ensureSubscriptionRow(client, businessId, now, trialDays) {
   }
 
   const expiresAt = addDays(now, trialDays);
-  const graceUntil = addDays(expiresAt, config.subscriptionGraceDays);
+  const graceUntil = addDays(expiresAt, graceDays);
   await client.query(
     `
     INSERT INTO subscriptions (

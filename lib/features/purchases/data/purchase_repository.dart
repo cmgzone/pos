@@ -76,6 +76,31 @@ class PurchaseRepository {
     return id;
   }
 
+  static Future<void> updateSupplier({
+    required String id,
+    required String name,
+    String? phone,
+    String? email,
+    String? address,
+    String? note,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'update suppliers');
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw Exception('Supplier name is required');
+    }
+
+    await DatabaseService.update('suppliers', {
+      'name': trimmedName,
+      'phone': phone?.trim(),
+      'email': email?.trim(),
+      'address': address?.trim(),
+      'note': note?.trim(),
+      'updated_at': DateTime.now().toIso8601String(),
+      'sync_status': 'pending',
+    }, id);
+  }
+
   static Future<List<Map<String, dynamic>>> getPurchases() async {
     return DatabaseService.rawQuery(
       '''
@@ -139,6 +164,8 @@ class PurchaseRepository {
     String? supplierId,
     String? supplierName,
     String? invoiceNumber,
+    double amountPaid = 0,
+    String? dueDate,
     String? note,
     required List<Map<String, dynamic>> items,
   }) async {
@@ -211,6 +238,13 @@ class PurchaseRepository {
 
     final purchaseId = _uuid.v4();
     final now = DateTime.now().toIso8601String();
+    final cleanAmountPaid = amountPaid.clamp(0, totalAmount).toDouble();
+    final balanceDue = (totalAmount - cleanAmountPaid).clamp(0, totalAmount);
+    final status = balanceDue <= 0.009
+        ? 'paid'
+        : cleanAmountPaid > 0.009
+        ? 'partial'
+        : 'unpaid';
 
     await DatabaseService.db.transaction((txn) async {
       await txn.insert('purchase_invoices', {
@@ -220,11 +254,32 @@ class PurchaseRepository {
         'supplier_name': supplierName?.trim(),
         'invoice_number': invoiceNumber?.trim(),
         'total_amount': totalAmount,
+        'amount_paid': cleanAmountPaid,
+        'balance_due': balanceDue,
+        'due_date': dueDate?.trim(),
+        'status': status,
         'note': note?.trim(),
         'created_at': now,
         'updated_at': now,
         'sync_status': 'pending',
       });
+
+      if (cleanAmountPaid > 0 && (supplierId?.trim().isNotEmpty ?? false)) {
+        await txn.insert('supplier_payments', {
+          'id': _uuid.v4(),
+          'branch_id': DatabaseService.currentBranchId,
+          'supplier_id': supplierId,
+          'purchase_id': purchaseId,
+          'amount': cleanAmountPaid,
+          'payment_method': 'cash',
+          'reference': invoiceNumber?.trim(),
+          'note': 'Initial purchase payment',
+          'paid_at': now,
+          'created_at': now,
+          'updated_at': now,
+          'sync_status': 'pending',
+        });
+      }
 
       for (final item in cleanedItems) {
         await txn.insert('stock_batches', {
@@ -273,6 +328,352 @@ class PurchaseRepository {
       entityTable: 'purchase_invoices',
       entityId: purchaseId,
     );
+    return purchaseId;
+  }
+
+  static Future<String> recordSupplierPayment({
+    required String supplierId,
+    String? purchaseId,
+    required double amount,
+    String paymentMethod = 'cash',
+    String? reference,
+    String? note,
+    DateTime? paidAt,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'record supplier payments');
+    final cleanSupplierId = supplierId.trim();
+    if (cleanSupplierId.isEmpty) {
+      throw Exception('Choose a supplier');
+    }
+    if (amount <= 0) {
+      throw Exception('Payment amount must be greater than zero');
+    }
+
+    final now = DateTime.now().toIso8601String();
+    final paidAtText = (paidAt ?? DateTime.now()).toIso8601String();
+    final paymentId = _uuid.v4();
+    await DatabaseService.db.transaction((txn) async {
+      await txn.insert('supplier_payments', {
+        'id': paymentId,
+        'branch_id': DatabaseService.currentBranchId,
+        'supplier_id': cleanSupplierId,
+        'purchase_id': purchaseId?.trim(),
+        'amount': amount,
+        'payment_method': paymentMethod.trim().isEmpty
+            ? 'cash'
+            : paymentMethod.trim(),
+        'reference': reference?.trim(),
+        'note': note?.trim(),
+        'paid_at': paidAtText,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+
+      if (purchaseId != null && purchaseId.trim().isNotEmpty) {
+        final purchases = await txn.query(
+          'purchase_invoices',
+          where: 'id = ? AND deleted_at IS NULL',
+          whereArgs: [purchaseId.trim()],
+          limit: 1,
+        );
+        if (purchases.isNotEmpty) {
+          final purchase = purchases.first;
+          final total = (purchase['total_amount'] as num? ?? 0).toDouble();
+          final currentPaid = (purchase['amount_paid'] as num? ?? 0).toDouble();
+          final nextPaid = (currentPaid + amount).clamp(0, total).toDouble();
+          final balance = (total - nextPaid).clamp(0, total).toDouble();
+          final status = balance <= 0.009
+              ? 'paid'
+              : nextPaid > 0.009
+              ? 'partial'
+              : 'unpaid';
+          await txn.update(
+            'purchase_invoices',
+            {
+              'amount_paid': nextPaid,
+              'balance_due': balance,
+              'status': status,
+              'updated_at': now,
+              'sync_status': 'pending',
+            },
+            where: 'id = ?',
+            whereArgs: [purchaseId.trim()],
+          );
+        }
+      } else {
+        var remaining = amount;
+        final purchases = await txn.query(
+          'purchase_invoices',
+          where:
+              'supplier_id = ? AND deleted_at IS NULL AND balance_due > 0.009 AND COALESCE(branch_id, ?) = ?',
+          whereArgs: [cleanSupplierId, ..._currentBranchArgs],
+          orderBy: 'created_at ASC',
+        );
+        for (final purchase in purchases) {
+          if (remaining <= 0.009) {
+            break;
+          }
+          final total = (purchase['total_amount'] as num? ?? 0).toDouble();
+          final currentPaid = (purchase['amount_paid'] as num? ?? 0).toDouble();
+          final balance = (purchase['balance_due'] as num? ?? 0).toDouble();
+          final applied = remaining > balance ? balance : remaining;
+          final nextPaid = (currentPaid + applied).clamp(0, total).toDouble();
+          final nextBalance = (total - nextPaid).clamp(0, total).toDouble();
+          final status = nextBalance <= 0.009 ? 'paid' : 'partial';
+          await txn.update(
+            'purchase_invoices',
+            {
+              'amount_paid': nextPaid,
+              'balance_due': nextBalance,
+              'status': status,
+              'updated_at': now,
+              'sync_status': 'pending',
+            },
+            where: 'id = ?',
+            whereArgs: [purchase['id']],
+          );
+          remaining -= applied;
+        }
+      }
+    });
+
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: 'supplier_payments',
+      entityId: paymentId,
+    );
+    return paymentId;
+  }
+
+  static Future<List<Map<String, dynamic>>> getSupplierLedger(
+    String supplierId,
+  ) async {
+    final cleanSupplierId = supplierId.trim();
+    if (cleanSupplierId.isEmpty) {
+      return const [];
+    }
+    return DatabaseService.rawQuery(
+      '''
+      SELECT
+        'purchase' as entry_type,
+        id,
+        invoice_number as reference,
+        total_amount as debit,
+        amount_paid as credit,
+        balance_due,
+        status,
+        created_at as entry_at,
+        note
+      FROM purchase_invoices
+      WHERE supplier_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      UNION ALL
+      SELECT
+        'payment' as entry_type,
+        id,
+        reference,
+        0 as debit,
+        amount as credit,
+        0 as balance_due,
+        'paid' as status,
+        paid_at as entry_at,
+        note
+      FROM supplier_payments
+      WHERE supplier_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY entry_at DESC
+      ''',
+      [
+        cleanSupplierId,
+        ..._currentBranchArgs,
+        cleanSupplierId,
+        ..._currentBranchArgs,
+      ],
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getPurchaseOrders() {
+    return DatabaseService.rawQuery('''
+      SELECT *
+      FROM purchase_orders
+      WHERE deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY created_at DESC
+      ''', _currentBranchArgs);
+  }
+
+  static Future<Map<String, dynamic>?> getPurchaseOrderDetails(
+    String orderId,
+  ) async {
+    final orders = await DatabaseService.rawQuery(
+      '''
+      SELECT *
+      FROM purchase_orders
+      WHERE id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      LIMIT 1
+      ''',
+      [orderId, ..._currentBranchArgs],
+    );
+    if (orders.isEmpty) {
+      return null;
+    }
+    final items = await DatabaseService.rawQuery(
+      '''
+      SELECT *
+      FROM purchase_order_items
+      WHERE purchase_order_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY created_at ASC
+      ''',
+      [orderId, ..._currentBranchArgs],
+    );
+    return {...orders.first, 'items': items};
+  }
+
+  static Future<String> createPurchaseOrder({
+    String? supplierId,
+    String? supplierName,
+    String? orderNumber,
+    String? expectedOn,
+    String? note,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'create purchase orders');
+    if (items.isEmpty) {
+      throw Exception('Add at least one product to the purchase order');
+    }
+
+    final cleanedItems = <Map<String, dynamic>>[];
+    double totalAmount = 0;
+    for (final item in items) {
+      final productId = (item['product_id'] as String?)?.trim();
+      final quantity = (item['quantity'] as num? ?? 0).toDouble();
+      final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
+      if (productId == null || productId.isEmpty || quantity <= 0) {
+        throw Exception(
+          'Each purchase order line needs a product and quantity',
+        );
+      }
+      if (unitCost < 0) {
+        throw Exception('Unit cost cannot be negative');
+      }
+      final productRows = await DatabaseService.rawQuery(
+        '''
+        SELECT name, purchase_unit, unit
+        FROM products
+        WHERE id = ?
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+        LIMIT 1
+        ''',
+        [productId, ..._currentBranchArgs],
+      );
+      if (productRows.isEmpty) {
+        throw Exception('Product not found for purchase order line');
+      }
+      final product = productRows.first;
+      final lineTotal = quantity * unitCost;
+      totalAmount += lineTotal;
+      cleanedItems.add({
+        'product_id': productId,
+        'product_name': product['name'] as String? ?? 'Product',
+        'quantity': quantity,
+        'unit': UnitUtils.normalize(
+          item['unit'] as String? ??
+              (product['purchase_unit'] as String?) ??
+              (product['unit'] as String?) ??
+              'pcs',
+        ),
+        'unit_cost': unitCost,
+        'line_total': lineTotal,
+      });
+    }
+
+    final now = DateTime.now().toIso8601String();
+    final orderId = _uuid.v4();
+    await DatabaseService.db.transaction((txn) async {
+      await txn.insert('purchase_orders', {
+        'id': orderId,
+        'branch_id': DatabaseService.currentBranchId,
+        'supplier_id': supplierId?.trim(),
+        'supplier_name': supplierName?.trim(),
+        'order_number': orderNumber?.trim(),
+        'status': 'draft',
+        'total_amount': totalAmount,
+        'expected_on': expectedOn?.trim(),
+        'note': note?.trim(),
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+      for (final item in cleanedItems) {
+        await txn.insert('purchase_order_items', {
+          'id': _uuid.v4(),
+          'branch_id': DatabaseService.currentBranchId,
+          'purchase_order_id': orderId,
+          'product_id': item['product_id'],
+          'product_name': item['product_name'],
+          'quantity': item['quantity'],
+          'unit': item['unit'],
+          'unit_cost': item['unit_cost'],
+          'line_total': item['line_total'],
+          'created_at': now,
+          'updated_at': now,
+          'sync_status': 'pending',
+        });
+      }
+    });
+
+    await AuditLogService.log(
+      action: 'create',
+      entityTable: 'purchase_orders',
+      entityId: orderId,
+    );
+    return orderId;
+  }
+
+  static Future<String> receivePurchaseOrder(String orderId) async {
+    await LicenseService.ensureWriteAccess(action: 'receive purchase orders');
+    final details = await getPurchaseOrderDetails(orderId);
+    if (details == null) {
+      throw Exception('Purchase order not found');
+    }
+    final status = details['status']?.toString();
+    if (status == 'received') {
+      throw Exception('Purchase order is already received');
+    }
+    final rawItems = details['items'] as List? ?? const [];
+    final items = rawItems
+        .whereType<Map>()
+        .map(
+          (item) => {
+            'product_id': item['product_id'],
+            'quantity': item['quantity'],
+            'unit': item['unit'],
+            'unit_cost': item['unit_cost'],
+          },
+        )
+        .toList();
+    final purchaseId = await createPurchase(
+      supplierId: details['supplier_id'] as String?,
+      supplierName: details['supplier_name'] as String?,
+      invoiceNumber: details['order_number'] as String?,
+      note:
+          'Received from purchase order ${details['order_number'] ?? orderId}',
+      items: items,
+    );
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.update('purchase_orders', {
+      'status': 'received',
+      'updated_at': now,
+      'sync_status': 'pending',
+    }, orderId);
     return purchaseId;
   }
 }

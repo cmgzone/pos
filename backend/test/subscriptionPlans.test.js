@@ -6,6 +6,7 @@ const {
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
   normalizeSellingMode,
+  normalizeGraceDays,
   normalizeTrialDays,
   renewalBaseDate,
   validatePaymentGatewayConfiguration,
@@ -171,4 +172,13 @@ test('trial period accepts whole days within the admin range', () => {
   assert.throws(() => normalizeTrialDays(0), /between 1 and 365 days/);
   assert.throws(() => normalizeTrialDays(365.5), /between 1 and 365 days/);
   assert.throws(() => normalizeTrialDays(366), /between 1 and 365 days/);
+});
+
+test('grace period accepts whole days within the admin range', () => {
+  assert.equal(normalizeGraceDays(5), 5);
+  assert.equal(normalizeGraceDays('0'), 0);
+  assert.equal(normalizeGraceDays('30'), 30);
+  assert.throws(() => normalizeGraceDays(-1), /between 0 and 30 days/);
+  assert.throws(() => normalizeGraceDays(5.5), /between 0 and 30 days/);
+  assert.throws(() => normalizeGraceDays(31), /between 0 and 30 days/);
 });

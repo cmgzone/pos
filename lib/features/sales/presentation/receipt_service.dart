@@ -43,6 +43,12 @@ class ReceiptService {
     String recordLabel = 'Sale',
     String? referenceSaleId,
     String? note,
+    String? etimsStatus,
+    String? etimsInvoiceNumber,
+    String? etimsControlUnitInvoiceNumber,
+    String? etimsControlUnitSerial,
+    String? etimsVerificationUrl,
+    String? etimsQrCode,
     bool useAbsoluteAmounts = false,
     bool showTenderedBreakdown = false,
   }) async {
@@ -97,6 +103,16 @@ class ReceiptService {
                 pw.SizedBox(height: 2),
                 pw.Text(
                   _pdfSafe(ShopSettings.shopEmail),
+                  style: const pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+              if (ShopSettings.kraPin.isNotEmpty) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'KRA PIN: ${_pdfSafe(ShopSettings.kraPin)}',
                   style: const pw.TextStyle(
                     fontSize: 8,
                     color: PdfColors.grey600,
@@ -398,6 +414,61 @@ class ReceiptService {
                 ),
               ],
 
+              if (_hasEtimsDetails(
+                etimsStatus: etimsStatus,
+                etimsInvoiceNumber: etimsInvoiceNumber,
+                etimsControlUnitInvoiceNumber: etimsControlUnitInvoiceNumber,
+                etimsControlUnitSerial: etimsControlUnitSerial,
+                etimsVerificationUrl: etimsVerificationUrl,
+                etimsQrCode: etimsQrCode,
+              )) ...[
+                pw.SizedBox(height: 10),
+                pw.Container(
+                  width: double.infinity,
+                  height: 0.5,
+                  color: PdfColors.grey400,
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  'KRA eTIMS',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 4),
+                if ((etimsStatus ?? '').trim().isNotEmpty)
+                  _pdfTotalRow('Status', _pdfSafe(etimsStatus)),
+                if ((etimsInvoiceNumber ?? '').trim().isNotEmpty)
+                  _pdfTotalRow('Invoice', _pdfSafe(etimsInvoiceNumber)),
+                if ((etimsControlUnitInvoiceNumber ?? '').trim().isNotEmpty)
+                  _pdfTotalRow(
+                    'CU Invoice',
+                    _pdfSafe(etimsControlUnitInvoiceNumber),
+                  ),
+                if ((etimsControlUnitSerial ?? '').trim().isNotEmpty)
+                  _pdfTotalRow('CU Serial', _pdfSafe(etimsControlUnitSerial)),
+                if ((etimsVerificationUrl ?? '').trim().isNotEmpty)
+                  pw.Text(
+                    _pdfSafe(etimsVerificationUrl),
+                    style: const pw.TextStyle(
+                      fontSize: 6,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                if (((etimsQrCode ?? etimsVerificationUrl) ?? '')
+                    .trim()
+                    .isNotEmpty) ...[
+                  pw.SizedBox(height: 6),
+                  pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: (etimsQrCode ?? etimsVerificationUrl)!.trim(),
+                    width: 64,
+                    height: 64,
+                  ),
+                ],
+              ],
+
               pw.SizedBox(height: 12),
 
               // Footer
@@ -440,6 +511,24 @@ class ReceiptService {
     return pdf;
   }
 
+  static bool _hasEtimsDetails({
+    String? etimsStatus,
+    String? etimsInvoiceNumber,
+    String? etimsControlUnitInvoiceNumber,
+    String? etimsControlUnitSerial,
+    String? etimsVerificationUrl,
+    String? etimsQrCode,
+  }) {
+    return [
+      etimsStatus,
+      etimsInvoiceNumber,
+      etimsControlUnitInvoiceNumber,
+      etimsControlUnitSerial,
+      etimsVerificationUrl,
+      etimsQrCode,
+    ].any((value) => value != null && value.trim().isNotEmpty);
+  }
+
   static pw.Widget _pdfTotalRow(String label, String value) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 1),
@@ -479,6 +568,12 @@ class ReceiptService {
     String recordLabel = 'Sale',
     String? referenceSaleId,
     String? note,
+    String? etimsStatus,
+    String? etimsInvoiceNumber,
+    String? etimsControlUnitInvoiceNumber,
+    String? etimsControlUnitSerial,
+    String? etimsVerificationUrl,
+    String? etimsQrCode,
     bool useAbsoluteAmounts = false,
     bool showTenderedBreakdown = false,
   }) async {
@@ -501,6 +596,12 @@ class ReceiptService {
       recordLabel: recordLabel,
       referenceSaleId: referenceSaleId,
       note: note,
+      etimsStatus: etimsStatus,
+      etimsInvoiceNumber: etimsInvoiceNumber,
+      etimsControlUnitInvoiceNumber: etimsControlUnitInvoiceNumber,
+      etimsControlUnitSerial: etimsControlUnitSerial,
+      etimsVerificationUrl: etimsVerificationUrl,
+      etimsQrCode: etimsQrCode,
       useAbsoluteAmounts: useAbsoluteAmounts,
       showTenderedBreakdown: showTenderedBreakdown,
     );
