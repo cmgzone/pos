@@ -7,6 +7,12 @@ const DEFAULT_LICENSE_SIGNING_SECRET =
   'velora-pos-dev-license-secret-change-me';
 const DEFAULT_PLATFORM_ADMIN_PASSWORD = 'superadmin123';
 const DEFAULT_PLATFORM_JWT_SECRET = 'velora-platform-jwt-super-secret-dev';
+const DEFAULT_DEV_ALLOWED_ORIGINS = [
+  'http://localhost:4000',
+  'http://127.0.0.1:4000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
 
 function requireAnyEnv(names) {
   for (const name of names) {
@@ -55,6 +61,7 @@ const config = {
   mpesaShortcode: process.env.MPESA_SHORTCODE?.trim() || '',
   mpesaPasskey: process.env.MPESA_PASSKEY?.trim() || '',
   mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL?.trim() || '',
+  mpesaCallbackSecret: process.env.MPESA_CALLBACK_SECRET?.trim() || '',
   serpApiKey:
     process.env.SERPAPI_API_KEY?.trim() ||
     process.env.SERP_API_KEY?.trim() ||
@@ -62,6 +69,15 @@ const config = {
   serpApiBaseUrl:
     process.env.SERPAPI_BASE_URL?.trim() || 'https://google.serper.dev/search',
 };
+
+config.allowedOrigins = parseOriginList(
+  process.env.PLATFORM_ALLOWED_ORIGINS ||
+    process.env.CORS_ALLOWED_ORIGINS ||
+    process.env.APP_ALLOWED_ORIGINS,
+);
+if (config.nodeEnv !== 'production' && config.allowedOrigins.length === 0) {
+  config.allowedOrigins = DEFAULT_DEV_ALLOWED_ORIGINS;
+}
 
 if (config.nodeEnv === 'production') {
   assertNonDefaultSecret(
@@ -79,12 +95,29 @@ if (config.nodeEnv === 'production') {
     config.platformJwtSecret,
     DEFAULT_PLATFORM_JWT_SECRET,
   );
+  assertNonDefaultSecret(
+    'PLATFORM_ADMIN_EMAIL',
+    config.platformAdminEmail,
+    'superadmin@velora.pos',
+  );
+  if (config.allowedOrigins.length === 0) {
+    throw new Error(
+      'PLATFORM_ALLOWED_ORIGINS or CORS_ALLOWED_ORIGINS must be set in production',
+    );
+  }
 }
 
 function assertNonDefaultSecret(name, value, defaultValue) {
   if (!value || value === defaultValue) {
     throw new Error(`${name} must be set to a non-default value in production`);
   }
+}
+
+function parseOriginList(value) {
+  return String(value || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
 }
 
 module.exports = { config };

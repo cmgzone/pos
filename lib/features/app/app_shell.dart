@@ -21,6 +21,7 @@ import '../training/presentation/training_hub_screen.dart';
 import '../training/widgets/training_anchor.dart';
 import '../customers/presentation/contacts_screen.dart';
 import '../customers/presentation/kopesha_screen.dart';
+import '../invoices/presentation/customer_invoices_screen.dart';
 import '../products/presentation/catalog_orders_screen.dart';
 import '../products/presentation/category_management_screen.dart';
 import '../products/presentation/product_list_screen.dart';
@@ -112,6 +113,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.receipt_long_outlined,
         selectedIcon: Icons.receipt_long_rounded,
         label: 'Sales',
+      ),
+    ),
+    _NavDestination(
+      index: 19,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.request_quote_outlined,
+        selectedIcon: Icons.request_quote_rounded,
+        label: 'Invoices',
       ),
     ),
     _NavDestination(
@@ -268,6 +278,9 @@ class AppShellState extends ConsumerState<AppShell> {
               UserAccessProfile.featureProducts,
             ))) {
       indices.add(17);
+    }
+    if (SessionService.canAccessFeature(UserAccessProfile.featureSales)) {
+      indices.add(19);
     }
     if (SessionService.canAccessFeature(UserAccessProfile.featureKopesha) ||
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
@@ -1599,6 +1612,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return CatalogOrdersScreen(onOpenPos: () => _selectIndex(0));
       case 18:
         return const ContactsScreen();
+      case 19:
+        return const CustomerInvoicesScreen();
       default:
         return const PosScreen();
     }

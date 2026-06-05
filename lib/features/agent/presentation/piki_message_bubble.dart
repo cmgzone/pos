@@ -172,7 +172,9 @@ class PikiMessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(20),
             bottomRight: Radius.circular(20),
           ),
-          border: isMobile ? null : Border.all(color: color.withValues(alpha: 0.3)),
+          border: isMobile
+              ? null
+              : Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -561,10 +563,7 @@ class PikiMessageBubble extends StatelessWidget {
       alignment: Alignment.centerRight,
       child: Container(
         constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
-        margin: EdgeInsets.only(
-          bottom: 12,
-          left: isMobile ? 16 : 48,
-        ),
+        margin: EdgeInsets.only(bottom: 12, left: isMobile ? 16 : 48),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -957,7 +956,9 @@ class PikiMessageBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surfaceHighlight,
           borderRadius: BorderRadius.circular(18),
-          border: isMobile ? null : Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+          border: isMobile
+              ? null
+              : Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1328,7 +1329,9 @@ class PikiMessageBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
-          border: isMobile ? null : Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+          border: isMobile
+              ? null
+              : Border.all(color: AppColors.error.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -1876,6 +1879,8 @@ class PikiMessageBubble extends StatelessWidget {
         );
       } else if (type == 'web_search' && success) {
         cards.add(_buildWebSearchCard(result));
+      } else if (type == 'image_order_draft' && success) {
+        cards.add(_buildImageDraftCard(result));
       }
     }
 
@@ -1991,6 +1996,97 @@ class PikiMessageBubble extends StatelessWidget {
     );
   }
 
+  Widget _buildImageDraftCard(Map<String, dynamic> result) {
+    final items =
+        (result['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    final confidence = _asDouble(result['confidence']);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.document_scanner_rounded,
+                  size: 18,
+                  color: AppColors.secondary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Photo Draft',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      confidence == null
+                          ? 'Review detected lines before saving.'
+                          : 'Confidence ${(confidence * 100).round()}%. Review before saving.',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (items.isEmpty)
+            const Text(
+              'No clear item lines were detected. Try a closer, brighter photo.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            )
+          else
+            ...items
+                .take(4)
+                .map(
+                  (item) =>
+                      _ImageDraftLine(item: item, onSendPrompt: onSendPrompt),
+                ),
+          if (items.length > 4)
+            Text(
+              '+ ${items.length - 4} more detected line(s)',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  double? _asDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value != null) return double.tryParse(value.toString());
+    return null;
+  }
+
   Widget _buildCard({
     required IconData icon,
     required Color color,
@@ -2060,6 +2156,185 @@ class PikiMessageBubble extends StatelessWidget {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /// Wraps agent messages with the Piki avatar.
+class _ImageDraftLine extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final ValueChanged<String>? onSendPrompt;
+
+  const _ImageDraftLine({required this.item, this.onSendPrompt});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (item['name'] ?? item['product_name'] ?? 'Item').toString();
+    final quantity = _number(item['quantity'] ?? item['qty']) ?? 1;
+    final unit = (item['unit'] ?? 'pcs').toString();
+    final price = _number(
+      item['unit_price'] ?? item['unitPrice'] ?? item['price'],
+    );
+    final cost = _number(item['cost'] ?? item['unit_cost']);
+    final stock = _number(item['stock'] ?? item['initial_stock']);
+    final meta = <String>[
+      '${_formatNumber(quantity)} $unit',
+      if (price != null && price > 0)
+        '${ShopSettings.currency}${price.toStringAsFixed(2)} each',
+      if (cost != null && cost > 0)
+        'Cost ${ShopSettings.currency}${cost.toStringAsFixed(2)}',
+    ].join(' - ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.inventory_2_outlined,
+                size: 16,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (meta.isNotEmpty)
+                      Text(
+                        meta,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onSendPrompt == null
+                    ? null
+                    : () => onSendPrompt!(
+                        _createProductPrompt(
+                          name: name,
+                          price: price,
+                          cost: cost,
+                          stock: stock,
+                          unit: unit,
+                        ),
+                      ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.35),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  textStyle: const TextStyle(fontSize: 11),
+                ),
+                icon: const Icon(Icons.add_box_outlined, size: 14),
+                label: const Text('Create Product'),
+              ),
+              FilledButton.icon(
+                onPressed: onSendPrompt == null
+                    ? null
+                    : () => onSendPrompt!(
+                        _recordSalePrompt(
+                          name: name,
+                          quantity: quantity,
+                          price: price,
+                        ),
+                      ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  textStyle: const TextStyle(fontSize: 11),
+                ),
+                icon: const Icon(Icons.point_of_sale_outlined, size: 14),
+                label: const Text('Record Sale'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _createProductPrompt({
+    required String name,
+    required double? price,
+    required double? cost,
+    required double? stock,
+    required String unit,
+  }) {
+    final buffer = StringBuffer('Create product $name');
+    if (price != null && price > 0) {
+      buffer.write(' price ${price.toStringAsFixed(2)}');
+    }
+    if (cost != null && cost > 0) {
+      buffer.write(' cost ${cost.toStringAsFixed(2)}');
+    }
+    if (stock != null && stock >= 0) {
+      buffer.write(' stock ${stock.toStringAsFixed(2)}');
+    }
+    if (unit.trim().isNotEmpty) {
+      buffer.write(' unit ${unit.trim()}');
+    }
+    return buffer.toString();
+  }
+
+  static String _recordSalePrompt({
+    required String name,
+    required double quantity,
+    required double? price,
+  }) {
+    final buffer = StringBuffer('Record sale ${_formatNumber(quantity)} $name');
+    if (price != null && price > 0) {
+      buffer.write(' at ${price.toStringAsFixed(2)}');
+    }
+    buffer.write(' cash');
+    return buffer.toString();
+  }
+
+  static double? _number(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value != null) return double.tryParse(value.toString());
+    return null;
+  }
+
+  static String _formatNumber(double value) {
+    return value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toStringAsFixed(2);
+  }
+}
+
 class _AgentRow extends StatelessWidget {
   final Widget child;
   const _AgentRow({required this.child});

@@ -188,7 +188,7 @@ export default function Dashboard({ token, onLogout }) {
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
           </div>
-          <h1 className="brand-name" style={{ fontSize: '1.25rem' }}>Velora POS Platform</h1>
+          <h1 className="brand-name" style={{ fontSize: '1.25rem' }}>Piki POS Platform</h1>
         </div>
         <div>
           <button onClick={onLogout} className="btn btn-secondary">
@@ -235,7 +235,7 @@ export default function Dashboard({ token, onLogout }) {
               style={{ borderRadius: 0, padding: '1rem 2rem', border: 'none', borderLeft: '1px solid var(--border-subtle)', background: activeTab === 'ai' ? 'var(--border-subtle)' : 'transparent', color: activeTab === 'ai' ? 'white' : 'var(--text-secondary)' }}
               onClick={() => setActiveTab('ai')}
             >
-              🤖 AI Config
+              AI Config
             </button>
             <button
               className={`btn ${activeTab === 'plans' ? '' : 'btn-secondary'}`}

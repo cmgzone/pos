@@ -88,12 +88,29 @@ const {
 const { searchWithSerpApi } = require('./serpApi');
 
 const app = express();
+const authRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyPrefix: 'auth',
+});
+const platformLoginRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  keyPrefix: 'platform-login',
+});
+const publicWriteRateLimit = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyPrefix: 'public-write',
+});
 
 // Serialize write transactions so revision cursors stay in commit order.
 const PUSH_LOCK_CLASS_ID = 41831;
 const PUSH_LOCK_OBJECT_ID = 1;
 
-app.use(cors());
+app.disable('x-powered-by');
+app.use(applySecurityHeaders);
+app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '10mb' }));
 
 app.get('/api/health', async (req, res) => {
@@ -162,7 +179,7 @@ app.post('/api/license/refresh', async (req, res, next) => {
 
 // ── SaaS Authentication ──────────────────────────────────────────────────────
 
-app.post('/api/auth/register', async (req, res, next) => {
+app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
   try {
     const businessName = normalizeOptionalText(req.body?.businessName);
     const ownerName = normalizeOptionalText(req.body?.ownerName);
@@ -421,7 +438,7 @@ app.post('/api/auth/register', async (req, res, next) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res, next) => {
+app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
   try {
     const email = normalizeOptionalText(req.body?.email);
     const password = req.body?.password;
@@ -1023,7 +1040,7 @@ function requirePlatformAdmin(req, res, next) {
   }
 }
 
-app.post('/api/platform/login', (req, res, next) => {
+app.post('/api/platform/login', platformLoginRateLimit, (req, res, next) => {
   try {
     const email = normalizeOptionalText(req.body?.email);
     const password = req.body?.password;
@@ -1748,6 +1765,7 @@ app.post('/api/subscription/google-pay/confirm', async (req, res, next) => {
 
 app.post('/api/subscription/mpesa/callback', async (req, res, next) => {
   try {
+    validateMpesaCallbackSecret(req);
     const callback = req.body?.Body?.stkCallback || req.body?.stkCallback || {};
     const checkoutRequestId = normalizeOptionalText(callback.CheckoutRequestID);
     const resultCode = Number(callback.ResultCode);
@@ -2221,6 +2239,186 @@ function extractOpenRouterImageUrl(body) {
   return null;
 }
 
+function extractOpenRouterTextContent(body) {
+  const message = body?.choices?.[0]?.message || {};
+  const content = message.content;
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (typeof part?.text === 'string') return part.text;
+        if (typeof part?.content === 'string') return part.content;
+        return '';
+      })
+      .join('\n')
+      .trim();
+  }
+  return '';
+}
+
+function parseJsonObjectFromText(text) {
+  const normalized = normalizeOptionalText(text);
+  if (!normalized) {
+    return null;
+  }
+  try {
+    return JSON.parse(normalized);
+  } catch (_) {
+    const fenced = normalized.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced) {
+      try {
+        return JSON.parse(fenced[1]);
+      } catch (_) {
+        // Continue to object slicing below.
+      }
+    }
+    const start = normalized.indexOf('{');
+    const end = normalized.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(normalized.slice(start, end + 1));
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeImageAnalysisItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .filter((item) => item && typeof item === 'object')
+    .slice(0, 20)
+    .map((item) => {
+      const quantity = Number(item.quantity ?? item.qty ?? 1);
+      const unitPrice = Number(
+        item.unit_price ??
+        item.unitPrice ??
+        item.price ??
+        item.selling_price ??
+        item.sellingPrice ??
+        0,
+      );
+      const cost = Number(item.cost ?? item.unit_cost ?? item.unitCost ?? 0);
+      const stock = Number(item.stock ?? item.initial_stock ?? item.initialStock ?? 0);
+      return {
+        name: normalizeOptionalText(item.name || item.product_name || item.productName) || 'Item',
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+        unit: normalizeOptionalText(item.unit || item.sale_unit || item.saleUnit) || 'pcs',
+        unit_price: Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : null,
+        price: Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : null,
+        cost: Number.isFinite(cost) && cost >= 0 ? cost : null,
+        stock: Number.isFinite(stock) && stock >= 0 ? stock : null,
+        sku: normalizeOptionalText(item.sku),
+        barcode: normalizeOptionalText(item.barcode),
+        brand: normalizeOptionalText(item.brand),
+        category: normalizeOptionalText(item.category),
+        notes: normalizeOptionalText(item.notes || item.note),
+        confidence: item.confidence,
+      };
+    })
+    .filter((item) => item.name && item.name !== 'Item');
+}
+
+async function requestOpenRouterOrderImageAnalysis({
+  fetchImpl,
+  aiConfig,
+  imageDataUrl,
+  note,
+}) {
+  const userNote = normalizeOptionalText(note);
+  const prompt = `You are helping a Kenyan POS owner use Piki POS from a camera photo.
+
+Read the image and extract product or sale lines that can become POS records.
+
+Return JSON only, no markdown, with this shape:
+{
+  "summary": "short practical summary",
+  "intent": "product" | "sale" | "mixed" | "unknown",
+  "confidence": 0.0,
+  "items": [
+    {
+      "name": "product name",
+      "quantity": 1,
+      "unit": "pcs",
+      "unit_price": 0,
+      "cost": 0,
+      "stock": 0,
+      "sku": "",
+      "barcode": "",
+      "brand": "",
+      "category": "",
+      "notes": ""
+    }
+  ]
+}
+
+Rules:
+- If it is a product/package photo, infer only visible product identity and any visible price/barcode. Do not invent prices.
+- If it is a receipt, handwritten order, shelf label, or invoice, extract line items, quantities, and prices only when visible.
+- Use null or omit unknown numbers. Keep names short and clean.
+- If the image is unclear, return intent "unknown", confidence below 0.4, and no items.
+${userNote ? `Owner note: ${userNote}` : ''}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${aiConfig.api_key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://pikipos.com',
+      'X-Title': 'Piki POS Image Analysis',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageDataUrl } },
+          ],
+        },
+      ],
+      max_tokens: 900,
+      temperature: 0.1,
+    }),
+  });
+
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'OpenRouter image analysis failed',
+    );
+  }
+
+  const content = extractOpenRouterTextContent(body);
+  const parsed = parseJsonObjectFromText(content);
+  const items = normalizeImageAnalysisItems(parsed?.items);
+  return {
+    summary:
+      normalizeOptionalText(parsed?.summary) ||
+      (items.length
+        ? `Detected ${items.length} item line${items.length === 1 ? '' : 's'} from the image.`
+        : 'No clear product or sale lines were detected in the image.'),
+    intent: normalizeOptionalText(parsed?.intent) || 'unknown',
+    confidence:
+      typeof parsed?.confidence === 'number' && Number.isFinite(parsed.confidence)
+        ? Math.max(0, Math.min(1, parsed.confidence))
+        : null,
+    items,
+    raw: content,
+    usage: body?.usage || {},
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+  };
+}
+
 async function requestOpenRouterProductImage({ fetchImpl, aiConfig, imageDataUrl, productName, prompt }) {
   const productLabel = normalizeOptionalText(productName) || 'the product';
   const instruction = normalizeOptionalText(prompt) ||
@@ -2332,6 +2530,59 @@ app.post('/api/ai/product-image/enhance', async (req, res, next) => {
     res.json({
       ok: true,
       imageDataUrl: result.imageUrl,
+      model: result.model,
+      usage: {
+        promptTokens: result.usage.prompt_tokens || 0,
+        completionTokens: result.usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/order-image/analyze', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const imageDataUrl = normalizeOptionalText(req.body?.imageDataUrl);
+    if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
+      throw createHttpError(400, 'A base64 product or order image is required');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`
+      );
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const result = await requestOpenRouterOrderImageAnalysis({
+      fetchImpl: fetch,
+      aiConfig,
+      imageDataUrl,
+      note: req.body?.note,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        summary: result.summary,
+        intent: result.intent,
+        confidence: result.confidence,
+        items: result.items,
+        raw: result.raw,
+      },
       model: result.model,
       usage: {
         promptTokens: result.usage.prompt_tokens || 0,
@@ -2826,7 +3077,7 @@ app.post('/api/catalog/orders/:orderId/payment-request', async (req, res, next) 
   }
 });
 
-app.post('/api/public/catalog/:businessId/orders', async (req, res, next) => {
+app.post('/api/public/catalog/:businessId/orders', publicWriteRateLimit, async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.params.businessId);
     if (!businessId) {
@@ -2886,10 +3137,13 @@ app.use((error, req, res, next) => {
 
   const statusCode =
     error && Number.isInteger(error.statusCode) ? error.statusCode : 500;
+  const exposeMessage = statusCode < 500 || config.nodeEnv !== 'production';
 
   res.status(statusCode).json({
     ok: false,
-    error: error.message || 'Unexpected server error',
+    error: exposeMessage
+      ? error.message || 'Unexpected server error'
+      : 'Unexpected server error',
   });
 });
 
@@ -2911,6 +3165,99 @@ Promise.all([ensureSubscriptionSchema(), ensureEtimsSchema()])
   .catch((error) => {
     console.error('Could not initialize backend schema:', error.message);
   });
+
+function buildCorsOptions() {
+  const allowedOrigins = new Set(
+    (config.allowedOrigins || []).map((origin) =>
+      String(origin || '').trim().replace(/\/+$/, ''),
+    ),
+  );
+  return {
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      const normalizedOrigin = String(origin).trim().replace(/\/+$/, '');
+      if (allowedOrigins.has(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+      callback(createHttpError(403, 'Origin is not allowed'));
+    },
+  };
+}
+
+function applySecurityHeaders(req, res, next) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=()',
+  );
+  next();
+}
+
+function createRateLimiter({ windowMs, max, keyPrefix }) {
+  const buckets = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const identifier = [
+      keyPrefix,
+      req.ip || req.socket?.remoteAddress || 'unknown',
+      normalizeOptionalText(req.body?.email) || normalizeOptionalText(req.params?.businessId) || '',
+    ].join(':');
+    const existing = buckets.get(identifier);
+    const bucket =
+      existing && existing.resetAt > now
+        ? existing
+        : { count: 0, resetAt: now + windowMs };
+    bucket.count += 1;
+    buckets.set(identifier, bucket);
+
+    if (bucket.count > max) {
+      res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+      next(createHttpError(429, 'Too many requests. Please try again later.'));
+      return;
+    }
+
+    if (buckets.size > 10000) {
+      for (const [key, value] of buckets.entries()) {
+        if (value.resetAt <= now) {
+          buckets.delete(key);
+        }
+      }
+    }
+    next();
+  };
+}
+
+function validateMpesaCallbackSecret(req) {
+  if (!config.mpesaCallbackSecret) {
+    return;
+  }
+  const provided =
+    normalizeOptionalText(req.query?.secret) ||
+    normalizeOptionalText(req.headers['x-mpesa-callback-secret']);
+  if (!safeEquals(provided, config.mpesaCallbackSecret)) {
+    throw createHttpError(401, 'Invalid M-Pesa callback secret');
+  }
+}
+
+function safeEquals(left, right) {
+  const leftValue = String(left || '');
+  const rightValue = String(right || '');
+  const length = Math.max(leftValue.length, rightValue.length);
+  const leftBuffer = Buffer.alloc(length);
+  const rightBuffer = Buffer.alloc(length);
+  Buffer.from(leftValue).copy(leftBuffer);
+  Buffer.from(rightValue).copy(rightBuffer);
+  return (
+    crypto.timingSafeEqual(leftBuffer, rightBuffer) &&
+    leftValue.length === rightValue.length
+  );
+}
 
 async function requireBusinessContext(req, { allowExpired = false } = {}) {
   const accessToken = parseBearerToken(req.headers.authorization);
@@ -6132,7 +6479,11 @@ function messageGatewayReadinessErrors(gateway) {
 function paymentGatewayReadinessErrors(gateway) {
   try {
     validatePaymentGatewayConfiguration(gateway);
-    return [];
+    const errors = [];
+    if (gateway.provider === 'mpesa' && !config.mpesaCallbackSecret) {
+      errors.push('M-Pesa callback secret');
+    }
+    return errors;
   } catch (error) {
     const message = error.message || 'Payment gateway is incomplete.';
     return [message.replace(/^Complete [^:]+:\s*/i, '')];

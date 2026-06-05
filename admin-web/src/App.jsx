@@ -4,20 +4,24 @@ import Dashboard from './components/Dashboard'
 import './index.css'
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('platform_token') || null)
+  const [token, setToken] = useState(
+    sessionStorage.getItem('platform_token') || null,
+  )
 
   const handleLogin = (newToken) => {
-    localStorage.setItem('platform_token', newToken)
+    sessionStorage.setItem('platform_token', newToken)
     setToken(newToken)
   }
 
   const handleLogout = () => {
+    sessionStorage.removeItem('platform_token')
     localStorage.removeItem('platform_token')
     setToken(null)
   }
 
   // Intercept api errors globally to handle token expiration
   useEffect(() => {
+    localStorage.removeItem('platform_token')
     const origFetch = window.fetch;
     window.fetch = async (...args) => {
       const response = await origFetch(...args);

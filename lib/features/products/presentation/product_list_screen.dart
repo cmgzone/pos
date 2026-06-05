@@ -326,33 +326,26 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       ),
     );
     final categories = categoriesAsync.when(
-      data: (items) => Container(
-        width: isMobile ? double.infinity : null,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceHighlight,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String?>(
-            isExpanded: isMobile,
-            value: _selectedCategory,
-            hint: const Text('All Categories', style: TextStyle(fontSize: 14)),
-            dropdownColor: AppColors.surface,
-            items: [
-              const DropdownMenuItem(
-                value: null,
-                child: Text('All Categories'),
-              ),
-              ...items.map(
-                (category) => DropdownMenuItem(
-                  value: category['id'] as String,
-                  child: Text(category['name'] as String),
-                ),
-              ),
-            ],
-            onChanged: (value) => setState(() => _selectedCategory = value),
+      data: (items) => SizedBox(
+        width: isMobile ? double.infinity : 230,
+        child: DropdownButtonFormField<String?>(
+          initialValue: _selectedCategory,
+          isExpanded: true,
+          dropdownColor: AppColors.surface,
+          decoration: const InputDecoration(
+            labelText: 'Category',
+            prefixIcon: Icon(Icons.category_outlined),
           ),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('All Categories')),
+            ...items.map(
+              (category) => DropdownMenuItem(
+                value: category['id'] as String,
+                child: Text(category['name'] as String),
+              ),
+            ),
+          ],
+          onChanged: (value) => setState(() => _selectedCategory = value),
         ),
       ),
       loading: () => const SizedBox(

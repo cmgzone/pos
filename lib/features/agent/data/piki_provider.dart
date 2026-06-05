@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/sync_controller.dart';
+import '../../../core/utils/error_messages.dart';
 import 'piki_agent_service.dart';
 import 'piki_brain_service.dart';
 import 'piki_chat_repository.dart';
@@ -160,15 +161,13 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
 
   // ── Public API ─────────────────────────────────────────────────────────
 
-  Future<void> sendMessage(String text) async {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
-
+  Future<String> _ensureSession(String titleSeed) async {
     var sessionId = _ref.read(pikiActiveSessionIdProvider);
     if (sessionId == null) {
-      final title = trimmed.length > 30
-          ? '${trimmed.substring(0, 30)}...'
-          : trimmed;
+      final cleanTitle = titleSeed.trim().isEmpty ? 'Piki chat' : titleSeed;
+      final title = cleanTitle.length > 30
+          ? '${cleanTitle.substring(0, 30)}...'
+          : cleanTitle;
       final session = await PikiChatRepository.createSession(title);
       sessionId = session.id;
       _ref.read(pikiActiveSessionIdProvider.notifier).state = sessionId;
@@ -178,6 +177,14 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
     if (_loadingFuture != null) {
       await _loadingFuture;
     }
+    return sessionId;
+  }
+
+  Future<void> sendMessage(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    final sessionId = await _ensureSession(trimmed);
 
     // User bubble
     addMessage(
@@ -251,6 +258,173 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
     } else {
       await brain.executeFastMode(skills);
     }
+  }
+
+  Future<void> analyzeImage({
+    required String imagePath,
+    String sourceLabel = 'photo',
+  }) async {
+    final sessionId = await _ensureSession('Piki image scan');
+    await _memoryLoadFuture;
+
+    final label = sourceLabel.trim().isEmpty ? 'photo' : sourceLabel.trim();
+    final userText =
+        'Analyze this $label for a product or sale record before saving.';
+    addMessage(
+      PikiMessage(
+        content: userText,
+        sender: PikiSender.user,
+        sessionId: sessionId,
+      ),
+    );
+
+    final statusNotifier = _ref.read(pikiStatusProvider.notifier);
+    statusNotifier.state = AgentStatus.working;
+    final working = PikiMessage(
+      content: 'Reading image with Piki AI...',
+      sender: PikiSender.agent,
+      sessionId: sessionId,
+      messageType: PikiMessageType.working,
+      steps: [
+        PikiAgentService.buildStepForTool(
+          PikiAgentService.toolImageOrderDraft,
+        ).copyWith(status: PikiStepStatus.working),
+      ],
+    );
+    addMessage(working);
+
+    try {
+      final result = await PikiAgentService.executeAgentTool(
+        PikiAgentService.toolImageOrderDraft,
+        args: {
+          'image_source': imagePath,
+          'note':
+              'The owner wants to create a product or record a sale from this photo.',
+        },
+      );
+      removeMessagesWhere((message) => message.id == working.id);
+
+      final items =
+          (result['items'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          const <Map<String, dynamic>>[];
+      final answer = items.isEmpty
+          ? 'I could not read a clear product or sale line from that photo. Try a brighter, closer image with the item name and price visible.'
+          : 'I read the photo and drafted ${items.length} item line${items.length == 1 ? '' : 's'}. Review them before creating a product or recording a sale.';
+      final suggestions = _imageDraftSuggestions(result);
+
+      addMessage(
+        PikiMessage(
+          content: answer,
+          sender: PikiSender.agent,
+          sessionId: sessionId,
+          messageType: PikiMessageType.aiResponse,
+          attachedData: {
+            'type': 'ai_response',
+            'model': OpenRouterService.modelName,
+            'tool_results': [result],
+          },
+          suggestions: suggestions.isNotEmpty ? suggestions : null,
+        ),
+      );
+      _ref
+          .read(pikiBrainProvider)
+          .rememberInteraction(
+            userInput: userText,
+            reply: answer,
+            tools: const [PikiAgentService.toolImageOrderDraft],
+            results: [result],
+          );
+      if (items.isNotEmpty) {
+        _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+          text:
+              'Photo read: ${items.take(3).map((item) => item['name']).join(', ')}',
+        );
+      }
+    } catch (error) {
+      removeMessagesWhere((message) => message.id == working.id);
+      addMessage(
+        PikiMessage(
+          content: AppErrorMessage.from(
+            error,
+            fallback: AppErrorMessage.pikiFailed,
+          ),
+          sender: PikiSender.agent,
+          sessionId: sessionId,
+          messageType: PikiMessageType.error,
+        ),
+      );
+    } finally {
+      statusNotifier.state = AgentStatus.idle;
+    }
+  }
+
+  List<String> _imageDraftSuggestions(Map<String, dynamic> result) {
+    final items =
+        (result['items'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    if (items.isEmpty) {
+      return const ['Try another clearer product photo'];
+    }
+
+    final suggestions = <String>[];
+    for (final item in items.take(2)) {
+      final name = (item['name'] ?? item['product_name'] ?? '')
+          .toString()
+          .trim();
+      if (name.isEmpty) continue;
+      final price = _numberFrom(item, const [
+        'unit_price',
+        'unitPrice',
+        'price',
+        'selling_price',
+      ]);
+      final cost = _numberFrom(item, const ['cost', 'unit_cost']);
+      final stock = _numberFrom(item, const ['stock', 'initial_stock']);
+      final quantity = _numberFrom(item, const ['quantity', 'qty']) ?? 1;
+      final unit = (item['unit'] ?? 'pcs').toString().trim();
+
+      final productPrompt = StringBuffer('Create product $name');
+      if (price != null && price > 0) {
+        productPrompt.write(' price ${price.toStringAsFixed(2)}');
+      }
+      if (cost != null && cost > 0) {
+        productPrompt.write(' cost ${cost.toStringAsFixed(2)}');
+      }
+      if (stock != null && stock >= 0) {
+        productPrompt.write(' stock ${stock.toStringAsFixed(2)}');
+      }
+      if (unit.isNotEmpty) {
+        productPrompt.write(' unit $unit');
+      }
+      suggestions.add(productPrompt.toString());
+
+      final salePrompt = StringBuffer('Record sale $quantity $name');
+      if (price != null && price > 0) {
+        salePrompt.write(' at ${price.toStringAsFixed(2)}');
+      }
+      salePrompt.write(' cash');
+      suggestions.add(salePrompt.toString());
+    }
+
+    return suggestions.take(4).toList();
+  }
+
+  double? _numberFrom(Map<String, dynamic> item, List<String> keys) {
+    for (final key in keys) {
+      final value = item[key];
+      if (value is num) return value.toDouble();
+      if (value != null) {
+        final parsed = double.tryParse(value.toString());
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
   }
 
   void executeQuickAction(String action) => sendMessage(action);

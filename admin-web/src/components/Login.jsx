@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { friendlyError } from '../utils/errors'
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('superadmin@velora.pos')
-  const [password, setPassword] = useState('superadmin123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -36,23 +36,22 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-      <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '400px', padding: '2.5rem' }}>
-        
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div className="brand" style={{ justifyContent: 'center', marginBottom: '1rem' }}>
+    <div className="auth-page">
+      <div className="glass-panel animate-fade-in auth-card">
+        <div className="auth-header">
+          <div className="brand">
             <div className="brand-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
               </svg>
             </div>
           </div>
-          <h2 className="brand-name">Velora POS Platform</h2>
-          <p style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>Admin Portal Login</p>
+          <h2 className="brand-name">Piki POS Platform</h2>
+          <p className="auth-kicker">Admin Portal Login</p>
         </div>
 
         {error && (
-          <div style={{ marginBottom: '1.5rem', padding: '0.75rem', borderRadius: '8px', backgroundColor: 'rgba(255, 71, 87, 0.1)', border: '1px solid rgba(255, 71, 87, 0.3)', color: 'var(--accent-danger)', fontSize: '0.875rem' }}>
+          <div className="auth-error">
             {error}
           </div>
         )}
@@ -71,12 +70,12 @@ export default function Login({ onLogin }) {
           
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input 
-              type="password" 
-              className="form-input" 
+            <input
+              type="password"
+              className="form-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required 
+              required
             />
           </div>
 

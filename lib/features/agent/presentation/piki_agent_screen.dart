@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/openrouter_service.dart';
@@ -29,6 +30,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   final _focusNode = FocusNode();
   bool _isListening = false;
   bool _voiceBusy = false;
+  bool _imageBusy = false;
   bool _autoListening = false;
   bool _autoLoopRunning = false;
   int _autoListenToken = 0;
@@ -208,6 +210,45 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
             content: Text('Microphone permission or recorder is unavailable.'),
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _pickImageForPiki(ImageSource source) async {
+    if (_imageBusy) return;
+    setState(() => _imageBusy = true);
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 82,
+      );
+      if (picked == null) return;
+      await ref
+          .read(pikiMessagesProvider.notifier)
+          .analyzeImage(
+            imagePath: picked.path,
+            sourceLabel: source == ImageSource.camera ? 'camera' : 'gallery',
+          );
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Piki image scan failed.',
+              fallback: AppErrorMessage.pikiFailed,
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _imageBusy = false);
       }
     }
   }
@@ -566,9 +607,11 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               focusNode: _focusNode,
               mode: mode,
               isListening: _isListening || _voiceBusy,
+              isImageBusy: _imageBusy,
               isAutoListening: _autoListening,
               onSend: _send,
               onMicTap: _toggleListening,
+              onImageSource: _pickImageForPiki,
               onAutoListenTap: _toggleAutoListening,
               onSelectMode: (m) =>
                   ref.read(pikiModeProvider.notifier).state = m,
@@ -985,9 +1028,11 @@ class _BottomBar extends StatelessWidget {
   final FocusNode focusNode;
   final PikiMode mode;
   final bool isListening;
+  final bool isImageBusy;
   final bool isAutoListening;
   final VoidCallback onSend;
   final VoidCallback onMicTap;
+  final ValueChanged<ImageSource> onImageSource;
   final VoidCallback onAutoListenTap;
   final ValueChanged<PikiMode> onSelectMode;
 
@@ -996,9 +1041,11 @@ class _BottomBar extends StatelessWidget {
     required this.focusNode,
     required this.mode,
     required this.isListening,
+    required this.isImageBusy,
     required this.isAutoListening,
     required this.onSend,
     required this.onMicTap,
+    required this.onImageSource,
     required this.onAutoListenTap,
     required this.onSelectMode,
   });
@@ -1135,9 +1182,16 @@ class _BottomBar extends StatelessWidget {
                         value: PikiMode.plan,
                         child: Row(
                           children: [
-                            Icon(Icons.route_rounded, color: AppColors.secondary, size: 18),
+                            Icon(
+                              Icons.route_rounded,
+                              color: AppColors.secondary,
+                              size: 18,
+                            ),
                             const SizedBox(width: 12),
-                            const Text('Plan Mode', style: TextStyle(fontSize: 14)),
+                            const Text(
+                              'Plan Mode',
+                              style: TextStyle(fontSize: 14),
+                            ),
                           ],
                         ),
                       ),
@@ -1145,9 +1199,16 @@ class _BottomBar extends StatelessWidget {
                         value: PikiMode.fast,
                         child: Row(
                           children: [
-                            Icon(Icons.bolt_rounded, color: AppColors.warning, size: 18),
+                            Icon(
+                              Icons.bolt_rounded,
+                              color: AppColors.warning,
+                              size: 18,
+                            ),
                             const SizedBox(width: 12),
-                            const Text('Fast Mode', style: TextStyle(fontSize: 14)),
+                            const Text(
+                              'Fast Mode',
+                              style: TextStyle(fontSize: 14),
+                            ),
                           ],
                         ),
                       ),
@@ -1155,9 +1216,16 @@ class _BottomBar extends StatelessWidget {
                         value: PikiMode.sell,
                         child: Row(
                           children: [
-                            Icon(Icons.point_of_sale_rounded, color: const Color(0xFF00C896), size: 18),
+                            Icon(
+                              Icons.point_of_sale_rounded,
+                              color: const Color(0xFF00C896),
+                              size: 18,
+                            ),
                             const SizedBox(width: 12),
-                            const Text('Sell Mode', style: TextStyle(fontSize: 14)),
+                            const Text(
+                              'Sell Mode',
+                              style: TextStyle(fontSize: 14),
+                            ),
                           ],
                         ),
                       ),
@@ -1165,15 +1233,23 @@ class _BottomBar extends StatelessWidget {
                         value: PikiMode.advice,
                         child: Row(
                           children: [
-                            Icon(Icons.lightbulb_rounded, color: const Color(0xFF9C27B0), size: 18),
+                            Icon(
+                              Icons.lightbulb_rounded,
+                              color: const Color(0xFF9C27B0),
+                              size: 18,
+                            ),
                             const SizedBox(width: 12),
-                            const Text('Advice Mode', style: TextStyle(fontSize: 14)),
+                            const Text(
+                              'Advice Mode',
+                              style: TextStyle(fontSize: 14),
+                            ),
                           ],
                         ),
                       ),
                       const PopupMenuDivider(),
                       PopupMenuItem(
-                        value: mode, // Keep value to avoid type errors but trigger toggle via onTap
+                        value:
+                            mode, // Keep value to avoid type errors but trigger toggle via onTap
                         onTap: onAutoListenTap,
                         child: Row(
                           children: [
@@ -1198,6 +1274,11 @@ class _BottomBar extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                 ],
+                _ImageSourceButton(
+                  isBusy: isImageBusy,
+                  onSelected: onImageSource,
+                ),
+                const SizedBox(width: 6),
                 Expanded(
                   child: TextField(
                     controller: controller,
@@ -1267,6 +1348,65 @@ class _BottomBar extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageSourceButton extends StatelessWidget {
+  final bool isBusy;
+  final ValueChanged<ImageSource> onSelected;
+
+  const _ImageSourceButton({required this.isBusy, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<ImageSource>(
+      tooltip: 'Scan product or sale photo',
+      enabled: !isBusy,
+      onSelected: onSelected,
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: ImageSource.camera,
+          child: Row(
+            children: [
+              Icon(Icons.photo_camera_outlined, size: 18),
+              SizedBox(width: 12),
+              Text('Take photo'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: ImageSource.gallery,
+          child: Row(
+            children: [
+              Icon(Icons.photo_library_outlined, size: 18),
+              SizedBox(width: 12),
+              Text('Choose photo'),
+            ],
+          ),
+        ),
+      ],
+      child: Container(
+        height: 48,
+        width: 48,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHighlight,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Center(
+          child: isBusy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(
+                  Icons.add_a_photo_outlined,
+                  color: AppColors.textSecondary,
+                ),
         ),
       ),
     );

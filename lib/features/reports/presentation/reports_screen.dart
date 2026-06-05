@@ -7,6 +7,7 @@ import '../../auth/data/user_repository.dart';
 import '../../app/app_shell.dart';
 import '../../shifts/data/shift_repository.dart';
 import '../../training/widgets/training_anchor.dart';
+import '../data/kra_report_export_service.dart';
 import '../data/report_repository.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -481,7 +482,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                   decoration: const InputDecoration(
                     labelText: 'Employee',
                     isDense: true,
-                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person_search_outlined),
                   ),
                   items: [
                     const DropdownMenuItem(
@@ -2119,6 +2120,8 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
   Map<String, dynamic> _vat = {};
   Map<String, dynamic> _etims = {};
   List<Map<String, dynamic>> _exportRows = [];
+  bool _savingPdf = false;
+  bool _savingCsv = false;
 
   @override
   void initState() {
@@ -2160,6 +2163,84 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
     });
   }
 
+  Future<void> _savePdf() async {
+    if (_savingPdf) {
+      return;
+    }
+    setState(() => _savingPdf = true);
+    try {
+      final path = await KraReportExportService.savePdf(
+        zReport: _zReport,
+        vat: _vat,
+        etims: _etims,
+        rows: _exportRows,
+      );
+      _showExportMessage(path, 'PDF');
+    } catch (e) {
+      _showExportError(e);
+    } finally {
+      if (mounted) {
+        setState(() => _savingPdf = false);
+      }
+    }
+  }
+
+  Future<void> _saveCsv() async {
+    if (_savingCsv) {
+      return;
+    }
+    setState(() => _savingCsv = true);
+    try {
+      final path = await KraReportExportService.saveCsv(
+        zReport: _zReport,
+        vat: _vat,
+        etims: _etims,
+        rows: _exportRows,
+      );
+      _showExportMessage(path, 'CSV');
+    } catch (e) {
+      _showExportError(e);
+    } finally {
+      if (mounted) {
+        setState(() => _savingCsv = false);
+      }
+    }
+  }
+
+  void _showExportMessage(String? path, String type) {
+    if (!mounted) {
+      return;
+    }
+    if (path == null || path.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$type export cancelled')));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$type KRA report saved'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  void _showExportError(Object error) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error.toString().replaceFirst('Exception: ', '').trim().isEmpty
+              ? 'Could not save KRA report'
+              : error.toString().replaceFirst('Exception: ', ''),
+        ),
+        backgroundColor: AppColors.error,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -2178,6 +2259,35 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
           const Text(
             'Z-report, VAT-ready summary, KRA eTIMS status, and accountant export counts.',
             style: TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: _savingPdf ? null : _savePdf,
+                icon: _savingPdf
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                label: Text(_savingPdf ? 'Saving PDF...' : 'Download PDF'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _savingCsv ? null : _saveCsv,
+                icon: _savingCsv
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.table_chart_outlined, size: 18),
+                label: Text(_savingCsv ? 'Saving CSV...' : 'Download CSV'),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           Wrap(

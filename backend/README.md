@@ -1,4 +1,4 @@
-# Velora POS Sync Backend
+# Piki POS Sync Backend
 
 Node.js + Express API for the POS cloud layer, backed by Neon Postgres.
 
@@ -34,11 +34,18 @@ PORT=3000
 NODE_ENV=development
 NEON_DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-ENDPOINT/velora_pos?sslmode=require
 LICENSE_SIGNING_SECRET=replace-with-a-long-random-secret
-PLATFORM_ADMIN_EMAIL=superadmin@velora.pos
+PLATFORM_ADMIN_EMAIL=admin@your-domain.example
 PLATFORM_ADMIN_PASSWORD=change-me
 PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
+PLATFORM_ALLOWED_ORIGINS=https://admin.your-domain.example,https://shop.your-domain.example
+MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
 ```
+
+In production, `PLATFORM_ALLOWED_ORIGINS` is required for browser CORS. Native
+mobile clients without an `Origin` header are still accepted. If you set
+`MPESA_CALLBACK_SECRET`, include it in the M-Pesa callback URL as
+`?secret=...` or send it with the `X-M-Pesa-Callback-Secret` header.
 
 ## Local Setup
 

@@ -10,7 +10,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 17;
+  static const int _databaseVersion = 18;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -21,6 +21,8 @@ class DatabaseService {
     'customers',
     'shifts',
     'sales',
+    'customer_invoices',
+    'customer_invoice_items',
     'cash_movements',
     'held_sales',
     'suppliers',
@@ -563,6 +565,71 @@ class DatabaseService {
         FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
         FOREIGN KEY (product_id) REFERENCES products(id),
         FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS customer_invoices (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        invoice_number TEXT NOT NULL,
+        customer_id TEXT,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT,
+        customer_email TEXT,
+        customer_kra_pin TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        issue_date TEXT NOT NULL,
+        due_date TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        discount REAL NOT NULL DEFAULT 0,
+        total_amount REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        balance_due REAL NOT NULL DEFAULT 0,
+        payment_method TEXT,
+        payment_reference TEXT,
+        note TEXT,
+        sale_id TEXT,
+        sent_at TEXT,
+        paid_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+        FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS customer_invoice_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        invoice_id TEXT NOT NULL,
+        line_type TEXT NOT NULL DEFAULT 'product',
+        product_id TEXT,
+        variant_id TEXT,
+        service_id TEXT,
+        description TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        unit_price REAL NOT NULL DEFAULT 0,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        sale_to_stock_factor REAL NOT NULL DEFAULT 1,
+        stock_unit TEXT NOT NULL DEFAULT 'pcs',
+        track_stock INTEGER NOT NULL DEFAULT 1,
+        line_total REAL NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (invoice_id) REFERENCES customer_invoices(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL
       )
     ''');
 
@@ -1310,6 +1377,7 @@ class DatabaseService {
     await _ensureShiftSchema(database);
     await _ensureSyncMetadataSchema(database);
     await _ensureSaleItemsSchema(database);
+    await _ensureCustomerInvoiceSchema(database);
     await _ensureServicesSchema(database);
     await _ensureCarWashSchema(database);
     await _promoteLegacyServiceSyncStatuses(database);
@@ -1697,6 +1765,157 @@ class DatabaseService {
       table: 'held_sale_items',
       column: 'variant_name',
       definition: 'TEXT',
+    );
+  }
+
+  static Future<void> _ensureCustomerInvoiceSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS customer_invoices (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        invoice_number TEXT NOT NULL,
+        customer_id TEXT,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT,
+        customer_email TEXT,
+        customer_kra_pin TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        issue_date TEXT NOT NULL,
+        due_date TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        discount REAL NOT NULL DEFAULT 0,
+        total_amount REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        balance_due REAL NOT NULL DEFAULT 0,
+        payment_method TEXT,
+        payment_reference TEXT,
+        note TEXT,
+        sale_id TEXT,
+        sent_at TEXT,
+        paid_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS customer_invoice_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        invoice_id TEXT NOT NULL,
+        line_type TEXT NOT NULL DEFAULT 'product',
+        product_id TEXT,
+        variant_id TEXT,
+        service_id TEXT,
+        description TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        unit_price REAL NOT NULL DEFAULT 0,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        sale_to_stock_factor REAL NOT NULL DEFAULT 1,
+        stock_unit TEXT NOT NULL DEFAULT 'pcs',
+        track_stock INTEGER NOT NULL DEFAULT 1,
+        line_total REAL NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    for (final table in const ['customer_invoices', 'customer_invoice_items']) {
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'branch_id',
+        definition: "TEXT DEFAULT '$defaultBranchId'",
+      );
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'deleted_at',
+        definition: 'TEXT',
+      );
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'sync_status',
+        definition: "TEXT NOT NULL DEFAULT 'pending'",
+      );
+    }
+
+    for (final spec in const [
+      ['customer_invoices', 'invoice_number', "TEXT NOT NULL DEFAULT ''"],
+      ['customer_invoices', 'customer_id', 'TEXT'],
+      ['customer_invoices', 'customer_name', "TEXT NOT NULL DEFAULT ''"],
+      ['customer_invoices', 'customer_phone', 'TEXT'],
+      ['customer_invoices', 'customer_email', 'TEXT'],
+      ['customer_invoices', 'customer_kra_pin', 'TEXT'],
+      ['customer_invoices', 'status', "TEXT NOT NULL DEFAULT 'draft'"],
+      ['customer_invoices', 'issue_date', "TEXT NOT NULL DEFAULT ''"],
+      ['customer_invoices', 'due_date', 'TEXT'],
+      ['customer_invoices', 'subtotal', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoices', 'tax', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoices', 'discount', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoices', 'total_amount', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoices', 'amount_paid', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoices', 'balance_due', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoices', 'payment_method', 'TEXT'],
+      ['customer_invoices', 'payment_reference', 'TEXT'],
+      ['customer_invoices', 'note', 'TEXT'],
+      ['customer_invoices', 'sale_id', 'TEXT'],
+      ['customer_invoices', 'sent_at', 'TEXT'],
+      ['customer_invoices', 'paid_at', 'TEXT'],
+      ['customer_invoices', 'created_by', 'TEXT'],
+      ['customer_invoice_items', 'invoice_id', "TEXT NOT NULL DEFAULT ''"],
+      [
+        'customer_invoice_items',
+        'line_type',
+        "TEXT NOT NULL DEFAULT 'product'",
+      ],
+      ['customer_invoice_items', 'product_id', 'TEXT'],
+      ['customer_invoice_items', 'variant_id', 'TEXT'],
+      ['customer_invoice_items', 'service_id', 'TEXT'],
+      ['customer_invoice_items', 'description', "TEXT NOT NULL DEFAULT ''"],
+      ['customer_invoice_items', 'quantity', 'REAL NOT NULL DEFAULT 1'],
+      ['customer_invoice_items', 'unit', "TEXT NOT NULL DEFAULT 'pcs'"],
+      ['customer_invoice_items', 'unit_price', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoice_items', 'unit_cost', 'REAL NOT NULL DEFAULT 0'],
+      [
+        'customer_invoice_items',
+        'sale_to_stock_factor',
+        'REAL NOT NULL DEFAULT 1',
+      ],
+      ['customer_invoice_items', 'stock_unit', "TEXT NOT NULL DEFAULT 'pcs'"],
+      ['customer_invoice_items', 'track_stock', 'INTEGER NOT NULL DEFAULT 1'],
+      ['customer_invoice_items', 'line_total', 'REAL NOT NULL DEFAULT 0'],
+      ['customer_invoice_items', 'sort_order', 'INTEGER NOT NULL DEFAULT 0'],
+    ]) {
+      await _ensureColumn(
+        database,
+        table: spec[0],
+        column: spec[1],
+        definition: spec[2],
+      );
+    }
+
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'customer_invoices',
+      indexName: 'idx_customer_invoices_status',
+      columns: ['branch_id', 'status', 'due_date'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'customer_invoice_items',
+      indexName: 'idx_customer_invoice_items_invoice_id',
+      columns: ['invoice_id'],
     );
   }
 
@@ -2182,6 +2401,8 @@ class DatabaseService {
       'shifts',
       'sales',
       'sale_items',
+      'customer_invoices',
+      'customer_invoice_items',
       'cash_movements',
       'suppliers',
       'purchase_invoices',
