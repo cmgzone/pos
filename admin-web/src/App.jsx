@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Login from './components/Login'
 import Dashboard from './components/Dashboard'
+import { apiUrl } from './utils/api'
 import './index.css'
 
 function App() {
@@ -22,15 +23,21 @@ function App() {
   // Intercept api errors globally to handle token expiration
   useEffect(() => {
     localStorage.removeItem('platform_token')
-    const origFetch = window.fetch;
+    const origFetch = window.fetch
     window.fetch = async (...args) => {
-      const response = await origFetch(...args);
-      if (response.status === 401 && args[0].startsWith('/api/platform')) {
-        handleLogout();
+      const requestTarget = typeof args[0] === 'string' ? args[0] : ''
+      const nextArgs =
+        typeof args[0] === 'string' ? [apiUrl(args[0]), ...args.slice(1)] : args
+      const response = await origFetch(...nextArgs)
+      if (response.status === 401 && requestTarget.startsWith('/api/platform')) {
+        handleLogout()
       }
-      return response;
-    };
-  }, []);
+      return response
+    }
+    return () => {
+      window.fetch = origFetch
+    }
+  }, [])
 
   return (
     <div className="app-container">

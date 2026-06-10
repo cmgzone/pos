@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiUrl, readApiJson } from '../utils/api'
 import { friendlyError } from '../utils/errors'
 
 export default function Login({ onLogin }) {
@@ -41,7 +42,7 @@ export default function Login({ onLogin }) {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/platform/login', {
+      const res = await fetch(apiUrl('/api/platform/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -49,7 +50,7 @@ export default function Login({ onLogin }) {
         body: JSON.stringify({ email, password })
       })
 
-      const data = await res.json()
+      const data = await readApiJson(res)
 
       if (res.ok && data.ok) {
         onLogin(data.token)

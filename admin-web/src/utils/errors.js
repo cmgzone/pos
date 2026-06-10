@@ -15,6 +15,14 @@ export function friendlyError(error, fallback = 'Something went wrong. Please tr
   if (lower.includes('timeout') || lower.includes('timed out')) {
     return 'The request took too long. Please try again.'
   }
+  if (
+    lower.includes('received html instead of backend json') ||
+    lower.includes('unexpected token') ||
+    lower.includes('not valid json') ||
+    lower.includes('bad gateway')
+  ) {
+    return 'The admin panel is not reaching the backend API. In Coolify, set the admin service BACKEND_URL or PIKI_API_BASE_URL to https://pikipos.com, then redeploy.'
+  }
   if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('jwt')) {
     return 'Your session has expired. Please sign in again.'
   }
