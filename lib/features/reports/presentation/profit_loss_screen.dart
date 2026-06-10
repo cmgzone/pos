@@ -6,6 +6,8 @@ import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../../widgets/compact_header_actions.dart';
+import '../../../widgets/smart_import_preview_dialog.dart';
+import '../data/expense_import_service.dart';
 import '../data/expense_repository.dart';
 
 class ProfitLossScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
   List<Map<String, dynamic>> _categories = [];
   Map<String, dynamic> _totals = {};
   bool _isLoading = true;
+  bool _isImportingExpenses = false;
   int _daysRange = 7;
   String _periodMode = '7';
   DateTime? _customStartDate;
@@ -395,6 +398,116 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     }
   }
 
+  Future<void> _importExpensesFromFile() async {
+    if (_isImportingExpenses) {
+      return;
+    }
+    setState(() => _isImportingExpenses = true);
+
+    ExpenseImportResult? result;
+    Object? importError;
+    try {
+      result = await ExpenseImportService.pickAndImportExpenses(
+        confirmPlan: (plan) => showSmartImportPreviewDialog(
+          context,
+          plan: plan,
+          title: 'Piki AI Expense Import Check',
+          actionLabel: 'Import Expenses',
+        ),
+      );
+    } catch (error) {
+      importError = error;
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingExpenses = false);
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (importError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.withContext(
+              importError,
+              prefix: 'Could not import expenses.',
+              fallback:
+                  'Use an .xlsx or .csv file with columns like title, amount, date, category, and note.',
+            ),
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (result == null) {
+      return;
+    }
+    final importResult = result;
+
+    await _loadData();
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Expense Import Complete'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${importResult.imported} expense${importResult.imported == 1 ? '' : 's'} imported'
+              '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
+            ),
+            if (importResult.categoriesCreated > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.categoriesCreated} expense categor${importResult.categoriesCreated == 1 ? 'y' : 'ies'} created.',
+                style: const TextStyle(color: AppColors.success),
+              ),
+            ],
+            if (importResult.skipped > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
+                style: const TextStyle(color: AppColors.warning),
+              ),
+            ],
+            if (importResult.errors.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Check these rows:',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              ...importResult.errors.map(
+                (error) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(error),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatDateValue(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
@@ -534,8 +647,10 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
                       const SizedBox(height: 14),
                       _ExpenseActionsBar(
                         isMobile: isMobile,
+                        isImporting: _isImportingExpenses,
                         onCreateCategory: _showAddCategoryDialog,
                         onAddExpense: _showAddExpenseDialog,
+                        onImportExpenses: _importExpensesFromFile,
                       ),
                       const SizedBox(height: 24),
                       TrainingAnchor(
@@ -972,13 +1087,17 @@ class _DailyExpenseReportList extends StatelessWidget {
 
 class _ExpenseActionsBar extends StatelessWidget {
   final bool isMobile;
+  final bool isImporting;
   final VoidCallback onCreateCategory;
   final VoidCallback onAddExpense;
+  final VoidCallback onImportExpenses;
 
   const _ExpenseActionsBar({
     required this.isMobile,
+    required this.isImporting,
     required this.onCreateCategory,
     required this.onAddExpense,
+    required this.onImportExpenses,
   });
 
   @override
@@ -997,12 +1116,19 @@ class _ExpenseActionsBar extends StatelessWidget {
         style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
       ),
     );
+    final importExpensesButton = OutlinedButton.icon(
+      onPressed: isImporting ? null : onImportExpenses,
+      icon: const Icon(Icons.upload_file_outlined, size: 18),
+      label: Text(isImporting ? 'Importing...' : 'Import Expenses'),
+    );
 
     if (isMobile) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           addExpenseButton,
+          const SizedBox(height: 10),
+          importExpensesButton,
           const SizedBox(height: 10),
           createCategoryButton,
         ],
@@ -1012,7 +1138,7 @@ class _ExpenseActionsBar extends StatelessWidget {
     return Wrap(
       spacing: 10,
       runSpacing: 10,
-      children: [addExpenseButton, createCategoryButton],
+      children: [addExpenseButton, importExpensesButton, createCategoryButton],
     );
   }
 }

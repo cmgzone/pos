@@ -4,7 +4,9 @@ import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../purchases/data/purchase_repository.dart';
+import '../data/customer_import_service.dart';
 import '../data/customer_repository.dart';
 import 'customer_account_screen.dart';
 import 'customer_message_dialog.dart';
@@ -24,6 +26,7 @@ class _ContactsScreenState extends State<ContactsScreen>
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _suppliers = [];
   bool _isLoading = true;
+  bool _isImportingCustomers = false;
 
   @override
   void initState() {
@@ -67,6 +70,114 @@ class _ContactsScreenState extends State<ContactsScreen>
       _suppliers = filteredSuppliers;
       _isLoading = false;
     });
+  }
+
+  Future<void> _importCustomersFromFile() async {
+    if (_isImportingCustomers) {
+      return;
+    }
+    setState(() => _isImportingCustomers = true);
+
+    CustomerImportResult? result;
+    Object? importError;
+    try {
+      result = await CustomerImportService.pickAndImportCustomers(
+        confirmPlan: (plan) => showSmartImportPreviewDialog(
+          context,
+          plan: plan,
+          title: 'Piki AI Customer Import Check',
+          actionLabel: 'Import Customers',
+        ),
+      );
+    } catch (error) {
+      importError = error;
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingCustomers = false);
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (importError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.withContext(
+              importError,
+              prefix: 'Could not import customers.',
+              fallback:
+                  'Use an .xlsx or .csv file with columns like name, phone, and email.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (result == null) {
+      return;
+    }
+    final importResult = result;
+
+    await _load();
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Customer Import Complete'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${importResult.created} customer${importResult.created == 1 ? '' : 's'} created'
+              '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
+            ),
+            if (importResult.updated > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.updated} existing customer${importResult.updated == 1 ? '' : 's'} updated.',
+              ),
+            ],
+            if (importResult.skipped > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
+                style: const TextStyle(color: AppColors.warning),
+              ),
+            ],
+            if (importResult.errors.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Check these rows:',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              ...importResult.errors.map(
+                (error) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(error),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _contactLine(Map<String, dynamic> contact) {
@@ -386,7 +497,8 @@ class _ContactsScreenState extends State<ContactsScreen>
     final name = contact['name'] as String? ?? 'Contact';
     final phone = contact['phone'] as String? ?? '';
     final email = contact['email'] as String? ?? '';
-    final balance = (contact['balance'] as num?)?.toDouble() ??
+    final balance =
+        (contact['balance'] as num?)?.toDouble() ??
         (contact['outstanding_balance'] as num?)?.toDouble() ??
         0;
 
@@ -594,6 +706,22 @@ class _ContactsScreenState extends State<ContactsScreen>
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         title: const Text('Contacts'),
+        actions: [
+          if (_tabController.index == 0)
+            IconButton(
+              tooltip: 'Import Customers',
+              onPressed: _isImportingCustomers
+                  ? null
+                  : _importCustomersFromFile,
+              icon: _isImportingCustomers
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.upload_file_outlined),
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppColors.primaryLight,
@@ -661,7 +789,9 @@ class _ContactsScreenState extends State<ContactsScreen>
           }
         },
         icon: const Icon(Icons.person_add_alt_1),
-        label: Text(_tabController.index == 0 ? 'Add Customer' : 'Add Supplier'),
+        label: Text(
+          _tabController.index == 0 ? 'Add Customer' : 'Add Supplier',
+        ),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
@@ -693,11 +823,14 @@ class _ContactsScreenState extends State<ContactsScreen>
           contactLine: _contactLine(c),
           hasPhone: hasPhone,
           icon: Icons.person_outline_rounded,
-          iconColor: hasPhone ? AppColors.primaryLight : AppColors.textSecondary,
+          iconColor: hasPhone
+              ? AppColors.primaryLight
+              : AppColors.textSecondary,
           trailing: balance > 0
               ? _BalanceBadge(
                   label: 'Balance',
-                  value: '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
+                  value:
+                      '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
                   color: AppColors.warning,
                 )
               : null,
@@ -738,7 +871,8 @@ class _ContactsScreenState extends State<ContactsScreen>
           trailing: totalSpend > 0
               ? _BalanceBadge(
                   label: 'Total Spend',
-                  value: '${ShopSettings.currency}${totalSpend.toStringAsFixed(2)}',
+                  value:
+                      '${ShopSettings.currency}${totalSpend.toStringAsFixed(2)}',
                   color: AppColors.primaryLight,
                 )
               : null,
@@ -775,10 +909,7 @@ class _ContactsScreenState extends State<ContactsScreen>
             const SizedBox(height: 20),
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
@@ -829,7 +960,9 @@ class _ContactCard extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: hasPhone ? AppColors.border : AppColors.warning.withValues(alpha: 0.35),
+          color: hasPhone
+              ? AppColors.border
+              : AppColors.warning.withValues(alpha: 0.35),
         ),
       ),
       child: isMobile ? _buildMobile(context) : _buildDesktop(context),
@@ -891,10 +1024,7 @@ class _ContactCard extends StatelessWidget {
             ),
           ],
         ),
-        if (trailing != null) ...[
-          const SizedBox(height: 12),
-          trailing!,
-        ],
+        if (trailing != null) ...[const SizedBox(height: 12), trailing!],
         const SizedBox(height: 12),
         Row(
           children: [
@@ -972,10 +1102,7 @@ class _ContactCard extends StatelessWidget {
             ],
           ),
         ),
-        if (trailing != null) ...[
-          const SizedBox(width: 14),
-          trailing!,
-        ],
+        if (trailing != null) ...[const SizedBox(width: 14), trailing!],
         const SizedBox(width: 14),
         IconButton(
           onPressed: onEdit,

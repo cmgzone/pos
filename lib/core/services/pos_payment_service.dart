@@ -66,6 +66,7 @@ class PosPayment {
   final String id;
   final String provider;
   final String status;
+  final int amountMinor;
   final String? receiptNumber;
   final String? externalReference;
   final Map<String, dynamic> metadata;
@@ -74,6 +75,7 @@ class PosPayment {
     required this.id,
     required this.provider,
     required this.status,
+    required this.amountMinor,
     required this.receiptNumber,
     required this.externalReference,
     required this.metadata,
@@ -84,6 +86,7 @@ class PosPayment {
       id: json['id']?.toString() ?? '',
       provider: json['provider']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
+      amountMinor: (json['amountMinor'] as num? ?? 0).round(),
       receiptNumber: json['receiptNumber']?.toString(),
       externalReference: json['externalReference']?.toString(),
       metadata: json['metadata'] is Map<String, dynamic>
@@ -92,7 +95,7 @@ class PosPayment {
     );
   }
 
-  bool get isPaid => status == 'paid';
+  bool get isPaid => status == 'paid' || status == 'claimed';
   bool get isFailed => status == 'failed';
 }
 
@@ -199,6 +202,35 @@ class PosPaymentService {
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
     return PosPayment.fromJson(data);
+  }
+
+  static Future<PosPayment?> matchManualMpesa({
+    String? referenceCode,
+    String? phoneNumber,
+    double? amount,
+    String? checkoutCode,
+  }) async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.post<Map<String, dynamic>>(
+      _url('payments/mpesa/claim-c2b'),
+      data: {
+        'deviceId': deviceId,
+        if (referenceCode != null && referenceCode.trim().isNotEmpty)
+          'referenceCode': referenceCode.trim(),
+        if (phoneNumber != null && phoneNumber.trim().isNotEmpty)
+          'phoneNumber': phoneNumber.trim(),
+        if (amount != null) 'amountMinor': (amount * 100).round(),
+        if (checkoutCode != null && checkoutCode.trim().isNotEmpty)
+          'checkoutCode': checkoutCode.trim(),
+      },
+      options: Options(headers: headers),
+    );
+    final data = _requireOk(response)['data'];
+    if (data == null) {
+      return null;
+    }
+    return PosPayment.fromJson(data as Map<String, dynamic>);
   }
 
   static Future<void> linkSale({

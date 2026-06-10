@@ -21,6 +21,8 @@ import '../../services/data/service_repository.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../customers/presentation/customer_message_dialog.dart';
 import '../../../widgets/compact_header_actions.dart';
+import '../../../widgets/smart_import_preview_dialog.dart';
+import '../data/sale_import_service.dart';
 import '../data/sale_repository.dart';
 import 'receipt_service.dart';
 
@@ -37,6 +39,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   String _selectedFilter = 'today';
   String _selectedSaleType = 'all';
   DateTime? _selectedDate;
+  bool _isImporting = false;
 
   bool get _isCashierView =>
       RolePermissions.normalizeRole(SessionService.currentUserRole) ==
@@ -173,6 +176,22 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                 icon: Icons.refresh,
                 tooltip: 'Refresh',
               ),
+              if (!_isCashierView)
+                isMobile
+                    ? CompactHeaderIconButton(
+                        onPressed: _isImporting ? null : _importSalesFromFile,
+                        icon: Icons.upload_file_outlined,
+                        tooltip: 'Import Excel/CSV sales',
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: CompactHeaderButton(
+                          onPressed: _isImporting ? null : _importSalesFromFile,
+                          icon: Icons.upload_file_outlined,
+                          label: _isImporting ? 'Importing...' : 'Import',
+                          filled: false,
+                        ),
+                      ),
               if (!_isCashierView && !isMobile)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -293,6 +312,128 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       return;
     }
     setState(() => _selectedSaleType = saleType);
+  }
+
+  Future<void> _importSalesFromFile() async {
+    if (_isImporting) {
+      return;
+    }
+    setState(() => _isImporting = true);
+
+    SaleImportResult? result;
+    Object? importError;
+    try {
+      result = await SaleImportService.pickAndImportSales(
+        confirmPlan: (plan) => showSmartImportPreviewDialog(
+          context,
+          plan: plan,
+          title: 'Piki AI Sales Import Check',
+          actionLabel: 'Import Sales',
+        ),
+      );
+    } catch (error) {
+      importError = error;
+    } finally {
+      if (mounted) {
+        setState(() => _isImporting = false);
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (importError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.withContext(
+              importError,
+              prefix: 'Could not import sales.',
+              fallback:
+                  'Use an .xlsx or .csv file with columns like date, total, payment_type, sku, barcode, product_name, quantity, unit_price, customer_name, due_date, and reference.',
+            ),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (result == null) {
+      return;
+    }
+    final importResult = result;
+
+    await _loadSales();
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Sales Import Complete'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${importResult.imported} sale${importResult.imported == 1 ? '' : 's'} imported'
+              '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
+            ),
+            if (importResult.productLines > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.productLines} product row${importResult.productLines == 1 ? '' : 's'} matched existing inventory and used POS stock rules.',
+                style: const TextStyle(color: AppColors.success),
+              ),
+            ],
+            if (importResult.serviceLines > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.serviceLines} service row${importResult.serviceLines == 1 ? '' : 's'} imported as service sales.',
+              ),
+            ],
+            if (importResult.summaryOnly > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.summaryOnly} summary-only row${importResult.summaryOnly == 1 ? '' : 's'} imported without item stock changes.',
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+            if (importResult.skipped > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
+                style: const TextStyle(color: AppColors.warning),
+              ),
+            ],
+            if (importResult.errors.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Check these rows:',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              ...importResult.errors.map(
+                (error) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(error),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showRecordBookSaleDialog() async {

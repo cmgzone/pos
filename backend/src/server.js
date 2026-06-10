@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
+const path = require('path');
 
 const { config } = require('./config');
 const { query, withTransaction, withReadTransaction } = require('./db');
@@ -74,6 +75,8 @@ const {
   loadPosPayment,
   linkPosPaymentToSale,
   handlePosMpesaCallback,
+  handleMpesaC2BCallback,
+  matchManualPayment,
 } = require('./posPayments');
 const {
   ensureEtimsSchema,
@@ -88,6 +91,8 @@ const {
 const { searchWithSerpApi } = require('./serpApi');
 
 const app = express();
+const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
+const landingIndexPath = path.join(landingPageDir, 'index.html');
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -1917,6 +1922,32 @@ app.get('/api/payments/mpesa/pos-config', async (req, res, next) => {
   }
 });
 
+app.post('/api/payments/mpesa/c2b-validation', async (req, res) => {
+  try {
+    validateMpesaCallbackSecret(req);
+    await handleMpesaC2BCallback({ payload: req.body, persist: false });
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      ResultCode: 1,
+      ResultDesc: error.message || 'Rejected',
+    });
+  }
+});
+
+app.post('/api/payments/mpesa/c2b-confirmation', async (req, res) => {
+  try {
+    validateMpesaCallbackSecret(req);
+    await handleMpesaC2BCallback({ payload: req.body, persist: true });
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      ResultCode: 1,
+      ResultDesc: error.message || 'Rejected',
+    });
+  }
+});
+
 app.post('/api/payments/mpesa/pos-checkout', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -1930,6 +1961,29 @@ app.post('/api/payments/mpesa/pos-checkout', async (req, res, next) => {
       phoneNumber: req.body?.phoneNumber,
       saleId: req.body?.saleId,
       metadata: req.body?.metadata || {},
+    });
+    res.json({ ok: true, data: payment });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/payments/mpesa/claim-c2b', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const amount =
+      req.body?.amount != null
+        ? Number(req.body.amount)
+        : req.body?.amountMinor != null
+          ? Number(req.body.amountMinor) / 100
+          : null;
+    const payment = await matchManualPayment({
+      businessId: businessContext.businessId,
+      referenceCode: req.body?.referenceCode,
+      phoneNumber: req.body?.phoneNumber,
+      amount,
+      checkoutCode: req.body?.checkoutCode,
+      saleId: req.body?.saleId,
     });
     res.json({ ok: true, data: payment });
   } catch (error) {
@@ -3114,6 +3168,15 @@ app.get('/api/public/catalog/:businessId/orders/:orderNumber', async (req, res, 
   }
 });
 
+app.post('/api/public/demo-requests', publicWriteRateLimit, async (req, res, next) => {
+  try {
+    const request = await createLandingDemoRequest(req.body || {}, req);
+    res.status(201).json({ ok: true, data: request });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/catalog/:businessId', async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.params.businessId);
@@ -3131,6 +3194,17 @@ app.get('/catalog/:businessId', async (req, res, next) => {
   } catch (error) {
     next(normalizeRouteError(error));
   }
+});
+
+app.use(express.static(landingPageDir, { index: false }));
+app.use('/landing', express.static(landingPageDir, { index: false }));
+
+app.get(['/', '/landing'], (req, res, next) => {
+  res.sendFile(landingIndexPath, (error) => {
+    if (error) {
+      next(error);
+    }
+  });
 });
 
 app.use((error, req, res, next) => {
@@ -3153,7 +3227,11 @@ app.listen(config.port, () => {
   );
 });
 
-Promise.all([ensureSubscriptionSchema(), ensureEtimsSchema()])
+Promise.all([
+  ensureSubscriptionSchema(),
+  ensureEtimsSchema(),
+  ensureLandingDemoRequestSchema(),
+])
   .then(() =>
     startPikiProactiveWorker({
       query,
@@ -4978,6 +5056,129 @@ async function ensurePublicCatalogOrderSchema(target = query) {
     `CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
      ON public_catalog_order_items(order_id)`,
   );
+}
+
+async function createLandingDemoRequest(payload, req) {
+  await ensureLandingDemoRequestSchema(query);
+
+  const fullName = limitText(
+    normalizeOptionalText(payload.fullName || payload.name),
+    160,
+  );
+  const email = limitText(
+    normalizeOptionalText(payload.email)?.toLowerCase(),
+    200,
+  );
+  const storeType = normalizeLandingStoreType(payload.storeType);
+  const message = limitText(
+    normalizeOptionalText(payload.message || payload.notes),
+    1200,
+  );
+
+  if (!fullName) {
+    throw createHttpError(400, 'Full name is required');
+  }
+  if (!email || !email.includes('@')) {
+    throw createHttpError(400, 'A valid email address is required');
+  }
+
+  const now = new Date().toISOString();
+  const metadata = {
+    source: 'landing_page',
+    referrer: normalizeOptionalText(req.get?.('referer')),
+    userAgent: normalizeOptionalText(req.get?.('user-agent')),
+  };
+
+  const result = await query(
+    `
+    INSERT INTO landing_demo_requests (
+      id,
+      full_name,
+      email,
+      store_type,
+      message,
+      source,
+      status,
+      metadata_json,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, $3, $4, $5, 'landing_page', 'new', $6::jsonb, $7, $7)
+    RETURNING *
+    `,
+    [
+      crypto.randomUUID(),
+      fullName,
+      email,
+      storeType,
+      message,
+      JSON.stringify(metadata),
+      now,
+    ],
+  );
+
+  return normalizeLandingDemoRequestRow(result.rows[0]);
+}
+
+async function ensureLandingDemoRequestSchema(target = query) {
+  await runDbQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS landing_demo_requests (
+      id text PRIMARY KEY,
+      full_name text NOT NULL,
+      email text NOT NULL,
+      store_type text NOT NULL DEFAULT 'other',
+      message text,
+      source text NOT NULL DEFAULT 'landing_page',
+      status text NOT NULL DEFAULT 'new',
+      metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_landing_demo_requests_email
+     ON landing_demo_requests(email)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_landing_demo_requests_created_at
+     ON landing_demo_requests(created_at DESC)`,
+  );
+}
+
+function normalizeLandingDemoRequestRow(row) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    storeType: row.store_type,
+    message: row.message,
+    status: row.status,
+    createdAt: toIsoString(row.created_at),
+  };
+}
+
+function normalizeLandingStoreType(value) {
+  const normalized = normalizeOptionalText(value)
+    ?.toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_');
+  const allowedTypes = new Set([
+    'retail',
+    'pharmacy',
+    'wholesale',
+    'service',
+    'other',
+  ]);
+  return allowedTypes.has(normalized) ? normalized : 'other';
+}
+
+function limitText(value, maxLength) {
+  const normalized = normalizeOptionalText(value);
+  return normalized ? normalized.slice(0, maxLength) : null;
 }
 
 function shortOrderNumber(orderId) {

@@ -42,15 +42,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ----------------------------------------------------------------------
-    // 3. ROI Savings Calculator logic
+    // 3. Business impact calculator logic
     // ----------------------------------------------------------------------
     const salesSlider = document.getElementById('monthlySales');
-    const cardShareSlider = document.getElementById('cardTxShare');
-    const feeSlider = document.getElementById('competitorFee');
+    const interruptionShareSlider = document.getElementById('interruptionShare');
+    const offlineCaptureRateSlider = document.getElementById('offlineCaptureRate');
 
     const salesVal = document.getElementById('salesVal');
-    const cardShareVal = document.getElementById('cardShareVal');
-    const competitorFeeVal = document.getElementById('competitorFeeVal');
+    const interruptionShareVal = document.getElementById('interruptionShareVal');
+    const offlineCaptureRateVal = document.getElementById('offlineCaptureRateVal');
 
     const monthlySavingsVal = document.getElementById('monthlySavingsVal');
     const yearlySavingsVal = document.getElementById('yearlySavingsVal');
@@ -61,33 +61,220 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function calculateSavings() {
         const sales = parseFloat(salesSlider.value);
-        const cardShare = parseFloat(cardShareSlider.value) / 100;
-        const competitorFee = parseFloat(feeSlider.value) / 100;
+        const interruptedSalesShare = parseFloat(interruptionShareSlider.value) / 100;
+        const offlineCaptureRate = parseFloat(offlineCaptureRateSlider.value) / 100;
 
-        // Digital payments are charged the competitor fee in standard POS systems
-        const legacyDigitalFees = sales * cardShare * competitorFee;
-        
-        // Piki POS charges 0% transaction fees!
-        // We'll simulate that we save exactly the full competitor transaction fee on digital channels
-        const monthlySavings = legacyDigitalFees;
-        const yearlySavings = monthlySavings * 12;
+        const monthlyProtectedSales = sales * interruptedSalesShare * offlineCaptureRate;
+        const yearlyProtectedSales = monthlyProtectedSales * 12;
 
-        // Update values in UI
         salesVal.textContent = formatCurrency(sales);
-        cardShareVal.textContent = Math.round(cardShare * 100) + '%';
-        competitorFeeVal.textContent = competitorFeeVal.textContent = (competitorFee * 100).toFixed(1) + '%';
+        interruptionShareVal.textContent = Math.round(interruptedSalesShare * 100) + '%';
+        offlineCaptureRateVal.textContent = Math.round(offlineCaptureRate * 100) + '%';
 
-        monthlySavingsVal.textContent = formatCurrency(monthlySavings);
-        yearlySavingsVal.textContent = formatCurrency(yearlySavings);
+        monthlySavingsVal.textContent = formatCurrency(monthlyProtectedSales);
+        yearlySavingsVal.textContent = formatCurrency(yearlyProtectedSales);
     }
 
     if (salesSlider) {
         salesSlider.addEventListener('input', calculateSavings);
-        cardShareSlider.addEventListener('input', calculateSavings);
-        feeSlider.addEventListener('input', calculateSavings);
-        calculateSavings(); // Initial execution
+        interruptionShareSlider.addEventListener('input', calculateSavings);
+        offlineCaptureRateSlider.addEventListener('input', calculateSavings);
+        calculateSavings();
     }
+
+    // ----------------------------------------------------------------------
+    // 4. Dynamic pricing catalog from subscription plans
+    // ----------------------------------------------------------------------
+    const pricingPlans = document.getElementById('pricingPlans');
+    const pricingMarket = document.getElementById('pricingMarket');
+    const pricingSourceText = document.getElementById('pricingSourceText');
+
+    const featureLabels = {
+        pos: 'POS checkout',
+        products: 'Products',
+        categories: 'Categories',
+        purchases: 'Purchases',
+        sales: 'Sales history',
+        dashboard: 'Dashboard',
+        kopesha: 'Kopesha credit',
+        profit_loss: 'Profit & Loss',
+        reports: 'Reports',
+        settings: 'Settings',
+        shifts: 'Shifts',
+        services: 'Services',
+        agent: 'Piki AI',
+        stock_list: 'Stock list',
+        transfers: 'Transfers',
+        branches: 'Branches',
+        audit_logs: 'Audit logs',
+        proactive_piki: 'Proactive Piki'
+    };
+
+    const sellingModeLabels = {
+        products: 'Products',
+        services: 'Services',
+        combo: 'Products + services'
+    };
+
+    function moneyFromMinor(amountMinor, currency) {
+        const amount = Number(amountMinor || 0) / 100;
+        const hasDecimals = !['KES', 'UGX', 'TZS', 'NGN'].includes(String(currency || '').toUpperCase());
+        return new Intl.NumberFormat('en', {
+            style: 'currency',
+            currency: currency || 'KES',
+            minimumFractionDigits: hasDecimals ? 2 : 0,
+            maximumFractionDigits: hasDecimals ? 2 : 0
+        }).format(amount);
+    }
+
+    function planPriceText(plan) {
+        const price = plan.price;
+        if (!price) {
+            return {
+                amount: 'Custom',
+                suffix: 'price not published'
+            };
+        }
+        if (Number(price.amountMinor || 0) === 0) {
+            return {
+                amount: 'Free',
+                suffix: price.billingPeriod || 'monthly'
+            };
+        }
+        return {
+            amount: moneyFromMinor(price.amountMinor, price.currency),
+            suffix: price.billingPeriod || 'monthly'
+        };
+    }
+
+    function compactLimit(value, label) {
+        const number = Number(value || 0);
+        if (number >= 999999) return `Unlimited ${label}`;
+        return `${number} ${label}`;
+    }
+
+    function renderMarkets(markets, selectedCountryCode) {
+        if (!pricingMarket || !Array.isArray(markets) || markets.length === 0) {
+            return;
+        }
+        pricingMarket.innerHTML = markets.map((market) => {
+            const code = market.countryCode || 'GLOBAL';
+            const label = market.label || code;
+            const provider = market.providerLabel ? ` - ${market.providerLabel}` : '';
+            return `<option value="${escapeHtml(code)}">${escapeHtml(label + provider)}</option>`;
+        }).join('');
+        pricingMarket.value = selectedCountryCode || markets[0].countryCode || 'KE';
+    }
+
+    function renderPricingPlans(plans, meta) {
+        if (!pricingPlans) return;
+        if (!Array.isArray(plans) || plans.length === 0) {
+            pricingPlans.innerHTML = `
+                <article class="pricing-empty glass-card">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <h3>No public plans yet</h3>
+                    <p>Activate at least one plan and one market to publish pricing here.</p>
+                </article>
+            `;
+            return;
+        }
+
+        pricingPlans.innerHTML = plans.map((plan, index) => {
+            const price = planPriceText(plan);
+            const features = (plan.features || []).slice(0, 6);
+            const sellingModes = (plan.availableSellingModes || plan.sellingModes || [])
+                .map((mode) => sellingModeLabels[mode] || mode)
+                .slice(0, 3);
+            const isPopular = index === Math.min(2, plans.length - 1) && plan.code !== 'trial';
+            const cta = plan.price ? 'Request This Plan' : 'Discuss Pricing';
+            return `
+                <article class="pricing-card glass-card ${isPopular ? 'pricing-card-popular' : ''}">
+                    ${isPopular ? '<span class="pricing-popular-badge">Best fit</span>' : ''}
+                    <div class="pricing-card-header">
+                        <span class="pricing-plan-code">${escapeHtml(plan.code || 'plan')}</span>
+                        <h3>${escapeHtml(plan.name || 'Plan')}</h3>
+                        <p>${escapeHtml(plan.description || 'Piki POS subscription plan')}</p>
+                    </div>
+                    <div class="pricing-price-row">
+                        <span class="pricing-price">${escapeHtml(price.amount)}</span>
+                        <span class="pricing-period">${escapeHtml(price.suffix)}</span>
+                    </div>
+                    <div class="pricing-limits">
+                        <span><i class="fa-solid fa-store"></i>${escapeHtml(compactLimit(plan.maxBranches, 'branch'))}</span>
+                        <span><i class="fa-solid fa-users"></i>${escapeHtml(compactLimit(plan.maxEmployees, 'users'))}</span>
+                        <span><i class="fa-solid fa-wand-magic-sparkles"></i>${escapeHtml(compactLimit(plan.maxAiAgents, 'AI seat'))}</span>
+                    </div>
+                    ${sellingModes.length ? `<div class="pricing-modes">${sellingModes.map((mode) => `<span>${escapeHtml(mode)}</span>`).join('')}</div>` : ''}
+                    <ul class="pricing-feature-list">
+                        ${features.map((feature) => `<li><i class="fa-solid fa-check"></i>${escapeHtml(featureLabels[feature] || feature)}</li>`).join('')}
+                    </ul>
+                    <a class="btn btn-primary btn-block pricing-plan-cta" href="#contact" data-plan="${escapeHtml(plan.name || '')}">${cta}</a>
+                </article>
+            `;
+        }).join('');
+
+        if (pricingSourceText) {
+            const market = meta?.selectedMarket?.label || meta?.countryCode || 'selected market';
+            const provider = meta?.selectedMarket?.providerLabel || meta?.provider || 'payment gateway';
+            pricingSourceText.textContent = `Showing current ${market} pricing via ${provider}`;
+        }
+
+        document.querySelectorAll('.pricing-plan-cta').forEach((button) => {
+            button.addEventListener('click', () => {
+                const messageInput = document.getElementById('contactMessage');
+                const planName = button.getAttribute('data-plan');
+                if (messageInput && planName) {
+                    messageInput.value = `I want setup help for the ${planName} plan.`;
+                }
+            });
+        });
+    }
+
+    async function loadPricingPlans(countryCode = 'KE') {
+        if (!pricingPlans) return;
+        if (pricingSourceText) {
+            pricingSourceText.textContent = 'Loading live plans...';
+        }
+        try {
+            const response = await fetch(`/api/subscription/plans?countryCode=${encodeURIComponent(countryCode)}`);
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || body.ok !== true) {
+                throw new Error(body.error || 'Could not load pricing plans.');
+            }
+            renderMarkets(body.markets || [], body.countryCode);
+            renderPricingPlans(body.plans || [], body);
+        } catch (error) {
+            if (pricingSourceText) {
+                pricingSourceText.textContent = 'Could not load live pricing';
+            }
+            pricingPlans.innerHTML = `
+                <article class="pricing-empty glass-card">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <h3>Pricing is temporarily unavailable</h3>
+                    <p>${escapeHtml(error.message || 'Please request setup help and the team will share the latest plan options.')}</p>
+                    <a class="btn btn-primary btn-sm" href="#contact">Request Pricing</a>
+                </article>
+            `;
+        }
+    }
+
+    if (pricingMarket) {
+        pricingMarket.addEventListener('change', () => {
+            loadPricingPlans(pricingMarket.value || 'KE');
+        });
+    }
+
+    loadPricingPlans();
 });
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
 
 // --------------------------------------------------------------------------
 // 4. Testimonials Slider carousel
@@ -213,7 +400,7 @@ function addToCart(name, price, icon) {
         simulatorCart.push({ name, price, qty: 1, icon });
     }
     
-    logSyncConsole('sqlite', `Added to local cart: ${name} (KES ${price})`);
+    logSyncConsole('local', `Added to cart on this device: ${name} (KES ${price})`);
     renderCart();
 }
 
@@ -266,7 +453,7 @@ function renderCart() {
 
 function removeFromCart(index) {
     const item = simulatorCart[index];
-    logSyncConsole('sqlite', `Removed from local cart: ${item.name}`);
+    logSyncConsole('local', `Removed from cart on this device: ${item.name}`);
     simulatorCart.splice(index, 1);
     renderCart();
 }
@@ -285,10 +472,10 @@ function selectPaymentMethod(method) {
     const kopeshaFields = document.getElementById('kopeshaFields');
     if (method === 'kopesha') {
         kopeshaFields.classList.remove('hidden');
-        logSyncConsole('sqlite', 'Kopesha credit option chosen. Ready to log customer balance.');
+        logSyncConsole('local', 'Kopesha credit option chosen. Ready to record customer balance.');
     } else {
         kopeshaFields.classList.add('hidden');
-        logSyncConsole('sqlite', `Payment selected: ${method.toUpperCase()}`);
+        logSyncConsole('local', `Payment selected: ${method.toUpperCase()}`);
     }
 }
 
@@ -315,10 +502,10 @@ function processCheckout() {
     const txId = 'TX-' + Math.floor(100000 + Math.random() * 900000);
     const dateStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
     
-    // Update local SQLite transaction rows count
+    // Update local transaction count
     sqliteTransactionsCount++;
     document.getElementById('sqliteTxCount').textContent = `${sqliteTransactionsCount} Transactions`;
-    logSyncConsole('sqlite', `COMPLETED checkout locally! Saved in SQLite with Transaction ID: ${txId}`);
+    logSyncConsole('local', `Checkout completed on this device. Transaction ID: ${txId}`);
     
     // Setup simulated receipt details
     rNum.textContent = txId;
@@ -346,7 +533,7 @@ function processCheckout() {
         receiptKopeshaDetail.classList.remove('hidden');
         receiptKopeshaDetail.innerHTML = `Customer: ${customerName}<br>Due Date: ${dueDateInput.value}`;
         
-        logSyncConsole('sqlite', `Registered customer balance: Debited KES ${totalVal} to ${customerName}`);
+        logSyncConsole('local', `Recorded customer balance: Debited KES ${totalVal} to ${customerName}`);
     } else {
         receiptKopeshaDetail.classList.add('hidden');
     }
@@ -369,15 +556,15 @@ function processCheckout() {
             neonCloudStatus.className = 'badge badge-pending';
         }
         
-        logSyncConsole('sqlite', `Transaction ${txId} queued locally for sync. Waiting for internet connection...`);
+        logSyncConsole('local', `Transaction ${txId} queued for sync. Waiting for internet connection...`);
     } else {
         receiptStatusText.className = 'receipt-status-badge online';
         receiptStatusText.textContent = 'CLOUD SYNCED TRANSACTION';
         
-        // Sync instantly
+        // Simulate a successful sync for the browser demo.
         neonTransactionsCount++;
         document.getElementById('neonTxCount').textContent = `${neonTransactionsCount} Transactions`;
-        logSyncConsole('neon', `Synced successfully! Committed Transaction ID: ${txId} to Neon Postgres Cloud.`);
+        logSyncConsole('cloud', `Synced successfully. Transaction ID: ${txId} is backed up.`);
     }
     
     // Display receipt
@@ -390,11 +577,11 @@ function processCheckout() {
 
 function triggerBackgroundSync() {
     if (offlineTxQueue.length === 0) {
-        logSyncConsole('system', 'Database is currently fully synchronized.');
+        logSyncConsole('system', 'Records are currently fully synchronized.');
         return;
     }
     
-    logSyncConsole('system', `Background worker found ${offlineTxQueue.length} pending transaction(s). Synergizing with Express Sync API...`);
+    logSyncConsole('system', `Found ${offlineTxQueue.length} pending transaction(s). Sending queued changes to cloud sync...`);
     if (neonCloudStatus) {
         neonCloudStatus.textContent = 'SYNCING...';
         neonCloudStatus.className = 'badge badge-pending';
@@ -406,14 +593,14 @@ function triggerBackgroundSync() {
             const tx = offlineTxQueue.shift();
             neonTransactionsCount++;
             document.getElementById('neonTxCount').textContent = `${neonTransactionsCount} Transactions`;
-            logSyncConsole('neon', `Sync complete! SQLite ID ${tx.id} committed to Neon Postgres Cloud (Cursor rev: ${neonTransactionsCount}).`);
+            logSyncConsole('cloud', `Sync complete. Transaction ${tx.id} is now backed up (sync ${neonTransactionsCount}).`);
         }
         
         if (neonCloudStatus) {
             neonCloudStatus.textContent = 'SYNCED';
             neonCloudStatus.className = 'badge';
         }
-        logSyncConsole('success', 'SQLite and Neon databases are 100% in sync!');
+        logSyncConsole('success', 'Device and cloud demo records are now in sync.');
         
         // Update current receipt status badge to online synced if it is visible
         const receiptStatusText = document.getElementById('receiptStatusText');
@@ -427,15 +614,56 @@ function triggerBackgroundSync() {
 // --------------------------------------------------------------------------
 // 7. Contact Lead Capture Form Submission Handler
 // --------------------------------------------------------------------------
-function handleFormSubmit(event) {
+async function handleFormSubmit(event) {
     event.preventDefault();
     
     const form = document.getElementById('contactForm');
     const successMsg = document.getElementById('formSuccess');
+    const errorMsg = document.getElementById('formError');
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalButtonHtml = submitButton.innerHTML;
+    const name = document.getElementById('contactName').value.trim();
+    const email = document.getElementById('contactEmail').value.trim();
+    const storeType = document.getElementById('storeType').value;
+    const message = document.getElementById('contactMessage').value.trim();
     
-    form.classList.add('hidden');
-    successMsg.classList.remove('hidden');
-    
-    const name = document.getElementById('contactName').value;
-    logSyncConsole('system', `New store demo requested by: ${name}. Welcome credentials generated.`);
+    if (errorMsg) {
+        errorMsg.classList.add('hidden');
+        errorMsg.textContent = '';
+    }
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+
+    try {
+        const response = await fetch('/api/public/demo-requests', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fullName: name,
+                email,
+                storeType,
+                message
+            })
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok || body.ok === false) {
+            throw new Error(body.error || 'Could not send your request. Please try again.');
+        }
+
+        form.classList.add('hidden');
+        successMsg.classList.remove('hidden');
+        logSyncConsole('system', `New store demo requested by: ${name}. Request ${body.data?.id || 'created'} saved.`);
+    } catch (error) {
+        if (errorMsg) {
+            errorMsg.textContent = error.message;
+            errorMsg.classList.remove('hidden');
+        }
+        logSyncConsole('error', `Demo request failed: ${error.message}`);
+    } finally {
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonHtml;
+    }
 }

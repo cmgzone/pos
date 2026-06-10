@@ -15,6 +15,9 @@ const MPESA_TRANSACTION_TYPES = new Set([
 ]);
 
 let schemaReady = false;
+let mpesaC2BSchemaReady = false;
+
+const MPESA_MANUAL_MATCH_WINDOW_MINUTES = 5;
 
 async function ensurePosPaymentSchema(target = query) {
   const canUseCache = target === query;
@@ -91,6 +94,68 @@ async function ensurePosPaymentSchema(target = query) {
 
   if (canUseCache) {
     schemaReady = true;
+  }
+}
+
+async function ensureMpesaC2BSchema(target = query) {
+  const canUseCache = target === query;
+  if (canUseCache && mpesaC2BSchemaReady) {
+    return;
+  }
+
+  await ensurePosPaymentSchema(target);
+
+  await runQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS received_mpesa_payments (
+      id text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      transaction_code text UNIQUE NOT NULL,
+      phone_number text NOT NULL,
+      amount numeric NOT NULL,
+      bill_ref_number text,
+      merchant_shortcode text,
+      first_name text,
+      middle_name text,
+      last_name text,
+      status text NOT NULL DEFAULT 'unclaimed',
+      claimed_by_sale_id text,
+      raw_payload_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    ALTER TABLE received_mpesa_payments
+      ADD COLUMN IF NOT EXISTS merchant_shortcode text,
+      ADD COLUMN IF NOT EXISTS raw_payload_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW()
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE INDEX IF NOT EXISTS idx_received_mpesa_unclaimed
+      ON received_mpesa_payments(business_id, status, phone_number, amount)
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE INDEX IF NOT EXISTS idx_received_mpesa_bill_ref
+      ON received_mpesa_payments(business_id, status, lower(bill_ref_number))
+    `,
+  );
+
+  if (canUseCache) {
+    mpesaC2BSchemaReady = true;
   }
 }
 
@@ -314,6 +379,7 @@ async function loadPosPayment({ businessId, paymentId }) {
 
 async function linkPosPaymentToSale({ businessId, paymentId, saleId }) {
   await ensurePosPaymentSchema();
+  await ensureMpesaC2BSchema();
   return withTransaction(async (client) => {
     const result = await client.query(
       `
@@ -326,6 +392,13 @@ async function linkPosPaymentToSale({ businessId, paymentId, saleId }) {
     );
     const payment = result.rows[0];
     if (!payment) {
+      const manualPayment = await linkManualMpesaPaymentToSale(
+        client,
+        { businessId, paymentId, saleId },
+      );
+      if (manualPayment) {
+        return manualPayment;
+      }
       throw createError(404, 'Payment was not found');
     }
     if (payment.status !== 'paid') {
@@ -451,6 +524,184 @@ async function handlePosMpesaCallback({
       );
     }
     return true;
+  });
+}
+
+async function handleMpesaC2BCallback({ payload, persist = true }) {
+  const parsed = normalizeMpesaC2BPayload(payload);
+  const businessId = await resolveMpesaC2BBusinessId(parsed);
+
+  if (!persist) {
+    return {
+      accepted: true,
+      businessId,
+      merchantShortcode: parsed.merchantShortcode,
+    };
+  }
+
+  await ensureMpesaC2BSchema();
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `
+      INSERT INTO received_mpesa_payments (
+        id,
+        business_id,
+        transaction_code,
+        phone_number,
+        amount,
+        bill_ref_number,
+        merchant_shortcode,
+        first_name,
+        middle_name,
+        last_name,
+        status,
+        raw_payload_json,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        'unclaimed',
+        $11::jsonb,
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (transaction_code) DO UPDATE
+      SET phone_number = EXCLUDED.phone_number,
+          amount = EXCLUDED.amount,
+          bill_ref_number = COALESCE(EXCLUDED.bill_ref_number, received_mpesa_payments.bill_ref_number),
+          merchant_shortcode = COALESCE(EXCLUDED.merchant_shortcode, received_mpesa_payments.merchant_shortcode),
+          first_name = COALESCE(EXCLUDED.first_name, received_mpesa_payments.first_name),
+          middle_name = COALESCE(EXCLUDED.middle_name, received_mpesa_payments.middle_name),
+          last_name = COALESCE(EXCLUDED.last_name, received_mpesa_payments.last_name),
+          raw_payload_json = received_mpesa_payments.raw_payload_json || EXCLUDED.raw_payload_json,
+          updated_at = NOW()
+      RETURNING *
+      `,
+      [
+        crypto.randomUUID(),
+        businessId,
+        parsed.transactionCode,
+        parsed.phoneNumber,
+        parsed.amount,
+        parsed.billRefNumber,
+        parsed.merchantShortcode,
+        parsed.firstName,
+        parsed.middleName,
+        parsed.lastName,
+        JSON.stringify(parsed.rawPayload),
+      ],
+    );
+    return normalizeManualMpesaPaymentRow(result.rows[0]);
+  });
+}
+
+async function matchManualPayment({
+  businessId,
+  referenceCode,
+  phoneNumber,
+  amount,
+  checkoutCode,
+  saleId = null,
+}) {
+  const cleanBusinessId = normalizeText(businessId);
+  if (!cleanBusinessId) {
+    throw createError(400, 'businessId is required');
+  }
+
+  const cleanReference = normalizeMpesaReceiptCode(referenceCode);
+  const cleanCheckoutCode = normalizeText(checkoutCode);
+  const cleanPhone = normalizeMpesaPhone(phoneNumber);
+  const cleanAmount = Number(amount);
+  const canMatchByPhoneAmount = Boolean(cleanPhone) && Number.isFinite(cleanAmount) && cleanAmount > 0;
+
+  if (!cleanReference && !cleanCheckoutCode && !canMatchByPhoneAmount) {
+    throw createError(
+      400,
+      'Provide an M-Pesa code, checkout account, or customer phone and amount',
+    );
+  }
+
+  await ensureMpesaC2BSchema();
+  return withTransaction(async (client) => {
+    let candidate = null;
+    if (cleanReference) {
+      candidate = await findManualMpesaCandidate(
+        client,
+        `
+        SELECT *
+        FROM received_mpesa_payments
+        WHERE business_id = $1
+          AND status = 'unclaimed'
+          AND upper(transaction_code) = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [cleanBusinessId, cleanReference],
+      );
+    }
+
+    if (!candidate && cleanCheckoutCode) {
+      candidate = await findManualMpesaCandidate(
+        client,
+        `
+        SELECT *
+        FROM received_mpesa_payments
+        WHERE business_id = $1
+          AND status = 'unclaimed'
+          AND lower(bill_ref_number) = lower($2)
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [cleanBusinessId, cleanCheckoutCode],
+      );
+    }
+
+    if (!candidate && canMatchByPhoneAmount) {
+      candidate = await findManualMpesaCandidate(
+        client,
+        `
+        SELECT *
+        FROM received_mpesa_payments
+        WHERE business_id = $1
+          AND status = 'unclaimed'
+          AND phone_number = $2
+          AND amount = $3
+          AND created_at >= NOW() - ($4::text || ' minutes')::interval
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [
+          cleanBusinessId,
+          cleanPhone,
+          roundMoney(cleanAmount),
+          MPESA_MANUAL_MATCH_WINDOW_MINUTES,
+        ],
+      );
+    }
+
+    if (!candidate) {
+      return null;
+    }
+
+    const updated = await markManualMpesaPaymentClaimed(
+      client,
+      candidate,
+      normalizeText(saleId),
+    );
+    return normalizeManualMpesaPaymentRow(updated);
   });
 }
 
@@ -592,6 +843,230 @@ function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
     consumerSecret: businessSecretConfig.consumerSecret || '',
     passkey: businessSecretConfig.passkey || '',
   };
+}
+
+async function resolveMpesaC2BBusinessId(parsed) {
+  await ensurePosPaymentSchema();
+  const shortcode = normalizeText(parsed?.merchantShortcode);
+  if (!shortcode) {
+    throw createError(400, 'BusinessShortCode is required');
+  }
+
+  const result = await query(
+    `
+    SELECT business_id
+    FROM business_payment_gateways
+    WHERE provider = 'mpesa'
+      AND is_active = true
+      AND public_config_json->>'shortcode' = $1
+    ORDER BY updated_at DESC
+    LIMIT 1
+    `,
+    [shortcode],
+  );
+
+  if (!result.rows.length) {
+    throw createError(
+      404,
+      'No active business M-Pesa gateway matches this Till or PayBill number',
+    );
+  }
+  return result.rows[0].business_id;
+}
+
+function normalizeMpesaC2BPayload(payload) {
+  const rawPayload = payload && typeof payload === 'object' ? payload : {};
+  const transactionCode = normalizeMpesaReceiptCode(
+    readPayloadValue(rawPayload, [
+      'TransID',
+      'TransId',
+      'TransactionCode',
+      'transactionCode',
+      'transaction_code',
+    ]),
+  );
+  const amount = roundMoney(
+    Number(readPayloadValue(rawPayload, ['TransAmount', 'Amount', 'amount'])),
+  );
+  const phoneNumber = normalizeMpesaPhone(
+    readPayloadValue(rawPayload, ['MSISDN', 'PhoneNumber', 'phoneNumber', 'phone_number']),
+  );
+  const merchantShortcode = normalizeText(
+    readPayloadValue(rawPayload, [
+      'BusinessShortCode',
+      'ShortCode',
+      'TillNumber',
+      'PayBillNumber',
+      'businessShortCode',
+      'shortcode',
+    ]),
+  )?.replace(/\s+/g, '');
+  const billRefNumber = normalizeText(
+    readPayloadValue(rawPayload, [
+      'BillRefNumber',
+      'BillReferenceNumber',
+      'AccountReference',
+      'accountReference',
+      'accountNumber',
+      'bill_ref_number',
+    ]),
+  );
+
+  if (!transactionCode) {
+    throw createError(400, 'TransID is required');
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw createError(400, 'TransAmount must be greater than zero');
+  }
+  if (!phoneNumber) {
+    throw createError(400, 'MSISDN is required');
+  }
+  if (!merchantShortcode) {
+    throw createError(400, 'BusinessShortCode is required');
+  }
+
+  return {
+    transactionCode,
+    phoneNumber,
+    amount,
+    billRefNumber,
+    merchantShortcode,
+    firstName: normalizeText(readPayloadValue(rawPayload, ['FirstName', 'firstName', 'first_name'])),
+    middleName: normalizeText(readPayloadValue(rawPayload, ['MiddleName', 'middleName', 'middle_name'])),
+    lastName: normalizeText(readPayloadValue(rawPayload, ['LastName', 'lastName', 'last_name'])),
+    rawPayload,
+  };
+}
+
+function readPayloadValue(payload, keys) {
+  for (const key of keys) {
+    if (payload[key] != null) {
+      return payload[key];
+    }
+  }
+  const lowerKeyMap = Object.fromEntries(
+    Object.keys(payload).map((key) => [key.toLowerCase(), key]),
+  );
+  for (const key of keys) {
+    const found = lowerKeyMap[key.toLowerCase()];
+    if (found && payload[found] != null) {
+      return payload[found];
+    }
+  }
+  return null;
+}
+
+async function findManualMpesaCandidate(client, text, params) {
+  const result = await client.query(text, params);
+  return result.rows[0] || null;
+}
+
+async function markManualMpesaPaymentClaimed(client, payment, saleId) {
+  const result = await client.query(
+    `
+    UPDATE received_mpesa_payments
+    SET status = 'claimed',
+        claimed_by_sale_id = COALESCE($3, claimed_by_sale_id),
+        updated_at = NOW()
+    WHERE id = $1 AND business_id = $2
+    RETURNING *
+    `,
+    [payment.id, payment.business_id, saleId || null],
+  );
+  const updated = result.rows[0];
+  if (saleId) {
+    await updateSaleForManualMpesaPayment(client, updated, saleId);
+  }
+  return updated;
+}
+
+async function linkManualMpesaPaymentToSale(client, { businessId, paymentId, saleId }) {
+  const result = await client.query(
+    `
+    SELECT *
+    FROM received_mpesa_payments
+    WHERE id = $1 AND business_id = $2
+    FOR UPDATE
+    `,
+    [paymentId, businessId],
+  );
+  const payment = result.rows[0];
+  if (!payment) {
+    return null;
+  }
+  if (payment.status !== 'claimed') {
+    throw createError(400, 'Manual M-Pesa payment is not confirmed yet');
+  }
+
+  const updated = await markManualMpesaPaymentClaimed(client, payment, saleId);
+  return normalizeManualMpesaPaymentRow(updated);
+}
+
+async function updateSaleForManualMpesaPayment(client, payment, saleId) {
+  await client.query(
+    `
+    UPDATE sales
+    SET payment_provider = 'mpesa_c2b',
+        payment_reference = $3,
+        payment_status = 'paid',
+        payment_metadata_json = COALESCE(payment_metadata_json, '{}'::jsonb) || $4::jsonb,
+        updated_at = NOW()
+    WHERE id = $2 AND business_id = $1
+    `,
+    [
+      payment.business_id,
+      saleId,
+      payment.transaction_code,
+      JSON.stringify(manualMpesaMetadata(payment)),
+    ],
+  );
+}
+
+function normalizeManualMpesaPaymentRow(row) {
+  const metadata = manualMpesaMetadata(row);
+  return {
+    id: row.id,
+    businessId: row.business_id,
+    saleId: row.claimed_by_sale_id,
+    provider: 'mpesa_c2b',
+    countryCode: 'KE',
+    currency: 'KES',
+    amountMinor: Math.round(Number(row.amount || 0) * 100),
+    phoneNumber: row.phone_number,
+    status: row.status === 'claimed' ? 'paid' : 'pending',
+    externalReference: row.bill_ref_number || null,
+    checkoutRequestId: null,
+    receiptNumber: row.transaction_code,
+    metadata,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+    completedAt: row.status === 'claimed' ? toIsoString(row.updated_at) : null,
+  };
+}
+
+function manualMpesaMetadata(row) {
+  return {
+    source: 'manual_c2b',
+    mpesaReceiptNumber: row.transaction_code,
+    phoneNumber: row.phone_number,
+    amount: Number(row.amount || 0),
+    billRefNumber: row.bill_ref_number || null,
+    merchantShortcode: row.merchant_shortcode || null,
+    claimedBySaleId: row.claimed_by_sale_id || null,
+    customerName: [row.first_name, row.middle_name, row.last_name]
+      .map((part) => normalizeText(part))
+      .filter(Boolean)
+      .join(' ') || null,
+    rawPayload: parseJson(row.raw_payload_json, {}),
+  };
+}
+
+function normalizeMpesaReceiptCode(value) {
+  return normalizeText(value)?.replace(/\s+/g, '').toUpperCase() || null;
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function normalizeBusinessPaymentGatewayInput(input, existing = {}) {
@@ -826,6 +1301,7 @@ async function runQuery(target, text, params) {
 
 module.exports = {
   ensurePosPaymentSchema,
+  ensureMpesaC2BSchema,
   loadBusinessPaymentGateway,
   saveBusinessPaymentGateway,
   loadPosMpesaConfig,
@@ -833,6 +1309,8 @@ module.exports = {
   loadPosPayment,
   linkPosPaymentToSale,
   handlePosMpesaCallback,
+  handleMpesaC2BCallback,
+  matchManualPayment,
   resolveMpesaGatewayConfig,
   validateBusinessPaymentGatewayConfiguration,
 };

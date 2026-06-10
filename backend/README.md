@@ -11,6 +11,10 @@ Node.js + Express API for the POS cloud layer, backed by Neon Postgres.
 Neon is the database only. You still deploy this API separately on a host such
 as Render, Railway, Fly.io, or your own server.
 
+For Coolify, deploy the repository root with the included `Dockerfile`. The
+container runs this backend, serves the landing page from `/`, and exposes port
+`3000`.
+
 ## Stack
 
 - Node.js
@@ -46,6 +50,29 @@ In production, `PLATFORM_ALLOWED_ORIGINS` is required for browser CORS. Native
 mobile clients without an `Origin` header are still accepted. If you set
 `MPESA_CALLBACK_SECRET`, include it in the M-Pesa callback URL as
 `?secret=...` or send it with the `X-M-Pesa-Callback-Secret` header.
+
+For manual M-Pesa Till/Paybill matching, register these HTTPS URLs in Daraja
+using the same secret:
+
+```bash
+https://your-api-host.example.com/api/payments/mpesa/c2b-validation?secret=replace-with-a-long-random-callback-secret
+https://your-api-host.example.com/api/payments/mpesa/c2b-confirmation?secret=replace-with-a-long-random-callback-secret
+```
+
+Coolify production variables should include:
+
+```bash
+NODE_ENV=production
+PORT=3000
+NEON_DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-ENDPOINT/piki_pos?sslmode=require
+LICENSE_SIGNING_SECRET=replace-with-a-long-random-secret
+PLATFORM_ADMIN_EMAIL=admin@your-domain.example
+PLATFORM_ADMIN_PASSWORD=change-me-to-a-strong-password
+PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
+PLATFORM_ALLOWED_ORIGINS=https://your-api-host.example.com,https://admin.your-domain.example
+MPESA_CALLBACK_URL=https://your-api-host.example.com/api/subscription/mpesa/callback?secret=replace-with-a-long-random-callback-secret
+MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
+```
 
 ## Local Setup
 
@@ -100,7 +127,9 @@ Use `SOCKET_URL` too if you later add real-time features on a separate origin.
 
 ## Endpoints
 
+- `GET /` serves the Piki POS landing page
 - `GET /api/health`
+- `POST /api/public/demo-requests`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/license/activate`
@@ -118,6 +147,9 @@ Use `SOCKET_URL` too if you later add real-time features on a separate origin.
 - `GET /api/ai/config`
 - `POST /api/ai/chat`
 - `POST /api/ai/web-search`
+- `POST /api/payments/mpesa/c2b-validation`
+- `POST /api/payments/mpesa/c2b-confirmation`
+- `POST /api/payments/mpesa/claim-c2b`
 
 Legacy timestamp sync is also still supported through `since=<ISO timestamp>`.
 

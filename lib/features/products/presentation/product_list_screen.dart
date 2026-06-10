@@ -4,13 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/empty_state_widget.dart';
+import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../purchases/presentation/purchase_management_screen.dart';
+import '../data/product_import_service.dart';
 import '../data/product_provider.dart';
 import '../data/product_repository.dart';
 import 'catalog_orders_screen.dart';
@@ -22,6 +25,7 @@ import 'stock_list_screen.dart';
 import '../../app/app_shell.dart';
 
 enum _MobileProductPageAction {
+  importProducts,
   catalogOrders,
   stockList,
   purchases,
@@ -40,6 +44,7 @@ class ProductListScreen extends ConsumerStatefulWidget {
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   String _searchQuery = '';
   String? _selectedCategory;
+  bool _isImporting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +96,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               tooltip: 'Manage Categories',
               onPressed: _openCategories,
             ),
+          if (!isMobile) const SizedBox(width: 4),
+          if (!isMobile)
+            CompactHeaderButton(
+              onPressed: _isImporting ? null : _importProductsFromFile,
+              icon: Icons.upload_file_outlined,
+              label: _isImporting ? 'Importing...' : 'Import',
+              filled: false,
+            ),
           TrainingAnchor(
             id: 'products.add',
             child: isMobile
@@ -110,6 +123,13 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               tooltip: 'More product tools',
               onSelected: _handleMobilePageAction,
               itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _MobileProductPageAction.importProducts,
+                  child: ListTile(
+                    leading: Icon(Icons.upload_file_outlined),
+                    title: Text('Import Products'),
+                  ),
+                ),
                 PopupMenuItem(
                   value: _MobileProductPageAction.catalogOrders,
                   child: ListTile(
@@ -432,6 +452,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
   Future<void> _handleMobilePageAction(_MobileProductPageAction action) async {
     switch (action) {
+      case _MobileProductPageAction.importProducts:
+        await _importProductsFromFile();
       case _MobileProductPageAction.catalogOrders:
         await _openCatalogOrders();
       case _MobileProductPageAction.stockList:
@@ -441,6 +463,122 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       case _MobileProductPageAction.categories:
         await _openCategories();
     }
+  }
+
+  Future<void> _importProductsFromFile() async {
+    if (_isImporting) {
+      return;
+    }
+    setState(() => _isImporting = true);
+
+    ProductImportResult? result;
+    Object? importError;
+    try {
+      result = await ProductImportService.pickAndImportProducts(
+        confirmPlan: (plan) => showSmartImportPreviewDialog(
+          context,
+          plan: plan,
+          title: 'Piki AI Product Import Check',
+          actionLabel: 'Import Products',
+        ),
+      );
+    } catch (error) {
+      importError = error;
+    } finally {
+      if (mounted) {
+        setState(() => _isImporting = false);
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (importError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.withContext(
+              importError,
+              prefix: 'Could not import products.',
+              fallback:
+                  'Use an .xlsx or .csv file with columns like name, price, cost, sku, barcode, category, stock, low_stock, unit, and track_stock.',
+            ),
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (result == null) {
+      return;
+    }
+    final importResult = result;
+    _refreshProducts();
+    ref.invalidate(categoriesProvider);
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Product Import Complete'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${importResult.created} product${importResult.created == 1 ? '' : 's'} created'
+              '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
+            ),
+            if (importResult.updated > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.updated} existing product${importResult.updated == 1 ? '' : 's'} updated.',
+              ),
+            ],
+            if (importResult.stockBatches > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.stockBatches} stock batch${importResult.stockBatches == 1 ? '' : 'es'} received for existing products.',
+                style: const TextStyle(color: AppColors.success),
+              ),
+            ],
+            if (importResult.skipped > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
+                style: const TextStyle(color: AppColors.warning),
+              ),
+            ],
+            if (importResult.errors.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Check these rows:',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              ...importResult.errors.map(
+                (error) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(error),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showStockAdjustmentDialog(Map<String, dynamic> product) {

@@ -689,10 +689,131 @@ select.compact-input {
     var(--bg-primary);
 }
 
+.auth-layout {
+  width: min(100%, 1080px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 430px);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
 .auth-card {
   width: 100%;
   max-width: 430px;
   padding: 2.5rem;
+}
+
+.about-card {
+  width: 100%;
+  padding: 2.5rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.about-card::before {
+  content: '';
+  position: absolute;
+  inset: -40% auto auto 48%;
+  width: 420px;
+  height: 420px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.12), transparent 62%);
+}
+
+.about-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.35rem 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(0, 229, 255, 0.24);
+  border-radius: var(--radius-full);
+  background: rgba(0, 229, 255, 0.08);
+  color: var(--accent-secondary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.about-card h1 {
+  max-width: 620px;
+  margin-bottom: 1rem;
+  font-size: clamp(2.1rem, 4vw, 4rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.about-card > p {
+  max-width: 620px;
+  color: #cbd5e1;
+  font-size: 1rem;
+}
+
+.about-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 2rem 0 1rem;
+}
+
+.about-tab {
+  min-height: 40px;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.about-tab:hover,
+.about-tab.is-active {
+  border-color: rgba(0, 229, 255, 0.34);
+  background: rgba(0, 229, 255, 0.11);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.about-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--field-ring);
+}
+
+.about-tab-panel {
+  position: relative;
+  padding: 1.35rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01)),
+    rgba(15, 18, 29, 0.52);
+}
+
+.about-tab-panel h2 {
+  margin-bottom: 0.65rem;
+  font-size: 1.35rem;
+  letter-spacing: -0.025em;
+}
+
+.about-tab-panel p {
+  color: #cbd5e1;
+}
+
+.about-tab-panel ul {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding-left: 1.1rem;
+  color: var(--text-secondary);
+}
+
+.about-tab-panel li::marker {
+  color: var(--accent-secondary);
 }
 
 .auth-header {
@@ -732,6 +853,18 @@ select.compact-input {
 
   .auth-card {
     padding: 1.5rem;
+  }
+
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .about-card {
+    padding: 1.5rem;
+  }
+
+  .about-card h1 {
+    font-size: 2.25rem;
   }
 
   .editor-actions {

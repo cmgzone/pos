@@ -223,6 +223,24 @@ CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
 CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
   ON public_catalog_order_items(order_id);
 
+CREATE TABLE IF NOT EXISTS landing_demo_requests (
+  id text PRIMARY KEY,
+  full_name text NOT NULL,
+  email text NOT NULL,
+  store_type text NOT NULL DEFAULT 'other',
+  message text,
+  source text NOT NULL DEFAULT 'landing_page',
+  status text NOT NULL DEFAULT 'new',
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_landing_demo_requests_email
+  ON landing_demo_requests(email);
+CREATE INDEX IF NOT EXISTS idx_landing_demo_requests_created_at
+  ON landing_demo_requests(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS business_access_tokens (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
   access_token text NOT NULL UNIQUE,

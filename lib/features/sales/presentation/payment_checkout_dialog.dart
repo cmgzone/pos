@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/pos_payment_service.dart';
@@ -34,12 +36,18 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _mpesaPhoneController = TextEditingController();
+  final _mpesaReferenceController = TextEditingController();
+  late final String _manualMpesaCheckoutCode =
+      'PK-${DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase()}';
 
   List<Map<String, dynamic>> _customers = [];
   Map<String, dynamic>? _selectedCustomer;
   bool _isLoading = true;
   PosMpesaConfig? _mpesaConfig;
   bool _isLoadingMpesa = true;
+  bool _isManualMpesaMatching = false;
+  String? _manualMpesaStatus;
+  Timer? _manualMpesaPollTimer;
   DateTime _selectedDueDate = DateTime.now().add(const Duration(days: 14));
   Map<String, dynamic>? _selectedMethod;
 
@@ -57,6 +65,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     _phoneController.dispose();
     _emailController.dispose();
     _mpesaPhoneController.dispose();
+    _mpesaReferenceController.dispose();
+    _manualMpesaPollTimer?.cancel();
     super.dispose();
   }
 
@@ -204,6 +214,82 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       'phoneNumber': phone,
       'customer': _selectedCustomer,
     });
+  }
+
+  void _startManualMpesaPolling() {
+    final config = _mpesaConfig;
+    if (config?.active != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(config?.message ?? 'M-Pesa is not active.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    _manualMpesaPollTimer?.cancel();
+    setState(() {
+      _manualMpesaStatus =
+          'Waiting for payment to ${config!.merchantShortcode ?? 'your M-Pesa account'}...';
+    });
+    _matchManualMpesa(silent: true);
+    _manualMpesaPollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _matchManualMpesa(silent: true),
+    );
+  }
+
+  Future<void> _matchManualMpesa({bool silent = false}) async {
+    if (_isManualMpesaMatching) return;
+    final referenceCode = _mpesaReferenceController.text.trim();
+    final phoneNumber = _mpesaPhoneController.text.trim();
+    setState(() {
+      _isManualMpesaMatching = true;
+      if (!silent) {
+        _manualMpesaStatus = 'Checking M-Pesa payment...';
+      }
+    });
+
+    try {
+      final payment = await PosPaymentService.matchManualMpesa(
+        referenceCode: referenceCode.isEmpty ? null : referenceCode,
+        phoneNumber: phoneNumber.isEmpty ? null : phoneNumber,
+        amount: widget.total,
+        checkoutCode: _manualMpesaCheckoutCode,
+      );
+      if (!mounted) return;
+
+      if (payment != null && payment.isPaid) {
+        _manualMpesaPollTimer?.cancel();
+        Navigator.pop(context, {
+          'type': 'mpesa_manual',
+          'payment': payment,
+          'checkoutCode': _manualMpesaCheckoutCode,
+          'customer': _selectedCustomer,
+        });
+        return;
+      }
+
+      setState(() {
+        _manualMpesaStatus = referenceCode.isEmpty
+            ? 'No payment found yet. Keep this open while the customer pays.'
+            : 'That M-Pesa code was not found for this sale yet.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _manualMpesaStatus = AppErrorMessage.withContext(
+          error,
+          prefix: 'Manual M-Pesa check failed.',
+          fallback: AppErrorMessage.paymentFailed,
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isManualMpesaMatching = false);
+      }
+    }
   }
 
   IconData _getPaymentIcon(Map<String, dynamic> method) {
@@ -401,9 +487,12 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                         _selectedMethod?['is_credit'] == 1;
                     final isMpesaSelected =
                         _selectedMethod != null &&
-                        (_selectedMethod!['name'] as String)
-                            .toLowerCase()
-                            .contains('mpesa');
+                        (() {
+                          final name = (_selectedMethod!['name'] as String)
+                              .toLowerCase();
+                          return name.contains('mpesa') ||
+                              name.contains('m-pesa');
+                        })();
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,6 +517,12 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                               onTap: () {
                                 setState(() {
                                   _selectedMethod = method;
+                                  final methodName = (method['name'] as String)
+                                      .toLowerCase();
+                                  if (!methodName.contains('mpesa') &&
+                                      !methodName.contains('m-pesa')) {
+                                    _manualMpesaPollTimer?.cancel();
+                                  }
                                 });
                               },
                             );
@@ -438,30 +533,47 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                         // M-Pesa dynamic phone field
                         if (isMpesaSelected) ...[
                           if (_mpesaConfig?.active == true)
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: AppColors.secondary.withValues(
-                                  alpha: 0.08,
-                                ),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: AppColors.secondary.withValues(
-                                    alpha: 0.2,
+                            Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.secondary.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: AppColors.secondary.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  child: TextField(
+                                    controller: _mpesaPhoneController,
+                                    keyboardType: TextInputType.phone,
+                                    decoration: InputDecoration(
+                                      labelText:
+                                          '${_mpesaConfig!.providerLabel} phone',
+                                      prefixIcon: const Icon(
+                                        Icons.phone_android_outlined,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: TextField(
-                                controller: _mpesaPhoneController,
-                                keyboardType: TextInputType.phone,
-                                decoration: InputDecoration(
-                                  labelText:
-                                      '${_mpesaConfig!.providerLabel} phone',
-                                  prefixIcon: const Icon(
-                                    Icons.phone_android_outlined,
-                                  ),
+                                const SizedBox(height: 12),
+                                _ManualMpesaSection(
+                                  shortcode: _mpesaConfig!.merchantShortcode,
+                                  checkoutCode: _manualMpesaCheckoutCode,
+                                  total: widget.total,
+                                  referenceController:
+                                      _mpesaReferenceController,
+                                  status: _manualMpesaStatus,
+                                  isChecking: _isManualMpesaMatching,
+                                  onWait: _startManualMpesaPolling,
+                                  onCheckCode: () =>
+                                      _matchManualMpesa(silent: false),
                                 ),
-                              ),
+                              ],
                             )
                           else
                             Container(
@@ -847,11 +959,11 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
               onPressed: () {
                 final isKopesha = _selectedMethod!['is_credit'] == 1;
                 final isMpesa = (_selectedMethod!['name'] as String)
-                    .toLowerCase()
-                    .contains('mpesa');
+                    .toLowerCase();
                 if (isKopesha) {
                   _handleKopeshaCheckout();
-                } else if (isMpesa) {
+                } else if (isMpesa.contains('mpesa') ||
+                    isMpesa.contains('m-pesa')) {
                   _handleMpesaCheckout();
                 } else {
                   _handleOtherPaymentCheckout(_selectedMethod!);
@@ -944,6 +1056,135 @@ class _PaymentMethodButton extends StatelessWidget {
             if (isSelected) Icon(Icons.check_circle, color: color, size: 16),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ManualMpesaSection extends StatelessWidget {
+  final String? shortcode;
+  final String checkoutCode;
+  final double total;
+  final TextEditingController referenceController;
+  final String? status;
+  final bool isChecking;
+  final VoidCallback onWait;
+  final VoidCallback onCheckCode;
+
+  const _ManualMpesaSection({
+    required this.shortcode,
+    required this.checkoutCode,
+    required this.total,
+    required this.referenceController,
+    required this.status,
+    required this.isChecking,
+    required this.onWait,
+    required this.onCheckCode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final merchant = shortcode?.trim().isNotEmpty == true
+        ? shortcode!.trim()
+        : 'your M-Pesa Till or Paybill';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.receipt_long_outlined,
+                  color: AppColors.secondary,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'M-Pesa Auto-Match',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Amount: ${ShopSettings.currency}${total.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Customer pays $merchant. For Paybill, use account $checkoutCode. For Till, keep this screen open or enter the M-Pesa code.',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SelectableText(
+            checkoutCode,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: referenceController,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              labelText: 'M-Pesa code',
+              hintText: 'Example: QJD83K92JS',
+              prefixIcon: Icon(Icons.confirmation_number_outlined),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                onPressed: isChecking ? null : onWait,
+                icon: isChecking
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync_outlined, size: 18),
+                label: const Text('Wait for payment'),
+              ),
+              OutlinedButton.icon(
+                onPressed: isChecking ? null : onCheckCode,
+                icon: const Icon(Icons.search_outlined, size: 18),
+                label: const Text('Check code'),
+              ),
+            ],
+          ),
+          if (status != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              status!,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

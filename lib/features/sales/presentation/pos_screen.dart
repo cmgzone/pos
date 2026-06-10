@@ -3726,6 +3726,22 @@ class _CartSide extends ConsumerWidget {
         phoneNumber: phoneNumber,
         customer: customer,
       );
+    } else if (type == 'mpesa_manual') {
+      final payment = checkoutResult['payment'];
+      if (payment is! PosPayment || !payment.isPaid) {
+        _showSnackBar(
+          context,
+          'M-Pesa payment is not confirmed yet. Sale was not saved.',
+          backgroundColor: AppColors.warning,
+        );
+        return;
+      }
+      await _completeManualMpesaCheckout(
+        context,
+        ref,
+        payment: payment,
+        customer: customer,
+      );
     } else {
       // Other payment methods
       final paymentMethod =
@@ -3857,6 +3873,48 @@ class _CartSide extends ConsumerWidget {
             fallback: AppErrorMessage.paymentFailed,
           ),
           backgroundColor: AppColors.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _completeManualMpesaCheckout(
+    BuildContext context,
+    WidgetRef ref, {
+    required PosPayment payment,
+    Map<String, dynamic>? customer,
+  }) async {
+    final saleId = await _completeSale(
+      context,
+      ref,
+      paymentType: 'M-Pesa',
+      isCashDrawer: false,
+      isCredit: false,
+      customerId: customer?['id'] as String?,
+      customerName: customer?['name'] as String?,
+      paymentProvider: 'mpesa_c2b',
+      paymentReference:
+          payment.receiptNumber ?? payment.externalReference ?? payment.id,
+      paymentStatus: 'paid',
+      paymentMetadata: {...payment.metadata, 'source': 'manual_c2b'},
+    );
+
+    if (saleId == null) {
+      return;
+    }
+
+    try {
+      await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
+    } catch (error) {
+      if (context.mounted) {
+        _showSnackBar(
+          context,
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'Sale saved, but manual M-Pesa link sync failed.',
+            fallback: 'Sale saved, but the payment link could not be synced.',
+          ),
+          backgroundColor: AppColors.warning,
         );
       }
     }

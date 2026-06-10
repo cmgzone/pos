@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Piki POS | Local-First Point of Sale with Seamless Cloud Sync</title>
-    <meta name="description" content="Piki POS is an ultra-fast, local-first retail Point of Sale system. Powered by SQLite for robust offline operation and synced seamlessly to Neon Postgres cloud database.">
+    <title>Piki POS | Offline-Ready POS for Retail and Service Businesses</title>
+    <meta name="description" content="Piki POS helps shops, pharmacies, wholesalers, salons, car washes, and service businesses sell offline, track stock and customer credit, accept configured payments, and sync to the cloud.">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,15 +24,16 @@
     <header id="header">
         <div class="header-container">
             <a href="#" class="logo">
-                <i class="fa-solid fa-bolt logo-icon"></i>
+                <img src="assets/logo.png" alt="Piki POS logo" class="logo-mark">
                 <span>Piki<span>POS</span></span>
             </a>
             
             <nav class="nav-menu" id="navMenu">
                 <a href="#features" class="nav-link">Features</a>
-                <a href="#simulator" class="nav-link">Live Terminal</a>
-                <a href="#architecture" class="nav-link">Architecture</a>
-                <a href="#calculator" class="nav-link">Savings Calculator</a>
+                <a href="#simulator" class="nav-link">Demo</a>
+                <a href="#architecture" class="nav-link">Reliability</a>
+                <a href="#pricing" class="nav-link">Pricing</a>
+                <a href="#calculator" class="nav-link">Impact Calculator</a>
                 <a href="#faq" class="nav-link">FAQs</a>
             </nav>
 
@@ -51,32 +52,32 @@
             <div class="section-container hero-grid">
                 <div class="hero-content">
                     <div class="badge neon-pulse-badge">
-                        <i class="fa-solid fa-cloud-sun"></i> Local-First Cloud Sync
+                        <i class="fa-solid fa-cloud-sun"></i> Offline-ready POS with cloud sync
                     </div>
-                    <h1>Never Lose a Sale. <br><span class="text-gradient">Even When Offline.</span></h1>
-                    <p class="hero-lead">Piki POS combines the lightning speed and 100% reliability of offline SQLite storage with the real-time sync power of Neon Serverless Postgres. Built for modern retail, pharmacy, and wholesale stores.</p>
+                    <h1>Piki POS for shops, services, and growing local businesses</h1>
+                    <p class="hero-lead">Run sales from a fast Piki POS app, keep working when the internet drops, track products and services, manage Kopesha customer credit, and keep business records backed up through secure cloud sync.</p>
                     
                     <div class="hero-actions-group">
                         <a href="#simulator" class="btn btn-primary btn-lg">
-                            <i class="fa-solid fa-circle-play"></i> Try Live Terminal
+                            <i class="fa-solid fa-circle-play"></i> Try Checkout Demo
                         </a>
                         <a href="#contact" class="btn btn-secondary btn-lg">
-                            Request Demo <i class="fa-solid fa-arrow-right"></i>
+                            Request Setup <i class="fa-solid fa-arrow-right"></i>
                         </a>
                     </div>
 
                     <div class="hero-features-list">
                         <div class="h-feature-item">
                             <i class="fa-solid fa-wifi-slash"></i>
-                            <span>Offline-First (SQLite)</span>
+                            <span>Offline checkout</span>
                         </div>
                         <div class="h-feature-item">
                             <i class="fa-solid fa-rotate"></i>
-                            <span>Real-Time Neon Sync</span>
+                            <span>Cloud backup and sync</span>
                         </div>
                         <div class="h-feature-item">
                             <i class="fa-solid fa-money-bill-transfer"></i>
-                            <span>Kopesha Credit Tracker</span>
+                            <span>Kopesha and payments</span>
                         </div>
                     </div>
                 </div>
@@ -107,20 +108,20 @@
         <section class="stats-section">
             <div class="section-container stats-grid">
                 <div class="stat-card glass-card">
-                    <h3>0ms</h3>
-                    <p>Checkout Latency</p>
+                    <h3>Offline</h3>
+                    <p>Sell without waiting for internet</p>
                 </div>
                 <div class="stat-card glass-card">
-                    <h3>100%</h3>
-                    <p>Offline Uptime</p>
+                    <h3>Retail + Services</h3>
+                    <p>Products, service jobs, and mixed sales</p>
                 </div>
                 <div class="stat-card glass-card">
-                    <h3>2.5x</h3>
-                    <p>Faster Shift Audits</p>
+                    <h3>Kopesha</h3>
+                    <p>Customer credit and due dates</p>
                 </div>
                 <div class="stat-card glass-card">
-                    <h3>&lt; 3s</h3>
-                    <p>Cloud Synchronization</p>
+                    <h3>Reports</h3>
+                    <p>Sales, stock, shifts, and eTIMS exports</p>
                 </div>
             </div>
         </section>
@@ -129,9 +130,9 @@
         <section class="features-section" id="features">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">Robust & Extensible</div>
-                    <h2>Engineered for Enterprise Performance</h2>
-                    <p>Say goodbye to sluggish, cloud-dependent Point of Sale systems that freeze when the internet drops. Piki POS is built local-first, ensuring peak speed and zero downtime.</p>
+                    <div class="badge">Built for daily operations</div>
+                    <h2>Everything your cashier and manager need in one POS</h2>
+                    <p>Piki POS focuses on practical store work: quick checkout, accurate stock, clear customer balances, Excel sale imports, shift control, and cloud records your team can review later.</p>
                 </div>
 
                 <div class="features-grid">
@@ -140,8 +141,8 @@
                         <div class="icon-box purple-gradient">
                             <i class="fa-solid fa-database"></i>
                         </div>
-                        <h3>Local-First SQLite Engine</h3>
-                        <p>Stores all inventory, customer accounts, and transaction records on the local device storage. Instantly query thousands of barcodes in 0 milliseconds, with zero internet lag.</p>
+                        <h3>Offline-Ready Sales</h3>
+                        <p>Cashiers can keep selling even when internet access is unreliable. Sales are saved on the device and sync when the connection is available again.</p>
                     </div>
 
                     <!-- Feature Card 2 -->
@@ -149,8 +150,8 @@
                         <div class="icon-box cyan-gradient">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
                         </div>
-                        <h3>Neon Postgres Cloud Sync</h3>
-                        <p>A background worker transparently syncs local sales, payments, and shifts to the hosted Neon Postgres cloud via Node.js Express. Data safety is guaranteed with auto-sync conflict resolution.</p>
+                        <h3>Secure Cloud Sync</h3>
+                        <p>Business records can be backed up securely, shared across approved devices, and recovered when teams need reliable access to sales, stock, and customer data.</p>
                     </div>
 
                     <!-- Feature Card 3 -->
@@ -158,8 +159,8 @@
                         <div class="icon-box blue-gradient">
                             <i class="fa-solid fa-hand-holding-dollar"></i>
                         </div>
-                        <h3>Kopesha Credit Tracker</h3>
-                        <p>Select customer accounts, issue goods on credit (Kopesha), track outstanding balances, set custom due dates, and manage ledger reconciliations dynamically directly from the sales screen.</p>
+                        <h3>Products, Services, and Catalogs</h3>
+                        <p>Manage stock items, variants, categories, service orders, car wash queues, purchase records, public catalog orders, and mixed product-plus-service checkouts.</p>
                     </div>
 
                     <!-- Feature Card 4 -->
@@ -167,8 +168,8 @@
                         <div class="icon-box green-gradient">
                             <i class="fa-solid fa-cash-register"></i>
                         </div>
-                        <h3>Reconciled Shift Drawer</h3>
-                        <p>Differentiate between physical Cash Drawer, credit bookings (Kopesha), and digital transactions (M-Pesa, Card, Bank). Eliminates auditing discrepancies for employees on shift changes.</p>
+                        <h3>Kopesha Customer Credit</h3>
+                        <p>Record sales on credit, attach them to customer accounts, set due dates, view outstanding balances, and keep credit sales separate from cash drawer totals.</p>
                     </div>
 
                     <!-- Feature Card 5 -->
@@ -176,8 +177,8 @@
                         <div class="icon-box yellow-gradient">
                             <i class="fa-solid fa-gauge-high"></i>
                         </div>
-                        <h3>Analytics & Multi-Store Dashboard</h3>
-                        <p>Track retail branches, manage global stock distributions, update remote retail item pricing, and see deep sales analysis in real time using the dedicated Admin Web frontend portal.</p>
+                        <h3>Payments and Compliance</h3>
+                        <p>Use cash and configured payment methods, connect M-Pesa payment flows where available, send receipts, and prepare sales records for KRA eTIMS reporting.</p>
                     </div>
 
                     <!-- Feature Card 6 -->
@@ -185,8 +186,8 @@
                         <div class="icon-box red-gradient">
                             <i class="fa-solid fa-shield-halved"></i>
                         </div>
-                        <h3>Automatic Schema Migration</h3>
-                        <p>Runs SQLite-to-Neon migration and backfill scripts seamlessly. Add new payment integrations, customize fields, and reorder checkout pathways in the settings without breaking live registers.</p>
+                        <h3>Excel Imports, Reports, and Admin</h3>
+                        <p>Import products, sales, customers, and expenses from Excel or CSV. Piki AI checks messy sheets locally, can ask cloud AI to improve unclear mappings when configured, shows a preview, and then imports confirmed rows into stock, sales, customers, or P&L.</p>
                     </div>
                 </div>
             </div>
@@ -196,9 +197,9 @@
         <section class="simulator-section" id="simulator">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge highlight-badge">Interactive Experience</div>
-                    <h2>Test Drive Piki POS in Your Browser</h2>
-                    <p>Add items, toggle the internet connection to test offline mode, checkout using multiple payment channels, and witness the cloud databases sync in real-time!</p>
+                    <div class="badge highlight-badge">Interactive demo</div>
+                    <h2>Try a simple checkout flow</h2>
+                    <p>Add items, switch between online and offline mode, choose a payment type, and see how a local-first sale can be queued before cloud sync. This is a browser demo, not a live payment terminal.</p>
                 </div>
 
                 <div class="simulator-layout glass-card">
@@ -207,7 +208,7 @@
                         <div class="terminal-header">
                             <div class="title-area">
                                 <i class="fa-solid fa-cash-register text-cyan"></i>
-                                <span>PikiPOS Cashier v1.2</span>
+                                <span>Piki POS Cashier Demo</span>
                             </div>
                             <div class="connectivity-control">
                                 <span class="status-label">Network:</span>
@@ -317,12 +318,12 @@
                         </div>
                     </div>
 
-                    <!-- Right Column: Simulated Cloud Logs & Local DB Status -->
+                    <!-- Right Column: Simulated Cloud Logs & Local Status -->
                     <div class="sim-monitor-terminal">
                         <div class="terminal-header">
                             <div class="title-area">
                                 <i class="fa-solid fa-microchip text-purple"></i>
-                                <span>Local SQLite & Neon Database Monitor</span>
+                                <span>Offline & Cloud Sync Monitor</span>
                             </div>
                         </div>
                         
@@ -331,7 +332,7 @@
                                 <div class="db-indicator">
                                     <div class="db-header">
                                         <i class="fa-solid fa-database text-blue"></i>
-                                        <span>Local SQLite (Offline DB)</span>
+                                        <span>This Device</span>
                                     </div>
                                     <div class="db-value" id="sqliteTxCount">0 Transactions</div>
                                     <span class="badge badge-success">ONLINE READY</span>
@@ -339,7 +340,7 @@
                                 <div class="db-indicator">
                                     <div class="db-header">
                                         <i class="fa-solid fa-cloud text-purple"></i>
-                                        <span>Neon Postgres (Cloud DB)</span>
+                                        <span>Cloud Backup</span>
                                     </div>
                                     <div class="db-value" id="neonTxCount">0 Transactions</div>
                                     <span class="badge" id="neonCloudStatus">SYNCED</span>
@@ -349,8 +350,8 @@
                             <div class="console-title">Live Sync Logs:</div>
                             <div class="console-logs" id="consoleLogs">
                                 <div class="log-line system">[SYSTEM] Piki POS initialized successfully.</div>
-                                <div class="log-line system">[SYSTEM] Local SQLite connection active.</div>
-                                <div class="log-line system">[SYSTEM] Neon cloud synchronization service started.</div>
+                                <div class="log-line system">[SYSTEM] Offline checkout is ready.</div>
+                                <div class="log-line system">[SYSTEM] Cloud sync is ready.</div>
                             </div>
 
                             <!-- Receipt Preview -->
@@ -390,13 +391,13 @@
             </div>
         </section>
 
-        <!-- Technical Architecture Diagram Section -->
+        <!-- Reliability Section -->
         <section class="architecture-section" id="architecture">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">Under the Hood</div>
-                    <h2>The Hybrid Synchronization Engine</h2>
-                    <p>Learn how our local-first state stays in 100% transactional consistency with our serverless Postgres databases in the cloud.</p>
+                    <div class="badge">How it works</div>
+                    <h2>Reliable checkout with secure cloud backup</h2>
+                    <p>Piki POS is designed for businesses that cannot afford to stop selling when the network is unstable.</p>
                 </div>
 
                 <div class="architecture-layout glass-card">
@@ -404,8 +405,8 @@
                         <div class="step-icon">
                             <i class="fa-solid fa-mobile-screen-button"></i>
                         </div>
-                        <h4>1. Speed & Offline Uptime</h4>
-                        <p>The Flutter application records sales, shifts, and inventory directly into a local <strong>SQLite</strong> database inside the device. Transactions execute instantly with zero network round trips.</p>
+                        <h4>1. Keep Selling</h4>
+                        <p>Cashiers continue processing sales quickly, even when the internet is slow or temporarily unavailable.</p>
                     </div>
                     
                     <div class="arch-connector">
@@ -416,8 +417,8 @@
                         <div class="step-icon">
                             <i class="fa-solid fa-server"></i>
                         </div>
-                        <h4>2. Background Syncer</h4>
-                        <p>A Node.js & Express API acts as the bridge. A background thread polls for changes and transmits encrypted transaction payloads using a safe sequential cursor tracking mechanism.</p>
+                        <h4>2. Sync Safely</h4>
+                        <p>When the connection is available, approved devices sync business activity so records stay aligned across the team.</p>
                     </div>
 
                     <div class="arch-connector">
@@ -428,25 +429,59 @@
                         <div class="step-icon text-cyan">
                             <i class="fa-solid fa-cloud-bolt"></i>
                         </div>
-                        <h4>3. Neon Postgres Storage</h4>
-                        <p>Cloud records are safely committed to <strong>Neon PostgreSQL</strong>. Built-in indexes and horizontal scaling support multi-store real-time analytics, instant stock alerts, and global operations.</p>
+                        <h4>3. Manage Clearly</h4>
+                        <p>Owners and managers can review sales, stock, customer credit, shifts, and reports with confidence.</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Dynamic Savings Calculator Section -->
+        <!-- Dynamic Pricing Section -->
+        <section class="pricing-section" id="pricing">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge highlight-badge">Flexible plans</div>
+                    <h2>Choose the right Piki POS plan for your business</h2>
+                    <p>Start with the tools your business needs today, then upgrade as you add more users, branches, service workflows, reports, or Piki AI support.</p>
+                </div>
+
+                <div class="pricing-toolbar">
+                    <div class="pricing-market">
+                        <label for="pricingMarket">Market</label>
+                        <select id="pricingMarket" class="pricing-market-select" aria-label="Choose pricing market">
+                            <option value="KE">Kenya</option>
+                        </select>
+                    </div>
+                    <div class="pricing-source">
+                        <i class="fa-solid fa-database"></i>
+                        <span id="pricingSourceText">Loading current plans...</span>
+                    </div>
+                </div>
+
+                <div class="pricing-grid" id="pricingPlans">
+                    <article class="pricing-card glass-card pricing-card-loading">
+                        <div class="pricing-card-header">
+                            <span class="pricing-plan-code">Pricing</span>
+                            <h3>Loading plans</h3>
+                            <p>Fetching the latest available Piki POS plans.</p>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Impact Calculator Section -->
         <section class="calculator-section" id="calculator">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge highlight-badge">Business ROI</div>
-                    <h2>Calculate Your Piki POS Savings</h2>
-                    <p>Compare the cost-effective model of Piki POS with high-commission POS competitors. Adjust the sliders to see your calculated monthly and yearly savings.</p>
+                    <div class="badge highlight-badge">Business continuity</div>
+                    <h2>Estimate sales protected during interruptions</h2>
+                    <p>Use the calculator to estimate how much revenue can stay moving when your checkout does not depend on a constant internet connection.</p>
                 </div>
 
                 <div class="calculator-grid">
                     <div class="calc-inputs glass-card">
-                        <h3>Your Business Volume</h3>
+                        <h3>Your Sales Pattern</h3>
                         <div class="range-group">
                             <div class="range-header">
                                 <label for="monthlySales">Monthly Sales Volume:</label>
@@ -457,48 +492,48 @@
 
                         <div class="range-group">
                             <div class="range-header">
-                                <label for="cardTxShare">Digital Payment Share (M-Pesa/Card):</label>
-                                <span class="range-value" id="cardShareVal">60%</span>
+                                <label for="interruptionShare">Sales Affected by Connectivity Issues:</label>
+                                <span class="range-value" id="interruptionShareVal">8%</span>
                             </div>
-                            <input type="range" id="cardTxShare" min="10" max="100" step="5" value="60">
+                            <input type="range" id="interruptionShare" min="1" max="30" step="1" value="8">
                         </div>
 
                         <div class="range-group">
                             <div class="range-header">
-                                <label for="competitorFee">Legacy Competitor Commission Fee:</label>
-                                <span class="range-value" id="competitorFeeVal">2.5%</span>
+                                <label for="offlineCaptureRate">Sales You Can Still Capture Offline:</label>
+                                <span class="range-value" id="offlineCaptureRateVal">75%</span>
                             </div>
-                            <input type="range" id="competitorFee" min="1.0" max="4.0" step="0.1" value="2.5">
+                            <input type="range" id="offlineCaptureRate" min="20" max="100" step="5" value="75">
                         </div>
                     </div>
 
                     <div class="calc-outputs glass-card purple-glow">
-                        <h3>Your Calculated Savings</h3>
+                        <h3>Estimated Sales Protected</h3>
                         <div class="savings-container">
                             <div class="saving-item">
-                                <span>Monthly Savings</span>
-                                <span class="savings-num text-gradient" id="monthlySavingsVal">KES 6,500</span>
+                                <span>Monthly Revenue Kept Moving</span>
+                                <span class="savings-num text-gradient" id="monthlySavingsVal">KES 30,000</span>
                             </div>
                             <div class="saving-item">
-                                <span>Yearly Extra Capital</span>
-                                <span class="savings-num accent-cyan-text" id="yearlySavingsVal">KES 78,000</span>
+                                <span>Annual Revenue Kept Moving</span>
+                                <span class="savings-num accent-cyan-text" id="yearlySavingsVal">KES 360,000</span>
                             </div>
                         </div>
                         <div class="savings-cta">
-                            <p>Piki POS charge <strong>0% transaction fees</strong>. You only pay a flat licensing tier matching your business requirements.</p>
-                            <a href="#contact" class="btn btn-primary btn-block">Claim Your Free License</a>
+                            <p>This estimate is not a guarantee. It shows the kind of sales volume that can remain processable when local checkout continues during connection problems.</p>
+                            <a href="#contact" class="btn btn-primary btn-block">Discuss Setup</a>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Testimonial Slider Section -->
+        <!-- Use Case Slider Section -->
         <section class="testimonials-section">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">Merchant Stories</div>
-                    <h2>Trusted by Retail Retailers Globally</h2>
+                    <div class="badge">Best fit</div>
+                    <h2>Built for businesses that sell every day</h2>
                 </div>
 
                 <div class="testimonial-slider-container">
@@ -506,36 +541,32 @@
                         <!-- Slide 1 -->
                         <div class="testimonial-slide active">
                             <div class="stars">
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-store"></i>
+                                <i class="fa-solid fa-boxes-stacked"></i>
+                                <i class="fa-solid fa-receipt"></i>
                             </div>
-                            <p class="quote">"In Nairobi, power cuts and local fiber line cuts occur regularly. Other POS systems would shut down completely, bringing our sales to a halt. With Piki POS, we check out milk and soap offline instantly. Once networks restore, SQLite pushes data to our Neon Postgres cloud backend in under 3 seconds! Sensational design."</p>
+                            <p class="quote">Retail shops, supermarkets, pharmacies, and wholesalers can use Piki POS to manage products, variants, purchases, stock movement, barcode checkout, sales history, receipts, and daily reports from one place.</p>
                             <div class="author-details">
                                 <div class="author-avatar"><i class="fa-solid fa-store"></i></div>
                                 <div>
-                                    <h5>David Kamau</h5>
-                                    <p>Owner, Kamau Supermarket</p>
+                                    <h5>Retail Operations</h5>
+                                    <p>Stock, sales, credit, and reports</p>
                                 </div>
                             </div>
                         </div>
                         <!-- Slide 2 -->
                         <div class="testimonial-slide">
                             <div class="stars">
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
-                                <i class="fa-solid fa-star"></i>
+                                <i class="fa-solid fa-screwdriver-wrench"></i>
+                                <i class="fa-solid fa-car"></i>
+                                <i class="fa-solid fa-user-check"></i>
                             </div>
-                            <p class="quote">"The Kopesha payment credit drawer is exactly what we needed. A significant share of our repeat customers take stock on credit and settle later. Tracking customer debts in physical ledgers led to continuous mathematical errors. Piki POS handles credit balances dynamically and alerts us when due dates elapse!"</p>
+                            <p class="quote">Service businesses can record service orders, manage queues, charge for service work, combine products with services at checkout, and keep customer balances visible when work is paid later.</p>
                             <div class="author-details">
-                                <div class="author-avatar"><i class="fa-solid fa-prescription-bottle-medical"></i></div>
+                                <div class="author-avatar"><i class="fa-solid fa-screwdriver-wrench"></i></div>
                                 <div>
-                                    <h5>Amina Mohammed</h5>
-                                    <p>Director, Highridge Pharmacy</p>
+                                    <h5>Service Operations</h5>
+                                    <p>Car wash, repair, salon, and field services</p>
                                 </div>
                             </div>
                         </div>
@@ -555,47 +586,47 @@
                 <div class="section-header">
                     <div class="badge">Frequently Asked Questions</div>
                     <h2>Frequently Asked Questions</h2>
-                    <p>Have questions about Piki POS architecture, offline caching, and data migrations? Read on.</p>
+                    <p>Clear answers about setup, offline selling, payments, and cloud sync.</p>
                 </div>
 
                 <div class="faq-accordion-list">
                     <div class="faq-item">
                         <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>How does local-first database cache state without conflicts?</span>
+                            <span>Can Piki POS work when the internet is down?</span>
                             <i class="fa-solid fa-plus"></i>
                         </div>
                         <div class="faq-answer">
-                            <p>Piki POS implements localized UUID generators instead of serial incremental keys. When a sale is processed offline, it is written as a secure local transaction row in SQLite with a sync status flagged as 'pending'. When the client transitions online, a secure incremental cursor sends batches to the Express Node.js API, where updates are reconciled based on the latest <code>updated_at</code> server timestamp.</p>
+                            <p>Yes. Piki POS can keep checkout running on the device when internet access is unavailable. When the connection returns, pending records can sync to the cloud.</p>
                         </div>
                     </div>
 
                     <div class="faq-item">
                         <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>What happens to the physical cash drawer balances during a shift?</span>
+                            <span>Does it support products and service businesses?</span>
                             <i class="fa-solid fa-plus"></i>
                         </div>
                         <div class="faq-answer">
-                            <p>Our payment system uses flag-based sorting: Cash sales are tagged with <code>is_cash_drawer = 1</code>, while credit sales (Kopesha) and online banking (M-Pesa, card) are tagged with <code>is_cash_drawer = 0</code>. During shift handovers, the cash register reports exactly the expected physical cash drawer volume separate from online/ledger transactions, minimizing reconciliation overhead.</p>
+                            <p>Yes. Piki POS supports product inventory, categories, variants, purchases, stock lists, service management, service orders, car wash queues, and sales that combine products with services.</p>
                         </div>
                     </div>
 
                     <div class="faq-item">
                         <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>Is Neon Serverless Postgres secure and durable?</span>
+                            <span>Which payment and compliance tools are included?</span>
                             <i class="fa-solid fa-plus"></i>
                         </div>
                         <div class="faq-answer">
-                            <p>Yes. Neon is an enterprise cloud serverless PostgreSQL architecture. The database splits storage and compute. Your store transactions are safely replicated across redundant storage nodes, guaranteeing instant failover protection, automatic cloud backups, and seamless scalability to handle millions of invoices.</p>
+                            <p>The app supports cash, Kopesha customer credit, configurable payment methods, M-Pesa checkout configuration, receipt messaging, and KRA eTIMS submission/reporting tools when the relevant credentials are configured.</p>
                         </div>
                     </div>
 
                     <div class="faq-item">
                         <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>Can we define custom digital payment methods?</span>
+                            <span>Can I import existing sales from Excel?</span>
                             <i class="fa-solid fa-plus"></i>
                         </div>
                         <div class="faq-answer">
-                            <p>Absolutely. The settings panel in Piki POS provides full administration over payment configurations. You can deactivate cash features, activate local credit methods, or integrate custom digital gateways. New payment configurations automatically sync across your sales registers instantly.</p>
+                            <p>Yes. Piki POS includes import actions for products, sales, customers, and expenses using <code>.xlsx</code> or <code>.csv</code> files. Piki AI can skip note rows above the table, map messy headers like product names, prices, SKU, barcode, categories, dates, and amounts, and use cloud AI for harder spreadsheets when enabled. It still shows a confirmation preview before the import is applied.</p>
                         </div>
                     </div>
                 </div>
@@ -606,27 +637,27 @@
         <section class="contact-section" id="contact">
             <div class="section-container contact-grid">
                 <div class="contact-info">
-                    <h2>Upgrade Your Store with Piki POS Today</h2>
-                    <p>Start managing your store with offline reliability, automated credit systems, and effortless Neon cloud data synchronization. Register below to request your demo license credentials.</p>
+                    <h2>Set up Piki POS for your business</h2>
+                    <p>Tell us about your shop or service business. We will help you choose the right setup for products, services, payment methods, credit tracking, cloud sync, and reporting.</p>
                     
                     <div class="contact-contact-methods">
                         <div class="c-method">
                             <i class="fa-solid fa-envelope"></i>
-                            <span>support@pikipos.com</span>
+                            <span>support@pikipos.co.ke</span>
                         </div>
                         <div class="c-method">
-                            <i class="fa-solid fa-phone"></i>
-                            <span>+254 700 000 000</span>
+                            <i class="fa-solid fa-cash-register"></i>
+                            <span>Retail, wholesale, pharmacy, and services</span>
                         </div>
                         <div class="c-method">
-                            <i class="fa-solid fa-location-dot"></i>
-                            <span>Nairobi, Kenya</span>
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>Offline POS with optional cloud sync</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="contact-card-form glass-card">
-                    <h3>Get in Touch</h3>
+                    <h3>Request Setup Help</h3>
                     <form id="contactForm" onsubmit="handleFormSubmit(event)">
                         <div class="form-group">
                             <label for="contactName">Full Name</label>
@@ -642,6 +673,7 @@
                                 <option value="retail">Supermarket / Retail Store</option>
                                 <option value="pharmacy">Pharmacy / Chemist</option>
                                 <option value="wholesale">Wholesale Warehouse</option>
+                                <option value="service">Service Business / Car Wash</option>
                                 <option value="other">Other Business</option>
                             </select>
                         </div>
@@ -652,11 +684,12 @@
                         <button type="submit" class="btn btn-primary btn-block">
                             Send Request <i class="fa-solid fa-paper-plane"></i>
                         </button>
+                        <div class="form-error-message hidden" id="formError" role="alert"></div>
                     </form>
                     <div class="form-success-message hidden" id="formSuccess">
                         <i class="fa-solid fa-circle-check text-success"></i>
                         <h4>Request Sent Successfully!</h4>
-                        <p>Our sales engineer will reach out to you within 2 hours with license credentials.</p>
+                        <p>Your request has been saved. The team will follow up using the contact details you provided.</p>
                     </div>
                 </div>
             </div>
@@ -668,45 +701,41 @@
         <div class="section-container footer-grid">
             <div class="footer-brand">
                 <a href="#" class="logo">
-                    <i class="fa-solid fa-bolt logo-icon"></i>
+                    <img src="assets/logo.png" alt="Piki POS logo" class="logo-mark">
                     <span>Piki<span>POS</span></span>
                 </a>
-                <p>High-performance point of sale systems combining local-first speed with modern serverless cloud databases.</p>
-                <div class="social-links">
-                    <a href="#"><i class="fa-brands fa-github"></i></a>
-                    <a href="#"><i class="fa-brands fa-twitter"></i></a>
-                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
-                </div>
+                <p>Offline-ready point of sale for inventory, services, customer credit, payments, reports, and cloud-backed business records.</p>
             </div>
 
             <div class="footer-links">
                 <h4>Product</h4>
                 <a href="#features">Features</a>
-                <a href="#simulator">Live Terminal</a>
-                <a href="#calculator">Savings Calculator</a>
-                <a href="#architecture">Architecture</a>
+                <a href="#simulator">Checkout Demo</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#calculator">Impact Calculator</a>
+                <a href="#architecture">Reliability</a>
             </div>
 
             <div class="footer-links">
-                <h4>Integrations</h4>
-                <a href="#">SQLite Storage</a>
-                <a href="#">Neon Database</a>
-                <a href="#">M-Pesa API</a>
-                <a href="#">Node.js Express</a>
+                <h4>Operations</h4>
+                <a href="#architecture">Offline checkout</a>
+                <a href="#architecture">Secure cloud sync</a>
+                <a href="#architecture">Manager reports</a>
+                <a href="#features">M-Pesa and eTIMS setup</a>
             </div>
 
             <div class="footer-links">
-                <h4>Company</h4>
-                <a href="#">About Us</a>
-                <a href="#">Security</a>
-                <a href="#">Terms of Service</a>
+                <h4>Contact</h4>
                 <a href="#contact">Contact</a>
+                <a href="mailto:support@pikipos.co.ke">support@pikipos.co.ke</a>
+                <a href="#faq">FAQs</a>
+                <a href="#simulator">Demo</a>
             </div>
         </div>
 
         <div class="footer-bottom">
             <div class="section-container">
-                <p>&copy; 2026 Piki POS Systems Ltd. All rights reserved.</p>
+                <p>&copy; 2026 Piki POS. All rights reserved.</p>
             </div>
         </div>
     </footer>
