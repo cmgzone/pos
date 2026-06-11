@@ -609,12 +609,15 @@ class ReportRepository {
   static Future<List<Map<String, dynamic>>> getDailyCashierSummary({
     String? date,
     String? cashierId,
+    ReportBranchScope branchScope = ReportBranchScope.current,
   }) async {
     final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
     final normalizedCashierId = cashierId?.trim();
+    final effectiveBranchScope = _effectiveScope(branchScope);
     final remoteRows = await _fetchRemoteDailyCashierSummary(
       date: d,
       cashierId: normalizedCashierId,
+      branchScope: effectiveBranchScope,
     );
     if (remoteRows != null) {
       return remoteRows;
@@ -623,9 +626,9 @@ class ReportRepository {
     final baseWhere = <String>[
       'DATE(s.created_at) = ?',
       's.deleted_at IS NULL',
-      'COALESCE(s.branch_id, ?) = ?',
     ];
-    final args = <dynamic>[d, ..._currentBranchArgs];
+    final args = <dynamic>[d];
+    _addBranchFilter(baseWhere, args, 's', effectiveBranchScope);
     if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
       baseWhere.add('s.user_id = ?');
       args.add(normalizedCashierId);
@@ -693,6 +696,7 @@ class ReportRepository {
   static Future<List<Map<String, dynamic>>?> _fetchRemoteDailyCashierSummary({
     required String date,
     String? cashierId,
+    ReportBranchScope branchScope = ReportBranchScope.current,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isEmpty) {
@@ -704,7 +708,9 @@ class ReportRepository {
     if (currentUserId.isNotEmpty) {
       queryParameters['userId'] = currentUserId;
     }
-    queryParameters['branchId'] = DatabaseService.currentBranchId;
+    if (_effectiveScope(branchScope) != ReportBranchScope.all) {
+      queryParameters['branchId'] = DatabaseService.currentBranchId;
+    }
     if (cashierId != null && cashierId.isNotEmpty) {
       queryParameters['cashierId'] = cashierId;
     }

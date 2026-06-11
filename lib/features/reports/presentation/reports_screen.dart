@@ -309,7 +309,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final results = await Future.wait([
-      ReportRepository.getDailyCashierSummary(date: _dateKey),
+      ReportRepository.getDailyCashierSummary(
+        date: _dateKey,
+        branchScope: widget.branchScope,
+      ),
       UserRepository.getAll(),
     ]);
     final activeCashiers = List<Map<String, dynamic>>.from(results[0] as List);
@@ -336,6 +339,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
       userId: nextSelectedCashierId == _allEmployeesId
           ? null
           : nextSelectedCashierId,
+      allBranches: widget.branchScope == ReportBranchScope.all,
     );
     final closedShifts = await ShiftRepository.getClosedShifts(
       date: _dateKey,
@@ -343,6 +347,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
           ? null
           : nextSelectedCashierId,
       limit: 20,
+      allBranches: widget.branchScope == ReportBranchScope.all,
     );
     if (!mounted) {
       return;

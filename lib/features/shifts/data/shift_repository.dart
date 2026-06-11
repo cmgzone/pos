@@ -178,6 +178,7 @@ class ShiftRepository {
   static Future<Map<String, dynamic>> getClosedShiftSummary({
     String? date,
     String? userId,
+    bool allBranches = false,
   }) async {
     final targetDate =
         date ?? DateTime.now().toIso8601String().substring(0, 10);
@@ -186,9 +187,12 @@ class ShiftRepository {
       'deleted_at IS NULL',
       'closed_at IS NOT NULL',
       'DATE(closed_at) = ?',
-      'COALESCE(branch_id, ?) = ?',
     ];
-    final args = <dynamic>[targetDate, ..._currentBranchArgs];
+    final args = <dynamic>[targetDate];
+    if (!allBranches) {
+      clauses.add('COALESCE(branch_id, ?) = ?');
+      args.addAll(_currentBranchArgs);
+    }
     final normalizedUserId = userId?.trim();
     if (normalizedUserId != null && normalizedUserId.isNotEmpty) {
       clauses.add('user_id = ?');
@@ -219,6 +223,7 @@ class ShiftRepository {
     String? date,
     String? userId,
     int limit = 20,
+    bool allBranches = false,
   }) async {
     final targetDate =
         date ?? DateTime.now().toIso8601String().substring(0, 10);
@@ -228,9 +233,12 @@ class ShiftRepository {
       'deleted_at IS NULL',
       'closed_at IS NOT NULL',
       'DATE(closed_at) = ?',
-      'COALESCE(branch_id, ?) = ?',
     ];
-    final args = <dynamic>[targetDate, ..._currentBranchArgs];
+    final args = <dynamic>[targetDate];
+    if (!allBranches) {
+      clauses.add('COALESCE(branch_id, ?) = ?');
+      args.addAll(_currentBranchArgs);
+    }
     final normalizedUserId = userId?.trim();
     if (normalizedUserId != null && normalizedUserId.isNotEmpty) {
       clauses.add('user_id = ?');
