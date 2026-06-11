@@ -283,7 +283,6 @@ class SyncController extends Notifier<SyncState> {
       state = state.copyWith(
         remoteChanges: remote.changedCount,
         licenseSnapshot: LicenseService.currentSnapshot,
-        clearLastError: true,
       );
     } catch (error) {
       state = state.copyWith(
@@ -361,14 +360,31 @@ class SyncController extends Notifier<SyncState> {
       return;
     }
 
-    _timer = Timer.periodic(const Duration(seconds: 45), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_busy || !state.isConfigured) {
         return;
       }
       if (state.isOnline) {
-        unawaited(syncNow());
+        unawaited(_syncIfChanged());
       }
     });
+  }
+
+  Future<void> _syncIfChanged() async {
+    if (_busy || !state.isConfigured || !state.isOnline) {
+      return;
+    }
+
+    await refreshLocalState();
+    if (state.pendingChanges > 0) {
+      await syncNow();
+      return;
+    }
+
+    await refreshStatus();
+    if (state.remoteChanges > 0) {
+      await syncNow();
+    }
   }
 
   Future<void> _invalidateVisibleData() async {

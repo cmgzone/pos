@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
@@ -103,22 +104,26 @@ class SyncService {
     'purchase_orders',
     'purchase_order_items',
     'shifts',
+    'sales',
+    'services',
     'customer_invoices',
     'customer_invoice_items',
-    'sales',
     'stock_batches',
     'stock_transfers',
     'sale_items',
     'cash_movements',
     'credit_payments',
     'expenses',
-    'services',
     'service_fields',
     'service_orders',
     'service_field_values',
     'service_sale_items',
     'audit_logs',
   ];
+
+  @visibleForTesting
+  static List<String> get pullTableOrderForTesting =>
+      List<String>.unmodifiable(_pullTableOrder);
 
   static Future<LocalSyncSnapshot> getLocalSnapshot() async {
     final pendingChanges = <String, List<Map<String, dynamic>>>{};
@@ -160,15 +165,13 @@ class SyncService {
       deviceId: deviceId,
       allowReadOnly: true,
     );
-    final cursor = SyncSettingsService.syncCursor;
+    final cursor = _cursorForBusiness(license);
     final userId = SessionService.currentUserId;
     final client = http.Client();
     try {
-      final params = {
-        'cursor': cursor,
-        'deviceId': deviceId,
-        'branchId': DatabaseService.currentBranchId,
-      };
+      // Keep the cursor business-wide. A branch-scoped pull with one shared
+      // cursor can skip records when a device switches branches.
+      final params = {'cursor': cursor, 'deviceId': deviceId};
       if (userId.isNotEmpty) {
         params['userId'] = userId;
       }
@@ -217,7 +220,7 @@ class SyncService {
       forceRefresh: true,
       allowReadOnly: true,
     );
-    final initialCursor = SyncSettingsService.syncCursor;
+    final initialCursor = _cursorForBusiness(license);
     final localSnapshot = await getLocalSnapshot();
 
     var pushedCount = 0;
@@ -246,6 +249,7 @@ class SyncService {
 
     await SyncSettingsService.setSyncCursor(pullSummary.nextCursor);
     await SyncSettingsService.setLastSyncAt(DateTime.now());
+    await _markBusinessPulled(license);
 
     final updatedLocalSnapshot = await getLocalSnapshot();
 
@@ -290,11 +294,9 @@ class SyncService {
 
     final client = http.Client();
     try {
-      final bodyPayload = {
-        'deviceId': deviceId,
-        'branchId': DatabaseService.currentBranchId,
-        'changes': payload,
-      };
+      // Push all pending local rows for the business. Rows carry their own
+      // branch_id where the table supports branches.
+      final bodyPayload = {'deviceId': deviceId, 'changes': payload};
       if (userId.isNotEmpty) {
         bodyPayload['userId'] = userId;
       }
@@ -403,11 +405,9 @@ class SyncService {
     final userId = SessionService.currentUserId;
     final client = http.Client();
     try {
-      final params = {
-        'cursor': cursor,
-        'deviceId': deviceId,
-        'branchId': DatabaseService.currentBranchId,
-      };
+      // Keep the cursor business-wide. A branch-scoped pull with one shared
+      // cursor can skip records when a device switches branches.
+      final params = {'cursor': cursor, 'deviceId': deviceId};
       if (userId.isNotEmpty) {
         params['userId'] = userId;
       }
@@ -443,7 +443,13 @@ class SyncService {
               continue;
             }
             final row = Map<String, dynamic>.from(rawRow);
-            final outcome = await _applyRemoteRow(txn, table, row);
+            final rowId = _readString(row['id']) ?? '';
+            final outcome = await _applyRemoteRowWithDiagnostics(
+              txn,
+              table,
+              row,
+              rowId: rowId,
+            );
             if (outcome.applied) {
               pulledCount += 1;
             }
@@ -539,6 +545,26 @@ class SyncService {
       whereArgs: [id],
     );
     return _ApplyOutcome(applied: true, resolvedConflict: hasLocalUnsynced);
+  }
+
+  static Future<_ApplyOutcome> _applyRemoteRowWithDiagnostics(
+    Transaction txn,
+    String table,
+    Map<String, dynamic> remoteRow, {
+    required String rowId,
+  }) async {
+    try {
+      return await _applyRemoteRow(txn, table, remoteRow);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Sync apply failed for table=$table id=${rowId.isEmpty ? '<unknown>' : rowId}: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      throw Exception(
+        'Failed applying remote change for table "$table"'
+        '${rowId.isEmpty ? '' : ' with id "$rowId"'}: $error',
+      );
+    }
   }
 
   static Map<String, dynamic> _sanitizeRowForPayload(Map<String, dynamic> row) {
@@ -807,6 +833,26 @@ class SyncService {
       return const <String, String>{};
     }
     return {'Authorization': 'Bearer $accessToken'};
+  }
+
+  static String _cursorForBusiness(LicenseSnapshot snapshot) {
+    final businessId = snapshot.businessId?.trim() ?? '';
+    if (businessId.isEmpty) {
+      return SyncSettingsService.syncCursor;
+    }
+
+    final localBusinessId = SyncSettingsService.localBusinessId.trim();
+    if (localBusinessId.isEmpty || localBusinessId != businessId) {
+      return '0';
+    }
+    return SyncSettingsService.syncCursor;
+  }
+
+  static Future<void> _markBusinessPulled(LicenseSnapshot snapshot) async {
+    final businessId = snapshot.businessId?.trim() ?? '';
+    if (businessId.isNotEmpty) {
+      await SyncSettingsService.setLocalBusinessId(businessId);
+    }
   }
 
   static Uri _buildUri(

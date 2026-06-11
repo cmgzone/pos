@@ -96,7 +96,7 @@ void main() {
       final shiftTables = await DatabaseService.rawQuery('''
       SELECT name
       FROM sqlite_master
-      WHERE type = 'table' AND name IN ('shifts', 'cash_movements', 'sales')
+      WHERE type = 'table' AND name IN ('shifts', 'cash_movements', 'sales', 'sync_metadata')
     ''');
       final tableNames = shiftTables
           .map((row) => row['name'] as String?)
@@ -105,7 +105,7 @@ void main() {
 
       expect(
         tableNames,
-        containsAll(<String>['shifts', 'cash_movements', 'sales']),
+        containsAll(<String>['shifts', 'cash_movements', 'sales', 'sync_metadata']),
       );
 
       final salesColumns = (await DatabaseService.rawQuery(

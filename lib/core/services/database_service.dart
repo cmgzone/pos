@@ -382,6 +382,14 @@ class DatabaseService {
 
   static Future<void> _createTables(DatabaseExecutor database) async {
     await database.execute('''
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await database.execute('''
       CREATE TABLE IF NOT EXISTS branches (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
