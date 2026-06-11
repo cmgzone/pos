@@ -758,7 +758,9 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
 
 app.get('/api/sync/status', async (req, res, next) => {
   try {
-    const businessContext = await requireBusinessContext(req);
+    const businessContext = await requireBusinessContext(req, {
+      allowReadOnlyExpired: true,
+    });
     const syncWindow = parseSyncWindow(req.query);
     const userId = normalizeOptionalText(req.query.userId);
     const branchId = normalizeOptionalText(req.query.branchId);
@@ -808,7 +810,9 @@ app.get('/api/sync/status', async (req, res, next) => {
 
 app.get('/api/sync/pull', async (req, res, next) => {
   try {
-    const businessContext = await requireBusinessContext(req);
+    const businessContext = await requireBusinessContext(req, {
+      allowReadOnlyExpired: true,
+    });
     const syncWindow = parseSyncWindow(req.query);
     const userId = normalizeOptionalText(req.query.userId);
     const branchId = normalizeOptionalText(req.query.branchId);
@@ -3337,7 +3341,10 @@ function safeEquals(left, right) {
   );
 }
 
-async function requireBusinessContext(req, { allowExpired = false } = {}) {
+async function requireBusinessContext(
+  req,
+  { allowExpired = false, allowReadOnlyExpired = false } = {}
+) {
   const accessToken = parseBearerToken(req.headers.authorization);
   if (!accessToken) {
     throw createHttpError(401, 'Authorization token is required');
@@ -3357,7 +3364,9 @@ async function requireBusinessContext(req, { allowExpired = false } = {}) {
   if (!businessContext) {
     throw createHttpError(401, 'Invalid business access token or device');
   }
-  if (!businessContext.usable && !allowExpired) {
+  const readOnlyExpiredAllowed =
+    allowReadOnlyExpired && businessContext.subscriptionStatus === 'expired';
+  if (!businessContext.usable && !allowExpired && !readOnlyExpiredAllowed) {
     throw createHttpError(
       402,
       'Subscription expired. Renew the business subscription to continue syncing.',
