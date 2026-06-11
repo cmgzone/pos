@@ -244,6 +244,7 @@ class LicenseSnapshot {
 class LicenseService {
   static SharedPreferences? _prefs;
   static const _timeout = Duration(seconds: 20);
+  static const _serverVerifiedLicenseTrustWindow = Duration(days: 45);
 
   static const _keyBusinessId = 'license_business_id';
   static const _keyBusinessName = 'license_business_name';
@@ -295,21 +296,6 @@ class LicenseService {
       );
     }
 
-    if (!_matchesSignature(payloadBase64, signature)) {
-      return LicenseSnapshot(
-        businessId: businessId,
-        businessName: businessName,
-        accessToken: accessToken,
-        plan: plan,
-        expiresAt: null,
-        graceUntil: null,
-        lastVerifiedAt: lastVerifiedAt,
-        accessStatus: LicenseAccessStatus.invalid,
-        detail: 'The cached cloud license signature does not match.',
-        entitlements: const SubscriptionEntitlements.empty(),
-      );
-    }
-
     final payload = _decodePayload(payloadBase64);
     if (payload == null) {
       return LicenseSnapshot(
@@ -322,6 +308,28 @@ class LicenseService {
         lastVerifiedAt: lastVerifiedAt,
         accessStatus: LicenseAccessStatus.invalid,
         detail: 'The cached cloud license could not be decoded.',
+        entitlements: const SubscriptionEntitlements.empty(),
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final hasValidSignature = _matchesSignature(payloadBase64, signature);
+    final wasRecentlyVerifiedOnline = _wasRecentlyVerifiedOnline(
+      lastVerifiedAt: lastVerifiedAt,
+      now: now,
+    );
+    if (!hasValidSignature && !wasRecentlyVerifiedOnline) {
+      return LicenseSnapshot(
+        businessId: businessId,
+        businessName: businessName,
+        accessToken: accessToken,
+        plan: plan,
+        expiresAt: null,
+        graceUntil: null,
+        lastVerifiedAt: lastVerifiedAt,
+        accessStatus: LicenseAccessStatus.invalid,
+        detail:
+            'The cached cloud license needs an online refresh before it can be trusted on this device.',
         entitlements: const SubscriptionEntitlements.empty(),
       );
     }
@@ -368,7 +376,6 @@ class LicenseService {
       );
     }
 
-    final now = DateTime.now().toUtc();
     final accessStatus = _resolveAccessStatus(
       payloadStatus: payloadStatus,
       expiresAt: expiresAt,
@@ -757,6 +764,19 @@ class LicenseService {
   static bool _matchesSignature(String payloadBase64, String signature) {
     final expected = _signatureFor(payloadBase64);
     return expected == signature;
+  }
+
+  static bool _wasRecentlyVerifiedOnline({
+    required DateTime? lastVerifiedAt,
+    required DateTime now,
+  }) {
+    if (lastVerifiedAt == null) {
+      return false;
+    }
+    if (lastVerifiedAt.isAfter(now.add(const Duration(minutes: 5)))) {
+      return false;
+    }
+    return now.difference(lastVerifiedAt) <= _serverVerifiedLicenseTrustWindow;
   }
 
   static String _signatureFor(String payloadBase64) {

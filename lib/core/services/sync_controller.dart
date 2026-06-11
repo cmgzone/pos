@@ -416,6 +416,14 @@ class SyncController extends Notifier<SyncState> {
     if (summary.errorCount > 0) {
       parts.add('${summary.errorCount} item(s) need attention');
     }
+    if (summary.uploadBlocked) {
+      final pendingCount = summary.localSnapshot.pendingCount;
+      parts.add(
+        pendingCount > 0
+            ? '$pendingCount pending change(s) will upload after subscription renewal'
+            : 'Uploads are paused until subscription renewal',
+      );
+    }
     if (parts.isEmpty) {
       return 'Everything is already up to date.';
     }

@@ -10,9 +10,14 @@ class SyncSettingsService {
 
   static const _keyBackendUrl = 'sync_backend_url';
   static const _keyAutoSync = 'sync_auto_enabled';
+  static const _deprecatedBackendUrls = {
+    'https://pos-e0hs.onrender.com',
+    'https://pos-e0hs.onrender.com/api',
+  };
 
   static Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
+    await _migrateDeprecatedBackendUrl();
   }
 
   static String get backendUrl {
@@ -159,9 +164,40 @@ class SyncSettingsService {
     }
 
     var normalized = trimmed;
+    if (!RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://').hasMatch(normalized)) {
+      final lower = normalized.toLowerCase();
+      final localHost =
+          lower.startsWith('localhost') ||
+          lower.startsWith('127.') ||
+          lower.startsWith('10.') ||
+          lower.startsWith('192.168.');
+      normalized = '${localHost ? 'http' : 'https'}://$normalized';
+    }
     while (normalized.endsWith('/')) {
       normalized = normalized.substring(0, normalized.length - 1);
     }
-    return normalized;
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return normalized;
+    }
+
+    final path = uri.path.trim();
+    if (path.isEmpty || path == '/') {
+      return uri.replace(path: '/api', query: null, fragment: null).toString();
+    }
+    return uri.replace(query: null, fragment: null).toString();
+  }
+
+  static Future<void> _migrateDeprecatedBackendUrl() async {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+
+    final saved = _normalizeUrl(prefs.getString(_keyBackendUrl) ?? '');
+    if (_deprecatedBackendUrls.contains(saved)) {
+      await prefs.setString(_keyBackendUrl, AppConstants.productionApiBaseUrl);
+    }
   }
 }

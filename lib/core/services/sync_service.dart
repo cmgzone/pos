@@ -40,6 +40,7 @@ class SyncRunSummary {
   final int errorCount;
   final String nextCursor;
   final LocalSyncSnapshot localSnapshot;
+  final bool uploadBlocked;
 
   const SyncRunSummary({
     required this.pushedCount,
@@ -48,6 +49,7 @@ class SyncRunSummary {
     required this.errorCount,
     required this.nextCursor,
     required this.localSnapshot,
+    this.uploadBlocked = false,
   });
 }
 
@@ -156,6 +158,7 @@ class SyncService {
     final license = await _ensureBusinessAccess(
       backendUrl: backendUrl,
       deviceId: deviceId,
+      allowReadOnly: true,
     );
     final cursor = SyncSettingsService.syncCursor;
     final userId = SessionService.currentUserId;
@@ -208,10 +211,11 @@ class SyncService {
     }
 
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
-    await _ensureBusinessAccess(
+    final license = await _ensureBusinessAccess(
       backendUrl: backendUrl,
       deviceId: deviceId,
       forceRefresh: true,
+      allowReadOnly: true,
     );
     final initialCursor = SyncSettingsService.syncCursor;
     final localSnapshot = await getLocalSnapshot();
@@ -219,8 +223,10 @@ class SyncService {
     var pushedCount = 0;
     var resolvedConflictCount = 0;
     var errorCount = 0;
+    final uploadBlocked =
+        localSnapshot.pendingCount > 0 && !license.allowsWrites;
 
-    if (localSnapshot.pendingCount > 0) {
+    if (localSnapshot.pendingCount > 0 && license.allowsWrites) {
       final pushSummary = await _pushChanges(
         backendUrl: backendUrl,
         deviceId: deviceId,
@@ -235,6 +241,7 @@ class SyncService {
       backendUrl: backendUrl,
       deviceId: deviceId,
       cursor: initialCursor,
+      allowReadOnly: true,
     );
 
     await SyncSettingsService.setSyncCursor(pullSummary.nextCursor);
@@ -250,6 +257,7 @@ class SyncService {
       errorCount: errorCount,
       nextCursor: pullSummary.nextCursor,
       localSnapshot: updatedLocalSnapshot,
+      uploadBlocked: uploadBlocked,
     );
   }
 
@@ -385,10 +393,12 @@ class SyncService {
     required String backendUrl,
     required String deviceId,
     required String cursor,
+    bool allowReadOnly = false,
   }) async {
     final license = await _ensureBusinessAccess(
       backendUrl: backendUrl,
       deviceId: deviceId,
+      allowReadOnly: allowReadOnly,
     );
     final userId = SessionService.currentUserId;
     final client = http.Client();
@@ -767,6 +777,7 @@ class SyncService {
     required String backendUrl,
     required String deviceId,
     bool forceRefresh = false,
+    bool allowReadOnly = false,
   }) async {
     final snapshot = await LicenseService.ensureOnlineLicense(
       backendUrl: backendUrl,
@@ -782,7 +793,9 @@ class SyncService {
         'Cloud subscription could not be activated for this device.',
       );
     }
-    if (!snapshot.allowsWrites) {
+    final readOnlyAccessAllowed =
+        allowReadOnly && snapshot.accessStatus == LicenseAccessStatus.expired;
+    if (!snapshot.allowsWrites && !readOnlyAccessAllowed) {
       throw Exception(snapshot.buildActionMessage('continue syncing'));
     }
     return snapshot;

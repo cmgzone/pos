@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_app/core/constants/app_constants.dart';
 import 'package:pos_app/core/services/catalog_qr_poster_service.dart';
 import 'package:pos_app/core/services/catalog_share_service.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
@@ -21,14 +22,35 @@ void main() {
       expect(SyncSettingsService.backendUrl, 'http://127.0.0.1:3000/api');
       expect(
         CatalogShareService.buildCatalogUrl('business-id'),
-        'https://pos-e0hs.onrender.com/catalog/business-id?currency=KSh',
+        'https://pikipos.com/catalog/business-id?currency=KSh',
       );
     },
   );
 
+  test('deprecated Render sync backend migrates to Piki production', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'sync_backend_url',
+      'https://pos-e0hs.onrender.com/api',
+    );
+
+    await SyncSettingsService.init();
+
+    expect(SyncSettingsService.backendUrl, AppConstants.productionApiBaseUrl);
+  });
+
+  test('bare production backend host normalizes to the API root', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('sync_backend_url', 'pikipos.com');
+
+    await SyncSettingsService.init();
+
+    expect(SyncSettingsService.backendUrl, AppConstants.productionApiBaseUrl);
+  });
+
   test('catalog QR poster builds a publishable PDF', () async {
     const info = CatalogShareInfo(
-      url: 'https://pos-e0hs.onrender.com/catalog/business-id?currency=KSh',
+      url: 'https://pikipos.com/catalog/business-id?currency=KSh',
       businessName: 'My Shop',
     );
 

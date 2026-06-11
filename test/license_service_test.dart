@@ -108,23 +108,85 @@ void main() {
       'The cached cloud license belongs to a different local business.',
     );
   });
+
+  test(
+    'trusts a recently cloud-verified license with a server signature',
+    () async {
+      await _storeLicense(
+        prefs,
+        payload: {
+          'business_id': 'biz-1',
+          'business_name': 'Piki Demo',
+          'device_id': 'device-1',
+          'plan': 'trial',
+          'status': 'active',
+          'expires_at': '2099-05-01T00:00:00.000Z',
+          'grace_until': '2099-05-05T00:00:00.000Z',
+          'issued_at': '2099-04-18T12:00:00.000Z',
+        },
+        signatureOverride: 'server-signature-from-production',
+        lastVerifiedAt: DateTime.now().toUtc(),
+      );
+
+      final snapshot = LicenseService.currentSnapshot;
+
+      expect(snapshot.accessStatus, LicenseAccessStatus.active);
+      expect(snapshot.hasBinding, isTrue);
+      expect(snapshot.allowsWrites, isTrue);
+    },
+  );
+
+  test(
+    'rejects a stale license when the local signature does not match',
+    () async {
+      await _storeLicense(
+        prefs,
+        payload: {
+          'business_id': 'biz-1',
+          'business_name': 'Piki Demo',
+          'device_id': 'device-1',
+          'plan': 'trial',
+          'status': 'active',
+          'expires_at': '2099-05-01T00:00:00.000Z',
+          'grace_until': '2099-05-05T00:00:00.000Z',
+          'issued_at': '2099-04-18T12:00:00.000Z',
+        },
+        signatureOverride: 'server-signature-from-production',
+        lastVerifiedAt: DateTime.now().toUtc().subtract(
+          const Duration(days: 60),
+        ),
+      );
+
+      final snapshot = LicenseService.currentSnapshot;
+
+      expect(snapshot.accessStatus, LicenseAccessStatus.invalid);
+      expect(
+        snapshot.detail,
+        'The cached cloud license needs an online refresh before it can be trusted on this device.',
+      );
+    },
+  );
 }
 
 Future<void> _storeLicense(
   SharedPreferences prefs, {
   required Map<String, dynamic> payload,
+  String? signatureOverride,
+  DateTime? lastVerifiedAt,
 }) async {
   final payloadBase64 = base64Url
       .encode(utf8.encode(jsonEncode(payload)))
       .replaceAll('=', '');
-  final signature = base64Url
-      .encode(
-        Hmac(
-          sha256,
-          utf8.encode(AppConstants.licenseSigningSecret),
-        ).convert(utf8.encode(payloadBase64)).bytes,
-      )
-      .replaceAll('=', '');
+  final signature =
+      signatureOverride ??
+      base64Url
+          .encode(
+            Hmac(
+              sha256,
+              utf8.encode(AppConstants.licenseSigningSecret),
+            ).convert(utf8.encode(payloadBase64)).bytes,
+          )
+          .replaceAll('=', '');
 
   await prefs.setString(
     'license_business_id',
@@ -140,6 +202,6 @@ Future<void> _storeLicense(
   await prefs.setString('license_signature', signature);
   await prefs.setString(
     'license_last_verified_at',
-    DateTime.now().toUtc().toIso8601String(),
+    (lastVerifiedAt ?? DateTime.now().toUtc()).toIso8601String(),
   );
 }
