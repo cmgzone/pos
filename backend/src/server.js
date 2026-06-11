@@ -467,7 +467,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
          JOIN businesses b ON b.id = u.business_id
          WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
            AND u.deleted_at IS NULL
-         LIMIT 1`,
+         ORDER BY u.last_seen_at DESC NULLS LAST, u.created_at DESC`,
         [email],
       );
 
@@ -475,11 +475,23 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
         throw createHttpError(401, 'Invalid email or password');
       }
 
-      const user = userResult.rows[0];
-
-      if (!verifyPassword(user.password, password)) {
+      const matchingUsers = userResult.rows.filter((candidate) =>
+        verifyPassword(candidate.password, password),
+      );
+      if (!matchingUsers.length) {
         throw createHttpError(401, 'Invalid email or password');
       }
+      const matchingBusinessIds = new Set(
+        matchingUsers.map((candidate) => candidate.business_id),
+      );
+      if (matchingBusinessIds.size > 1) {
+        throw createHttpError(
+          409,
+          'This staff email is used in more than one business. Ask an admin to give each staff account a unique email address before signing in.',
+        );
+      }
+
+      const user = matchingUsers[0];
 
       const businessId = user.business_id;
       const now = new Date();

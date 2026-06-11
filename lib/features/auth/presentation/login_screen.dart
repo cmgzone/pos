@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/cloud_auth_service.dart';
 import '../../../core/services/database_service.dart';
+import '../../../core/services/license_service.dart';
 import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/seed_service.dart';
 import '../../../core/services/session_service.dart';
@@ -11,6 +12,7 @@ import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
+import '../data/auth_exception.dart';
 import '../data/auth_service.dart';
 import '../data/auth_password_service.dart';
 import 'sign_up_screen.dart';
@@ -59,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await SyncSettingsService.init();
       final backendUrl = SyncSettingsService.backendUrl;
       Map<String, dynamic>? signedInUser;
+      var allowLocalFallback = backendUrl.isEmpty;
 
       if (backendUrl.isNotEmpty) {
         try {
@@ -71,13 +74,26 @@ class _LoginScreenState extends State<LoginScreen> {
             password: password,
           );
           _cloudLoginSucceeded = true;
-        } catch (_) {
-          // For network errors or cloud rejections, fallback to local auth
+        } on CloudAuthException catch (error) {
+          if (error.kind != CloudAuthFailureKind.network) {
+            rethrow;
+          }
+          allowLocalFallback = true;
         }
       }
 
-      // Fallback to local auth if online didn't succeed
-      signedInUser ??= await _tryLocalLogin(email: email, password: password);
+      // Fallback to local auth only for offline/network cases. A rejected cloud
+      // login must not open stale data from a previous business on this device.
+      if (signedInUser == null) {
+        if (!allowLocalFallback) {
+          throw Exception('Cloud sign in is required for this account.');
+        }
+        signedInUser = await _tryLocalLogin(
+          email: email,
+          password: password,
+          requireCloudVerified: backendUrl.isNotEmpty,
+        );
+      }
       var authenticatedUser = signedInUser;
 
       // If we logged in via cloud on a new device, detect a business switch
@@ -194,15 +210,35 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<Map<String, dynamic>> _tryLocalLogin({
     required String email,
     required String password,
+    required bool requireCloudVerified,
   }) async {
     final user = await AuthService.signIn(email: email, password: password);
+    if (requireCloudVerified) {
+      final cloudVerifiedAt = (user['cloud_verified_at'] as String?)?.trim();
+      final localBusinessId = SyncSettingsService.localBusinessId.trim();
+      final license = LicenseService.currentSnapshot;
+      final licenseBusinessId = license.businessId?.trim() ?? '';
+      final trustedLocalBusiness =
+          cloudVerifiedAt != null &&
+          cloudVerifiedAt.isNotEmpty &&
+          localBusinessId.isNotEmpty &&
+          license.hasBinding &&
+          licenseBusinessId == localBusinessId &&
+          license.accessStatus != LicenseAccessStatus.invalid;
 
-    // Check if this user has been cloud-verified before
-    final cloudVerifiedAt = user['cloud_verified_at'] as String?;
-    if (cloudVerifiedAt == null || cloudVerifiedAt.trim().isEmpty) {
+      if (!trustedLocalBusiness) {
+        throw const AuthException(
+          'Connect to the internet and sign in with the cloud account before this device can open business data offline.',
+        );
+      }
+    }
+
+    /*
+    if (false) {
       // Legacy user without cloud verification — allow access but warn
       // (backward compatibility for pre-SaaS accounts)
     }
+    */
 
     return user;
   }

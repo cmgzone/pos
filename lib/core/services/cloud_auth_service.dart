@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -58,6 +59,18 @@ class CloudAuthResponse {
       checkoutRequired: json['checkoutRequired'] == true,
     );
   }
+}
+
+enum CloudAuthFailureKind { network, unauthorized, conflict, server }
+
+class CloudAuthException implements Exception {
+  final String message;
+  final CloudAuthFailureKind kind;
+
+  const CloudAuthException(this.message, this.kind);
+
+  @override
+  String toString() => message;
 }
 
 /// Handles cloud-based registration and login for the SaaS model.
@@ -190,29 +203,44 @@ class CloudAuthService {
       if (response.statusCode == 401) {
         final message =
             _readText(body['error']) ?? 'Invalid email or password.';
-        throw Exception(message);
+        throw CloudAuthException(message, CloudAuthFailureKind.unauthorized);
+      }
+
+      if (response.statusCode == 409) {
+        final message =
+            _readText(body['error']) ??
+            'This staff login is assigned to more than one business.';
+        throw CloudAuthException(message, CloudAuthFailureKind.conflict);
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final message =
             _readText(body['error']) ?? 'Login failed (${response.statusCode})';
-        throw Exception(message);
+        throw CloudAuthException(message, CloudAuthFailureKind.server);
       }
 
       if (body['ok'] != true) {
-        throw Exception(
+        throw CloudAuthException(
           _readText(body['error']) ?? 'Unexpected login response.',
+          CloudAuthFailureKind.server,
         );
       }
 
       return CloudAuthResponse.fromJson(body);
     } on http.ClientException {
-      throw Exception(
+      throw const CloudAuthException(
         'Could not reach the cloud server. Check your internet connection.',
+        CloudAuthFailureKind.network,
       );
     } on SocketException {
-      throw Exception(
+      throw const CloudAuthException(
         'No internet connection. Try signing in offline if you have previously logged in.',
+        CloudAuthFailureKind.network,
+      );
+    } on TimeoutException {
+      throw const CloudAuthException(
+        'Cloud sign in timed out. Try again, or sign in offline if this device has already been verified.',
+        CloudAuthFailureKind.network,
       );
     } finally {
       client.close();

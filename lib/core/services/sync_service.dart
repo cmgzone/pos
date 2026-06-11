@@ -134,9 +134,10 @@ class SyncService {
     for (final table in _pushTableOrder) {
       final pendingRows = await DatabaseService.queryAll(
         table,
-        where: 'sync_status = ?',
-        whereArgs: ['pending'],
-        orderBy: 'updated_at ASC, id ASC',
+        where: 'sync_status IN (?, ?)',
+        whereArgs: ['pending', 'error'],
+        orderBy:
+            "CASE sync_status WHEN 'pending' THEN 0 ELSE 1 END, updated_at ASC, id ASC",
       );
       pendingChanges[table] = pendingRows;
       pendingCount += pendingRows.length;
