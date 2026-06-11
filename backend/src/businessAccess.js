@@ -41,7 +41,19 @@ async function activateBusinessAccess({
     const now = new Date();
     const existingContext = await loadBusinessContextByDevice(client, normalizedDeviceId);
 
-    let businessId = existingContext?.business_id || null;
+    let businessId = null;
+    if (existingContext) {
+      const matchesExistingBusiness = isDeviceActivationCompatible({
+        existingBusinessName: existingContext.business_name,
+        requestedBusinessName: normalizedBusinessName,
+      });
+      if (!matchesExistingBusiness) {
+        throw new Error(
+          'This device is already linked to a different business. Sign in with that business account or clear the local business data before activating a new business.',
+        );
+      }
+      businessId = existingContext.business_id || null;
+    }
     if (!businessId) {
       businessId = crypto.randomUUID();
       await client.query(
@@ -443,6 +455,23 @@ function normalizeCurrency(value) {
   return normalized;
 }
 
+function isDeviceActivationCompatible({
+  existingBusinessName,
+  requestedBusinessName,
+}) {
+  const existing = normalizeComparableText(existingBusinessName);
+  const requested = normalizeComparableText(requestedBusinessName);
+  if (!existing || !requested) {
+    return true;
+  }
+  return existing === requested;
+}
+
+function normalizeComparableText(value) {
+  const normalized = normalizeText(value);
+  return normalized ? normalized.toLowerCase() : null;
+}
+
 function displayCurrencyForCountry(countryCode) {
   const normalized = String(countryCode || '').trim().toUpperCase();
   if (normalized === 'KE') return 'KSh';
@@ -464,6 +493,7 @@ function toIsoString(value) {
 
 module.exports = {
   activateBusinessAccess,
+  isDeviceActivationCompatible,
   parseBearerToken,
   refreshBusinessAccess,
   resolveBusinessAccess,

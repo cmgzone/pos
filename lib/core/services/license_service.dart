@@ -263,6 +263,9 @@ class LicenseService {
       return const LicenseSnapshot.localOnly();
     }
 
+    final localBusinessId = _readTrimmed(
+      prefs.getString(AppConstants.keyLocalBusinessId),
+    );
     final businessId = _readTrimmed(prefs.getString(_keyBusinessId));
     final businessName = _readTrimmed(prefs.getString(_keyBusinessName));
     final accessToken = _readTrimmed(prefs.getString(_keyAccessToken));
@@ -328,9 +331,27 @@ class LicenseService {
     final graceUntil = _parseDate(payload['grace_until']?.toString());
     final payloadStatus =
         _readTrimmed(payload['status']?.toString()) ?? 'active';
+    if (localBusinessId != null &&
+        businessId != null &&
+        localBusinessId != businessId) {
+      return LicenseSnapshot(
+        businessId: businessId,
+        businessName: businessName,
+        accessToken: accessToken,
+        plan: plan,
+        expiresAt: expiresAt,
+        graceUntil: graceUntil,
+        lastVerifiedAt: lastVerifiedAt,
+        accessStatus: LicenseAccessStatus.invalid,
+        detail:
+            'The cached cloud license belongs to a different local business.',
+        entitlements: const SubscriptionEntitlements.empty(),
+      );
+    }
     if (payloadBusinessId == null ||
         businessId == null ||
         payloadBusinessId != businessId ||
+        (localBusinessId != null && payloadBusinessId != localBusinessId) ||
         expiresAt == null ||
         graceUntil == null) {
       return LicenseSnapshot(
@@ -390,6 +411,16 @@ class LicenseService {
     }
 
     final snapshot = currentSnapshot;
+    if (snapshot.hasBinding && !_matchesStoredLocalBusiness(snapshot)) {
+      await clearBinding();
+      return _activate(
+        backendUrl: normalizedBackendUrl,
+        deviceId: deviceId,
+        businessName: businessName,
+        ownerName: ownerName,
+        ownerEmail: ownerEmail,
+      );
+    }
     if (!snapshot.hasBinding) {
       return _activate(
         backendUrl: normalizedBackendUrl,
@@ -621,6 +652,21 @@ class LicenseService {
     }
 
     return expiresAt.difference(now).inHours <= 48;
+  }
+
+  static bool _matchesStoredLocalBusiness(LicenseSnapshot snapshot) {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return true;
+    }
+    final localBusinessId = _readTrimmed(
+      prefs.getString(AppConstants.keyLocalBusinessId),
+    );
+    if (localBusinessId == null) {
+      return true;
+    }
+    final businessId = snapshot.businessId;
+    return businessId == null || businessId == localBusinessId;
   }
 
   static LicenseAccessStatus _resolveAccessStatus({

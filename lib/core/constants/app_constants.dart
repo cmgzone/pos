@@ -1,11 +1,10 @@
 class AppConstants {
   static const String appName = 'Piki POS';
   static const String appVersion = '1.0.0';
-  static const String productionApiBaseUrl =
-      'https://pos-e0hs.onrender.com/api';
-  static const String productionPublicBaseUrl = 'https://pos-e0hs.onrender.com';
+  static const String productionApiBaseUrl = 'https://pikipos.com/api';
+  static const String productionPublicBaseUrl = 'https://pikipos.com';
   static const String debugApiBaseUrl = 'http://127.0.0.1:3000/api';
-  static const String _defaultSocketUrl = 'https://pos-e0hs.onrender.com';
+  static const String _defaultSocketUrl = 'https://pikipos.com';
   static const String _defaultLicenseSigningSecret =
       'velora-pos-dev-license-secret-change-me';
   static const String supportEmail = String.fromEnvironment(

@@ -34,9 +34,9 @@ Example:
 
 ```bash
 flutter run \
-  --dart-define=API_BASE_URL=https://your-api-host.example.com/api \
+  --dart-define=API_BASE_URL=https://pikipos.com/api \
   --dart-define=LICENSE_SIGNING_SECRET=replace-with-the-same-secret
 ```
 
 If you do not pass `API_BASE_URL`, the app falls back to the current default
-host baked into the build.
+host baked into the build: `https://pikipos.com/api`.

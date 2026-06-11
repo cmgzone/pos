@@ -83,6 +83,31 @@ void main() {
       throwsException,
     );
   });
+
+  test('marks cached license invalid when local business differs', () async {
+    await prefs.setString(AppConstants.keyLocalBusinessId, 'biz-2');
+    await _storeLicense(
+      prefs,
+      payload: {
+        'business_id': 'biz-1',
+        'business_name': 'Velora Demo',
+        'device_id': 'device-1',
+        'plan': 'trial',
+        'status': 'active',
+        'expires_at': '2099-05-01T00:00:00.000Z',
+        'grace_until': '2099-05-05T00:00:00.000Z',
+        'issued_at': '2099-04-18T12:00:00.000Z',
+      },
+    );
+
+    final snapshot = LicenseService.currentSnapshot;
+
+    expect(snapshot.accessStatus, LicenseAccessStatus.invalid);
+    expect(
+      snapshot.detail,
+      'The cached cloud license belongs to a different local business.',
+    );
+  });
 }
 
 Future<void> _storeLicense(
