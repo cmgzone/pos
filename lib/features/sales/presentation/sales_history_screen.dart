@@ -47,11 +47,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       RolePermissions.cashier;
 
   String? get _cashierFilterId {
-    final userId = SessionService.currentUserId.trim();
-    if (!_isCashierView) {
-      return null;
-    }
-    return userId.isEmpty ? '__missing_cashier__' : userId;
+    // Staff in the same business should see the shared branch sales feed.
+    // Backend sync/business scoping still prevents cross-business visibility.
+    return null;
   }
 
   @override
@@ -177,7 +175,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
             backgroundColor: AppColors.surface,
             toolbarHeight: 50,
             title: Text(
-              _isCashierView ? 'My Sales' : 'Sales',
+              'Sales',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             actions: [
@@ -2406,10 +2404,6 @@ class _SalesHeader extends StatelessWidget {
             onSelected: onSaleTypeSelected,
             isMobile: isMobile,
           ),
-          if (isCashierView) ...[
-            const SizedBox(height: 8),
-            const _CashierNotice(),
-          ],
         ],
       ),
     );
@@ -2660,38 +2654,6 @@ class _MiniSalesMetric extends StatelessWidget {
   }
 }
 
-class _CashierNotice extends StatelessWidget {
-  const _CashierNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.lock_outline, color: AppColors.primary, size: 18),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Showing only your own sales activity.',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _EmptySalesState extends StatelessWidget {
   final bool isCashierView;
 
@@ -2718,7 +2680,7 @@ class _EmptySalesState extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               isCashierView
-                  ? 'Your completed sales will appear here.'
+                  ? 'Completed branch sales will appear here.'
                   : 'Complete a sale from POS or record an old sale.',
               textAlign: TextAlign.center,
               style: const TextStyle(

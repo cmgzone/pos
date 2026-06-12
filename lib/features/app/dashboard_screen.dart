@@ -47,14 +47,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       RolePermissions.normalizeRole(SessionService.currentUserRole) ==
       RolePermissions.cashier;
 
-  bool get _canSeeEmployeeSales => !_isCashierView;
+  bool get _canSeeEmployeeSales => true;
 
   String? get _salesViewerId {
-    final userId = SessionService.currentUserId.trim();
-    if (!_isCashierView) {
-      return null;
-    }
-    return userId.isEmpty ? '__missing_cashier__' : userId;
+    // Staff under the same business share branch-level sales visibility.
+    // Business isolation is enforced by cloud auth/sync scope, not by this UI.
+    return null;
   }
 
   Color _roleColor(String? role) {
@@ -639,14 +637,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     final isMobile = MediaQuery.of(context).size.width < 800;
-    final revenueLabel = _isCashierView
-        ? 'Your Revenue Today'
-        : "Today's Revenue";
-    final profitLabel = _isCashierView ? 'Your Profit Today' : "Today's Profit";
-    final salesLabel = _isCashierView ? 'Your Sales Today' : "Today's Sales";
-    final recentSalesTitle = _isCashierView
-        ? 'Your Recent Sales'
-        : 'Recent Sales';
+    const revenueLabel = "Today's Revenue";
+    const profitLabel = "Today's Profit";
+    const salesLabel = "Today's Sales";
+    const recentSalesTitle = 'Recent Sales';
 
     return Scaffold(
       appBar: AppBar(
@@ -793,38 +787,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       );
                     },
                   ),
-                if (_isCashierView)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 20),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.lock_outline,
-                          color: AppColors.primary,
-                          size: 20,
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Dashboard totals and recent sales are showing your activity only.',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
                 TrainingAnchor(
                   id: 'dashboard.kpis',
                   child: isMobile
@@ -1694,7 +1656,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 ? 'No sales yet'
                                 : 'Empty history',
                             subtitle: _isCashierView
-                                ? 'Start selling to see your recent transactions.'
+                                ? 'Branch transactions will appear here after staff start selling.'
                                 : 'Recent shop transactions will be listed here.',
                           )
                         : Column(
