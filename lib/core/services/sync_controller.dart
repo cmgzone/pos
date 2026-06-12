@@ -432,6 +432,13 @@ class SyncController extends Notifier<SyncState> {
     if (summary.errorCount > 0) {
       parts.add('${summary.errorCount} item(s) need attention');
     }
+    if (summary.issueMessages.isNotEmpty) {
+      final preview = summary.issueMessages.take(3).join('; ');
+      final remaining = summary.issueMessages.length - 3;
+      parts.add(
+        remaining > 0 ? '$preview; $remaining more sync issue(s)' : preview,
+      );
+    }
     if (summary.uploadBlocked) {
       final pendingCount = summary.localSnapshot.pendingCount;
       parts.add(

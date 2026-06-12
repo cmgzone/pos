@@ -55,6 +55,69 @@ test('prepareIncomingRecord requires non-nullable timestamps like received_at', 
   assert.equal(result.error.field, 'received_at');
 });
 
+test('prepareIncomingRecord accepts nullable sales integration timestamps', () => {
+  const result = prepareIncomingRecord('sales', {
+    id: 'sale-1',
+    branch_id: 'main_branch',
+    total_amount: 200,
+    tax: 0,
+    discount: 0,
+    payment_type: 'cash',
+    is_cash_drawer: 0,
+    user_id: 'user-1',
+    etims_submitted_at: null,
+    refunded_at: '',
+    created_at: '2026-04-17T19:00:00.000Z',
+    updated_at: '2026-04-17T19:00:00.000Z',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.record.etims_submitted_at, null);
+  assert.equal(result.record.refunded_at, null);
+});
+
+test('prepareIncomingRecord accepts nullable service order timestamps', () => {
+  const result = prepareIncomingRecord('service_orders', {
+    id: 'service-order-1',
+    branch_id: 'main_branch',
+    service_id: 'service-1',
+    service_name: 'Car wash',
+    entry_mode: 'walk_in',
+    scheduled_at: null,
+    checked_in_at: '',
+    status: 'paid',
+    price: 200,
+    created_at: '2026-04-17T19:00:00.000Z',
+    updated_at: '2026-04-17T19:00:00.000Z',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.record.scheduled_at, null);
+  assert.equal(result.record.checked_in_at, null);
+});
+
+test('prepareIncomingRecord accepts nullable stock transfer completion timestamps', () => {
+  const result = prepareIncomingRecord('stock_transfers', {
+    id: 'transfer-1',
+    branch_id: 'main_branch',
+    from_branch_id: 'main_branch',
+    to_branch_id: 'branch-2',
+    product_id: 'product-1',
+    product_name: 'Soap',
+    quantity: 2,
+    status: 'requested',
+    requested_at: '2026-04-17T19:00:00.000Z',
+    approved_at: null,
+    received_at: '',
+    created_at: '2026-04-17T19:00:00.000Z',
+    updated_at: '2026-04-17T19:00:00.000Z',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.record.approved_at, null);
+  assert.equal(result.record.received_at, null);
+});
+
 test('buildRejectedWriteResult treats equivalent synced rows as duplicates', () => {
   const incoming = {
     id: 'product-1',

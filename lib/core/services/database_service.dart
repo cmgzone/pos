@@ -1397,6 +1397,7 @@ class DatabaseService {
     await _ensurePaymentMethodsSchema(database);
     await _ensureEnterpriseSchema(database);
     await _ensureStockTransferSchema(database);
+    await _ensurePublicCatalogOrderSchema(database);
     await _ensureAgentMemorySchema(database);
     await _ensureAgentChatSchema(database);
     // Indexes must be created last because some of them target columns that
@@ -1674,6 +1675,70 @@ class DatabaseService {
       table: 'stock_transfers',
       column: 'sync_status',
       definition: "TEXT NOT NULL DEFAULT 'pending'",
+    );
+  }
+
+  static Future<void> _ensurePublicCatalogOrderSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS public_catalog_orders (
+        id TEXT PRIMARY KEY,
+        business_id TEXT,
+        customer_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        fulfillment_method TEXT NOT NULL DEFAULT 'delivery',
+        delivery_address TEXT,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        subtotal REAL NOT NULL DEFAULT 0,
+        item_count REAL NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'catalog_link',
+        payment_requested_at TEXT,
+        fulfilled_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS public_catalog_order_items (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        business_id TEXT,
+        product_id TEXT NOT NULL,
+        variant_id TEXT,
+        product_name TEXT NOT NULL,
+        variant_name TEXT,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit_price REAL NOT NULL DEFAULT 0,
+        line_total REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES public_catalog_orders(id) ON DELETE CASCADE
+      )
+    ''');
+    await _ensureColumn(
+      database,
+      table: 'public_catalog_orders',
+      column: 'fulfillment_method',
+      definition: "TEXT NOT NULL DEFAULT 'delivery'",
+    );
+    await _ensureColumn(
+      database,
+      table: 'public_catalog_orders',
+      column: 'payment_requested_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'public_catalog_orders',
+      column: 'fulfilled_at',
+      definition: 'TEXT',
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'public_catalog_orders',
+      indexName: 'idx_public_catalog_orders_status',
+      columns: ['status', 'created_at'],
     );
   }
 

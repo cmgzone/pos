@@ -39,6 +39,7 @@ class SyncRunSummary {
   final int pulledCount;
   final int resolvedConflictCount;
   final int errorCount;
+  final List<String> issueMessages;
   final String nextCursor;
   final LocalSyncSnapshot localSnapshot;
   final bool uploadBlocked;
@@ -48,6 +49,7 @@ class SyncRunSummary {
     required this.pulledCount,
     required this.resolvedConflictCount,
     required this.errorCount,
+    this.issueMessages = const <String>[],
     required this.nextCursor,
     required this.localSnapshot,
     this.uploadBlocked = false,
@@ -227,6 +229,7 @@ class SyncService {
     var pushedCount = 0;
     var resolvedConflictCount = 0;
     var errorCount = 0;
+    var issueMessages = const <String>[];
     final uploadBlocked =
         localSnapshot.pendingCount > 0 && !license.allowsWrites;
 
@@ -239,6 +242,7 @@ class SyncService {
       pushedCount = pushSummary.pushedCount;
       resolvedConflictCount += pushSummary.resolvedConflictCount;
       errorCount += pushSummary.errorCount;
+      issueMessages = pushSummary.issueMessages;
     }
 
     final pullSummary = await _pullChanges(
@@ -260,6 +264,7 @@ class SyncService {
       resolvedConflictCount:
           resolvedConflictCount + pullSummary.resolvedConflictCount,
       errorCount: errorCount,
+      issueMessages: issueMessages,
       nextCursor: pullSummary.nextCursor,
       localSnapshot: updatedLocalSnapshot,
       uploadBlocked: uploadBlocked,
@@ -290,6 +295,7 @@ class SyncService {
         pushedCount: 0,
         resolvedConflictCount: 0,
         errorCount: 0,
+        issueMessages: <String>[],
       );
     }
 
@@ -318,6 +324,7 @@ class SyncService {
 
       final conflictsByTable = _readConflictRows(body['conflicts']);
       final invalidIdsByTable = _readIssueIds(body['invalidRows']);
+      final issueMessages = _readIssueMessages(body['invalidRows']);
 
       var pushedCount = 0;
       var resolvedConflictCount = 0;
@@ -386,6 +393,7 @@ class SyncService {
         pushedCount: pushedCount,
         resolvedConflictCount: resolvedConflictCount,
         errorCount: errorCount,
+        issueMessages: issueMessages,
       );
     } finally {
       client.close();
@@ -954,6 +962,39 @@ class SyncService {
     return issuesByTable;
   }
 
+  static List<String> _readIssueMessages(Object? rawIssues) {
+    final messages = <String>[];
+    if (rawIssues is! Map) {
+      return messages;
+    }
+
+    for (final entry in rawIssues.entries) {
+      final table = entry.key.toString();
+      final rows = entry.value is List ? entry.value as List : const [];
+      for (final row in rows) {
+        if (row is! Map) {
+          continue;
+        }
+        final id = _readString(row['id'])?.trim();
+        final code = _readString(row['code'])?.trim();
+        final message = _readString(row['message'])?.trim();
+        final field = _readString(row['field'])?.trim();
+        final parts = <String>[
+          table,
+          if (id != null && id.isNotEmpty) id,
+          if (code != null && code.isNotEmpty) code,
+          if (field != null && field.isNotEmpty) field,
+          if (message != null && message.isNotEmpty) message,
+        ];
+        if (parts.length > 1) {
+          messages.add(parts.join(': '));
+        }
+      }
+    }
+
+    return messages;
+  }
+
   static int _asInt(Object? value) {
     if (value is num) {
       return value.toInt();
@@ -974,11 +1015,13 @@ class _PushSummary {
   final int pushedCount;
   final int resolvedConflictCount;
   final int errorCount;
+  final List<String> issueMessages;
 
   const _PushSummary({
     required this.pushedCount,
     required this.resolvedConflictCount,
     required this.errorCount,
+    required this.issueMessages,
   });
 }
 

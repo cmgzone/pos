@@ -9,6 +9,16 @@ const NULLABLE_TIMESTAMP_COLUMNS = new Set([
   'refunded_at',
 ]);
 
+const NULLABLE_TIMESTAMP_FIELDS = new Set([
+  'customer_invoices.sent_at',
+  'customer_invoices.paid_at',
+  'sales.etims_submitted_at',
+  'service_orders.scheduled_at',
+  'service_orders.checked_in_at',
+  'stock_transfers.approved_at',
+  'stock_transfers.received_at',
+]);
+
 function prepareIncomingRecord(tableName, record) {
   const config = getTableConfig(tableName);
   const rawRecord =
@@ -63,10 +73,11 @@ function prepareIncomingRecord(tableName, record) {
       prepared,
       column,
     );
+    const nullableTimestamp = isNullableTimestampField(tableName, column);
     const normalized = normalizeTimestampField(prepared[column], {
       field: column,
-      required: !NULLABLE_TIMESTAMP_COLUMNS.has(column),
-      fallback: NULLABLE_TIMESTAMP_COLUMNS.has(column) ? null : undefined,
+      required: !nullableTimestamp,
+      fallback: nullableTimestamp ? null : undefined,
     });
     if (!normalized.ok) {
       return normalized;
@@ -79,6 +90,13 @@ function prepareIncomingRecord(tableName, record) {
 
   prepared.sync_status = SERVER_SYNC_STATUS;
   return { ok: true, record: prepared };
+}
+
+function isNullableTimestampField(tableName, column) {
+  return (
+    NULLABLE_TIMESTAMP_COLUMNS.has(column) ||
+    NULLABLE_TIMESTAMP_FIELDS.has(`${tableName}.${column}`)
+  );
 }
 
 function buildRejectedWriteResult(tableName, incomingRecord, existingRecord) {

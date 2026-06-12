@@ -4169,8 +4169,6 @@ function ensureAiFeatureAllowed(businessContext) {
 
 function featureRequiredForTable(tableName) {
   switch (tableName) {
-    case 'branches':
-      return FEATURE_KEYS.branches;
     case 'stock_transfers':
       return FEATURE_KEYS.transfers;
     case 'categories':
