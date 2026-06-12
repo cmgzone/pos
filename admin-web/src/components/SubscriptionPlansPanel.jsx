@@ -42,7 +42,7 @@ const GATEWAY_FIELDS = {
     secret: [
       ['consumerKey', 'Daraja Consumer Key'],
       ['consumerSecret', 'Daraja Consumer Secret'],
-      ['passkey', 'Passkey'],
+      ['passkey', 'Lipa na M-Pesa Online Passkey (not login password)'],
     ],
   },
   google_pay: {
@@ -136,6 +136,17 @@ function isHttpsUrl(value) {
   }
 }
 
+function isPlausibleMpesaPasskey(value) {
+  const passkey = String(value || '').trim()
+  if (passkey.startsWith('********')) return true
+  return (
+    passkey.length >= 32 &&
+    passkey.length <= 128 &&
+    !/\s/.test(passkey) &&
+    !passkey.includes('-----BEGIN')
+  )
+}
+
 function gatewayConfigurationError(gateway) {
   if (!gateway?.isActive) return ''
 
@@ -157,6 +168,9 @@ function gatewayConfigurationError(gateway) {
     }
     if (!isHttpsUrl(publicConfig.callbackUrl)) {
       return 'M-Pesa callback URL must be a valid HTTPS URL.'
+    }
+    if (!isPlausibleMpesaPasskey(secretConfig.passkey)) {
+      return 'M-Pesa passkey looks invalid. Use the Lipa na M-Pesa Online passkey for this shortcode, not your Daraja login password or a certificate key.'
     }
   }
 

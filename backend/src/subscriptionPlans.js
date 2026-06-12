@@ -1033,6 +1033,12 @@ function validatePaymentGatewayConfiguration(gateway) {
     if (!isHttpsUrl(publicConfig.callbackUrl)) {
       throw createError(400, 'M-Pesa callback URL must be a valid HTTPS URL.');
     }
+    if (!isPlausibleMpesaPasskey(secretConfig.passkey)) {
+      throw createError(
+        400,
+        'M-Pesa passkey looks invalid. Use the Lipa na M-Pesa Online passkey for this shortcode, not your Daraja login password or a certificate key.',
+      );
+    }
   }
 
   if (gateway.provider === 'google_pay') {
@@ -1070,6 +1076,16 @@ function isHttpsUrl(value) {
   } catch (_) {
     return false;
   }
+}
+
+function isPlausibleMpesaPasskey(value) {
+  const passkey = normalizeText(value);
+  return (
+    passkey.length >= 32 &&
+    passkey.length <= 128 &&
+    !/\s/.test(passkey) &&
+    !passkey.includes('-----BEGIN')
+  );
 }
 
 function renewalBaseDate(expiresAt, referenceDate = new Date()) {
@@ -1504,6 +1520,7 @@ module.exports = {
   isPriceAvailableForPublicCatalog,
   isPriceVisibleInPublicCatalog,
   isHttpsUrl,
+  isPlausibleMpesaPasskey,
   normalizePlanInput,
   normalizeCountryCode,
   normalizePriceInput,

@@ -6,6 +6,7 @@ const {
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
   isPriceVisibleInPublicCatalog,
+  isPlausibleMpesaPasskey,
   normalizeSellingMode,
   normalizeGraceDays,
   normalizeTrialDays,
@@ -176,6 +177,12 @@ test('active M-Pesa gateway requires a valid HTTPS callback URL', () => {
       }),
     /callback URL must be a valid HTTPS URL/,
   );
+});
+
+test('M-Pesa passkey rejects login passwords and certificate-sized values', () => {
+  assert.equal(isPlausibleMpesaPasskey('short-password'), false);
+  assert.equal(isPlausibleMpesaPasskey('x'.repeat(344)), false);
+  assert.equal(isPlausibleMpesaPasskey('x'.repeat(64)), true);
 });
 
 test('renewal keeps remaining subscription time', () => {

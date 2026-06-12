@@ -39,6 +39,7 @@ const {
   applySellingModeToEntitlements,
   ensureSubscriptionSchema,
   isHttpsUrl,
+  isPlausibleMpesaPasskey,
   listPaymentGateways,
   listPlans,
   listPublicPlans,
@@ -3425,7 +3426,10 @@ app.use((error, req, res, next) => {
 
   const statusCode =
     error && Number.isInteger(error.statusCode) ? error.statusCode : 500;
-  const exposeMessage = statusCode < 500 || config.nodeEnv !== 'production';
+  const exposeMessage =
+    statusCode < 500 ||
+    error?.exposeMessage === true ||
+    config.nodeEnv !== 'production';
 
   res.status(statusCode).json({
     ok: false,
@@ -4106,6 +4110,12 @@ async function initiateMpesaCheckout(payment, gateway) {
       message: 'M-Pesa credentials are not configured in the admin panel.',
     };
   }
+  if (!isPlausibleMpesaPasskey(mpesaConfig.passkey)) {
+    throw createHttpError(
+      400,
+      'M-Pesa passkey looks invalid. Use the Lipa na M-Pesa Online passkey for this shortcode, not your Daraja login password or a certificate key.',
+    );
+  }
 
   const token = await getMpesaAccessToken(mpesaConfig);
   const timestamp = formatMpesaTimestamp(new Date());
@@ -4153,7 +4163,10 @@ async function initiateMpesaCheckout(payment, gateway) {
     );
     throw createHttpError(
       response.ok ? 502 : response.status,
-      darajaMessage || 'M-Pesa checkout failed',
+      darajaMessage
+        ? `M-Pesa checkout failed: ${darajaMessage}`
+        : 'M-Pesa checkout failed',
+      { exposeMessage: true },
     );
   }
 
@@ -4201,6 +4214,7 @@ async function getMpesaAccessToken(mpesaConfig) {
       darajaMessage
         ? `M-Pesa auth failed: ${darajaMessage}`
         : `M-Pesa auth failed (HTTP ${response.status}). Check the Daraja Consumer Key and Consumer Secret for the selected sandbox/production base URL.`,
+      { exposeMessage: true },
     );
   }
   return body.access_token;
@@ -7574,9 +7588,10 @@ function paymentGatewayReadinessErrors(gateway) {
   }
 }
 
-function createHttpError(statusCode, message) {
+function createHttpError(statusCode, message, { exposeMessage = false } = {}) {
   const error = new Error(message);
   error.statusCode = statusCode;
+  error.exposeMessage = exposeMessage;
   return error;
 }
 
