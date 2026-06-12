@@ -40,8 +40,8 @@ const GATEWAY_FIELDS = {
       ['callbackUrl', 'Callback URL'],
     ],
     secret: [
-      ['consumerKey', 'Consumer Key'],
-      ['consumerSecret', 'Consumer Secret'],
+      ['consumerKey', 'Daraja Consumer Key'],
+      ['consumerSecret', 'Daraja Consumer Secret'],
       ['passkey', 'Passkey'],
     ],
   },

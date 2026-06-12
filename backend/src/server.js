@@ -4198,7 +4198,9 @@ async function getMpesaAccessToken(mpesaConfig) {
     const darajaMessage = mpesaProviderMessage(body);
     throw createHttpError(
       response.ok ? 502 : response.status,
-      darajaMessage ? `M-Pesa auth failed: ${darajaMessage}` : 'M-Pesa auth failed',
+      darajaMessage
+        ? `M-Pesa auth failed: ${darajaMessage}`
+        : `M-Pesa auth failed (HTTP ${response.status}). Check the Daraja Consumer Key and Consumer Secret for the selected sandbox/production base URL.`,
     );
   }
   return body.access_token;
