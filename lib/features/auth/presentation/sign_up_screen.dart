@@ -70,10 +70,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (market == null) return const [];
     final modes = <String>[];
     for (final mode in _sellingModeOrder) {
-      final supported = catalog.plans.any(
-        (plan) =>
-            plan.sellingModes.contains(mode) && plan.priceFor(market) != null,
-      );
+      final supported = catalog.plans.any((plan) {
+        final price = plan.priceFor(market);
+        return plan.sellingModes.contains(mode) &&
+            price != null &&
+            (price.amountMinor == 0 || market.paymentActive);
+      });
       if (supported) {
         modes.add(mode);
       }
@@ -91,6 +93,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     for (final plan in catalog.plans) {
       final price = plan.priceFor(market);
       if (price == null || !plan.sellingModes.contains(mode)) {
+        continue;
+      }
+      if (price.amountMinor > 0 && !market.paymentActive) {
         continue;
       }
       firstMatch ??= plan;

@@ -62,6 +62,7 @@ class SubscriptionMarket {
   final String currency;
   final String provider;
   final String providerLabel;
+  final bool paymentActive;
 
   const SubscriptionMarket({
     required this.countryCode,
@@ -69,6 +70,7 @@ class SubscriptionMarket {
     required this.currency,
     required this.provider,
     required this.providerLabel,
+    this.paymentActive = true,
   });
 
   factory SubscriptionMarket.fromJson(Map<String, dynamic> json) {
@@ -78,6 +80,9 @@ class SubscriptionMarket {
       currency: json['currency']?.toString() ?? 'USD',
       provider: json['provider']?.toString() ?? 'google_pay',
       providerLabel: json['providerLabel']?.toString() ?? 'Google Pay',
+      paymentActive: json['paymentActive'] == null
+          ? true
+          : json['paymentActive'] == true,
     );
   }
 

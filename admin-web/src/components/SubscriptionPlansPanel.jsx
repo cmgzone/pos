@@ -1143,7 +1143,7 @@ export default function SubscriptionPlansPanel({ token }) {
         <div className="gateway-panel-header">
           <div>
             <h3>Payment Gateways</h3>
-            <p>Only enabled gateways with active plan prices appear in the POS app.</p>
+            <p>Active plan prices appear in the POS app. Enable gateways to collect paid subscriptions.</p>
           </div>
         </div>
         <div className="gateway-grid">

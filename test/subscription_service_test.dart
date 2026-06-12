@@ -66,4 +66,17 @@ void main() {
     expect(checkout.status, 'pending');
     expect(checkout.message, 'Complete the prompt on your phone.');
   });
+
+  test('subscription market parses paid checkout availability', () {
+    final market = SubscriptionMarket.fromJson({
+      'countryCode': 'KE',
+      'label': 'Kenya',
+      'currency': 'KES',
+      'provider': 'mpesa',
+      'providerLabel': 'M-Pesa',
+      'paymentActive': false,
+    });
+
+    expect(market.paymentActive, isFalse);
+  });
 }

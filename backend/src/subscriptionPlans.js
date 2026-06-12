@@ -598,18 +598,13 @@ async function listPublicPlans({ countryCode } = {}, target = query) {
   const hasCountry = normalizeText(countryCode) !== null;
   const cleanCountry = hasCountry ? normalizeCountryCode(countryCode) : null;
   const plans = await listPlans({ includeInactive: false }, target);
-  const gateways = await listPaymentGateways({}, target);
-  const gatewaysByProvider = new Map(
-    gateways.map((gateway) => [gateway.provider, gateway]),
-  );
 
   return plans.map((plan) => {
     const prices = plan.prices.filter(
       (price) => {
-        const gateway = gatewaysByProvider.get(price.provider);
         return (
           price.isActive &&
-          isPriceAvailableForPublicCatalog(price, gateway) &&
+          isPriceVisibleInPublicCatalog(price) &&
           (!cleanCountry ||
             price.countryCode === cleanCountry ||
             price.countryCode === 'GLOBAL')
@@ -642,7 +637,9 @@ async function listPublicMarkets(target = query) {
       currency,
       provider,
       display_name,
-      public_config_json
+      public_config_json,
+      gateway_active,
+      payment_active
     FROM (
       SELECT DISTINCT
         p.country_code,
@@ -650,6 +647,11 @@ async function listPublicMarkets(target = query) {
         p.provider,
         g.display_name,
         g.public_config_json,
+        g.is_active AS gateway_active,
+        (
+          g.is_active = true
+          AND g.countries_json ? p.country_code
+        ) AS payment_active,
         CASE
           WHEN p.country_code = 'KE' THEN 0
           WHEN p.country_code = 'GLOBAL' THEN 2
@@ -660,13 +662,6 @@ async function listPublicMarkets(target = query) {
       JOIN platform_payment_gateways g ON g.provider = p.provider
       WHERE p.is_active = true
         AND sp.is_active = true
-        AND (
-          p.amount_minor = 0
-          OR (
-            g.is_active = true
-            AND g.countries_json ? p.country_code
-          )
-        )
     ) markets
     ORDER BY sort_rank ASC, country_code ASC, provider ASC
     `,
@@ -678,6 +673,7 @@ async function listPublicMarkets(target = query) {
     currency: normalizeCurrency(row.currency),
     provider: normalizeProvider(row.provider),
     providerLabel: row.display_name || providerLabel(row.provider),
+    paymentActive: Boolean(row.payment_active),
     publicConfig: parseJsonValue(row.public_config_json, {}),
   }));
 }
@@ -1004,6 +1000,10 @@ function isPriceAvailableForPublicCatalog(price, gateway) {
     gateway?.isActive &&
       (gateway.countries || []).includes(price.countryCode),
   );
+}
+
+function isPriceVisibleInPublicCatalog(price) {
+  return Boolean(price?.isActive);
 }
 
 function validatePaymentGatewayConfiguration(gateway) {
@@ -1502,6 +1502,7 @@ module.exports = {
   loadEntitlementsForPlan,
   loadPaymentGateway,
   isPriceAvailableForPublicCatalog,
+  isPriceVisibleInPublicCatalog,
   isHttpsUrl,
   normalizePlanInput,
   normalizeCountryCode,

@@ -5,6 +5,7 @@ const {
   DEFAULT_PLANS,
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
+  isPriceVisibleInPublicCatalog,
   normalizeSellingMode,
   normalizeGraceDays,
   normalizeTrialDays,
@@ -133,6 +134,26 @@ test('public catalog keeps free plans visible without an active payment gateway'
       },
     ),
     true,
+  );
+});
+
+test('public catalog visibility follows active plan prices', () => {
+  assert.equal(
+    isPriceVisibleInPublicCatalog({
+      isActive: true,
+      amountMinor: 150000,
+      countryCode: 'KE',
+    }),
+    true,
+  );
+
+  assert.equal(
+    isPriceVisibleInPublicCatalog({
+      isActive: false,
+      amountMinor: 150000,
+      countryCode: 'KE',
+    }),
+    false,
   );
 });
 

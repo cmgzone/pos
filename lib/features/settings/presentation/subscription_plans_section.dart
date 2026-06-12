@@ -171,6 +171,13 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       );
       return;
     }
+    if (!isFree && !market.paymentActive) {
+      setState(
+        () => _message =
+            '${market.providerLabel} is not active for paid subscription checkout yet.',
+      );
+      return;
+    }
     if (market.provider == 'mpesa' &&
         !isFree &&
         _phoneController.text.trim().isEmpty) {
@@ -1360,6 +1367,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         price != null &&
         selectedMode != null &&
         plan.sellingModes.contains(selectedMode) &&
+        (isFree || market.paymentActive) &&
         !_busy &&
         !(isCurrent && isFree);
     final desktop = widget.fullPage && MediaQuery.sizeOf(context).width >= 900;
@@ -1796,6 +1804,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     if (_busy) return 'Working...';
     if (plan == null) return 'Choose a plan';
     if (isCurrent && isFree) return 'Current plan';
+    if (!isFree && market != null && !market.paymentActive) {
+      return '${market.providerLabel} inactive';
+    }
     if (isFree) return 'Activate ${plan.name}';
     if (market?.provider == 'mpesa') return 'Pay with M-Pesa';
     if (market?.provider == 'google_pay' && _checkout == null) {
