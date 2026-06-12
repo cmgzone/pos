@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/products/data/product_provider.dart';
 import '../../features/services/data/service_provider.dart';
+import '../../features/settings/data/payment_method_provider.dart';
+import '../../features/shifts/data/shift_provider.dart';
 import 'connectivity_service.dart';
 import 'database_service.dart';
 import 'license_service.dart';
@@ -429,12 +431,23 @@ class SyncController extends Notifier<SyncState> {
 
   Future<void> _invalidateVisibleData() async {
     ref.invalidate(categoriesProvider);
+    ref.invalidate(productsProvider);
     ref.invalidate(filteredProductsProvider);
     ref.invalidate(lowStockProductsProvider);
     ref.invalidate(servicesProvider);
     ref.invalidate(activeServicesProvider);
+    ref.invalidate(serviceFieldsProvider);
     ref.invalidate(serviceOrdersProvider);
+    ref.invalidate(serviceTodayOrdersProvider);
     ref.invalidate(serviceStatsProvider);
+    ref.invalidate(serviceSalesByDateProvider);
+    ref.invalidate(paymentMethodsProvider);
+    ref.invalidate(activePaymentMethodsProvider);
+    ref.invalidate(currentShiftAccessProvider);
+    ref.invalidate(currentShiftProvider);
+    ref.invalidate(currentShiftSummaryProvider);
+    ref.invalidate(currentShiftMovementsProvider);
+    ref.invalidate(shiftHistoryProvider);
   }
 
   Future<void> _refreshSessionFromDatabase() async {

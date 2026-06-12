@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/etims_service.dart';
@@ -12,14 +14,16 @@ import '../../sales/presentation/receipt_service.dart';
 import '../../services/data/service_repository.dart';
 import '../data/customer_invoice_repository.dart';
 
-class CustomerInvoicesScreen extends StatefulWidget {
+class CustomerInvoicesScreen extends ConsumerStatefulWidget {
   const CustomerInvoicesScreen({super.key});
 
   @override
-  State<CustomerInvoicesScreen> createState() => _CustomerInvoicesScreenState();
+  ConsumerState<CustomerInvoicesScreen> createState() =>
+      _CustomerInvoicesScreenState();
 }
 
-class _CustomerInvoicesScreenState extends State<CustomerInvoicesScreen> {
+class _CustomerInvoicesScreenState
+    extends ConsumerState<CustomerInvoicesScreen> {
   final _searchController = TextEditingController();
   String _filter = 'open';
   bool _loading = true;
@@ -76,6 +80,15 @@ class _CustomerInvoicesScreenState extends State<CustomerInvoicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _load();
+        }
+      },
+    );
+
     final isMobile = MediaQuery.sizeOf(context).width < 700;
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -930,12 +943,14 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
         paymentType: (_invoice?['payment_method'] as String?) ?? 'cash',
       );
       _showSnack('Created sale ${saleId.substring(0, 8)}');
-      
+
       try {
         final etimsResult = await EtimsService.submitSaleIfEnabled(saleId);
         if (etimsResult != null) {
           if (etimsResult.status == 'submitted') {
-            _showSnack('KRA eTIMS submitted: ${etimsResult.controlUnitInvoiceNumber ?? etimsResult.invoiceNumber ?? 'received'}');
+            _showSnack(
+              'KRA eTIMS submitted: ${etimsResult.controlUnitInvoiceNumber ?? etimsResult.invoiceNumber ?? 'received'}',
+            );
           } else {
             _showSnack('KRA eTIMS: ${etimsResult.status.replaceAll('_', ' ')}');
           }

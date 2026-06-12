@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
@@ -11,14 +13,14 @@ import '../data/customer_repository.dart';
 import 'customer_account_screen.dart';
 import 'customer_message_dialog.dart';
 
-class ContactsScreen extends StatefulWidget {
+class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
 
   @override
-  State<ContactsScreen> createState() => _ContactsScreenState();
+  ConsumerState<ContactsScreen> createState() => _ContactsScreenState();
 }
 
-class _ContactsScreenState extends State<ContactsScreen>
+class _ContactsScreenState extends ConsumerState<ContactsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _searchController = TextEditingController();
@@ -700,6 +702,15 @@ class _ContactsScreenState extends State<ContactsScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _load();
+        }
+      },
+    );
+
     final isMobile = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(

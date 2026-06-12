@@ -23,6 +23,7 @@ import 'package:pos_app/core/theme/app_colors.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
 import 'package:pos_app/features/auth/data/user_repository.dart';
 import 'package:pos_app/features/auth/presentation/login_screen.dart';
+import 'package:pos_app/features/settings/data/payment_method_provider.dart';
 import 'package:pos_app/features/services/data/service_repository.dart';
 import 'package:pos_app/features/training/application/training_controller.dart';
 import 'package:pos_app/features/training/presentation/training_hub_screen.dart';
@@ -2807,6 +2808,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          if (_canManageUsers) {
+            _loadTeamMembers();
+          }
+          ref.invalidate(paymentMethodsProvider);
+          ref.invalidate(activePaymentMethodsProvider);
+        }
+      },
+    );
+
     final syncState = ref.watch(syncControllerProvider);
     final training = ref.watch(trainingControllerProvider);
     final progressPercent = (training.completionRatio * 100).round();

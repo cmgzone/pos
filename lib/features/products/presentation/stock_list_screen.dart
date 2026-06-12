@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/expiry_utils.dart';
@@ -7,14 +9,14 @@ import '../../../core/utils/unit_utils.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 
-class StockListScreen extends StatefulWidget {
+class StockListScreen extends ConsumerStatefulWidget {
   const StockListScreen({super.key});
 
   @override
-  State<StockListScreen> createState() => _StockListScreenState();
+  ConsumerState<StockListScreen> createState() => _StockListScreenState();
 }
 
-class _StockListScreenState extends State<StockListScreen> {
+class _StockListScreenState extends ConsumerState<StockListScreen> {
   final TextEditingController _searchController = TextEditingController();
   late Future<List<Map<String, dynamic>>> _stockFuture;
 
@@ -40,6 +42,15 @@ class _StockListScreenState extends State<StockListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _refresh();
+        }
+      },
+    );
+
     final isMobile = MediaQuery.sizeOf(context).width <= 700;
 
     return Scaffold(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
@@ -10,15 +12,16 @@ import '../../training/widgets/training_anchor.dart';
 import '../../products/data/product_repository.dart';
 import '../data/purchase_repository.dart';
 
-class PurchaseManagementScreen extends StatefulWidget {
+class PurchaseManagementScreen extends ConsumerStatefulWidget {
   const PurchaseManagementScreen({super.key});
 
   @override
-  State<PurchaseManagementScreen> createState() =>
+  ConsumerState<PurchaseManagementScreen> createState() =>
       _PurchaseManagementScreenState();
 }
 
-class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
+class _PurchaseManagementScreenState
+    extends ConsumerState<PurchaseManagementScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   bool _isLoading = true;
@@ -1033,6 +1036,15 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _loadData();
+        }
+      },
+    );
+
     final totalSpend = _purchases.fold<double>(
       0.0,
       (sum, purchase) =>

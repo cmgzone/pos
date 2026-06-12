@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
@@ -10,11 +12,11 @@ import '../../training/widgets/training_anchor.dart';
 import '../data/kra_report_export_service.dart';
 import '../data/report_repository.dart';
 
-class ReportsScreen extends StatefulWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
   @override
-  State<ReportsScreen> createState() => _ReportsScreenState();
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
 class _ReportTab extends StatelessWidget {
@@ -42,7 +44,7 @@ class _ReportTab extends StatelessWidget {
   }
 }
 
-class _ReportsScreenState extends State<ReportsScreen>
+class _ReportsScreenState extends ConsumerState<ReportsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
   int _productDays = 30;
@@ -70,6 +72,9 @@ class _ReportsScreenState extends State<ReportsScreen>
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 800;
+    final syncDataVersion = ref.watch(
+      syncControllerProvider.select((state) => state.dataVersion),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -172,17 +177,29 @@ class _ReportsScreenState extends State<ReportsScreen>
         child: TabBarView(
           controller: _tabs,
           children: [
-            _DailyCashierSummaryTab(branchScope: _branchScope),
+            _DailyCashierSummaryTab(
+              branchScope: _branchScope,
+              syncVersion: syncDataVersion,
+            ),
             _TopProductsTab(
               daysRange: _productDays,
               onDaysChanged: (d) => setState(() => _productDays = d),
               branchScope: _branchScope,
+              syncVersion: syncDataVersion,
             ),
-            const _TopDebtorsTab(),
-            const _OverdueAgingTab(),
-            _StockMovementTab(branchScope: _branchScope),
-            if (_isManagerOrAdmin) _KenyaReportsTab(branchScope: _branchScope),
-            if (_isManagerOrAdmin) const _BranchComparisonTab(),
+            _TopDebtorsTab(syncVersion: syncDataVersion),
+            _OverdueAgingTab(syncVersion: syncDataVersion),
+            _StockMovementTab(
+              branchScope: _branchScope,
+              syncVersion: syncDataVersion,
+            ),
+            if (_isManagerOrAdmin)
+              _KenyaReportsTab(
+                branchScope: _branchScope,
+                syncVersion: syncDataVersion,
+              ),
+            if (_isManagerOrAdmin)
+              _BranchComparisonTab(syncVersion: syncDataVersion),
           ],
         ),
       ),
@@ -196,7 +213,11 @@ class _ReportsScreenState extends State<ReportsScreen>
 
 class _DailyCashierSummaryTab extends StatefulWidget {
   final ReportBranchScope branchScope;
-  const _DailyCashierSummaryTab({this.branchScope = ReportBranchScope.current});
+  final int syncVersion;
+  const _DailyCashierSummaryTab({
+    this.branchScope = ReportBranchScope.current,
+    required this.syncVersion,
+  });
 
   @override
   State<_DailyCashierSummaryTab> createState() =>
@@ -224,7 +245,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
   @override
   void didUpdateWidget(_DailyCashierSummaryTab old) {
     super.didUpdateWidget(old);
-    if (old.branchScope != widget.branchScope) _load();
+    if (old.branchScope != widget.branchScope ||
+        old.syncVersion != widget.syncVersion) {
+      _load();
+    }
   }
 
   String get _dateKey =>
@@ -1125,11 +1149,13 @@ class _TopProductsTab extends StatefulWidget {
   final int daysRange;
   final ValueChanged<int> onDaysChanged;
   final ReportBranchScope branchScope;
+  final int syncVersion;
 
   const _TopProductsTab({
     required this.daysRange,
     required this.onDaysChanged,
     this.branchScope = ReportBranchScope.current,
+    required this.syncVersion,
   });
 
   @override
@@ -1151,7 +1177,8 @@ class _TopProductsTabState extends State<_TopProductsTab> {
   void didUpdateWidget(_TopProductsTab old) {
     super.didUpdateWidget(old);
     if (old.daysRange != widget.daysRange ||
-        old.branchScope != widget.branchScope) {
+        old.branchScope != widget.branchScope ||
+        old.syncVersion != widget.syncVersion) {
       _load();
     }
   }
@@ -1321,7 +1348,8 @@ class _TopProductsTabState extends State<_TopProductsTab> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TopDebtorsTab extends StatefulWidget {
-  const _TopDebtorsTab();
+  final int syncVersion;
+  const _TopDebtorsTab({required this.syncVersion});
 
   @override
   State<_TopDebtorsTab> createState() => _TopDebtorsTabState();
@@ -1335,6 +1363,14 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(_TopDebtorsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncVersion != widget.syncVersion) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -1535,7 +1571,8 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _OverdueAgingTab extends StatefulWidget {
-  const _OverdueAgingTab();
+  final int syncVersion;
+  const _OverdueAgingTab({required this.syncVersion});
 
   @override
   State<_OverdueAgingTab> createState() => _OverdueAgingTabState();
@@ -1550,6 +1587,14 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(_OverdueAgingTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncVersion != widget.syncVersion) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -1866,7 +1911,11 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
 
 class _StockMovementTab extends StatefulWidget {
   final ReportBranchScope branchScope;
-  const _StockMovementTab({this.branchScope = ReportBranchScope.current});
+  final int syncVersion;
+  const _StockMovementTab({
+    this.branchScope = ReportBranchScope.current,
+    required this.syncVersion,
+  });
 
   @override
   State<_StockMovementTab> createState() => _StockMovementTabState();
@@ -1886,7 +1935,10 @@ class _StockMovementTabState extends State<_StockMovementTab> {
   @override
   void didUpdateWidget(_StockMovementTab old) {
     super.didUpdateWidget(old);
-    if (old.branchScope != widget.branchScope) _load();
+    if (old.branchScope != widget.branchScope ||
+        old.syncVersion != widget.syncVersion) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -2112,8 +2164,12 @@ class _Chip extends StatelessWidget {
 
 class _KenyaReportsTab extends StatefulWidget {
   final ReportBranchScope branchScope;
+  final int syncVersion;
 
-  const _KenyaReportsTab({this.branchScope = ReportBranchScope.current});
+  const _KenyaReportsTab({
+    this.branchScope = ReportBranchScope.current,
+    required this.syncVersion,
+  });
 
   @override
   State<_KenyaReportsTab> createState() => _KenyaReportsTabState();
@@ -2137,7 +2193,8 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
   @override
   void didUpdateWidget(_KenyaReportsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.branchScope != widget.branchScope) {
+    if (oldWidget.branchScope != widget.branchScope ||
+        oldWidget.syncVersion != widget.syncVersion) {
       _load();
     }
   }
@@ -2632,7 +2689,8 @@ class _EmptyState extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BranchComparisonTab extends StatefulWidget {
-  const _BranchComparisonTab();
+  final int syncVersion;
+  const _BranchComparisonTab({required this.syncVersion});
 
   @override
   State<_BranchComparisonTab> createState() => _BranchComparisonTabState();
@@ -2647,6 +2705,14 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(_BranchComparisonTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncVersion != widget.syncVersion) {
+      _load();
+    }
   }
 
   Future<void> _load() async {

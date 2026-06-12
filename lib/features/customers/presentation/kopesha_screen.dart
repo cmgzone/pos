@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../training/widgets/training_anchor.dart';
@@ -11,14 +13,14 @@ import 'customer_kopesha_detail_screen.dart';
 import 'customer_message_dialog.dart';
 import '../../sales/presentation/receipt_service.dart';
 
-class KopeshaScreen extends StatefulWidget {
+class KopeshaScreen extends ConsumerStatefulWidget {
   const KopeshaScreen({super.key});
 
   @override
-  State<KopeshaScreen> createState() => _KopeshaScreenState();
+  ConsumerState<KopeshaScreen> createState() => _KopeshaScreenState();
 }
 
-class _KopeshaScreenState extends State<KopeshaScreen> {
+class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
   final _searchController = TextEditingController();
   List<Map<String, dynamic>> _customers = [];
   bool _isLoading = true;
@@ -965,6 +967,15 @@ class _KopeshaScreenState extends State<KopeshaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _load();
+        }
+      },
+    );
+
     final outstanding = _customers.fold<double>(
       0.0,
       (sum, c) => sum + _money(c['outstanding_balance']),

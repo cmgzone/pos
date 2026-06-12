@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
@@ -10,14 +12,14 @@ import '../../../widgets/smart_import_preview_dialog.dart';
 import '../data/expense_import_service.dart';
 import '../data/expense_repository.dart';
 
-class ProfitLossScreen extends StatefulWidget {
+class ProfitLossScreen extends ConsumerStatefulWidget {
   const ProfitLossScreen({super.key});
 
   @override
-  State<ProfitLossScreen> createState() => _ProfitLossScreenState();
+  ConsumerState<ProfitLossScreen> createState() => _ProfitLossScreenState();
 }
 
-class _ProfitLossScreenState extends State<ProfitLossScreen> {
+class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
   List<Map<String, dynamic>> _dailyData = [];
   List<Map<String, dynamic>> _recentExpenses = [];
   List<Map<String, dynamic>> _categoryTotals = [];
@@ -525,6 +527,15 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _loadData();
+        }
+      },
+    );
+
     final isMobile = MediaQuery.of(context).size.width < 800;
     final revenue = (_totals['total_revenue'] as num?)?.toDouble() ?? 0.0;
     final cost = (_totals['total_cost'] as num?)?.toDouble() ?? 0.0;

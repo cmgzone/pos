@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/database_service.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 
-class ProductBatchesScreen extends StatefulWidget {
+class ProductBatchesScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> product;
   const ProductBatchesScreen({super.key, required this.product});
 
   @override
-  State<ProductBatchesScreen> createState() => _ProductBatchesScreenState();
+  ConsumerState<ProductBatchesScreen> createState() =>
+      _ProductBatchesScreenState();
 }
 
-class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
+class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
   List<Map<String, dynamic>> _batches = [];
   bool _isLoading = true;
 
@@ -55,6 +58,15 @@ class _ProductBatchesScreenState extends State<ProductBatchesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _loadBatches();
+        }
+      },
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.product['name']} - Stock Batches'),

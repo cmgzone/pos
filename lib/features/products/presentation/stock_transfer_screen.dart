@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/branch_service.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/stock_transfer_repository.dart';
 
-class StockTransferScreen extends StatefulWidget {
+class StockTransferScreen extends ConsumerStatefulWidget {
   const StockTransferScreen({super.key});
 
   @override
-  State<StockTransferScreen> createState() => _StockTransferScreenState();
+  ConsumerState<StockTransferScreen> createState() =>
+      _StockTransferScreenState();
 }
 
-class _StockTransferScreenState extends State<StockTransferScreen> {
+class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
   List<Map<String, dynamic>> _transfers = [];
   bool _isLoading = true;
   String? _loadError;
@@ -277,6 +280,15 @@ class _StockTransferScreenState extends State<StockTransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _load();
+        }
+      },
+    );
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,

@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../data/product_variant_repository.dart';
 
-class ProductVariantsScreen extends StatefulWidget {
+class ProductVariantsScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> product;
 
   const ProductVariantsScreen({super.key, required this.product});
 
   @override
-  State<ProductVariantsScreen> createState() => _ProductVariantsScreenState();
+  ConsumerState<ProductVariantsScreen> createState() =>
+      _ProductVariantsScreenState();
 }
 
-class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
+class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _didChange = false;
@@ -451,6 +454,15 @@ class _ProductVariantsScreenState extends State<ProductVariantsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _loadVariants();
+        }
+      },
+    );
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
