@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -44,6 +45,16 @@ class DatabaseService {
   static String? _databasePath;
   static String? _databasePathOverride;
   static String _currentBranchId = defaultBranchId;
+  static final StreamController<void> _localChangeController =
+      StreamController<void>.broadcast();
+
+  static Stream<void> get localChanges => _localChangeController.stream;
+
+  static void notifyLocalChange() {
+    if (!_localChangeController.isClosed) {
+      _localChangeController.add(null);
+    }
+  }
 
   static Database get db {
     final database = _database;
@@ -188,6 +199,7 @@ class DatabaseService {
       after: payload,
       branchId: payload['branch_id']?.toString(),
     );
+    notifyLocalChange();
     return result;
   }
 
@@ -219,6 +231,9 @@ class DatabaseService {
       branchId:
           payload['branch_id']?.toString() ?? before?['branch_id']?.toString(),
     );
+    if (result > 0) {
+      notifyLocalChange();
+    }
     return result;
   }
 
@@ -243,6 +258,9 @@ class DatabaseService {
         after: {'deleted_at': now},
         branchId: before?['branch_id']?.toString(),
       );
+      if (result > 0) {
+        notifyLocalChange();
+      }
       return result;
     }
     final result = await database.delete(
@@ -258,6 +276,9 @@ class DatabaseService {
       before: before,
       branchId: before?['branch_id']?.toString(),
     );
+    if (result > 0) {
+      notifyLocalChange();
+    }
     return result;
   }
 

@@ -169,13 +169,31 @@ class SyncState {
 }
 
 class SyncController extends Notifier<SyncState> {
+  static const _remotePollInterval = Duration(seconds: 3);
+  static const _localChangeDebounce = Duration(milliseconds: 700);
+
   Timer? _timer;
+  Timer? _localChangeTimer;
   bool _initialized = false;
   bool _busy = false;
 
   @override
   SyncState build() {
-    ref.onDispose(() => _timer?.cancel());
+    ref.onDispose(() {
+      _timer?.cancel();
+      _localChangeTimer?.cancel();
+    });
+
+    final localChangeSubscription = DatabaseService.localChanges.listen((_) {
+      if (!_initialized ||
+          !state.autoSyncEnabled ||
+          !state.isConfigured ||
+          !state.isOnline) {
+        return;
+      }
+      _scheduleSyncSoon();
+    });
+    ref.onDispose(localChangeSubscription.cancel);
 
     ref.listen<AsyncValue<bool>>(connectivityServiceProvider, (previous, next) {
       final isOnline = next.valueOrNull ?? false;
@@ -370,8 +388,20 @@ class SyncController extends Notifier<SyncState> {
       return;
     }
 
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _timer = Timer.periodic(_remotePollInterval, (_) {
       if (_busy || !state.isConfigured) {
+        return;
+      }
+      if (state.isOnline) {
+        unawaited(_syncIfChanged());
+      }
+    });
+  }
+
+  void _scheduleSyncSoon() {
+    _localChangeTimer?.cancel();
+    _localChangeTimer = Timer(_localChangeDebounce, () {
+      if (_busy || !state.autoSyncEnabled || !state.isConfigured) {
         return;
       }
       if (state.isOnline) {

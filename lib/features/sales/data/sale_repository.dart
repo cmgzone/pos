@@ -410,6 +410,7 @@ class SaleRepository {
     }
 
     await batch.commit(noResult: true);
+    DatabaseService.notifyLocalChange();
     await AuditLogService.log(
       action: 'create',
       entityTable: _salesTable,
@@ -997,6 +998,7 @@ class SaleRepository {
         }
       }
     });
+    DatabaseService.notifyLocalChange();
 
     await AuditLogService.log(
       action: 'refund',
