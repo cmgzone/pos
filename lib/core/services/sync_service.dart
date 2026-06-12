@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
 import 'database_service.dart';
+import 'branch_service.dart';
 import 'license_service.dart';
 import 'session_service.dart';
 import 'shop_settings.dart';
@@ -172,9 +173,11 @@ class SyncService {
     final userId = SessionService.currentUserId;
     final client = http.Client();
     try {
-      // Keep the cursor business-wide. A branch-scoped pull with one shared
-      // cursor can skip records when a device switches branches.
       final params = {'cursor': cursor, 'deviceId': deviceId};
+      final scopeKey = SyncSettingsService.syncScopeKey;
+      if (scopeKey.isNotEmpty) {
+        params['scopeKey'] = scopeKey;
+      }
       if (userId.isNotEmpty) {
         params['userId'] = userId;
       }
@@ -253,6 +256,7 @@ class SyncService {
     );
 
     await SyncSettingsService.setSyncCursor(pullSummary.nextCursor);
+    await SyncSettingsService.setSyncScopeKey(pullSummary.scopeKey);
     await SyncSettingsService.setLastSyncAt(DateTime.now());
     await _markBusinessPulled(license);
 
@@ -414,9 +418,11 @@ class SyncService {
     final userId = SessionService.currentUserId;
     final client = http.Client();
     try {
-      // Keep the cursor business-wide. A branch-scoped pull with one shared
-      // cursor can skip records when a device switches branches.
       final params = {'cursor': cursor, 'deviceId': deviceId};
+      final previousScopeKey = SyncSettingsService.syncScopeKey;
+      if (previousScopeKey.isNotEmpty) {
+        params['scopeKey'] = previousScopeKey;
+      }
       if (userId.isNotEmpty) {
         params['userId'] = userId;
       }
@@ -435,12 +441,35 @@ class SyncService {
           _readString(body['nextCursor'])?.trim().isNotEmpty == true
           ? _readString(body['nextCursor'])!.trim()
           : cursor;
+      final scopeKey = _readString(body['scopeKey'])?.trim() ?? '';
       final data = body['data'] is Map<String, dynamic>
           ? body['data'] as Map<String, dynamic>
           : const <String, dynamic>{};
 
       var pulledCount = 0;
       var resolvedConflictCount = 0;
+      String? preservedUserPassword;
+
+      final scopeChanged =
+          scopeKey.isNotEmpty &&
+          scopeKey != previousScopeKey &&
+          (previousScopeKey.isNotEmpty ||
+              RolePermissions.normalizeRole(SessionService.currentUserRole) !=
+                  RolePermissions.admin);
+      if (scopeChanged) {
+        final localSnapshot = await getLocalSnapshot();
+        if (localSnapshot.pendingCount > 0) {
+          throw Exception(
+            'Employee access changed while local updates are still pending. Sync those updates before refreshing access.',
+          );
+        }
+        final currentUser = await DatabaseService.queryById(
+          'users',
+          SessionService.currentUserId,
+        );
+        preservedUserPassword = _readString(currentUser?['password']);
+        await DatabaseService.wipeAndReinitialize();
+      }
 
       await DatabaseService.db.transaction((txn) async {
         for (final table in _pullTableOrder) {
@@ -469,10 +498,21 @@ class SyncService {
         }
       });
 
+      if (preservedUserPassword?.isNotEmpty == true) {
+        await DatabaseService.db.update(
+          'users',
+          {'password': preservedUserPassword},
+          where: 'id = ?',
+          whereArgs: [SessionService.currentUserId],
+        );
+      }
+      await _refreshCurrentUserSession();
+
       return _PullSummary(
         pulledCount: pulledCount,
         resolvedConflictCount: resolvedConflictCount,
         nextCursor: nextCursor,
+        scopeKey: scopeKey,
       );
     } finally {
       client.close();
@@ -554,6 +594,20 @@ class SyncService {
       whereArgs: [id],
     );
     return _ApplyOutcome(applied: true, resolvedConflict: hasLocalUnsynced);
+  }
+
+  static Future<void> _refreshCurrentUserSession() async {
+    final userId = SessionService.currentUserId;
+    if (userId.isEmpty) return;
+    final user = await DatabaseService.queryById('users', userId);
+    if (user == null || user['deleted_at'] != null) return;
+
+    await SessionService.signIn(user);
+    final allowedBranchIds = SessionService.currentAllowedBranchIds;
+    if (allowedBranchIds.isNotEmpty &&
+        !allowedBranchIds.contains(BranchService.currentBranchId)) {
+      await BranchService.setCurrentBranch(allowedBranchIds.first);
+    }
   }
 
   static Future<_ApplyOutcome> _applyRemoteRowWithDiagnostics(
@@ -1029,11 +1083,13 @@ class _PullSummary {
   final int pulledCount;
   final int resolvedConflictCount;
   final String nextCursor;
+  final String scopeKey;
 
   const _PullSummary({
     required this.pulledCount,
     required this.resolvedConflictCount,
     required this.nextCursor,
+    required this.scopeKey,
   });
 }
 

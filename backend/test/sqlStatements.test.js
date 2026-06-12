@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { splitSqlStatements } = require('../src/sqlStatements');
 
@@ -35,4 +37,20 @@ test('splitSqlStatements ignores semicolons inside comments and dollar quotes', 
     `/* block comment; same rule */
     SELECT 2`,
   ]);
+});
+
+test('database initialization includes conflict-safe POS effect tables', () => {
+  const sql = fs.readFileSync(
+    path.resolve(__dirname, '..', 'sql', 'init.sql'),
+    'utf8',
+  );
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sync_credit_payment_effects/i);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sync_refund_balance_effects/i);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sync_sale_credit_baselines/i);
+  assert.match(sql, /ALTER TABLE devices ADD COLUMN IF NOT EXISTS user_id text/i);
+  assert.match(
+    sql,
+    /ALTER TABLE public_catalog_orders[\s\S]+ADD COLUMN IF NOT EXISTS branch_id/i,
+  );
 });

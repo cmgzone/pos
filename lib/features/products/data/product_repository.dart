@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/license_service.dart';
+import '../../../core/services/session_service.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 
@@ -19,6 +20,9 @@ class ProductRepository {
   ];
 
   static Future<void> _ensureProductWriteAccess(String action) async {
+    if (!SessionService.canAccessFeature(UserAccessProfile.featureProducts)) {
+      throw Exception('Your account cannot $action');
+    }
     await LicenseService.ensureWriteAccess(action: action);
     await LicenseService.ensureFeatureAccess(
       featureKey: 'products',

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/catalog_order_service.dart';
+import '../../../core/services/branch_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
@@ -178,8 +179,14 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
         .map((item) => item.toHeldItem())
         .toList(growable: false);
     final previousDiscount = ref.read(discountProvider);
+    final previousBranchId = BranchService.currentBranchId;
+    var branchChanged = false;
 
     try {
+      if (order.branchId != previousBranchId) {
+        await BranchService.setCurrentBranch(order.branchId);
+        branchChanged = true;
+      }
       final lines = await _prepareCheckoutLines(order);
       final cartNotifier = ref.read(cartProvider.notifier);
       cartNotifier.clear();
@@ -222,6 +229,9 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
       _refresh();
       widget.onOpenPos?.call();
     } catch (error) {
+      if (branchChanged) {
+        await BranchService.setCurrentBranch(previousBranchId);
+      }
       ref.read(cartProvider.notifier).restoreHeldItems(previousItems);
       ref.read(discountProvider.notifier).state = previousDiscount;
       if (!mounted) return;
@@ -462,6 +472,11 @@ class _CatalogOrderCard extends StatelessWidget {
             const SizedBox(height: 12),
             _InfoLine(icon: Icons.place_outlined, text: order.deliveryAddress),
           ],
+          const SizedBox(height: 8),
+          _InfoLine(
+            icon: Icons.store_outlined,
+            text: 'Branch: ${order.branchName}',
+          ),
           const SizedBox(height: 8),
           _InfoLine(
             icon: order.fulfillmentMethod == 'pickup'

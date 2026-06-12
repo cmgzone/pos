@@ -47,9 +47,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       RolePermissions.cashier;
 
   String? get _cashierFilterId {
-    // Staff in the same business should see the shared branch sales feed.
-    // Backend sync/business scoping still prevents cross-business visibility.
-    return null;
+    return _isCashierView ? SessionService.currentUserId : null;
   }
 
   @override
@@ -125,6 +123,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       startDate: startDate,
       endDate: endDate,
       cashierId: _cashierFilterId,
+      includeAllBranches:
+          RolePermissions.normalizeRole(SessionService.currentUserRole) ==
+          RolePermissions.admin,
     );
     setState(() => _isLoading = false);
   }

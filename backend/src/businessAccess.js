@@ -11,6 +11,8 @@ const {
   normalizeSellingMode,
 } = require('./subscriptionPlans');
 
+let deviceUserSchemaPromise = null;
+
 async function activateBusinessAccess({
   deviceId,
   businessName,
@@ -236,6 +238,7 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
   }
 
   await ensureSubscriptionSchema();
+  await ensureDeviceUserSchema();
   const result = await query(
     `
     SELECT
@@ -249,11 +252,23 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
       s.expires_at,
       s.grace_until,
       s.last_verified_at,
-      d.id AS device_id
+      d.id AS device_id,
+      u.id AS user_id,
+      u.name AS user_name,
+      u.role AS user_role,
+      u.feature_access_json,
+      u.allowed_service_ids_json,
+      u.allowed_branch_ids_json,
+      u.pos_mode,
+      u.service_order_scope
     FROM business_access_tokens t
     JOIN businesses b ON b.id = t.business_id
     JOIN subscriptions s ON s.business_id = b.id
     JOIN devices d ON d.business_id = b.id AND d.id = $2
+    LEFT JOIN users u
+      ON u.business_id = b.id
+     AND u.id = d.user_id
+     AND u.deleted_at IS NULL
     WHERE t.access_token = $1
     LIMIT 1
     `,
@@ -278,6 +293,14 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
     currency: normalizeCurrency(context.currency) || displayCurrencyForCountry(context.country_code),
     sellingMode,
     deviceId: context.device_id,
+    userId: context.user_id || null,
+    userName: context.user_name || null,
+    userRole: context.user_role || null,
+    featureAccessJson: context.feature_access_json || null,
+    allowedServiceIdsJson: context.allowed_service_ids_json || null,
+    allowedBranchIdsJson: context.allowed_branch_ids_json || null,
+    posMode: context.pos_mode || null,
+    serviceOrderScope: context.service_order_scope || null,
     plan: context.plan,
     entitlements,
     subscriptionStatus: licenseState.status,
@@ -286,6 +309,24 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
     graceUntil: toIsoString(context.grace_until),
     lastVerifiedAt: toIsoString(context.last_verified_at),
   };
+}
+
+async function ensureDeviceUserSchema(target = query) {
+  if (target === query) {
+    deviceUserSchemaPromise ??= applyDeviceUserSchema(target).catch((error) => {
+      deviceUserSchemaPromise = null;
+      throw error;
+    });
+    return deviceUserSchemaPromise;
+  }
+  return applyDeviceUserSchema(target);
+}
+
+async function applyDeviceUserSchema(target) {
+  await target('ALTER TABLE devices ADD COLUMN IF NOT EXISTS user_id text');
+  await target(
+    'CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(business_id, user_id)',
+  );
 }
 
 function parseBearerToken(headerValue) {
@@ -493,6 +534,7 @@ function toIsoString(value) {
 
 module.exports = {
   activateBusinessAccess,
+  ensureDeviceUserSchema,
   isDeviceActivationCompatible,
   parseBearerToken,
   refreshBusinessAccess,

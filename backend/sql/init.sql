@@ -192,6 +192,7 @@ CREATE INDEX IF NOT EXISTS idx_message_send_logs_business
 CREATE TABLE IF NOT EXISTS public_catalog_orders (
   id text PRIMARY KEY,
   business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
   customer_name text NOT NULL,
   phone text NOT NULL,
   delivery_address text,
@@ -203,6 +204,9 @@ CREATE TABLE IF NOT EXISTS public_catalog_orders (
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public_catalog_orders
+  ADD COLUMN IF NOT EXISTS branch_id text NOT NULL DEFAULT 'main_branch';
 
 CREATE TABLE IF NOT EXISTS public_catalog_order_items (
   id text PRIMARY KEY,
@@ -220,6 +224,8 @@ CREATE TABLE IF NOT EXISTS public_catalog_order_items (
 
 CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
   ON public_catalog_orders(business_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_branch
+  ON public_catalog_orders(business_id, branch_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
   ON public_catalog_order_items(order_id);
 
@@ -234,6 +240,32 @@ CREATE TABLE IF NOT EXISTS sync_stock_effects (
 
 CREATE INDEX IF NOT EXISTS idx_sync_stock_effects_business
   ON sync_stock_effects(business_id, applied_at DESC);
+
+CREATE TABLE IF NOT EXISTS sync_credit_payment_effects (
+  payment_id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  sale_id text NOT NULL,
+  customer_id text NOT NULL,
+  amount double precision NOT NULL DEFAULT 0,
+  applied_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sync_refund_balance_effects (
+  refund_sale_id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  original_sale_id text NOT NULL,
+  amount double precision NOT NULL DEFAULT 0,
+  applied_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sync_sale_credit_baselines (
+  sale_id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  customer_id text,
+  initial_balance_due double precision NOT NULL DEFAULT 0,
+  initial_amount_paid double precision NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS landing_demo_requests (
   id text PRIMARY KEY,
@@ -263,11 +295,14 @@ CREATE TABLE IF NOT EXISTS business_access_tokens (
 CREATE TABLE IF NOT EXISTS devices (
   id text PRIMARY KEY,
   business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  user_id text,
   name text,
   last_seen_at timestamptz,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
+
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS user_id text;
 
 CREATE TABLE IF NOT EXISTS platform_ai_config (
   id integer PRIMARY KEY DEFAULT 1,

@@ -74,4 +74,17 @@ void main() {
       expect(indexNames, contains('idx_stock_batches_purchase_id'));
     },
   );
+
+  test('initialize adds branch routing to catalog orders', () async {
+    await DatabaseService.initialize();
+
+    final columns = await DatabaseService.db.rawQuery(
+      "PRAGMA table_info('public_catalog_orders')",
+    );
+    final columnNames = columns
+        .map((row) => row['name'] as String? ?? '')
+        .toSet();
+
+    expect(columnNames, contains('branch_id'));
+  });
 }

@@ -1,6 +1,7 @@
 import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
+import 'database_service.dart';
 import 'license_service.dart';
 import 'shop_settings.dart';
 import 'sync_service.dart';
@@ -58,11 +59,14 @@ class CatalogShareService {
     final uri = Uri.parse(
       '${AppConstants.publicCatalogBaseUrl}/catalog/$encodedBusinessId',
     );
+    final queryParameters = <String, String>{
+      'branchId': DatabaseService.currentBranchId,
+    };
     final currency = ShopSettings.currency.trim();
-    if (currency.isEmpty) {
-      return uri.toString();
+    if (currency.isNotEmpty) {
+      queryParameters['currency'] = currency;
     }
-    return uri.replace(queryParameters: {'currency': currency}).toString();
+    return uri.replace(queryParameters: queryParameters).toString();
   }
 
   static String buildMessage(CatalogShareInfo info) {

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../core/services/database_service.dart';
+import '../../../core/services/license_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 
@@ -20,7 +21,7 @@ class ReportRepository {
 
   static bool get _canUseAllBranchReports {
     final role = RolePermissions.normalizeRole(SessionService.currentUserRole);
-    return role == RolePermissions.admin || role == RolePermissions.manager;
+    return role == RolePermissions.admin;
   }
 
   static ReportBranchScope _effectiveScope(ReportBranchScope scope) {
@@ -189,7 +190,16 @@ class ReportRepository {
   /// Customers sorted by outstanding Kopesha balance descending.
   static Future<List<Map<String, dynamic>>> getTopDebtors({
     int limit = 20,
+    ReportBranchScope branchScope = ReportBranchScope.all,
   }) async {
+    final currentBranchOnly =
+        _effectiveScope(branchScope) != ReportBranchScope.all;
+    final salesBranchClause = currentBranchOnly
+        ? 'AND COALESCE(s.branch_id, ?) = ?'
+        : '';
+    final customerBranchClause = currentBranchOnly
+        ? 'AND COALESCE(c.branch_id, ?) = ?'
+        : '';
     return DatabaseService.rawQuery(
       '''
       SELECT
@@ -207,15 +217,17 @@ class ReportRepository {
         AND s.customer_id IS NOT NULL
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
-        AND COALESCE(s.branch_id, ?) = ?
+        $salesBranchClause
       WHERE c.balance > 0
         AND c.deleted_at IS NULL
-        AND COALESCE(c.branch_id, ?) = ?
+        $customerBranchClause
       GROUP BY c.id
       ORDER BY c.balance DESC
       LIMIT $limit
     ''',
-      [..._currentBranchArgs, ..._currentBranchArgs],
+      currentBranchOnly
+          ? [..._currentBranchArgs, ..._currentBranchArgs]
+          : const <dynamic>[],
     );
   }
 
@@ -223,7 +235,14 @@ class ReportRepository {
 
   /// Kopesha sales grouped into aging buckets:
   /// current (not yet due), 1-7 days, 8-30 days, 31-60 days, 60+ days.
-  static Future<List<Map<String, dynamic>>> getOverdueAging() async {
+  static Future<List<Map<String, dynamic>>> getOverdueAging({
+    ReportBranchScope branchScope = ReportBranchScope.all,
+  }) async {
+    final currentBranchOnly =
+        _effectiveScope(branchScope) != ReportBranchScope.all;
+    final branchClause = currentBranchOnly
+        ? 'AND COALESCE(s.branch_id, ?) = ?'
+        : '';
     return DatabaseService.rawQuery('''
       SELECT
         s.id,
@@ -245,13 +264,20 @@ class ReportRepository {
         AND s.customer_id IS NOT NULL
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
-        AND COALESCE(s.branch_id, ?) = ?
+        $branchClause
       ORDER BY s.due_date ASC
-    ''', _currentBranchArgs);
+    ''', currentBranchOnly ? _currentBranchArgs : const <dynamic>[]);
   }
 
   /// Aggregate totals per aging bucket.
-  static Future<Map<String, dynamic>> getOverdueAgingSummary() async {
+  static Future<Map<String, dynamic>> getOverdueAgingSummary({
+    ReportBranchScope branchScope = ReportBranchScope.all,
+  }) async {
+    final currentBranchOnly =
+        _effectiveScope(branchScope) != ReportBranchScope.all;
+    final branchClause = currentBranchOnly
+        ? 'AND COALESCE(s.branch_id, ?) = ?'
+        : '';
     final rows = await DatabaseService.rawQuery('''
       SELECT
         SUM(CASE WHEN s.due_date >= date('now') THEN s.balance_due ELSE 0 END) as current_amount,
@@ -278,8 +304,8 @@ class ReportRepository {
         AND s.customer_id IS NOT NULL
         AND s.refund_sale_id IS NULL
         AND s.deleted_at IS NULL
-        AND COALESCE(s.branch_id, ?) = ?
-    ''', _currentBranchArgs);
+        $branchClause
+    ''', currentBranchOnly ? _currentBranchArgs : const <dynamic>[]);
     return rows.isNotEmpty ? Map<String, dynamic>.from(rows.first) : {};
   }
 
@@ -704,6 +730,13 @@ class ReportRepository {
     }
 
     final queryParameters = <String, String>{'date': date};
+    await LicenseService.init();
+    final accessToken = LicenseService.currentSnapshot.accessToken?.trim();
+    if (accessToken == null || accessToken.isEmpty) {
+      return null;
+    }
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    queryParameters['deviceId'] = deviceId;
     final currentUserId = SessionService.currentUserId;
     if (currentUserId.isNotEmpty) {
       queryParameters['userId'] = currentUserId;
@@ -720,7 +753,9 @@ class ReportRepository {
     ).replace(queryParameters: queryParameters);
     final client = http.Client();
     try {
-      final response = await client.get(uri).timeout(_requestTimeout);
+      final response = await client
+          .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+          .timeout(_requestTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
       }

@@ -14,6 +14,7 @@ const {
 const { maxCursor, normalizeCursor } = require('./syncCursor');
 const {
   activateBusinessAccess,
+  ensureDeviceUserSchema,
   parseBearerToken,
   refreshBusinessAccess,
   resolveBusinessAccess,
@@ -224,6 +225,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
     const passwordForStorage = normalizePasswordForStorage(password);
 
     await ensureSubscriptionSchema();
+    await ensureDeviceUserSchema();
     const markets = await listPublicMarkets();
     const market = selectSubscriptionMarket(markets, {
       countryCode: requestedCountry,
@@ -366,6 +368,13 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
         ],
       );
 
+      await client.query(
+        `UPDATE devices
+         SET user_id = $2, updated_at = $3
+         WHERE id = $1 AND business_id = $4`,
+        [deviceId, userId, now.toISOString(), businessId],
+      );
+
       // Load context for license
       const contextResult = await client.query(
         `SELECT b.id AS business_id, b.name AS business_name, b.country_code, b.currency, b.selling_mode,
@@ -445,6 +454,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
 
 app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
   try {
+    await ensureDeviceUserSchema();
     const email = normalizeOptionalText(req.body?.email);
     const password = req.body?.password;
     const deviceId = normalizeOptionalText(req.body?.deviceId);
@@ -499,14 +509,15 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
 
       // Ensure device is linked to this business
       await client.query(
-        `INSERT INTO devices (id, business_id, name, last_seen_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $4, $4)
+        `INSERT INTO devices (id, business_id, user_id, name, last_seen_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $5, $5)
          ON CONFLICT (id) DO UPDATE
          SET business_id = EXCLUDED.business_id,
+             user_id = EXCLUDED.user_id,
              name = COALESCE(EXCLUDED.name, devices.name),
              last_seen_at = EXCLUDED.last_seen_at,
              updated_at = EXCLUDED.updated_at`,
-        [deviceId, businessId, deviceName, now.toISOString()],
+        [deviceId, businessId, user.id, deviceName, now.toISOString()],
       );
 
       // Ensure access token exists
@@ -616,6 +627,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
 app.post('/api/users/upsert', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
+    requireAdmin(businessContext);
     const rawUser =
       req.body && typeof req.body === 'object' ? req.body.user : null;
     if (!rawUser || typeof rawUser !== 'object' || Array.isArray(rawUser)) {
@@ -685,13 +697,18 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
     const date = normalizeReportDate(req.query.date);
-    const cashierId = normalizeOptionalText(req.query.cashierId);
+    const requestedCashierId = normalizeOptionalText(req.query.cashierId);
     const userId = normalizeOptionalText(req.query.userId);
-    const branchId = normalizeOptionalText(req.query.branchId);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
 
-    if (userId) {
-      await updateLastSeen(userId, businessContext.businessId);
+    if (userId && userId !== businessContext.userId) {
+      throw createHttpError(403, 'Employee identity does not match this device');
     }
+    await updateLastSeen(businessContext.userId, businessContext.businessId);
+
+    const cashierId = businessContext.role === 'CASHIER'
+      ? businessContext.userId
+      : requestedCashierId;
 
     const whereClauses = ['s.business_id = $1', 'DATE(s.created_at) = $2'];
     const params = [businessContext.businessId, date];
@@ -699,9 +716,11 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
       whereClauses.push(`s.user_id = $${params.length + 1}`);
       params.push(cashierId);
     }
-    if (branchId) {
-      whereClauses.push(`COALESCE(s.branch_id, 'main_branch') = $${params.length + 1}`);
-      params.push(branchId);
+    if (scope.branchIds != null) {
+      whereClauses.push(
+        `COALESCE(s.branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+      );
+      params.push(scope.branchIds);
     }
 
     const result = await query(
@@ -775,17 +794,23 @@ app.get('/api/sync/status', async (req, res, next) => {
     });
     const syncWindow = parseSyncWindow(req.query);
     const userId = normalizeOptionalText(req.query.userId);
-    const branchId = normalizeOptionalText(req.query.branchId);
-
-    if (userId) {
-      await updateLastSeen(userId, businessContext.businessId);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const scopeKey = dataScopeKey(businessContext, scope);
+    if (normalizeOptionalText(req.query.scopeKey) !== scopeKey) {
+      syncWindow.cursor = '0';
+      syncWindow.since = null;
     }
+
+    if (userId && userId !== businessContext.userId) {
+      throw createHttpError(403, 'Employee identity does not match this device');
+    }
+    await updateLastSeen(businessContext.userId, businessContext.businessId);
 
     const summary = await withReadTransaction(async (client) => {
       const snapshotCursor = await getSnapshotCursor(
         client,
         businessContext.businessId,
-        branchId,
+        scope,
       );
       const tables = {};
 
@@ -794,7 +819,7 @@ app.get('/api/sync/status', async (req, res, next) => {
           table.name,
           syncWindow,
           businessContext.businessId,
-          branchId,
+          scope,
         );
         const result = await client.query(sql, params);
         tables[table.name] = result.rows[0];
@@ -810,6 +835,7 @@ app.get('/api/sync/status', async (req, res, next) => {
       ok: true,
       serverTime: new Date().toISOString(),
       businessId: businessContext.businessId,
+      scopeKey,
       since: syncWindow.since,
       cursor: syncWindow.cursor,
       snapshotCursor: summary.snapshotCursor,
@@ -827,17 +853,23 @@ app.get('/api/sync/pull', async (req, res, next) => {
     });
     const syncWindow = parseSyncWindow(req.query);
     const userId = normalizeOptionalText(req.query.userId);
-    const branchId = normalizeOptionalText(req.query.branchId);
-
-    if (userId) {
-      await updateLastSeen(userId, businessContext.businessId);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const scopeKey = dataScopeKey(businessContext, scope);
+    if (normalizeOptionalText(req.query.scopeKey) !== scopeKey) {
+      syncWindow.cursor = '0';
+      syncWindow.since = null;
     }
+
+    if (userId && userId !== businessContext.userId) {
+      throw createHttpError(403, 'Employee identity does not match this device');
+    }
+    await updateLastSeen(businessContext.userId, businessContext.businessId);
 
     const summary = await withReadTransaction(async (client) => {
       const snapshotCursor = await getSnapshotCursor(
         client,
         businessContext.businessId,
-        branchId,
+        scope,
       );
       const data = {};
 
@@ -846,7 +878,7 @@ app.get('/api/sync/pull', async (req, res, next) => {
           table.name,
           syncWindow,
           businessContext.businessId,
-          branchId,
+          scope,
         );
         const result = await client.query(sql, params);
         data[table.name] = result.rows.map((row) =>
@@ -864,6 +896,7 @@ app.get('/api/sync/pull', async (req, res, next) => {
       ok: true,
       serverTime: new Date().toISOString(),
       businessId: businessContext.businessId,
+      scopeKey,
       since: syncWindow.since,
       cursor: syncWindow.cursor,
       nextCursor: summary.nextCursor,
@@ -882,6 +915,7 @@ app.post('/api/sync/push', async (req, res, next) => {
     const deviceId = normalizeOptionalText(req.body?.deviceId);
     const userId = normalizeOptionalText(req.body?.userId);
     const branchId = normalizeOptionalText(req.body?.branchId);
+    const scope = resolveDataScope(businessContext, branchId);
 
     if (!deviceId) {
       return res.status(400).json({ ok: false, error: 'deviceId is required' });
@@ -893,9 +927,10 @@ app.post('/api/sync/push', async (req, res, next) => {
         .json({ ok: false, error: 'changes payload is required' });
     }
 
-    if (userId) {
-      await updateLastSeen(userId, businessContext.businessId);
+    if (userId && userId !== businessContext.userId) {
+      throw createHttpError(403, 'Employee identity does not match this device');
     }
+    await updateLastSeen(businessContext.userId, businessContext.businessId);
 
     const summary = await withTransaction(async (client) => {
       await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
@@ -914,6 +949,33 @@ app.post('/api/sync/push', async (req, res, next) => {
       let latestAppliedCursor = null;
       const appliedProductIds = new Set();
       const appliedVariantIds = new Set();
+      const appliedStockBatchProductIds = new Set();
+      const appliedSaleIds = new Set();
+      const affectedSaleIds = new Set();
+      const affectedCustomerIds = new Set();
+      const appliedRefundRows = [];
+      const incomingCreditTotals = sumIncomingAmounts(
+        changes.credit_payments,
+        'sale_id',
+        'amount',
+      );
+      const incomingRefundTotals = sumIncomingAmounts(
+        changes.sales,
+        'refund_for_sale_id',
+        'total_amount',
+        { absolute: true },
+      );
+
+      for (const saleId of new Set([
+        ...incomingCreditTotals.keys(),
+        ...incomingRefundTotals.keys(),
+      ])) {
+        await ensureSaleCreditBaselineFromServer(
+          client,
+          businessContext.businessId,
+          saleId,
+        );
+      }
 
       for (const table of syncTables) {
         const incomingRows = Array.isArray(changes[table.name])
@@ -939,18 +1001,20 @@ app.post('/api/sync/push', async (req, res, next) => {
             });
             continue;
           }
-          if (branchId && isBranchScopedTable(table.name)) {
-            const rowBranchId = normalizeOptionalText(prepared.record.branch_id);
-            if (rowBranchId && rowBranchId !== branchId) {
-              invalid[table.name] += 1;
-              tableInvalidRows.push({
-                id: prepared.record.id,
-                code: 'branch_scope_mismatch',
-                message: 'Record branch does not match the sync branch',
-              });
-              continue;
-            }
-            prepared.record.branch_id = rowBranchId || branchId;
+          const accessValidation = await validateSyncWriteAccess(
+            client,
+            table.name,
+            prepared.record,
+            scope,
+            businessContext,
+          );
+          if (!accessValidation.ok) {
+            invalid[table.name] += 1;
+            tableInvalidRows.push({
+              id: prepared.record.id,
+              ...accessValidation.error,
+            });
+            continue;
           }
 
           const storageRecord = table.name === 'users'
@@ -980,23 +1044,87 @@ app.post('/api/sync/push', async (req, res, next) => {
           );
 
           if (result.status === 'applied') {
+            if (
+              table.name === 'users' &&
+              businessContext.bootstrapUser &&
+              normalizeOptionalText(storageRecord.id) === businessContext.userId
+            ) {
+              await client.query(
+                `UPDATE devices
+                 SET user_id = $3, updated_at = NOW()
+                 WHERE business_id = $1 AND id = $2`,
+                [
+                  businessContext.businessId,
+                  businessContext.deviceId,
+                  businessContext.userId,
+                ],
+              );
+            }
             if (table.name === 'products') {
               appliedProductIds.add(normalizeOptionalText(storageRecord.id));
             }
             if (table.name === 'product_variants') {
               appliedVariantIds.add(normalizeOptionalText(storageRecord.id));
             }
-            if (
-              table.name === 'sale_items' &&
-              !appliedProductIds.has(normalizeOptionalText(storageRecord.product_id)) &&
-              !appliedVariantIds.has(normalizeOptionalText(storageRecord.variant_id))
-            ) {
+            if (table.name === 'stock_batches') {
+              appliedStockBatchProductIds.add(
+                normalizeOptionalText(storageRecord.product_id),
+              );
+            }
+            if (table.name === 'sales') {
+              const saleId = normalizeOptionalText(storageRecord.id);
+              appliedSaleIds.add(saleId);
+              const customerId = normalizeOptionalText(storageRecord.customer_id);
+              if (customerId) affectedCustomerIds.add(customerId);
+              if (customerId) affectedSaleIds.add(saleId);
+              await ensureSaleCreditBaselineFromIncoming(
+                client,
+                businessContext.businessId,
+                storageRecord,
+                incomingCreditTotals.get(saleId) || 0,
+                incomingRefundTotals.get(saleId) || 0,
+              );
+              if (normalizeOptionalText(storageRecord.refund_for_sale_id)) {
+                appliedRefundRows.push(storageRecord);
+                affectedSaleIds.add(
+                  normalizeOptionalText(storageRecord.refund_for_sale_id),
+                );
+              }
+            }
+            if (table.name === 'sale_items') {
+              const productId = normalizeOptionalText(storageRecord.product_id);
+              const variantId = normalizeOptionalText(storageRecord.variant_id);
               const stockRevision = await applySaleItemStockEffect(
                 client,
                 storageRecord,
                 businessContext.businessId,
+                {
+                  applyProductStock:
+                    !appliedProductIds.has(productId),
+                  applyVariantStock:
+                    !variantId || !appliedVariantIds.has(variantId),
+                  applyBatchStock:
+                    !variantId && !appliedStockBatchProductIds.has(productId),
+                },
               );
               latestAppliedCursor = maxCursor(latestAppliedCursor, stockRevision);
+            }
+            if (table.name === 'credit_payments') {
+              const customerId = normalizeOptionalText(storageRecord.customer_id);
+              const saleId = normalizeOptionalText(storageRecord.sale_id);
+              if (customerId) affectedCustomerIds.add(customerId);
+              if (saleId) affectedSaleIds.add(saleId);
+              if (!appliedSaleIds.has(saleId)) {
+                const paymentRevision = await applyCreditPaymentEffect(
+                  client,
+                  storageRecord,
+                  businessContext.businessId,
+                );
+                latestAppliedCursor = maxCursor(
+                  latestAppliedCursor,
+                  paymentRevision,
+                );
+              }
             }
             applied[table.name] += 1;
             latestAppliedCursor = maxCursor(
@@ -1037,6 +1165,42 @@ app.post('/api/sync/push', async (req, res, next) => {
         if (tableInvalidRows.length) {
           invalidRows[table.name] = tableInvalidRows;
         }
+      }
+
+      for (const refund of appliedRefundRows) {
+        if (appliedSaleIds.has(normalizeOptionalText(refund.refund_for_sale_id))) {
+          continue;
+        }
+        const refundRevision = await applyRefundBalanceEffect(
+          client,
+          refund,
+          businessContext.businessId,
+        );
+        latestAppliedCursor = maxCursor(latestAppliedCursor, refundRevision);
+      }
+
+      for (const saleId of affectedSaleIds) {
+        const rebuilt = await rebuildSaleCreditBalance(
+          client,
+          businessContext.businessId,
+          saleId,
+        );
+        latestAppliedCursor = maxCursor(
+          latestAppliedCursor,
+          rebuilt?.serverRevision,
+        );
+        if (rebuilt?.customerId) {
+          affectedCustomerIds.add(rebuilt.customerId);
+        }
+      }
+
+      for (const customerId of affectedCustomerIds) {
+        const customerRevision = await rebuildCustomerBalance(
+          client,
+          businessContext.businessId,
+          customerId,
+        );
+        latestAppliedCursor = maxCursor(latestAppliedCursor, customerRevision);
       }
 
       return {
@@ -1928,7 +2092,7 @@ app.post('/api/etims/submit-sale', async (req, res, next) => {
       businessContext,
       sale,
       items,
-      userId: req.body?.userId,
+      userId: businessContext.userId,
     });
     res.json({ ok: true, data: submission });
   } catch (error) {
@@ -2091,7 +2255,7 @@ app.post('/api/messages/send', async (req, res, next) => {
     const businessContext = await requireBusinessContext(req);
     const log = await sendBusinessMessage({
       businessContext,
-      userId: req.body?.userId,
+      userId: businessContext.userId,
       channel: req.body?.channel,
       recipient: req.body?.recipient,
       body: req.body?.body || req.body?.message,
@@ -3103,6 +3267,7 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
 
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
+      branchId: req.query?.branchId,
     });
     res.json({ ok: true, data: catalog });
   } catch (error) {
@@ -3113,12 +3278,15 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
 app.get('/api/catalog/orders', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveDataScope(businessContext, req.query?.branchId);
     const status = normalizeCatalogOrderStatus(req.query?.status, {
       allowAll: true,
       fallback: 'pending',
     });
     const orders = await listPublicCatalogOrders(businessContext.businessId, {
       status,
+      branchIds: scope.branchIds,
     });
     res.json({ ok: true, data: orders });
   } catch (error) {
@@ -3129,6 +3297,8 @@ app.get('/api/catalog/orders', async (req, res, next) => {
 app.put('/api/catalog/orders/:orderId/status', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveDataScope(businessContext, req.query?.branchId);
     const orderId = normalizeOptionalText(req.params.orderId);
     const status = normalizeCatalogOrderStatus(req.body?.status);
     if (!orderId) {
@@ -3138,6 +3308,7 @@ app.put('/api/catalog/orders/:orderId/status', async (req, res, next) => {
       businessId: businessContext.businessId,
       orderId,
       status,
+      branchIds: scope.branchIds,
     });
     res.json({ ok: true, data: order });
   } catch (error) {
@@ -3148,17 +3319,24 @@ app.put('/api/catalog/orders/:orderId/status', async (req, res, next) => {
 app.post('/api/catalog/orders/:orderId/payment-request', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveDataScope(businessContext, req.query?.branchId);
     const orderId = normalizeOptionalText(req.params.orderId);
     if (!orderId) {
       throw createHttpError(400, 'Order id is required');
     }
+    await assertCatalogOrderScope({
+      businessId: businessContext.businessId,
+      orderId,
+      branchIds: scope.branchIds,
+    });
     const result = await requestPublicCatalogOrderPayment({
       businessContext,
       orderId,
       channel: req.body?.channel,
       recipient: req.body?.recipient,
       body: req.body?.body || req.body?.message,
-      userId: req.body?.userId,
+      userId: businessContext.userId,
       sendViaApi: req.body?.sendViaApi === true || req.body?.send_via_api === true,
     });
     res.json({ ok: true, data: result });
@@ -3265,6 +3443,7 @@ app.listen(config.port, () => {
 
 Promise.all([
   ensureSubscriptionSchema(),
+  ensureDeviceUserSchema(),
   ensureEtimsSchema(),
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),
@@ -3397,6 +3576,30 @@ async function requireBusinessContext(
   if (!businessContext) {
     throw createHttpError(401, 'Invalid business access token or device');
   }
+  if (!businessContext.userId) {
+    const claimedUserId = normalizeOptionalText(
+      req.query?.userId ?? req.body?.userId,
+    );
+    const userCount = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM users
+       WHERE business_id = $1 AND deleted_at IS NULL`,
+      [businessContext.businessId],
+    );
+    if (Number(userCount.rows[0]?.count || 0) === 0 && claimedUserId) {
+      businessContext.userId = claimedUserId;
+      businessContext.userName = 'Business owner';
+      businessContext.userRole = 'ADMIN';
+      businessContext.featureAccessJson = null;
+      businessContext.allowedBranchIdsJson = null;
+      businessContext.bootstrapUser = true;
+    } else {
+      throw createHttpError(
+        401,
+        'This device is not linked to a signed-in employee. Sign out and sign in again.',
+      );
+    }
+  }
   const readOnlyExpiredAllowed =
     allowReadOnlyExpired && businessContext.subscriptionStatus === 'expired';
   if (!businessContext.usable && !allowExpired && !readOnlyExpiredAllowed) {
@@ -3406,7 +3609,79 @@ async function requireBusinessContext(
     );
   }
 
-  return businessContext;
+  const authenticatedContext = {
+    ...businessContext,
+    role: normalizeBusinessRole(businessContext.userRole),
+    featureAccess: resolveBusinessFeatureAccess(
+      businessContext.userRole,
+      businessContext.featureAccessJson,
+    ),
+    allowedBranchIds: parseJsonStringList(
+      businessContext.allowedBranchIdsJson,
+    ),
+  };
+  const requestedBranchId = normalizeOptionalText(
+    req.query?.branchId ?? req.body?.branchId ?? req.headers['x-branch-id'],
+  );
+  if (
+    requestedBranchId &&
+    authenticatedContext.role !== 'ADMIN' &&
+    authenticatedContext.allowedBranchIds.length > 0 &&
+    !authenticatedContext.allowedBranchIds.includes(requestedBranchId)
+  ) {
+    throw createHttpError(403, 'This employee cannot access the selected branch');
+  }
+  return authenticatedContext;
+}
+
+function resolveBusinessFeatureAccess(roleValue, rawFeatures) {
+  const role = normalizeBusinessRole(roleValue);
+  if (role === 'ADMIN') {
+    return ['*'];
+  }
+  const configured = parseJsonStringList(rawFeatures);
+  if (normalizeOptionalText(rawFeatures)) {
+    return configured;
+  }
+  if (role === 'MANAGER') {
+    return ['*'];
+  }
+  return ['pos', 'sales', 'dashboard', 'kopesha', 'settings', 'shifts', 'agent'];
+}
+
+function normalizeBusinessRole(value) {
+  const role = String(value || '').trim().toUpperCase();
+  return role === 'ADMIN' || role === 'MANAGER' ? role : 'CASHIER';
+}
+
+function parseJsonStringList(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(normalizeOptionalText).filter(Boolean))];
+  }
+  const raw = normalizeOptionalText(value);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.map(normalizeOptionalText).filter(Boolean))]
+      : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function requireAdmin(businessContext) {
+  if (businessContext.role !== 'ADMIN') {
+    throw createHttpError(403, 'Administrator access is required');
+  }
+}
+
+function requireManagerOrAdmin(businessContext) {
+  if (businessContext.role !== 'ADMIN' && businessContext.role !== 'MANAGER') {
+    throw createHttpError(403, 'Manager or administrator access is required');
+  }
 }
 
 async function updateLastSeen(userId, businessId) {
@@ -4126,9 +4401,50 @@ async function ensureSyncStockEffectSchema(target = query) {
     `CREATE INDEX IF NOT EXISTS idx_sync_stock_effects_business
      ON sync_stock_effects(business_id, applied_at DESC)`,
   );
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS sync_credit_payment_effects (
+       payment_id text PRIMARY KEY,
+       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+       sale_id text NOT NULL,
+       customer_id text NOT NULL,
+       amount double precision NOT NULL DEFAULT 0,
+       applied_at timestamptz NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS sync_refund_balance_effects (
+       refund_sale_id text PRIMARY KEY,
+       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+       original_sale_id text NOT NULL,
+       amount double precision NOT NULL DEFAULT 0,
+       applied_at timestamptz NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS sync_sale_credit_baselines (
+       sale_id text PRIMARY KEY,
+       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+       customer_id text,
+       initial_balance_due double precision NOT NULL DEFAULT 0,
+       initial_amount_paid double precision NOT NULL DEFAULT 0,
+       created_at timestamptz NOT NULL DEFAULT NOW()
+     )`,
+  );
 }
 
-async function applySaleItemStockEffect(client, saleItem, businessId) {
+async function applySaleItemStockEffect(
+  client,
+  saleItem,
+  businessId,
+  {
+    applyProductStock = true,
+    applyVariantStock = true,
+    applyBatchStock = true,
+  } = {},
+) {
   const saleItemId = normalizeOptionalText(saleItem?.id);
   const productId = normalizeOptionalText(saleItem?.product_id);
   const variantId = normalizeOptionalText(saleItem?.variant_id);
@@ -4172,19 +4488,24 @@ async function applySaleItemStockEffect(client, saleItem, businessId) {
   }
 
   let latestRevision = null;
-  const productUpdate = await client.query(
-    `UPDATE products
-     SET stock = COALESCE(stock, 0) + $3,
-         updated_at = NOW(),
-         sync_status = 'synced',
-         server_revision = nextval('sync_revision_seq')
-     WHERE business_id = $1 AND id = $2
-     RETURNING server_revision`,
-    [businessId, productId, stockDelta],
-  );
-  latestRevision = maxCursor(latestRevision, productUpdate.rows[0]?.server_revision);
+  if (applyProductStock) {
+    const productUpdate = await client.query(
+      `UPDATE products
+       SET stock = COALESCE(stock, 0) + $3,
+           updated_at = NOW(),
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $1 AND id = $2
+       RETURNING server_revision`,
+      [businessId, productId, stockDelta],
+    );
+    latestRevision = maxCursor(
+      latestRevision,
+      productUpdate.rows[0]?.server_revision,
+    );
+  }
 
-  if (variantId) {
+  if (variantId && applyVariantStock) {
     const variantUpdate = await client.query(
       `UPDATE product_variants
        SET stock = COALESCE(stock, 0) + $3,
@@ -4201,7 +4522,278 @@ async function applySaleItemStockEffect(client, saleItem, businessId) {
     );
   }
 
+  if (!variantId && applyBatchStock && stockDelta < -0.000001) {
+    const saleId = normalizeOptionalText(saleItem.sale_id);
+    const saleResult = await client.query(
+      `SELECT COALESCE(branch_id, 'main_branch') AS branch_id
+       FROM sales
+       WHERE business_id = $1 AND id = $2
+       LIMIT 1`,
+      [businessId, saleId],
+    );
+    const branchId = normalizeOptionalText(saleResult.rows[0]?.branch_id);
+    if (branchId) {
+      let remaining = Math.abs(stockDelta);
+      const batches = await client.query(
+        `SELECT id, quantity_remaining
+         FROM stock_batches
+         WHERE business_id = $1
+           AND product_id = $2
+           AND COALESCE(branch_id, 'main_branch') = $3
+           AND deleted_at IS NULL
+           AND quantity_remaining > 0
+         ORDER BY received_at ASC, created_at ASC, id ASC
+         FOR UPDATE`,
+        [businessId, productId, branchId],
+      );
+      for (const batch of batches.rows) {
+        if (remaining <= 0.000001) break;
+        const available = Number(batch.quantity_remaining || 0);
+        if (available <= 0) continue;
+        const deduction = Math.min(available, remaining);
+        const batchUpdate = await client.query(
+          `UPDATE stock_batches
+           SET quantity_remaining = GREATEST(0, COALESCE(quantity_remaining, 0) - $3),
+               finished_at = CASE
+                 WHEN COALESCE(quantity_remaining, 0) - $3 <= 0 THEN NOW()
+                 ELSE NULL
+               END,
+               updated_at = NOW(),
+               sync_status = 'synced',
+               server_revision = nextval('sync_revision_seq')
+           WHERE business_id = $1 AND id = $2
+           RETURNING server_revision`,
+          [businessId, batch.id, deduction],
+        );
+        latestRevision = maxCursor(
+          latestRevision,
+          batchUpdate.rows[0]?.server_revision,
+        );
+        remaining -= deduction;
+      }
+    }
+  }
+
   return latestRevision;
+}
+
+async function applyCreditPaymentEffect(client, payment, businessId) {
+  const paymentId = normalizeOptionalText(payment.id);
+  const saleId = normalizeOptionalText(payment.sale_id);
+  const customerId = normalizeOptionalText(payment.customer_id);
+  const amount = Number(payment.amount || 0);
+  if (!paymentId || !saleId || !customerId || !Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+  const effect = await client.query(
+    `INSERT INTO sync_credit_payment_effects (
+       payment_id, business_id, sale_id, customer_id, amount
+     ) VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (payment_id) DO NOTHING
+     RETURNING payment_id`,
+    [paymentId, businessId, saleId, customerId, amount],
+  );
+  if (effect.rowCount === 0) return null;
+  return null;
+}
+
+async function applyRefundBalanceEffect(client, refundSale, businessId) {
+  const refundId = normalizeOptionalText(refundSale.id);
+  const originalSaleId = normalizeOptionalText(refundSale.refund_for_sale_id);
+  const amount = Math.abs(Number(refundSale.total_amount || 0));
+  if (!refundId || !originalSaleId || !Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+  const effect = await client.query(
+    `INSERT INTO sync_refund_balance_effects (
+       refund_sale_id, business_id, original_sale_id, amount
+     ) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (refund_sale_id) DO NOTHING
+     RETURNING refund_sale_id`,
+    [refundId, businessId, originalSaleId, amount],
+  );
+  if (effect.rowCount === 0) return null;
+
+  const updated = await client.query(
+    `UPDATE sales
+     SET refund_sale_id = COALESCE(refund_sale_id, $3),
+         refunded_at = COALESCE(refunded_at, NOW()),
+         updated_at = NOW(),
+         sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq')
+     WHERE business_id = $1 AND id = $2
+     RETURNING server_revision`,
+    [businessId, originalSaleId, refundId],
+  );
+  return updated.rows[0]?.server_revision || null;
+}
+
+function sumIncomingAmounts(
+  rows,
+  idField,
+  amountField,
+  { absolute = false } = {},
+) {
+  const totals = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const id = normalizeOptionalText(row?.[idField]);
+    let amount = Number(row?.[amountField] || 0);
+    if (!id || !Number.isFinite(amount)) continue;
+    if (absolute) amount = Math.abs(amount);
+    if (amount <= 0) continue;
+    totals.set(id, (totals.get(id) || 0) + amount);
+  }
+  return totals;
+}
+
+async function ensureSaleCreditBaselineFromServer(client, businessId, saleId) {
+  const normalizedSaleId = normalizeOptionalText(saleId);
+  if (!normalizedSaleId) return;
+  await client.query(
+    `INSERT INTO sync_sale_credit_baselines (
+       sale_id,
+       business_id,
+       customer_id,
+       initial_balance_due,
+       initial_amount_paid
+     )
+     SELECT
+       s.id,
+       s.business_id,
+       s.customer_id,
+       GREATEST(0, COALESCE(s.balance_due, 0))
+         + COALESCE((
+             SELECT SUM(cp.amount)
+             FROM credit_payments cp
+             WHERE cp.business_id = s.business_id
+               AND cp.sale_id = s.id
+               AND cp.deleted_at IS NULL
+           ), 0)
+         + COALESCE((
+             SELECT SUM(ABS(r.total_amount))
+             FROM sales r
+             WHERE r.business_id = s.business_id
+               AND r.refund_for_sale_id = s.id
+               AND r.deleted_at IS NULL
+           ), 0),
+       GREATEST(
+         0,
+         COALESCE(s.amount_paid, 0)
+           - COALESCE((
+               SELECT SUM(cp.amount)
+               FROM credit_payments cp
+               WHERE cp.business_id = s.business_id
+                 AND cp.sale_id = s.id
+                 AND cp.deleted_at IS NULL
+             ), 0)
+       )
+     FROM sales s
+     WHERE s.business_id = $1 AND s.id = $2
+     ON CONFLICT (sale_id) DO NOTHING`,
+    [businessId, normalizedSaleId],
+  );
+}
+
+async function ensureSaleCreditBaselineFromIncoming(
+  client,
+  businessId,
+  sale,
+  incomingPayments,
+  incomingRefunds,
+) {
+  const saleId = normalizeOptionalText(sale.id);
+  const customerId = normalizeOptionalText(sale.customer_id);
+  if (!saleId || !customerId || normalizeOptionalText(sale.refund_for_sale_id)) {
+    return;
+  }
+  const balanceDue = Math.max(0, Number(sale.balance_due || 0));
+  const amountPaid = Math.max(0, Number(sale.amount_paid || 0));
+  await client.query(
+    `INSERT INTO sync_sale_credit_baselines (
+       sale_id,
+       business_id,
+       customer_id,
+       initial_balance_due,
+       initial_amount_paid
+     ) VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (sale_id) DO NOTHING`,
+    [
+      saleId,
+      businessId,
+      customerId,
+      balanceDue + incomingPayments + incomingRefunds,
+      Math.max(0, amountPaid - incomingPayments),
+    ],
+  );
+}
+
+async function rebuildSaleCreditBalance(client, businessId, saleId) {
+  await ensureSaleCreditBaselineFromServer(client, businessId, saleId);
+  const updated = await client.query(
+    `UPDATE sales s
+     SET balance_due = GREATEST(
+           0,
+           b.initial_balance_due
+             - COALESCE((
+                 SELECT SUM(cp.amount)
+                 FROM credit_payments cp
+                 WHERE cp.business_id = s.business_id
+                   AND cp.sale_id = s.id
+                   AND cp.deleted_at IS NULL
+               ), 0)
+             - COALESCE((
+                 SELECT SUM(ABS(r.total_amount))
+                 FROM sales r
+                 WHERE r.business_id = s.business_id
+                   AND r.refund_for_sale_id = s.id
+                   AND r.deleted_at IS NULL
+               ), 0)
+         ),
+         amount_paid = b.initial_amount_paid
+           + COALESCE((
+               SELECT SUM(cp.amount)
+               FROM credit_payments cp
+               WHERE cp.business_id = s.business_id
+                 AND cp.sale_id = s.id
+                 AND cp.deleted_at IS NULL
+             ), 0),
+         updated_at = NOW(),
+         sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq')
+     FROM sync_sale_credit_baselines b
+     WHERE s.business_id = $1
+       AND s.id = $2
+       AND b.business_id = s.business_id
+       AND b.sale_id = s.id
+     RETURNING s.server_revision, s.customer_id`,
+    [businessId, saleId],
+  );
+  if (updated.rows.length === 0) return null;
+  return {
+    serverRevision: updated.rows[0].server_revision,
+    customerId: normalizeOptionalText(updated.rows[0].customer_id),
+  };
+}
+
+async function rebuildCustomerBalance(client, businessId, customerId) {
+  const updated = await client.query(
+    `UPDATE customers c
+     SET balance = COALESCE((
+           SELECT SUM(GREATEST(0, COALESCE(s.balance_due, 0)))
+           FROM sales s
+           WHERE s.business_id = c.business_id
+             AND s.customer_id = c.id
+             AND s.deleted_at IS NULL
+             AND s.refund_for_sale_id IS NULL
+         ), 0),
+         updated_at = NOW(),
+         sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq')
+     WHERE c.business_id = $1 AND c.id = $2
+     RETURNING server_revision`,
+    [businessId, customerId],
+  );
+  return updated.rows[0]?.server_revision || null;
 }
 
 async function validateBranchLimit(client, record, businessContext) {
@@ -4552,7 +5144,10 @@ function normalizePaymentRow(row) {
   };
 }
 
-async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
+async function loadPublicCatalog(
+  businessId,
+  { currencyOverride, branchId: requestedBranchId } = {},
+) {
   const businessResult = await query(
     `
     SELECT b.id, b.name, b.country_code, b.currency, b.updated_at,
@@ -4569,6 +5164,30 @@ async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
   if (!business) {
     throw createHttpError(404, 'Catalog not found');
   }
+
+  const branchesResult = await query(
+    `SELECT id, name
+     FROM branches
+     WHERE business_id = $1
+       AND deleted_at IS NULL
+       AND COALESCE(is_active, 1) = 1
+     ORDER BY CASE WHEN id = 'main_branch' THEN 0 ELSE 1 END, name ASC`,
+    [businessId],
+  );
+  const branches = branchesResult.rows.map((branch) => ({
+    id: branch.id,
+    name: branch.name || (branch.id === 'main_branch' ? 'Main' : branch.id),
+  }));
+  const requested = normalizeOptionalText(requestedBranchId);
+  if (requested && !branches.some((branch) => branch.id === requested)) {
+    throw createHttpError(404, 'Catalog branch not found');
+  }
+  const selectedBranch = requested
+    ? branches.find((branch) => branch.id === requested)
+    : branches.find((branch) => branch.id === 'main_branch') || branches[0] || {
+        id: 'main_branch',
+        name: 'Main',
+      };
 
   const productsResult = await query(
     `
@@ -4609,6 +5228,7 @@ async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
      AND pv.deleted_at IS NULL
     WHERE p.business_id = $1
       AND p.deleted_at IS NULL
+      AND COALESCE(p.branch_id, 'main_branch') = $2
     GROUP BY
       p.id,
       p.name,
@@ -4626,7 +5246,7 @@ async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
     ORDER BY c.name ASC NULLS LAST, p.name ASC
     LIMIT 500
     `,
-    [businessId],
+    [businessId, selectedBranch.id],
   );
 
   const products = productsResult.rows.map((row) =>
@@ -4651,6 +5271,8 @@ async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
       name: business.name,
       countryCode: business.country_code || 'GLOBAL',
       whatsappNumber: normalizeOptionalText(business.whatsapp_number),
+      branches,
+      selectedBranch,
     },
     currency: currencyInfo.code,
     currencyCode: currencyInfo.code,
@@ -4669,6 +5291,9 @@ async function loadPublicCatalog(businessId, { currencyOverride } = {}) {
 async function createPublicCatalogOrder(businessId, payload) {
   await ensurePublicCatalogOrderSchema(query);
 
+  const requestedBranchId = normalizeOptionalText(
+    payload.branchId || payload.branch_id,
+  );
   const customerName = normalizeOptionalText(payload.customerName || payload.customer_name);
   const phone = normalizeOptionalText(payload.phone || payload.phoneNumber || payload.phone_number);
   const deliveryAddress = normalizeOptionalText(payload.deliveryAddress || payload.delivery_address);
@@ -4720,9 +5345,18 @@ async function createPublicCatalogOrder(businessId, payload) {
       productId,
       variantId,
       quantity,
+      branchId: requestedBranchId,
     });
     preparedItems.push(item);
   }
+
+  const orderBranchIds = [
+    ...new Set(preparedItems.map((item) => item.branchId).filter(Boolean)),
+  ];
+  if (orderBranchIds.length !== 1) {
+    throw createHttpError(400, 'Catalog orders must contain products from one branch');
+  }
+  const branchId = orderBranchIds[0];
 
   const subtotal = preparedItems.reduce((sum, item) => sum + item.lineTotal, 0);
   const orderId = crypto.randomUUID();
@@ -4736,6 +5370,7 @@ async function createPublicCatalogOrder(businessId, payload) {
       INSERT INTO public_catalog_orders (
         id,
         business_id,
+        branch_id,
         customer_name,
         phone,
         fulfillment_method,
@@ -4748,11 +5383,12 @@ async function createPublicCatalogOrder(businessId, payload) {
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, 'catalog_link', $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, 'catalog_link', $11, $12)
       `,
       [
         orderId,
         businessId,
+        branchId,
         customerName,
         phone,
         fulfillmentMethod,
@@ -4804,6 +5440,7 @@ async function createPublicCatalogOrder(businessId, payload) {
     id: orderId,
     orderNumber: shortOrderNumber(orderId),
     businessName: business.name,
+    branchId,
     customerName,
     phone,
     fulfillmentMethod,
@@ -4825,22 +5462,34 @@ async function createPublicCatalogOrder(businessId, payload) {
   };
 }
 
-async function listPublicCatalogOrders(businessId, { status = 'pending' } = {}) {
+async function listPublicCatalogOrders(
+  businessId,
+  { status = 'pending', branchIds = null } = {},
+) {
   await ensurePublicCatalogOrderSchema(query);
 
   const params = [businessId];
-  const where = ['business_id = $1'];
+  const where = ['o.business_id = $1'];
   if (status && status !== 'all') {
     params.push(status);
-    where.push(`status = $${params.length}`);
+    where.push(`o.status = $${params.length}`);
+  }
+  if (branchIds != null) {
+    params.push(branchIds);
+    where.push(
+      `COALESCE(o.branch_id, 'main_branch') = ANY($${params.length}::text[])`,
+    );
   }
 
   const ordersResult = await query(
     `
-    SELECT *
-    FROM public_catalog_orders
+    SELECT o.*, b.name AS branch_name
+    FROM public_catalog_orders o
+    LEFT JOIN branches b
+      ON b.business_id = o.business_id
+     AND b.id = COALESCE(o.branch_id, 'main_branch')
     WHERE ${where.join(' AND ')}
-    ORDER BY created_at DESC
+    ORDER BY o.created_at DESC
     LIMIT 200
     `,
     params,
@@ -4882,8 +5531,18 @@ async function loadPublicCatalogOrderForCustomer({
   return orders[0];
 }
 
-async function updatePublicCatalogOrderStatus({ businessId, orderId, status }) {
+async function updatePublicCatalogOrderStatus({
+  businessId,
+  orderId,
+  status,
+  branchIds = null,
+}) {
   await ensurePublicCatalogOrderSchema(query);
+  const params = [businessId, orderId, status];
+  const branchClause = branchIds == null
+    ? ''
+    : `AND COALESCE(branch_id, 'main_branch') = ANY($4::text[])`;
+  if (branchIds != null) params.push(branchIds);
   const result = await query(
     `
     UPDATE public_catalog_orders
@@ -4899,15 +5558,33 @@ async function updatePublicCatalogOrderStatus({ businessId, orderId, status }) {
         updated_at = NOW()
     WHERE business_id = $1
       AND id = $2
+      ${branchClause}
     RETURNING *
     `,
-    [businessId, orderId, status],
+    params,
   );
   if (result.rows.length === 0) {
     throw createHttpError(404, 'Catalog order not found');
   }
   const orders = await attachPublicCatalogOrderItems(result.rows);
   return orders[0];
+}
+
+async function assertCatalogOrderScope({ businessId, orderId, branchIds }) {
+  if (branchIds == null) return;
+  await ensurePublicCatalogOrderSchema(query);
+  const result = await query(
+    `SELECT id
+     FROM public_catalog_orders
+     WHERE business_id = $1
+       AND id = $2
+       AND COALESCE(branch_id, 'main_branch') = ANY($3::text[])
+     LIMIT 1`,
+    [businessId, orderId, branchIds],
+  );
+  if (result.rows.length === 0) {
+    throw createHttpError(404, 'Catalog order not found');
+  }
 }
 
 async function requestPublicCatalogOrderPayment({
@@ -4994,6 +5671,9 @@ function normalizePublicCatalogOrder(row, items) {
   return {
     id: row.id,
     orderNumber: shortOrderNumber(row.id),
+    branchId: row.branch_id || 'main_branch',
+    branchName: row.branch_name ||
+      (row.branch_id === 'main_branch' ? 'Main' : row.branch_id || 'Main'),
     customerName: row.customer_name,
     phone: row.phone,
     fulfillmentMethod: row.fulfillment_method || 'delivery',
@@ -5066,11 +5746,13 @@ async function resolvePublicCatalogOrderItem({
   productId,
   variantId,
   quantity,
+  branchId,
 }) {
   const result = await query(
     `
     SELECT
       p.id AS product_id,
+      COALESCE(p.branch_id, 'main_branch') AS branch_id,
       p.name AS product_name,
       p.price AS product_price,
       p.track_stock,
@@ -5088,9 +5770,10 @@ async function resolvePublicCatalogOrderItem({
     WHERE p.business_id = $1
       AND p.id = $2
       AND p.deleted_at IS NULL
+      AND ($4::text IS NULL OR COALESCE(p.branch_id, 'main_branch') = $4)
     LIMIT 1
     `,
-    [businessId, productId, variantId],
+    [businessId, productId, variantId, branchId],
   );
   const row = result.rows[0];
   if (!row) {
@@ -5117,6 +5800,7 @@ async function resolvePublicCatalogOrderItem({
   const unitPrice = Number(variantId ? row.variant_price : row.product_price) || 0;
   const cleanQuantity = Math.round(quantity * 1000) / 1000;
   return {
+    branchId: row.branch_id,
     productId: row.product_id,
     variantId: row.variant_id || null,
     productName: String(row.product_name || '').trim(),
@@ -5134,6 +5818,7 @@ async function ensurePublicCatalogOrderSchema(target = query) {
     CREATE TABLE IF NOT EXISTS public_catalog_orders (
       id text PRIMARY KEY,
       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      branch_id text NOT NULL DEFAULT 'main_branch',
       customer_name text NOT NULL,
       phone text NOT NULL,
       fulfillment_method text NOT NULL DEFAULT 'delivery',
@@ -5171,6 +5856,11 @@ async function ensurePublicCatalogOrderSchema(target = query) {
   await runDbQuery(
     target,
     `ALTER TABLE public_catalog_orders
+     ADD COLUMN IF NOT EXISTS branch_id text NOT NULL DEFAULT 'main_branch'`,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_orders
      ADD COLUMN IF NOT EXISTS fulfillment_method text NOT NULL DEFAULT 'delivery'`,
   );
   await runDbQuery(
@@ -5187,6 +5877,11 @@ async function ensurePublicCatalogOrderSchema(target = query) {
     target,
     `CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
      ON public_catalog_orders(business_id, status, created_at DESC)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_branch
+     ON public_catalog_orders(business_id, branch_id, created_at DESC)`,
   );
   await runDbQuery(
     target,
@@ -6861,22 +7556,272 @@ function toIsoString(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-function branchScopeClause(tableName, branchId, params) {
-  if (!branchId || !isBranchScopedTable(tableName)) {
-    return '';
-  }
-  params.push(branchId);
-  return ` AND COALESCE(branch_id, 'main_branch') = $${params.length}`;
-}
-
 function isBranchScopedTable(tableName) {
   const table = syncTables.find((entry) => entry.name === tableName);
   return Boolean(table?.columns?.includes('branch_id'));
 }
 
-function buildStatusQuery(tableName, syncWindow, businessId, branchId) {
+const syncTableFeatures = Object.freeze({
+  categories: 'categories',
+  expense_categories: 'profit_loss',
+  suppliers: 'purchases',
+  products: 'products',
+  product_variants: 'products',
+  purchase_invoices: 'purchases',
+  supplier_payments: 'purchases',
+  purchase_orders: 'purchases',
+  purchase_order_items: 'purchases',
+  stock_batches: 'products',
+  stock_transfers: 'transfers',
+  customer_invoices: 'sales',
+  customer_invoice_items: 'sales',
+  expenses: 'profit_loss',
+  services: 'services',
+  service_fields: 'services',
+  service_orders: 'services',
+  service_field_values: 'services',
+});
+
+const employeeAttributionTables = new Set([
+  'shifts',
+  'cash_movements',
+  'credit_payments',
+  'audit_logs',
+]);
+
+function hasBusinessFeature(businessContext, feature) {
+  return businessContext.featureAccess.includes('*') ||
+    businessContext.featureAccess.includes(feature);
+}
+
+async function validateSyncWriteAccess(
+  client,
+  tableName,
+  record,
+  scope,
+  businessContext,
+) {
+  if (tableName === 'users' || tableName === 'branches') {
+    if (businessContext.role !== 'ADMIN') {
+      return rejectedAccess('admin_write_required', 'Only an administrator can change this data');
+    }
+  }
+  if (
+    tableName === 'payment_methods' &&
+    businessContext.role !== 'ADMIN' &&
+    businessContext.role !== 'MANAGER'
+  ) {
+    return rejectedAccess(
+      'manager_write_required',
+      'Only a manager or administrator can change payment methods',
+    );
+  }
+
+  const feature = syncTableFeatures[tableName];
+  if (feature && !hasBusinessFeature(businessContext, feature)) {
+    return rejectedAccess(
+      'feature_access_denied',
+      `This employee cannot change ${feature.replaceAll('_', ' ')}`,
+    );
+  }
+
+  if (tableName === 'sales') {
+    const saleUserId = normalizeOptionalText(record.user_id);
+    if (businessContext.role !== 'ADMIN' && saleUserId !== businessContext.userId) {
+      return rejectedAccess(
+        'employee_identity_mismatch',
+        'Sales must be recorded under the employee signed in on this device',
+      );
+    }
+    if (
+      normalizeOptionalText(record.refund_for_sale_id) &&
+      businessContext.role !== 'ADMIN' &&
+      businessContext.role !== 'MANAGER'
+    ) {
+      return rejectedAccess(
+        'refund_access_denied',
+        'Only a manager or administrator can issue refunds',
+      );
+    }
+  }
+
+  if (
+    employeeAttributionTables.has(tableName) &&
+    businessContext.role !== 'ADMIN'
+  ) {
+    const attributedUserId = normalizeOptionalText(record.user_id);
+    if (attributedUserId && attributedUserId !== businessContext.userId) {
+      return rejectedAccess(
+        'employee_identity_mismatch',
+        'Activity must be recorded under the employee signed in on this device',
+      );
+    }
+    record.user_id = attributedUserId || businessContext.userId;
+  }
+
+  if (isBranchScopedTable(tableName)) {
+    let rowBranchId = normalizeOptionalText(record.branch_id);
+    if (!rowBranchId && scope.branchIds?.length === 1) {
+      rowBranchId = scope.branchIds[0];
+      record.branch_id = rowBranchId;
+    }
+    if (
+      scope.branchIds != null &&
+      (!rowBranchId || !scope.branchIds.includes(rowBranchId))
+    ) {
+      return rejectedAccess(
+        'branch_scope_mismatch',
+        'Record branch is outside this employee\'s allowed branches',
+      );
+    }
+  }
+
+  if (tableName === 'stock_transfers' && scope.branchIds != null) {
+    const transferBranches = [record.from_branch_id, record.to_branch_id]
+      .map(normalizeOptionalText)
+      .filter(Boolean);
+    if (transferBranches.some((branch) => !scope.branchIds.includes(branch))) {
+      return rejectedAccess(
+        'branch_scope_mismatch',
+        'Stock transfer includes a branch this employee cannot access',
+      );
+    }
+  }
+
+  const childScope = childBranchScopes[tableName];
+  if (childScope && scope.branchIds != null) {
+    const parentId = normalizeOptionalText(record[childScope.foreignKey]);
+    if (!parentId) {
+      return rejectedAccess('missing_parent', 'Scoped record is missing its parent');
+    }
+    const result = await client.query(
+      `SELECT COALESCE(branch_id, 'main_branch') AS branch_id
+       FROM ${childScope.table}
+       WHERE business_id = $1 AND id = $2
+       LIMIT 1`,
+      [businessContext.businessId, parentId],
+    );
+    const parentBranchId = normalizeOptionalText(result.rows[0]?.branch_id);
+    if (!parentBranchId || !scope.branchIds.includes(parentBranchId)) {
+      return rejectedAccess(
+        'branch_scope_mismatch',
+        'Related record is outside this employee\'s allowed branches',
+      );
+    }
+  }
+
+  return { ok: true };
+}
+
+function rejectedAccess(code, message) {
+  return { ok: false, error: { code, message } };
+}
+
+function resolveDataScope(businessContext, requestedBranchId) {
+  const requested = normalizeOptionalText(requestedBranchId);
+  const allowed = businessContext.role === 'ADMIN'
+    ? []
+    : businessContext.allowedBranchIds;
+
+  if (requested && allowed.length > 0 && !allowed.includes(requested)) {
+    throw createHttpError(403, 'This employee cannot access the selected branch');
+  }
+
+  return {
+    branchIds: requested ? [requested] : allowed.length > 0 ? allowed : null,
+    userId: businessContext.userId,
+    restrictUsers: businessContext.role === 'CASHIER',
+    restrictToOwnActivity: businessContext.role === 'CASHIER',
+  };
+}
+
+function dataScopeKey(businessContext, scope) {
+  const branches = scope.branchIds == null
+    ? '*'
+    : [...scope.branchIds].sort().join(',');
+  return [businessContext.userId, businessContext.role, branches].join(':');
+}
+
+const childBranchScopes = Object.freeze({
+  sale_items: { table: 'sales', foreignKey: 'sale_id' },
+  service_fields: { table: 'services', foreignKey: 'service_id' },
+  service_field_values: {
+    table: 'service_orders',
+    foreignKey: 'service_order_id',
+  },
+  service_sale_items: { table: 'sales', foreignKey: 'sale_id' },
+});
+
+function dataScopeClause(tableName, scope, params, alias = 't') {
+  const clauses = [];
+  if (scope?.restrictUsers && tableName === 'users') {
+    params.push(scope.userId);
+    clauses.push(`${alias}.id = $${params.length}`);
+  }
+
+  if (
+    scope?.restrictToOwnActivity &&
+    ['sales', 'shifts', 'cash_movements', 'credit_payments', 'audit_logs'].includes(
+      tableName,
+    )
+  ) {
+    params.push(scope.userId);
+    clauses.push(`${alias}.user_id = $${params.length}`);
+  }
+  if (
+    scope?.restrictToOwnActivity &&
+    (tableName === 'sale_items' || tableName === 'service_sale_items')
+  ) {
+    params.push(scope.userId);
+    clauses.push(
+      `EXISTS (
+         SELECT 1
+         FROM sales activity_parent
+         WHERE activity_parent.business_id = ${alias}.business_id
+           AND activity_parent.id = ${alias}.sale_id
+           AND activity_parent.user_id = $${params.length}
+       )`,
+    );
+  }
+
+  if (!scope || scope.branchIds == null) {
+    return clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
+  }
+
+  const usesBranchScope =
+    tableName === 'branches' ||
+    isBranchScopedTable(tableName) ||
+    Boolean(childBranchScopes[tableName]);
+  if (!usesBranchScope) {
+    return clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
+  }
+
+  params.push(scope.branchIds);
+  const branchParam = `$${params.length}::text[]`;
+  if (tableName === 'branches') {
+    clauses.push(`${alias}.id = ANY(${branchParam})`);
+  } else if (isBranchScopedTable(tableName)) {
+    clauses.push(
+      `COALESCE(${alias}.branch_id, 'main_branch') = ANY(${branchParam})`,
+    );
+  } else if (childBranchScopes[tableName]) {
+    const parent = childBranchScopes[tableName];
+    clauses.push(
+      `EXISTS (
+         SELECT 1
+         FROM ${parent.table} scope_parent
+         WHERE scope_parent.business_id = ${alias}.business_id
+           AND scope_parent.id = ${alias}.${parent.foreignKey}
+           AND COALESCE(scope_parent.branch_id, 'main_branch') = ANY(${branchParam})
+       )`,
+    );
+  }
+  return clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
+}
+
+function buildStatusQuery(tableName, syncWindow, businessId, scope) {
   const baseParams = [businessId];
-  const branchClause = branchScopeClause(tableName, branchId, baseParams);
+  const scopeClause = dataScopeClause(tableName, scope, baseParams);
   if (syncWindow.cursor != null) {
     const params = [...baseParams, syncWindow.cursor];
     const cursorParam = `$${params.length}`;
@@ -6887,8 +7832,8 @@ function buildStatusQuery(tableName, syncWindow, businessId, branchId) {
               COUNT(*) FILTER (WHERE server_revision > ${cursorParam}::bigint)::int AS changed_since,
               MAX(updated_at) AS latest_update,
               MAX(server_revision)::text AS latest_revision
-            FROM ${tableName}
-            WHERE business_id = $1${branchClause}`,
+            FROM ${tableName} t
+            WHERE t.business_id = $1${scopeClause}`,
       params,
     };
   }
@@ -6903,8 +7848,8 @@ function buildStatusQuery(tableName, syncWindow, businessId, branchId) {
               COUNT(*) FILTER (WHERE updated_at > ${sinceParam})::int AS changed_since,
               MAX(updated_at) AS latest_update,
               MAX(server_revision)::text AS latest_revision
-            FROM ${tableName}
-            WHERE business_id = $1${branchClause}`,
+            FROM ${tableName} t
+            WHERE t.business_id = $1${scopeClause}`,
       params,
     };
   }
@@ -6916,25 +7861,24 @@ function buildStatusQuery(tableName, syncWindow, businessId, branchId) {
             NULL::int AS changed_since,
             MAX(updated_at) AS latest_update,
             MAX(server_revision)::text AS latest_revision
-          FROM ${tableName}
-          WHERE business_id = $1${branchClause}`,
+          FROM ${tableName} t
+          WHERE t.business_id = $1${scopeClause}`,
     params: baseParams,
   };
 }
 
-function buildPullQuery(tableName, syncWindow, businessId, branchId) {
+function buildPullQuery(tableName, syncWindow, businessId, scope) {
   const baseParams = [businessId];
-  const branchClause = branchScopeClause(tableName, branchId, baseParams);
+  const scopeClause = dataScopeClause(tableName, scope, baseParams);
   if (syncWindow.cursor != null) {
     const params = [...baseParams, syncWindow.cursor];
     const cursorParam = `$${params.length}`;
     return {
       sql: `SELECT *
-            FROM ${tableName}
-            WHERE business_id = $1
-              ${branchClause}
-              AND server_revision > ${cursorParam}::bigint
-            ORDER BY server_revision ASC, id ASC`,
+            FROM ${tableName} t
+            WHERE t.business_id = $1${scopeClause}
+              AND t.server_revision > ${cursorParam}::bigint
+            ORDER BY t.server_revision ASC, t.id ASC`,
       params,
     };
   }
@@ -6944,44 +7888,40 @@ function buildPullQuery(tableName, syncWindow, businessId, branchId) {
     const sinceParam = `$${params.length}`;
     return {
       sql: `SELECT *
-            FROM ${tableName}
-            WHERE business_id = $1
-              ${branchClause}
-              AND updated_at > ${sinceParam}
-            ORDER BY updated_at ASC, id ASC`,
+            FROM ${tableName} t
+            WHERE t.business_id = $1${scopeClause}
+              AND t.updated_at > ${sinceParam}
+            ORDER BY t.updated_at ASC, t.id ASC`,
       params,
     };
   }
 
   return {
     sql: `SELECT *
-          FROM ${tableName}
-          WHERE business_id = $1${branchClause}
-          ORDER BY updated_at ASC, id ASC`,
+          FROM ${tableName} t
+          WHERE t.business_id = $1${scopeClause}
+          ORDER BY t.updated_at ASC, t.id ASC`,
     params: baseParams,
   };
 }
 
-async function getSnapshotCursor(client, businessId, branchId = null) {
-  const revisionUnion = syncTables
-    .map(
-      (table) => {
-        const branchClause =
-          branchId && isBranchScopedTable(table.name)
-            ? " AND COALESCE(branch_id, 'main_branch') = $2"
-            : '';
-        return `SELECT MAX(server_revision) AS latest_revision FROM ${table.name} WHERE business_id = $1${branchClause}`;
-      },
-    )
-    .join(' UNION ALL ');
-
-  const result = await client.query(
-    `SELECT MAX(latest_revision)::text AS snapshot_cursor
-     FROM (${revisionUnion}) AS revision_snapshot`,
-    branchId ? [businessId, branchId] : [businessId],
-  );
-
-  return normalizeCursor(result.rows[0]?.snapshot_cursor);
+async function getSnapshotCursor(client, businessId, scope = null) {
+  let snapshotCursor = null;
+  for (const table of syncTables) {
+    const params = [businessId];
+    const scopeClause = dataScopeClause(table.name, scope, params);
+    const result = await client.query(
+      `SELECT MAX(t.server_revision)::text AS snapshot_cursor
+       FROM ${table.name} t
+       WHERE t.business_id = $1${scopeClause}`,
+      params,
+    );
+    snapshotCursor = maxCursor(
+      snapshotCursor,
+      result.rows[0]?.snapshot_cursor,
+    );
+  }
+  return normalizeCursor(snapshotCursor);
 }
 
 async function upsertRow(client, tableName, row, businessId) {

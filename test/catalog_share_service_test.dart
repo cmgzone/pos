@@ -22,7 +22,7 @@ void main() {
       expect(SyncSettingsService.backendUrl, 'http://127.0.0.1:3000/api');
       expect(
         CatalogShareService.buildCatalogUrl('business-id'),
-        'https://pikipos.com/catalog/business-id?currency=KSh',
+        'https://pikipos.com/catalog/business-id?branchId=main_branch&currency=KSh',
       );
     },
   );
@@ -46,6 +46,15 @@ void main() {
     await SyncSettingsService.init();
 
     expect(SyncSettingsService.backendUrl, AppConstants.productionApiBaseUrl);
+  });
+
+  test('resetting sync progress clears the employee data scope', () async {
+    await SyncSettingsService.setSyncScopeKey('employee:CASHIER:main_branch');
+    expect(SyncSettingsService.syncScopeKey, 'employee:CASHIER:main_branch');
+
+    await SyncSettingsService.resetSyncProgress();
+
+    expect(SyncSettingsService.syncScopeKey, isEmpty);
   });
 
   test('catalog QR poster builds a publishable PDF', () async {

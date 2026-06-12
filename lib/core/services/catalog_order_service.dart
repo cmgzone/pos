@@ -44,6 +44,8 @@ class CatalogOrderItem {
 class CatalogOrder {
   final String id;
   final String orderNumber;
+  final String branchId;
+  final String branchName;
   final String customerName;
   final String phone;
   final String deliveryAddress;
@@ -60,6 +62,8 @@ class CatalogOrder {
   const CatalogOrder({
     required this.id,
     required this.orderNumber,
+    required this.branchId,
+    required this.branchName,
     required this.customerName,
     required this.phone,
     required this.deliveryAddress,
@@ -79,6 +83,12 @@ class CatalogOrder {
     return CatalogOrder(
       id: json['id']?.toString() ?? '',
       orderNumber: json['orderNumber']?.toString() ?? '',
+      branchId: json['branchId']?.toString() ?? 'main_branch',
+      branchName:
+          json['branchName']?.toString() ??
+          (json['branchId']?.toString() == 'main_branch'
+              ? 'Main'
+              : json['branchId']?.toString() ?? 'Main'),
       customerName: json['customerName']?.toString() ?? 'Customer',
       phone: json['phone']?.toString() ?? '',
       deliveryAddress: json['deliveryAddress']?.toString() ?? '',

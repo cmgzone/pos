@@ -10,6 +10,7 @@ class SyncSettingsService {
 
   static const _keyBackendUrl = 'sync_backend_url';
   static const _keyAutoSync = 'sync_auto_enabled';
+  static const _keySyncScope = 'sync_scope_key';
   static const _deprecatedBackendUrls = {
     'https://pos-e0hs.onrender.com',
     'https://pos-e0hs.onrender.com/api',
@@ -58,6 +59,9 @@ class SyncSettingsService {
     final trimmed = raw.trim();
     return trimmed.isEmpty ? '0' : trimmed;
   }
+
+  static String get syncScopeKey =>
+      (_prefs?.getString(_keySyncScope) ?? '').trim();
 
   static String? get deviceId {
     final raw = _prefs?.getString(AppConstants.keySyncDeviceId);
@@ -138,6 +142,16 @@ class SyncSettingsService {
     await _prefs!.setString(AppConstants.keySyncCursor, normalized);
   }
 
+  static Future<void> setSyncScopeKey(String? value) async {
+    await init();
+    final normalized = value?.trim() ?? '';
+    if (normalized.isEmpty) {
+      await _prefs!.remove(_keySyncScope);
+      return;
+    }
+    await _prefs!.setString(_keySyncScope, normalized);
+  }
+
   static Future<String> getOrCreateDeviceId() async {
     await init();
     final existing = deviceId;
@@ -153,6 +167,7 @@ class SyncSettingsService {
   static Future<void> resetSyncProgress() async {
     await init();
     await _prefs!.remove(AppConstants.keySyncCursor);
+    await _prefs!.remove(_keySyncScope);
     await _prefs!.remove(AppConstants.keyLastSync);
     await _prefs!.remove(AppConstants.keyLocalBusinessId);
   }

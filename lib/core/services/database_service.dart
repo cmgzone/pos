@@ -1706,6 +1706,7 @@ class DatabaseService {
       CREATE TABLE IF NOT EXISTS public_catalog_orders (
         id TEXT PRIMARY KEY,
         business_id TEXT,
+        branch_id TEXT NOT NULL DEFAULT 'main_branch',
         customer_name TEXT NOT NULL,
         phone TEXT NOT NULL,
         fulfillment_method TEXT NOT NULL DEFAULT 'delivery',
@@ -1737,6 +1738,12 @@ class DatabaseService {
         FOREIGN KEY (order_id) REFERENCES public_catalog_orders(id) ON DELETE CASCADE
       )
     ''');
+    await _ensureColumn(
+      database,
+      table: 'public_catalog_orders',
+      column: 'branch_id',
+      definition: "TEXT NOT NULL DEFAULT 'main_branch'",
+    );
     await _ensureColumn(
       database,
       table: 'public_catalog_orders',

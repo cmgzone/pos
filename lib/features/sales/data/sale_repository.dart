@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/license_service.dart';
+import '../../../core/services/session_service.dart';
 import '../../../core/utils/unit_utils.dart';
 
 const _uuid = Uuid();
@@ -343,16 +344,16 @@ class SaleRepository {
           remainingToFulfill -= availableInBatch;
           if (!isFallback) {
             batch.rawUpdate(
-              'UPDATE stock_batches SET quantity_remaining = 0, finished_at = ?, updated_at = ?, sync_status = ? WHERE id = ?',
-              [now, now, 'pending', bId],
+              'UPDATE stock_batches SET quantity_remaining = 0, finished_at = ?, updated_at = ? WHERE id = ?',
+              [now, now, bId],
             );
           }
         } else {
           totalCostAccumulated += remainingToFulfill * bCost;
           if (!isFallback) {
             batch.rawUpdate(
-              'UPDATE stock_batches SET quantity_remaining = quantity_remaining - ?, updated_at = ?, sync_status = ? WHERE id = ?',
-              [remainingToFulfill, now, 'pending', bId],
+              'UPDATE stock_batches SET quantity_remaining = quantity_remaining - ?, updated_at = ? WHERE id = ?',
+              [remainingToFulfill, now, bId],
             );
           }
           remainingToFulfill = 0;
@@ -425,6 +426,7 @@ class SaleRepository {
     String? endDate,
     String? cashierId,
     String? branchId,
+    bool includeAllBranches = false,
   }) async {
     final clauses = <String>[];
     final whereArgs = <dynamic>[];
@@ -443,8 +445,14 @@ class SaleRepository {
       clauses.add('s.user_id = ?');
       whereArgs.add(normalizedCashierId);
     }
-    clauses.add('COALESCE(s.branch_id, ?) = ?');
-    whereArgs.addAll([DatabaseService.defaultBranchId, effectiveBranchId]);
+    final canUseAllBranches =
+        includeAllBranches &&
+        RolePermissions.normalizeRole(SessionService.currentUserRole) ==
+            RolePermissions.admin;
+    if (!canUseAllBranches) {
+      clauses.add('COALESCE(s.branch_id, ?) = ?');
+      whereArgs.addAll([DatabaseService.defaultBranchId, effectiveBranchId]);
+    }
     clauses.add('s.deleted_at IS NULL');
     final where = clauses.isEmpty ? '' : 'WHERE ${clauses.join(' AND ')}';
 
@@ -496,6 +504,12 @@ class SaleRepository {
 
   /// Get sale with its items
   static Future<Map<String, dynamic>?> getSaleWithItems(String saleId) async {
+    final canUseAllBranches =
+        RolePermissions.normalizeRole(SessionService.currentUserRole) ==
+        RolePermissions.admin;
+    final branchClause = canUseAllBranches
+        ? ''
+        : 'AND COALESCE(s.branch_id, ?) = ?';
     final sales = await DatabaseService.rawQuery(
       '''
       SELECT
@@ -513,13 +527,15 @@ class SaleRepository {
       LEFT JOIN users u ON u.id = s.user_id
       WHERE s.id = ?
         AND s.deleted_at IS NULL
-        AND COALESCE(s.branch_id, ?) = ?
+        $branchClause
       ''',
-      [
-        saleId,
-        DatabaseService.defaultBranchId,
-        DatabaseService.currentBranchId,
-      ],
+      canUseAllBranches
+          ? [saleId]
+          : [
+              saleId,
+              DatabaseService.defaultBranchId,
+              DatabaseService.currentBranchId,
+            ],
     );
     if (sales.isEmpty) {
       return null;
@@ -574,6 +590,9 @@ class SaleRepository {
   }
 
   static Future<void> deleteSale(String saleId) async {
+    if (!RolePermissions.canRefundSales(SessionService.currentUserRole)) {
+      throw Exception('Only a manager or administrator can delete sales');
+    }
     await LicenseService.ensureWriteAccess(action: 'delete sales');
     final sale = await getSaleWithItems(saleId);
     if (sale == null) {
@@ -742,6 +761,9 @@ class SaleRepository {
     String? note,
     List<Map<String, dynamic>>? items,
   }) async {
+    if (!RolePermissions.canRefundSales(SessionService.currentUserRole)) {
+      throw Exception('Only a manager or administrator can issue refunds');
+    }
     await LicenseService.ensureWriteAccess(action: 'issue refunds');
     final original = await getSaleWithItems(saleId);
     if (original == null) {
