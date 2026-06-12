@@ -1024,7 +1024,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        price?.displayAmount ?? 'Custom',
+                        price?.displayAmount ?? 'Not set',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -1032,7 +1032,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                         ),
                       ),
                       Text(
-                        '/${_periodShortLabel(billingPeriod)}',
+                        price == null
+                            ? 'price'
+                            : '/${_periodShortLabel(billingPeriod)}',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.52),
                           fontSize: 11,
@@ -1645,9 +1647,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     SubscriptionCatalog catalog,
     SubscriptionMarket market,
   ) {
-    return catalog.plans
-        .where((plan) => plan.billingPeriodsFor(market).isNotEmpty)
-        .toList();
+    return catalog.plans.where((plan) => plan.sellingModes.isNotEmpty).toList();
   }
 
   List<SubscriptionPlanSummary> _plansForBilling(
@@ -1655,11 +1655,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     SubscriptionMarket market,
     String billingPeriod,
   ) {
-    return plans
-        .where(
-          (plan) => plan.priceFor(market, billingPeriod: billingPeriod) != null,
-        )
-        .toList();
+    return plans.where((plan) {
+      return plan.priceFor(market, billingPeriod: billingPeriod) != null ||
+          plan.billingPeriodsFor(market).isEmpty;
+    }).toList();
   }
 
   List<String> _billingPeriodsFor(
@@ -1782,7 +1781,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   }
 
   bool _isFreePrice(SubscriptionPlanPrice? price) {
-    return (price?.amountMinor ?? 0) == 0;
+    return price != null && price.amountMinor == 0;
   }
 
   String _checkoutMessage(SubscriptionCheckoutResult result) {
@@ -1803,6 +1802,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   ) {
     if (_busy) return 'Working...';
     if (plan == null) return 'Choose a plan';
+    final price = market == null
+        ? null
+        : plan.priceFor(market, billingPeriod: _selectedBillingPeriod);
+    if (price == null) return 'Price not configured';
     if (isCurrent && isFree) return 'Current plan';
     if (!isFree && market != null && !market.paymentActive) {
       return '${market.providerLabel} inactive';
