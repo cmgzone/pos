@@ -270,11 +270,6 @@ class ServiceRepository {
     if (accessClause != null) {
       clauses.add(accessClause);
     }
-    final assignmentClause = _serviceOrderAssignmentClause('so', args);
-    if (assignmentClause != null) {
-      clauses.add(assignmentClause);
-    }
-
     return DatabaseService.rawQuery('''
       SELECT
         so.*,
@@ -319,7 +314,7 @@ class ServiceRepository {
     }
 
     final order = rows.first;
-    if (!_canAccessServiceOrder(order)) {
+    if (!SessionService.canAccessServiceId(order['service_id'] as String?)) {
       return null;
     }
     final values = await DatabaseService.rawQuery(
@@ -753,55 +748,5 @@ class ServiceRepository {
     final placeholders = List.filled(allowedServiceIds.length, '?').join(',');
     args.addAll(allowedServiceIds);
     return '$columnName IN ($placeholders)';
-  }
-
-  static String? _serviceOrderAssignmentClause(
-    String tableAlias,
-    List<dynamic> args,
-  ) {
-    if (!SessionService.limitsServiceOrdersToAssigned) {
-      return null;
-    }
-
-    final clauses = <String>[];
-    final currentUserId = _clean(SessionService.currentUserId);
-    if (currentUserId != null) {
-      clauses.add('$tableAlias.assigned_staff_user_id = ?');
-      args.add(currentUserId);
-    }
-
-    final currentUserName = _clean(SessionService.currentUserName);
-    if (currentUserName != null) {
-      clauses.add('LOWER(TRIM($tableAlias.assigned_staff)) = LOWER(?)');
-      args.add(currentUserName);
-    }
-
-    if (clauses.isEmpty) {
-      return '1 = 0';
-    }
-    return '(${clauses.join(' OR ')})';
-  }
-
-  static bool _canAccessServiceOrder(Map<String, dynamic> order) {
-    if (!SessionService.canAccessServiceId(order['service_id'] as String?)) {
-      return false;
-    }
-    if (!SessionService.limitsServiceOrdersToAssigned) {
-      return true;
-    }
-
-    final currentUserId = _clean(SessionService.currentUserId);
-    final assignedStaffUserId = _clean(
-      order['assigned_staff_user_id'] as String?,
-    );
-    if (currentUserId != null && assignedStaffUserId == currentUserId) {
-      return true;
-    }
-
-    final currentUserName = _clean(SessionService.currentUserName);
-    final assignedStaff = _clean(order['assigned_staff'] as String?);
-    return currentUserName != null &&
-        assignedStaff != null &&
-        currentUserName.toLowerCase() == assignedStaff.toLowerCase();
   }
 }

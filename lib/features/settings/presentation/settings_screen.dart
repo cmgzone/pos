@@ -557,10 +557,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       role: role,
       rawPosMode: user['pos_mode'] as String?,
     );
-    var serviceOrderScope = UserAccessProfile.resolveServiceOrderScope(
-      role: role,
-      rawScope: user['service_order_scope'] as String?,
-    );
+    const serviceOrderScope =
+        UserAccessProfile.serviceOrderScopeAllVisibleServices;
     var saving = false;
 
     final saved = await showDialog<bool>(
@@ -697,33 +695,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   const SizedBox(height: 18),
                   const Text(
-                    'Service Order Visibility',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 10),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: UserAccessProfile
-                            .serviceOrderScopeAllVisibleServices,
-                        icon: Icon(Icons.visibility_outlined),
-                        label: Text('All Allowed'),
-                      ),
-                      ButtonSegment(
-                        value: UserAccessProfile.serviceOrderScopeAssignedOnly,
-                        icon: Icon(Icons.person_pin_outlined),
-                        label: Text('Assigned Only'),
-                      ),
-                    ],
-                    selected: {serviceOrderScope},
-                    onSelectionChanged: (selection) {
-                      setDialogState(() => serviceOrderScope = selection.first);
-                    },
-                    showSelectedIcon: false,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Controls which service orders this staff member can see in the Services tab.',
+                    'Service orders are shared across staff in the same business. Use service access below to control which service types this account can use.',
                     style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12,

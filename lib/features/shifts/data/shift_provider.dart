@@ -38,10 +38,7 @@ final currentShiftMovementsProvider =
     });
 
 final shiftHistoryProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
-  final role = RolePermissions.normalizeRole(SessionService.currentUserRole);
-  return ShiftRepository.getRecentShifts(
-    userId: role == RolePermissions.cashier ? currentShiftActorId() : null,
-  );
+  return ShiftRepository.getRecentShifts();
 });
 
 void invalidateShiftProviders(WidgetRef ref) {
