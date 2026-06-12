@@ -223,6 +223,18 @@ CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
 CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
   ON public_catalog_order_items(order_id);
 
+CREATE TABLE IF NOT EXISTS sync_stock_effects (
+  sale_item_id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  product_id text NOT NULL,
+  variant_id text,
+  stock_delta double precision NOT NULL DEFAULT 0,
+  applied_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_stock_effects_business
+  ON sync_stock_effects(business_id, applied_at DESC);
+
 CREATE TABLE IF NOT EXISTS landing_demo_requests (
   id text PRIMARY KEY,
   full_name text NOT NULL,

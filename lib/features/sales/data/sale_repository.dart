@@ -300,13 +300,13 @@ class SaleRepository {
           continue;
         }
         batch.rawUpdate(
-          'UPDATE product_variants SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
-          [stockQty, now, 'pending', variantId],
+          'UPDATE product_variants SET stock = stock - ? WHERE id = ?',
+          [stockQty, variantId],
         );
-        batch.rawUpdate(
-          'UPDATE products SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
-          [stockQty, now, 'pending', pid],
-        );
+        batch.rawUpdate('UPDATE products SET stock = stock - ? WHERE id = ?', [
+          stockQty,
+          pid,
+        ]);
         continue;
       }
 
@@ -376,10 +376,10 @@ class SaleRepository {
         'updated_at': now,
         'sync_status': 'pending',
       });
-      batch.rawUpdate(
-        'UPDATE products SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
-        [stockQty, now, 'pending', pid],
-      );
+      batch.rawUpdate('UPDATE products SET stock = stock - ? WHERE id = ?', [
+        stockQty,
+        pid,
+      ]);
     }
 
     for (final item in serviceItems) {
@@ -969,17 +969,17 @@ class SaleRepository {
         if (variantId != null) {
           // Restore variant stock directly.
           await txn.rawUpdate(
-            'UPDATE product_variants SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
-            [stockQuantity, now, 'pending', variantId],
+            'UPDATE product_variants SET stock = stock + ? WHERE id = ?',
+            [stockQuantity, variantId],
           );
           await txn.rawUpdate(
-            'UPDATE products SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
-            [stockQuantity, now, 'pending', productId],
+            'UPDATE products SET stock = stock + ? WHERE id = ?',
+            [stockQuantity, productId],
           );
         } else {
           await txn.rawUpdate(
-            'UPDATE products SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
-            [stockQuantity, now, 'pending', productId],
+            'UPDATE products SET stock = stock + ? WHERE id = ?',
+            [stockQuantity, productId],
           );
           await txn.insert('stock_batches', {
             'id': _uuid.v4(),

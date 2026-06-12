@@ -912,6 +912,8 @@ app.post('/api/sync/push', async (req, res, next) => {
       const conflicts = {};
       const invalidRows = {};
       let latestAppliedCursor = null;
+      const appliedProductIds = new Set();
+      const appliedVariantIds = new Set();
 
       for (const table of syncTables) {
         const incomingRows = Array.isArray(changes[table.name])
@@ -978,6 +980,24 @@ app.post('/api/sync/push', async (req, res, next) => {
           );
 
           if (result.status === 'applied') {
+            if (table.name === 'products') {
+              appliedProductIds.add(normalizeOptionalText(storageRecord.id));
+            }
+            if (table.name === 'product_variants') {
+              appliedVariantIds.add(normalizeOptionalText(storageRecord.id));
+            }
+            if (
+              table.name === 'sale_items' &&
+              !appliedProductIds.has(normalizeOptionalText(storageRecord.product_id)) &&
+              !appliedVariantIds.has(normalizeOptionalText(storageRecord.variant_id))
+            ) {
+              const stockRevision = await applySaleItemStockEffect(
+                client,
+                storageRecord,
+                businessContext.businessId,
+              );
+              latestAppliedCursor = maxCursor(latestAppliedCursor, stockRevision);
+            }
             applied[table.name] += 1;
             latestAppliedCursor = maxCursor(
               latestAppliedCursor,
@@ -3247,6 +3267,7 @@ Promise.all([
   ensureSubscriptionSchema(),
   ensureEtimsSchema(),
   ensureLandingDemoRequestSchema(),
+  ensureSyncStockEffectSchema(),
 ])
   .then(() =>
     startPikiProactiveWorker({
@@ -4084,6 +4105,103 @@ async function validatePlanWrite(client, tableName, record, businessContext) {
     return validateUserLimits(client, record, businessContext);
   }
   return { ok: true };
+}
+
+async function ensureSyncStockEffectSchema(target = query) {
+  await runDbQuery(
+    target,
+    `
+    CREATE TABLE IF NOT EXISTS sync_stock_effects (
+      sale_item_id text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      product_id text NOT NULL,
+      variant_id text,
+      stock_delta double precision NOT NULL DEFAULT 0,
+      applied_at timestamptz NOT NULL DEFAULT NOW()
+    )
+    `,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_sync_stock_effects_business
+     ON sync_stock_effects(business_id, applied_at DESC)`,
+  );
+}
+
+async function applySaleItemStockEffect(client, saleItem, businessId) {
+  const saleItemId = normalizeOptionalText(saleItem?.id);
+  const productId = normalizeOptionalText(saleItem?.product_id);
+  const variantId = normalizeOptionalText(saleItem?.variant_id);
+  if (!saleItemId || !productId) {
+    return null;
+  }
+
+  const productResult = await client.query(
+    `SELECT id, track_stock, sale_to_stock_factor
+     FROM products
+     WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL
+     LIMIT 1`,
+    [businessId, productId],
+  );
+  const product = productResult.rows[0];
+  if (!product || Number(product.track_stock ?? 1) === 0) {
+    return null;
+  }
+
+  const quantity = Number(saleItem.quantity || 0);
+  if (!Number.isFinite(quantity) || Math.abs(quantity) < 0.000001) {
+    return null;
+  }
+  const factor = Number(product.sale_to_stock_factor || 1);
+  const stockDelta = -quantity * (Number.isFinite(factor) && factor > 0 ? factor : 1);
+  if (Math.abs(stockDelta) < 0.000001) {
+    return null;
+  }
+
+  const effectResult = await client.query(
+    `INSERT INTO sync_stock_effects (
+       sale_item_id, business_id, product_id, variant_id, stock_delta
+     )
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (sale_item_id) DO NOTHING
+     RETURNING sale_item_id`,
+    [saleItemId, businessId, productId, variantId, stockDelta],
+  );
+  if (effectResult.rowCount === 0) {
+    return null;
+  }
+
+  let latestRevision = null;
+  const productUpdate = await client.query(
+    `UPDATE products
+     SET stock = COALESCE(stock, 0) + $3,
+         updated_at = NOW(),
+         sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq')
+     WHERE business_id = $1 AND id = $2
+     RETURNING server_revision`,
+    [businessId, productId, stockDelta],
+  );
+  latestRevision = maxCursor(latestRevision, productUpdate.rows[0]?.server_revision);
+
+  if (variantId) {
+    const variantUpdate = await client.query(
+      `UPDATE product_variants
+       SET stock = COALESCE(stock, 0) + $3,
+           updated_at = NOW(),
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $1 AND id = $2
+       RETURNING server_revision`,
+      [businessId, variantId, stockDelta],
+    );
+    latestRevision = maxCursor(
+      latestRevision,
+      variantUpdate.rows[0]?.server_revision,
+    );
+  }
+
+  return latestRevision;
 }
 
 async function validateBranchLimit(client, record, businessContext) {
