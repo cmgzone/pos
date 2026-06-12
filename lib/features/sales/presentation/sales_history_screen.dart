@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/etims_service.dart';
 import '../../../core/services/messaging_service.dart';
@@ -26,14 +27,14 @@ import '../data/sale_import_service.dart';
 import '../data/sale_repository.dart';
 import 'receipt_service.dart';
 
-class SalesHistoryScreen extends StatefulWidget {
+class SalesHistoryScreen extends ConsumerStatefulWidget {
   const SalesHistoryScreen({super.key});
 
   @override
-  State<SalesHistoryScreen> createState() => _SalesHistoryScreenState();
+  ConsumerState<SalesHistoryScreen> createState() => _SalesHistoryScreenState();
 }
 
-class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
+class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
   List<Map<String, dynamic>> _sales = [];
   bool _isLoading = true;
   String _selectedFilter = 'today';
@@ -149,6 +150,15 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _loadSales();
+        }
+      },
+    );
+
     final visibleSales = _filteredSales;
     final totalRevenue = visibleSales.fold<double>(
       0.0,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/session_service.dart';
+import '../../core/services/sync_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/database_service.dart';
 import '../../core/services/shop_settings.dart';
@@ -16,14 +18,14 @@ import 'app_shell.dart';
 import '../../widgets/beautiful_icon.dart';
 import '../../widgets/empty_state_widget.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Map<String, dynamic> _todaySummary = {};
   List<Map<String, dynamic>> _lowStockProducts = [];
   List<Map<String, dynamic>> _expiryAlerts = [];
@@ -626,6 +628,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && next != previous && mounted) {
+          _loadDashboard();
+        }
+      },
+    );
+
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     final isMobile = MediaQuery.of(context).size.width < 800;
     final revenueLabel = _isCashierView

@@ -42,6 +42,7 @@ class SyncState {
   final LicenseSnapshot licenseSnapshot;
   final String? lastError;
   final String? lastMessage;
+  final int dataVersion;
 
   const SyncState({
     required this.isConfigured,
@@ -58,6 +59,7 @@ class SyncState {
     required this.licenseSnapshot,
     required this.lastError,
     required this.lastMessage,
+    required this.dataVersion,
   });
 
   factory SyncState.initial({required bool isOnline}) {
@@ -76,6 +78,7 @@ class SyncState {
       licenseSnapshot: LicenseService.currentSnapshot,
       lastError: null,
       lastMessage: null,
+      dataVersion: 0,
     );
   }
 
@@ -97,6 +100,7 @@ class SyncState {
     bool clearLastError = false,
     String? lastMessage,
     bool clearLastMessage = false,
+    int? dataVersion,
   }) {
     return SyncState(
       isConfigured: isConfigured ?? this.isConfigured,
@@ -113,6 +117,7 @@ class SyncState {
       licenseSnapshot: licenseSnapshot ?? this.licenseSnapshot,
       lastError: clearLastError ? null : (lastError ?? this.lastError),
       lastMessage: clearLastMessage ? null : (lastMessage ?? this.lastMessage),
+      dataVersion: dataVersion ?? this.dataVersion,
     );
   }
 
@@ -324,6 +329,8 @@ class SyncController extends Notifier<SyncState> {
       await _invalidateVisibleData();
 
       final remote = await SyncService.fetchRemoteStatus();
+      final didApplyCloudData =
+          summary.pulledCount > 0 || summary.resolvedConflictCount > 0;
       state = state.copyWith(
         isSyncing: false,
         pendingChanges: summary.localSnapshot.pendingCount,
@@ -336,6 +343,9 @@ class SyncController extends Notifier<SyncState> {
         licenseSnapshot: LicenseService.currentSnapshot,
         lastMessage: _buildSuccessMessage(summary),
         clearLastError: true,
+        dataVersion: didApplyCloudData
+            ? state.dataVersion + 1
+            : state.dataVersion,
       );
       return true;
     } catch (error) {
