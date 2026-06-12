@@ -4140,6 +4140,7 @@ async function initiateMpesaCheckout(payment, gateway) {
   );
   const body = await readMaybeJson(response);
   if (!response.ok || body.ResponseCode !== '0') {
+    const darajaMessage = mpesaProviderMessage(body);
     await query(
       `
       UPDATE subscription_payments
@@ -4152,7 +4153,7 @@ async function initiateMpesaCheckout(payment, gateway) {
     );
     throw createHttpError(
       response.ok ? 502 : response.status,
-      body.errorMessage || body.ResponseDescription || 'M-Pesa checkout failed',
+      darajaMessage || 'M-Pesa checkout failed',
     );
   }
 
@@ -4194,9 +4195,24 @@ async function getMpesaAccessToken(mpesaConfig) {
   );
   const body = await readMaybeJson(response);
   if (!response.ok || !body.access_token) {
-    throw createHttpError(response.ok ? 502 : response.status, 'M-Pesa auth failed');
+    const darajaMessage = mpesaProviderMessage(body);
+    throw createHttpError(
+      response.ok ? 502 : response.status,
+      darajaMessage ? `M-Pesa auth failed: ${darajaMessage}` : 'M-Pesa auth failed',
+    );
   }
   return body.access_token;
+}
+
+function mpesaProviderMessage(body = {}) {
+  return normalizeOptionalText(
+    body.errorMessage ||
+      body.ResponseDescription ||
+      body.error_description ||
+      body.error ||
+      body.message ||
+      body.ResultDesc,
+  );
 }
 
 async function processGooglePayConfirmation({ businessId, paymentId, paymentData }) {

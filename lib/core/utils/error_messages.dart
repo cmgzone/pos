@@ -17,6 +17,9 @@ class AppErrorMessage {
     }
 
     final lowerRaw = raw.toLowerCase();
+    if (_looksLikePaymentProviderIssue(lowerRaw)) {
+      return _publicMessage(raw, fallback);
+    }
     if (_looksLikeNetworkIssue(lowerRaw)) {
       return 'The server could not be reached. Check your internet connection and try again.';
     }
@@ -56,6 +59,16 @@ class AppErrorMessage {
       return fallback;
     }
 
+    return _ensureSentence(message);
+  }
+
+  static String _publicMessage(String raw, String fallback) {
+    var message = _stripExceptionPrefixes(raw);
+    message = _stripOuterQuotes(message);
+    message = message.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (message.isEmpty || message.length > 220) {
+      return fallback;
+    }
     return _ensureSentence(message);
   }
 
@@ -158,6 +171,19 @@ class AppErrorMessage {
         lower.contains('internal server error') ||
         lower.contains('bad gateway') ||
         lower.contains('service unavailable');
+  }
+
+  static bool _looksLikePaymentProviderIssue(String lower) {
+    return lower.contains('m-pesa') ||
+        lower.contains('mpesa') ||
+        lower.contains('daraja') ||
+        lower.contains('stk') ||
+        lower.contains('callback url') ||
+        lower.contains('callbackurl') ||
+        lower.contains('shortcode') ||
+        lower.contains('passkey') ||
+        lower.contains('consumer key') ||
+        lower.contains('consumer secret');
   }
 
   static bool _looksLikeCloudSetupIssue(String lower) {
