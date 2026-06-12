@@ -5141,6 +5141,7 @@ function buildGooglePayConfig(countryCode, price = null, gateway = null) {
 }
 
 function normalizePaymentRow(row) {
+  const metadata = row.metadata_json || {};
   return {
     id: row.id,
     businessId: row.business_id,
@@ -5156,8 +5157,21 @@ function normalizePaymentRow(row) {
     phoneNumber: row.phone_number,
     externalReference: row.external_reference,
     checkoutRequestId: row.checkout_request_id,
+    message: paymentMetadataMessage(metadata),
+    metadata,
     createdAt: toIsoString(row.created_at),
   };
+}
+
+function paymentMetadataMessage(metadata = {}) {
+  return normalizeOptionalText(
+    metadata.resultDescription ||
+      metadata.ResultDesc ||
+      metadata.ResponseDescription ||
+      metadata.errorMessage ||
+      metadata.error ||
+      metadata.message,
+  );
 }
 
 async function loadPublicCatalog(

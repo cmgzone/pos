@@ -254,6 +254,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       if (payment.status == 'failed') {
         setState(
           () => _message =
+              payment.message ??
               'M-Pesa payment was not completed. Try again when you are ready.',
         );
         return;

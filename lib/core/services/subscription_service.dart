@@ -412,6 +412,10 @@ class SubscriptionService {
         return await request(backendUrl);
       } catch (error) {
         lastError = error;
+        final responseError = _responseErrorMessage(error);
+        if (responseError != null) {
+          throw Exception(responseError);
+        }
         if (!_isRetryableConnectionError(error)) {
           rethrow;
         }
@@ -430,6 +434,23 @@ class SubscriptionService {
   static String _sourceBackendUrl(Response response) {
     return response.requestOptions.extra['sourceBackendUrl']?.toString() ??
         SyncSettingsService.backendUrl;
+  }
+
+  static String? _responseErrorMessage(Object error) {
+    if (error is! DioException) {
+      return null;
+    }
+    final data = error.response?.data;
+    if (data is Map) {
+      final message = data['error'] ?? data['message'];
+      final text = message?.toString().trim();
+      return text == null || text.isEmpty ? null : text;
+    }
+    if (data is String) {
+      final text = data.trim();
+      return text.isEmpty ? null : text;
+    }
+    return null;
   }
 
   static bool _isRetryableConnectionError(Object error) {

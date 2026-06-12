@@ -27,6 +27,16 @@ void main() {
       );
     });
 
+    test('keeps payment provider errors visible', () {
+      expect(
+        AppErrorMessage.from(
+          Exception('M-Pesa auth failed: Invalid Access Token'),
+          fallback: AppErrorMessage.paymentFailed,
+        ),
+        'M-Pesa auth failed: Invalid Access Token.',
+      );
+    });
+
     test('hides implementation details', () {
       expect(
         AppErrorMessage.from(
