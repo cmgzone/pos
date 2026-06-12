@@ -6,20 +6,13 @@ const {
   validateBusinessPaymentGatewayConfiguration,
 } = require('../src/posPayments');
 
-test('POS M-Pesa config uses business merchant credentials', () => {
+const infrastructure = {
+  baseUrl: 'https://sandbox.safaricom.co.ke',
+  callbackUrl: 'https://platform.example/api/payments/mpesa/stk-callback',
+};
+
+test('POS M-Pesa config uses only business merchant credentials', () => {
   const config = resolveMpesaGatewayConfig(
-    {
-      publicConfig: {
-        baseUrl: 'https://sandbox.safaricom.co.ke',
-        shortcode: '999999',
-        callbackUrl: 'https://platform.example/mpesa/callback',
-      },
-      secretConfig: {
-        consumerKey: 'platform-key',
-        consumerSecret: 'platform-secret',
-        passkey: 'platform-passkey',
-      },
-    },
     {
       publicConfig: {
         shortcode: '123456',
@@ -32,10 +25,11 @@ test('POS M-Pesa config uses business merchant credentials', () => {
         passkey: 'business-passkey',
       },
     },
+    infrastructure,
   );
 
-  assert.equal(config.baseUrl, 'https://sandbox.safaricom.co.ke');
-  assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
+  assert.equal(config.baseUrl, infrastructure.baseUrl);
+  assert.equal(config.callbackUrl, infrastructure.callbackUrl);
   assert.equal(config.shortcode, '123456');
   assert.equal(config.transactionType, 'CustomerBuyGoodsOnline');
   assert.equal(config.accountReference, 'SHOP-1');
@@ -48,12 +42,6 @@ test('POS M-Pesa config trims copied merchant credentials', () => {
   const config = resolveMpesaGatewayConfig(
     {
       publicConfig: {
-        baseUrl: ' https://sandbox.safaricom.co.ke ',
-        callbackUrl: ' https://platform.example/mpesa/callback ',
-      },
-    },
-    {
-      publicConfig: {
         shortcode: ' 123456 ',
         accountReference: ' SHOP-1 ',
       },
@@ -63,10 +51,14 @@ test('POS M-Pesa config trims copied merchant credentials', () => {
         passkey: ' passkey ',
       },
     },
+    {
+      baseUrl: ` ${infrastructure.baseUrl} `,
+      callbackUrl: ` ${infrastructure.callbackUrl} `,
+    },
   );
 
-  assert.equal(config.baseUrl, 'https://sandbox.safaricom.co.ke');
-  assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
+  assert.equal(config.baseUrl, infrastructure.baseUrl);
+  assert.equal(config.callbackUrl, infrastructure.callbackUrl);
   assert.equal(config.shortcode, '123456');
   assert.equal(config.accountReference, 'SHOP-1');
   assert.equal(config.consumerKey, 'key');
@@ -74,44 +66,14 @@ test('POS M-Pesa config trims copied merchant credentials', () => {
   assert.equal(config.passkey, 'passkey');
 });
 
-test('POS M-Pesa config does not fall back to platform merchant credentials', () => {
-  const config = resolveMpesaGatewayConfig(
-    {
-      publicConfig: {
-        shortcode: '999999',
-        callbackUrl: 'https://platform.example/mpesa/callback',
-      },
-      secretConfig: {
-        consumerKey: 'platform-key',
-        consumerSecret: 'platform-secret',
-        passkey: 'platform-passkey',
-      },
-    },
-    null,
-  );
+test('POS M-Pesa config has no merchant credentials without business settings', () => {
+  const config = resolveMpesaGatewayConfig(null, infrastructure);
 
   assert.equal(config.shortcode, '');
   assert.equal(config.consumerKey, '');
   assert.equal(config.consumerSecret, '');
   assert.equal(config.passkey, '');
-  assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
-});
-
-test('POS M-Pesa config ignores business callback URL overrides', () => {
-  const config = resolveMpesaGatewayConfig(
-    {
-      publicConfig: {
-        callbackUrl: 'https://platform.example/mpesa/callback',
-      },
-    },
-    {
-      publicConfig: {
-        callbackUrl: 'https://shop.example/override',
-      },
-    },
-  );
-
-  assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
+  assert.equal(config.callbackUrl, infrastructure.callbackUrl);
 });
 
 test('active business M-Pesa settings require merchant credentials', () => {
@@ -124,11 +86,7 @@ test('active business M-Pesa settings require merchant credentials', () => {
           publicConfig: { shortcode: '123456' },
           secretConfig: { consumerKey: 'key' },
         },
-        {
-          publicConfig: {
-            callbackUrl: 'https://platform.example/mpesa/callback',
-          },
-        },
+        infrastructure,
       ),
     /consumer secret, passkey/,
   );
@@ -143,12 +101,12 @@ test('inactive business M-Pesa settings can be saved incomplete', () => {
         publicConfig: {},
         secretConfig: {},
       },
-      null,
+      infrastructure,
     ),
   );
 });
 
-test('active business M-Pesa settings reject an invalid callback URL', () => {
+test('active business M-Pesa settings reject an invalid server callback URL', () => {
   assert.throws(
     () =>
       validateBusinessPaymentGatewayConfiguration(
@@ -162,11 +120,7 @@ test('active business M-Pesa settings reject an invalid callback URL', () => {
             passkey: 'passkey',
           },
         },
-        {
-          publicConfig: {
-            callbackUrl: 'superadmin@example.com',
-          },
-        },
+        { baseUrl: infrastructure.baseUrl, callbackUrl: 'superadmin@example.com' },
       ),
     /callback URL must be a valid HTTPS URL/,
   );

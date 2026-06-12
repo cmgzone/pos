@@ -1,7 +1,9 @@
-import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:pay/pay.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/license_service.dart';
 import '../../../core/services/session_service.dart';
@@ -50,14 +52,26 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   String? _message;
   SubscriptionCatalog? _catalog;
   Map<String, dynamic>? _current;
-  SubscriptionCheckoutResult? _checkout;
-  final _phoneController = TextEditingController();
+  StreamSubscription<List<PurchaseDetails>>? _purchaseUpdates;
+  Completer<PurchaseDetails>? _pendingPlayPurchase;
+  String? _pendingPlayProductId;
 
   @override
   void initState() {
     super.initState();
     _selectedPlanCode = widget.initialPlanCode;
     _selectedMarketKey = _marketKeyFromInitial();
+    if (Platform.isAndroid) {
+      _purchaseUpdates = InAppPurchase.instance.purchaseStream.listen(
+        _handlePurchaseUpdates,
+        onError: (Object error) {
+          final pending = _pendingPlayPurchase;
+          if (pending != null && !pending.isCompleted) {
+            pending.completeError(error);
+          }
+        },
+      );
+    }
     _load(
       countryCode: widget.initialCountryCode,
       marketKey: _selectedMarketKey,
@@ -66,15 +80,42 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _purchaseUpdates?.cancel();
     super.dispose();
+  }
+
+  void _handlePurchaseUpdates(List<PurchaseDetails> purchases) {
+    final pending = _pendingPlayPurchase;
+    if (pending == null || pending.isCompleted) return;
+    for (final purchase in purchases) {
+      if (purchase.productID != _pendingPlayProductId) continue;
+      switch (purchase.status) {
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          pending.complete(purchase);
+          return;
+        case PurchaseStatus.error:
+          pending.completeError(
+            purchase.error ?? Exception('Google Play purchase failed.'),
+          );
+          return;
+        case PurchaseStatus.canceled:
+          pending.completeError(
+            Exception('Google Play purchase was cancelled.'),
+          );
+          return;
+        case PurchaseStatus.pending:
+          if (mounted) {
+            setState(() => _message = 'Google Play payment is pending.');
+          }
+      }
+    }
   }
 
   Future<void> _load({String? countryCode, String? marketKey}) async {
     setState(() {
       _loading = true;
       _message = null;
-      _checkout = null;
     });
     try {
       final catalog = await SubscriptionService.fetchPlans(
@@ -178,17 +219,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       );
       return;
     }
-    if (market.provider == 'mpesa' &&
-        !isFree &&
-        _phoneController.text.trim().isEmpty) {
-      setState(() => _message = 'Enter the M-Pesa phone number.');
-      return;
-    }
-
     setState(() {
       _busy = true;
       _message = null;
-      _checkout = null;
     });
 
     try {
@@ -198,19 +231,18 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         provider: market.provider,
         billingPeriod: billingPeriod,
         sellingMode: sellingMode,
-        phoneNumber: market.provider == 'mpesa' && !isFree
-            ? _phoneController.text
-            : null,
       );
       if (!mounted) return;
       setState(() {
-        _checkout = result;
         _message = result.message ?? _checkoutMessage(result);
       });
       if (result.status == 'paid') {
         await _refreshLicenseAndReload(market);
-      } else if (result.provider == 'mpesa' && result.paymentId.isNotEmpty) {
-        await _pollMpesaPayment(result.paymentId, market);
+      } else if (result.provider == 'google_play') {
+        await _purchaseWithGooglePlay(result, market, price);
+      } else if (result.provider == 'paypal' ||
+          result.provider == 'flutterwave') {
+        await _openHostedCheckout(result, market);
       }
     } catch (error) {
       if (!mounted) return;
@@ -227,95 +259,121 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     }
   }
 
-  Future<void> _pollMpesaPayment(
+  Future<void> _purchaseWithGooglePlay(
+    SubscriptionCheckoutResult checkout,
+    SubscriptionMarket market,
+    SubscriptionPlanPrice price,
+  ) async {
+    final productId = checkout.storeProductId ?? price.storeProductId;
+    if (productId == null || productId.isEmpty) {
+      throw Exception('Google Play product is not configured for this plan.');
+    }
+
+    final purchaseApi = InAppPurchase.instance;
+    if (!await purchaseApi.isAvailable()) {
+      throw Exception('Google Play Billing is not available on this device.');
+    }
+    final products = await purchaseApi.queryProductDetails({productId});
+    if (products.error != null) {
+      throw Exception(products.error!.message);
+    }
+    if (products.productDetails.isEmpty ||
+        products.notFoundIDs.contains(productId)) {
+      throw Exception('Google Play product $productId was not found.');
+    }
+
+    final completer = Completer<PurchaseDetails>();
+    _pendingPlayPurchase = completer;
+    _pendingPlayProductId = productId;
+    try {
+      final started = await purchaseApi.buyNonConsumable(
+        purchaseParam: PurchaseParam(
+          productDetails: products.productDetails.first,
+        ),
+      );
+      if (!started) {
+        throw Exception('Google Play could not start the purchase.');
+      }
+      final purchase = await completer.future.timeout(
+        const Duration(minutes: 5),
+        onTimeout: () => throw TimeoutException(
+          'Google Play purchase confirmation timed out.',
+        ),
+      );
+      final confirmation = await SubscriptionService.confirmGooglePlay(
+        paymentId: checkout.paymentId,
+        productId: productId,
+        purchaseToken: purchase.verificationData.serverVerificationData,
+      );
+      if (confirmation['activated'] != true) {
+        throw Exception(
+          confirmation['message']?.toString() ??
+              'Google Play purchase could not be verified.',
+        );
+      }
+      if (purchase.pendingCompletePurchase) {
+        await purchaseApi.completePurchase(purchase);
+      }
+      if (mounted) {
+        setState(() => _message = 'Subscription activated.');
+        await _refreshLicenseAndReload(market);
+      }
+    } finally {
+      _pendingPlayPurchase = null;
+      _pendingPlayProductId = null;
+    }
+  }
+
+  Future<void> _openHostedCheckout(
+    SubscriptionCheckoutResult checkout,
+    SubscriptionMarket market,
+  ) async {
+    final uri = Uri.tryParse(checkout.checkoutUrl ?? '');
+    if (uri == null || !uri.hasScheme) {
+      throw Exception('${market.providerLabel} checkout URL is missing.');
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      throw Exception('Could not open ${market.providerLabel} checkout.');
+    }
+    if (mounted) {
+      setState(() {
+        _message =
+            'Complete payment in ${market.providerLabel}. This screen will update automatically.';
+      });
+    }
+    await _pollHostedPayment(checkout.paymentId, market);
+  }
+
+  Future<void> _pollHostedPayment(
     String paymentId,
     SubscriptionMarket market,
   ) async {
-    for (var attempt = 0; attempt < 24; attempt++) {
+    for (var attempt = 0; attempt < 100; attempt++) {
       await Future<void>.delayed(const Duration(seconds: 3));
-      if (!mounted) return;
-
       SubscriptionCheckoutResult payment;
       try {
         payment = await SubscriptionService.fetchPayment(paymentId: paymentId);
       } catch (_) {
-        continue;
+        if (attempt < 99) continue;
+        rethrow;
       }
-      if (!mounted) return;
-
-      setState(() {
-        _checkout = payment;
-      });
       if (payment.status == 'paid') {
-        setState(() => _message = 'Payment received. Activating your plan...');
-        await _refreshLicenseAndReload(market);
+        if (mounted) {
+          setState(() => _message = 'Subscription activated.');
+          await _refreshLicenseAndReload(market);
+        }
         return;
       }
-      if (payment.status == 'failed') {
-        setState(
-          () => _message =
-              payment.message ??
-              'M-Pesa payment was not completed. Try again when you are ready.',
+      if (payment.status == 'failed' || payment.status == 'cancelled') {
+        throw Exception(
+          payment.message ?? '${market.providerLabel} payment failed.',
         );
-        return;
-      }
-      if (payment.status == 'pending_configuration') {
-        setState(
-          () => _message =
-              'M-Pesa is not fully configured yet. Contact your administrator.',
-        );
-        return;
       }
     }
-
-    if (mounted) {
-      setState(
-        () => _message =
-            'M-Pesa payment is still pending. Reopen subscriptions shortly to refresh the result.',
-      );
-    }
-  }
-
-  Future<void> _confirmGooglePay(Map<String, dynamic> paymentData) async {
-    final checkout = _checkout;
-    final catalog = _catalog;
-    final market = catalog == null
-        ? null
-        : _marketForKey(catalog, _selectedMarketKey) ?? catalog.selectedMarket;
-    if (checkout == null || checkout.paymentId.isEmpty) return;
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
-    try {
-      final result = await SubscriptionService.confirmGooglePay(
-        paymentId: checkout.paymentId,
-        paymentData: paymentData,
-      );
-      if (!mounted) return;
-      setState(() {
-        _message =
-            result['message']?.toString() ??
-            (result['activated'] == true
-                ? 'Subscription activated'
-                : 'Payment received for backend processing');
-      });
-      if (result['activated'] == true && market != null) {
-        await _refreshLicenseAndReload(market);
-      }
-    } catch (error) {
-      if (!mounted) return;
-      setState(
-        () => _message = AppErrorMessage.from(
-          error,
-          fallback: AppErrorMessage.paymentFailed,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
+    throw TimeoutException(
+      '${market.providerLabel} payment is still pending. You can refresh the subscription page after completing it.',
+    );
   }
 
   Future<void> _refreshLicenseAndReload(SubscriptionMarket market) async {
@@ -570,7 +628,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Choose exactly what your business sells, unlock the right features, and pay through the market your admin configured.',
+            'Choose exactly what your business sells and subscribe with the payment method available on this device.',
             style: TextStyle(
               color: Color(0xB8F9DDF0),
               fontSize: 14,
@@ -592,12 +650,15 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return DropdownButtonFormField<String>(
       initialValue: selectedMarket?.key,
       dropdownColor: _panelColor,
-      decoration: _inputDecoration('Market', Icons.public_outlined),
+      decoration: _inputDecoration('Payment method', Icons.payments_outlined),
       items: catalog.markets
           .map(
             (market) => DropdownMenuItem(
               value: market.key,
-              child: Text(market.displayLabel, overflow: TextOverflow.ellipsis),
+              child: Text(
+                market.providerLabel,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           )
           .toList(),
@@ -707,7 +768,6 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                               _selectedSellingMode,
                             );
                             _featuresExpanded = false;
-                            _checkout = null;
                             _message = null;
                           });
                         },
@@ -768,7 +828,6 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                         ? null
                         : () => setState(() {
                             _selectedSellingMode = mode;
-                            _checkout = null;
                             _message = null;
                           }),
                     borderRadius: BorderRadius.circular(16),
@@ -895,7 +954,6 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                   _selectedSellingMode,
                 );
                 _featuresExpanded = false;
-                _checkout = null;
                 _message = null;
               }),
         child: AnimatedContainer(
@@ -1436,54 +1494,37 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (showSummary && !desktop) const SizedBox(height: 10),
-        if (market?.provider == 'mpesa' && !isFree)
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            style: const TextStyle(color: Colors.white),
-            decoration: _inputDecoration(
-              'M-Pesa phone number',
-              Icons.phone_android_outlined,
-            ),
-          ),
-        if (market?.provider == 'mpesa' && !isFree) const SizedBox(height: 10),
-        if (market?.provider == 'google_pay' &&
-            !isFree &&
-            _checkout != null &&
-            plan != null)
-          _googlePayButton(plan, market!, price)
-        else
-          SizedBox(
-            height: 54,
-            child: FilledButton.icon(
-              onPressed: canCheckout ? _startCheckout : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: _pink,
-                disabledBackgroundColor: Colors.white.withValues(alpha: 0.10),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
+        SizedBox(
+          height: 54,
+          child: FilledButton.icon(
+            onPressed: canCheckout ? _startCheckout : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: _pink,
+              disabledBackgroundColor: Colors.white.withValues(alpha: 0.10),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
               ),
-              icon: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.arrow_forward_rounded),
-              label: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  _actionLabel(market, plan, isFree, isCurrent),
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
+            ),
+            icon: _busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.arrow_forward_rounded),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _actionLabel(market, plan, isFree, isCurrent),
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
           ),
+        ),
       ],
     );
 
@@ -1502,45 +1543,6 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [if (showSummary) summary, paymentControls],
-    );
-  }
-
-  Widget _googlePayButton(
-    SubscriptionPlanSummary plan,
-    SubscriptionMarket market,
-    SubscriptionPlanPrice? price,
-  ) {
-    final catalog = _catalog;
-    final config =
-        _checkout?.googlePayConfig?['paymentConfiguration'] ??
-        catalog?.googlePayConfig?['paymentConfiguration'];
-    if (config is! Map<String, dynamic> || price == null) {
-      return _messageCard('Google Pay is not configured for this plan.');
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: GooglePayButton(
-        paymentConfiguration: PaymentConfiguration.fromJsonString(
-          jsonEncode(config),
-        ),
-        paymentItems: [
-          PaymentItem(
-            label: plan.name,
-            amount: (price.amountMinor / 100).toStringAsFixed(2),
-            status: PaymentItemStatus.final_price,
-          ),
-        ],
-        theme: GooglePayButtonTheme.dark,
-        type: GooglePayButtonType.pay,
-        onPaymentResult: _confirmGooglePay,
-        loadingIndicator: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
-      ),
     );
   }
 
@@ -1789,10 +1791,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     if (result.status == 'paid') {
       return 'Subscription activated.';
     }
-    if (result.provider == 'mpesa') {
-      return 'M-Pesa prompt sent. Complete it on the phone to activate the plan.';
+    if (result.provider == 'google_play') {
+      return 'Google Play checkout is ready.';
     }
-    return 'Google Pay checkout is ready.';
+    return 'Continue in ${result.provider == 'paypal' ? 'PayPal' : 'Flutterwave'} to complete payment.';
   }
 
   String _actionLabel(
@@ -1812,11 +1814,17 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       return '${market.providerLabel} inactive';
     }
     if (isFree) return 'Activate ${plan.name}';
-    if (market?.provider == 'mpesa') return 'Pay with M-Pesa';
-    if (market?.provider == 'google_pay' && _checkout == null) {
-      return isCurrent ? 'Renew with Google Pay' : 'Continue';
+    switch (market?.provider) {
+      case 'google_play':
+        return isCurrent
+            ? 'Renew with Google Play'
+            : 'Subscribe with Google Play';
+      case 'paypal':
+        return 'Continue with PayPal';
+      case 'flutterwave':
+        return 'Continue with Flutterwave';
     }
-    return 'Continue with ${plan.name}';
+    return 'Continue';
   }
 
   String _periodLabel(String period) {

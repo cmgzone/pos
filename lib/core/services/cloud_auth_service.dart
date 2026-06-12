@@ -98,6 +98,7 @@ class CloudAuthService {
     String? requestedPlanCode,
     String? sellingMode,
     String? provider,
+    String? platform,
   }) async {
     final normalizedUrl = backendUrl.trim();
     if (normalizedUrl.isEmpty) {
@@ -127,6 +128,8 @@ class CloudAuthService {
                 'sellingMode': sellingMode.trim(),
               if (provider != null && provider.trim().isNotEmpty)
                 'provider': provider.trim(),
+              if (platform != null && platform.trim().isNotEmpty)
+                'platform': platform.trim(),
             }),
           )
           .timeout(_timeout);

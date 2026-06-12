@@ -128,6 +128,17 @@ class SyncService {
   static List<String> get pullTableOrderForTesting =>
       List<String>.unmodifiable(_pullTableOrder);
 
+  @visibleForTesting
+  static Future<void> normalizeLocalSystemRowsForTesting() =>
+      _normalizeLocalSystemRowsForRole();
+
+  @visibleForTesting
+  static Future<void> applyRemoteRowForTesting(
+    Transaction txn,
+    String table,
+    Map<String, dynamic> remoteRow,
+  ) => _applyRemoteRow(txn, table, remoteRow);
+
   static Future<LocalSyncSnapshot> getLocalSnapshot() async {
     final pendingChanges = <String, List<Map<String, dynamic>>>{};
     var pendingCount = 0;
@@ -226,6 +237,7 @@ class SyncService {
       forceRefresh: true,
       allowReadOnly: true,
     );
+    await _normalizeLocalSystemRowsForRole();
     final initialCursor = _cursorForBusiness(license);
     final localSnapshot = await getLocalSnapshot();
 
@@ -506,6 +518,7 @@ class SyncService {
           whereArgs: [SessionService.currentUserId],
         );
       }
+      await _normalizeLocalSystemRowsForRole();
       await _refreshCurrentUserSession();
 
       return _PullSummary(
@@ -583,7 +596,7 @@ class SyncService {
       return const _ApplyOutcome(applied: false, resolvedConflict: true);
     }
 
-    if (updatedComparison > 0) {
+    if (hasLocalUnsynced && updatedComparison > 0) {
       return const _ApplyOutcome(applied: false, resolvedConflict: false);
     }
 
@@ -608,6 +621,25 @@ class SyncService {
         !allowedBranchIds.contains(BranchService.currentBranchId)) {
       await BranchService.setCurrentBranch(allowedBranchIds.first);
     }
+  }
+
+  static Future<void> _normalizeLocalSystemRowsForRole() async {
+    if (RolePermissions.normalizeRole(SessionService.currentUserRole) ==
+        RolePermissions.admin) {
+      return;
+    }
+
+    await DatabaseService.db.update(
+      'branches',
+      {'sync_status': 'synced'},
+      where: 'id = ? AND sync_status IN (?, ?, ?)',
+      whereArgs: [
+        DatabaseService.defaultBranchId,
+        'pending',
+        'error',
+        'conflict',
+      ],
+    );
   }
 
   static Future<_ApplyOutcome> _applyRemoteRowWithDiagnostics(

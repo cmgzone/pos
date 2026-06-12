@@ -42,6 +42,13 @@ PLATFORM_ADMIN_EMAIL=admin@your-domain.example
 PLATFORM_ADMIN_PASSWORD=change-me
 PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
 PLATFORM_ALLOWED_ORIGINS=https://admin.your-domain.example,https://shop.your-domain.example
+PUBLIC_BASE_URL=https://api.your-domain.example
+GOOGLE_PLAY_PACKAGE_NAME=com.example.pos_app
+GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL=play-billing@your-project.iam.gserviceaccount.com
+GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+PAYPAL_CLIENT_ID=your-paypal-client-id
+PAYPAL_CLIENT_SECRET=your-paypal-client-secret
+FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret-key
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
 ```
@@ -59,6 +66,20 @@ https://your-api-host.example.com/api/payments/mpesa/c2b-validation?secret=repla
 https://your-api-host.example.com/api/payments/mpesa/c2b-confirmation?secret=replace-with-a-long-random-callback-secret
 ```
 
+For M-Pesa STK Push sale payments, use the POS callback URL below. Each shop
+adds its own shortcode, consumer key, consumer secret, and passkey in the POS
+Payment Methods settings. M-Pesa is not used for subscription billing.
+
+Android subscriptions use Google Play Billing only. Create the product IDs
+shown in the platform admin plan editor (for example
+`piki_starter_monthly`) as subscriptions in Play Console, then give the
+configured service account access to the Android Publisher API.
+
+Windows subscriptions open PayPal or Flutterwave hosted checkout. Set
+`PUBLIC_BASE_URL` to this backend's public HTTPS origin so those providers can
+return to the verification endpoints. Use PayPal's live API base URL when
+moving out of sandbox.
+
 Coolify production variables should include:
 
 ```bash
@@ -70,7 +91,16 @@ PLATFORM_ADMIN_EMAIL=admin@your-domain.example
 PLATFORM_ADMIN_PASSWORD=change-me-to-a-strong-password
 PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
 PLATFORM_ALLOWED_ORIGINS=https://your-api-host.example.com,https://admin.your-domain.example
-MPESA_CALLBACK_URL=https://your-api-host.example.com/api/subscription/mpesa/callback?secret=replace-with-a-long-random-callback-secret
+PUBLIC_BASE_URL=https://your-api-host.example.com
+GOOGLE_PLAY_PACKAGE_NAME=com.example.pos_app
+GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL=play-billing@your-project.iam.gserviceaccount.com
+GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+PAYPAL_BASE_URL=https://api-m.paypal.com
+PAYPAL_CLIENT_ID=your-live-paypal-client-id
+PAYPAL_CLIENT_SECRET=your-live-paypal-client-secret
+FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
+FLUTTERWAVE_SECRET_KEY=your-live-flutterwave-secret-key
+MPESA_CALLBACK_URL=https://your-api-host.example.com/api/payments/mpesa/stk-callback?secret=replace-with-a-long-random-callback-secret
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 ```
 

@@ -4,7 +4,6 @@ const { config } = require('./config');
 const { query, withTransaction } = require('./db');
 const {
   isHttpsUrl,
-  loadPaymentGateway,
   normalizeCountryCode,
 } = require('./subscriptionPlans');
 
@@ -208,10 +207,7 @@ async function saveBusinessPaymentGateway(
     ...existing,
     provider: cleanProvider,
   });
-  const platformGateway = cleanProvider === 'mpesa'
-    ? await loadPaymentGateway('mpesa')
-    : null;
-  validateBusinessPaymentGatewayConfiguration(normalized, platformGateway);
+  validateBusinessPaymentGatewayConfiguration(normalized);
 
   const result = await runQuery(
     target,
@@ -253,38 +249,34 @@ async function saveBusinessPaymentGateway(
 async function loadPosMpesaConfig(businessContext) {
   await ensurePosPaymentSchema();
   const countryCode = normalizeCountryCode(businessContext?.countryCode || 'GLOBAL');
-  const platformGateway = await loadPaymentGateway('mpesa');
   const businessGateway = await loadBusinessPaymentGateway(
     businessContext?.businessId,
     'mpesa',
     { includeSecrets: true },
   );
-  const countries = platformGateway?.countries || [];
-  const platformActive =
-    Boolean(platformGateway?.isActive) &&
-    (countries.includes(countryCode) || countries.includes('GLOBAL'));
-  const mpesaConfig = resolveMpesaGatewayConfig(platformGateway, businessGateway);
+  const mpesaConfig = resolveMpesaGatewayConfig(businessGateway);
   const merchantConfigured =
     Boolean(businessGateway?.isActive) &&
     Boolean(mpesaConfig.shortcode) &&
     Boolean(mpesaConfig.consumerKey) &&
     Boolean(mpesaConfig.consumerSecret) &&
-    Boolean(mpesaConfig.passkey) &&
-    isHttpsUrl(mpesaConfig.callbackUrl);
-  const active = platformActive && merchantConfigured;
+    Boolean(mpesaConfig.passkey);
+  const infrastructureConfigured =
+    isHttpsUrl(mpesaConfig.baseUrl) && isHttpsUrl(mpesaConfig.callbackUrl);
+  const active = merchantConfigured && infrastructureConfigured;
   return {
     active,
     provider: 'mpesa',
-    providerLabel: businessGateway?.displayName || platformGateway?.displayName || 'M-Pesa',
+    providerLabel: businessGateway?.displayName || 'M-Pesa',
     countryCode,
     currency: countryCode === 'KE' ? 'KES' : 'KES',
     merchantConfigured,
     merchantShortcode: businessGateway?.publicConfig?.shortcode || null,
     message: active
       ? null
-      : platformActive
-        ? 'Add this business M-Pesa merchant credentials in Payment Methods.'
-        : 'M-Pesa POS checkout is not active for this business country.',
+      : merchantConfigured
+        ? 'M-Pesa sales callback is not configured on the server.'
+        : 'Add and enable this business\'s own M-Pesa credentials in Payment Methods.',
   };
 }
 
@@ -309,7 +301,6 @@ async function createMpesaPosCheckout({
     throw createError(400, configStatus.message);
   }
 
-  const platformGateway = await loadPaymentGateway('mpesa');
   const businessGateway = await loadBusinessPaymentGateway(
     businessContext.businessId,
     'mpesa',
@@ -357,7 +348,6 @@ async function createMpesaPosCheckout({
 
   const mpesa = await initiateMpesaPosCheckout(
     payment,
-    platformGateway,
     businessGateway,
   );
   return { ...payment, mpesa };
@@ -705,8 +695,8 @@ async function matchManualPayment({
   });
 }
 
-async function initiateMpesaPosCheckout(payment, platformGateway, businessGateway) {
-  const mpesaConfig = resolveMpesaGatewayConfig(platformGateway, businessGateway);
+async function initiateMpesaPosCheckout(payment, businessGateway) {
+  const mpesaConfig = resolveMpesaGatewayConfig(businessGateway);
   if (
     !mpesaConfig.consumerKey ||
     !mpesaConfig.consumerSecret ||
@@ -822,19 +812,17 @@ async function getMpesaAccessToken(mpesaConfig) {
   return body.access_token;
 }
 
-function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
-  const platformPublicConfig = platformGateway?.publicConfig || {};
+function resolveMpesaGatewayConfig(businessGateway, infrastructure = {}) {
   const businessPublicConfig = businessGateway?.publicConfig || {};
   const businessSecretConfig = businessGateway?.secretConfig || {};
   return {
     baseUrl: firstConfiguredText(
-      businessPublicConfig.baseUrl,
-      platformPublicConfig.baseUrl,
+      infrastructure.baseUrl,
       config.mpesaBaseUrl,
     ),
     shortcode: firstConfiguredText(businessPublicConfig.shortcode),
     callbackUrl: firstConfiguredText(
-      platformPublicConfig.callbackUrl,
+      infrastructure.callbackUrl,
       config.mpesaCallbackUrl,
     ),
     transactionType: normalizeMpesaTransactionType(
@@ -1119,18 +1107,18 @@ function normalizeBusinessPaymentGatewayInput(input, existing = {}) {
   return normalized;
 }
 
-function validateBusinessPaymentGatewayConfiguration(gateway, platformGateway) {
+function validateBusinessPaymentGatewayConfiguration(gateway, infrastructure = {}) {
   if (!gateway?.isActive || gateway.provider !== 'mpesa') {
     return;
   }
-  const config = resolveMpesaGatewayConfig(platformGateway, gateway);
+  const config = resolveMpesaGatewayConfig(gateway, infrastructure);
   const missing = [];
   if (!config.shortcode) missing.push('Till or PayBill number');
   if (!config.consumerKey) missing.push('consumer key');
   if (!config.consumerSecret) missing.push('consumer secret');
   if (!config.passkey) missing.push('passkey');
   if (!config.callbackUrl) {
-    missing.push('callback URL from super admin');
+    missing.push('server callback URL');
   }
   if (missing.length > 0) {
     throw createError(

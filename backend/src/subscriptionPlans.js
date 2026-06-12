@@ -31,6 +31,11 @@ const SELLING_MODES = Object.freeze({
 });
 
 const DEFAULT_SELLING_MODES = Object.freeze(Object.values(SELLING_MODES));
+const ALLOWED_SUBSCRIPTION_PROVIDERS = new Set([
+  'google_play',
+  'paypal',
+  'flutterwave',
+]);
 
 const BASE_FEATURES = [
   FEATURE_KEYS.pos,
@@ -144,18 +149,26 @@ const DEFAULT_PLANS = [
   },
 ];
 
-const DEFAULT_PRICES = [
-  ['trial', 'KE', 'KES', 0, 'monthly', 'mpesa'],
-  ['trial', 'GLOBAL', 'USD', 0, 'monthly', 'google_pay'],
-  ['starter', 'KE', 'KES', 150000, 'monthly', 'mpesa'],
-  ['starter', 'GLOBAL', 'USD', 1500, 'monthly', 'google_pay'],
-  ['growth', 'KE', 'KES', 350000, 'monthly', 'mpesa'],
-  ['growth', 'GLOBAL', 'USD', 3500, 'monthly', 'google_pay'],
-  ['pro', 'KE', 'KES', 750000, 'monthly', 'mpesa'],
-  ['pro', 'GLOBAL', 'USD', 7500, 'monthly', 'google_pay'],
-  ['enterprise', 'KE', 'KES', 0, 'monthly', 'mpesa'],
-  ['enterprise', 'GLOBAL', 'USD', 0, 'monthly', 'google_pay'],
+const DEFAULT_PRICE_AMOUNTS = [
+  ['trial', 0, 0],
+  ['starter', 150000, 1500],
+  ['growth', 350000, 3500],
+  ['pro', 750000, 7500],
+  ['enterprise', 0, 0],
 ];
+
+const DEFAULT_PRICES = DEFAULT_PRICE_AMOUNTS.flatMap(
+  ([planCode, kesAmount, usdAmount]) => {
+    const productId = planCode === 'trial' ? null : `piki_${planCode}_monthly`;
+    return [
+      [planCode, 'KE', 'KES', kesAmount, 'monthly', 'google_play', productId],
+      [planCode, 'GLOBAL', 'USD', usdAmount, 'monthly', 'google_play', productId],
+      [planCode, 'KE', 'KES', kesAmount, 'monthly', 'flutterwave', null],
+      [planCode, 'GLOBAL', 'USD', usdAmount, 'monthly', 'flutterwave', null],
+      [planCode, 'GLOBAL', 'USD', usdAmount, 'monthly', 'paypal', null],
+    ];
+  },
+);
 
 const SECRET_MASK_PREFIX = '********';
 
@@ -283,7 +296,8 @@ async function ensureSubscriptionSchema(target = query) {
       currency text NOT NULL DEFAULT 'USD',
       amount_minor integer NOT NULL DEFAULT 0,
       billing_period text NOT NULL DEFAULT 'monthly',
-      provider text NOT NULL DEFAULT 'google_pay',
+      provider text NOT NULL DEFAULT 'google_play',
+      store_product_id text,
       is_active boolean NOT NULL DEFAULT true,
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -298,6 +312,16 @@ async function ensureSubscriptionSchema(target = query) {
       ON subscription_plan_prices(plan_code, country_code, provider, billing_period)
     `,
   );
+
+  await runQuery(
+    target,
+    `
+    ALTER TABLE subscription_plan_prices
+      ADD COLUMN IF NOT EXISTS store_product_id text
+    `,
+  );
+
+  await migrateMpesaSubscriptionPrices(target);
 
   await runQuery(
     target,
@@ -317,6 +341,7 @@ async function ensureSubscriptionSchema(target = query) {
       phone_number text,
       external_reference text,
       checkout_request_id text,
+      provider_reference text,
       google_pay_token_json jsonb,
       metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
       created_at timestamptz NOT NULL DEFAULT NOW(),
@@ -331,6 +356,23 @@ async function ensureSubscriptionSchema(target = query) {
     `
     ALTER TABLE subscription_payments
       ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'products'
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    ALTER TABLE subscription_payments
+      ADD COLUMN IF NOT EXISTS provider_reference text
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_payments_provider_reference
+      ON subscription_payments(provider, provider_reference)
+      WHERE provider_reference IS NOT NULL
     `,
   );
 
@@ -416,8 +458,15 @@ async function ensureSubscriptionSchema(target = query) {
   );
 
   for (const price of DEFAULT_PRICES) {
-    const [planCode, countryCode, currency, amountMinor, billingPeriod, provider] =
-      price;
+    const [
+      planCode,
+      countryCode,
+      currency,
+      amountMinor,
+      billingPeriod,
+      provider,
+      storeProductId,
+    ] = price;
     await runQuery(
       target,
       `
@@ -428,9 +477,10 @@ async function ensureSubscriptionSchema(target = query) {
         currency,
         amount_minor,
         billing_period,
-        provider
+        provider,
+        store_product_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (plan_code, country_code, provider, billing_period) DO NOTHING
       `,
       [
@@ -441,6 +491,7 @@ async function ensureSubscriptionSchema(target = query) {
         amountMinor,
         billingPeriod,
         provider,
+        storeProductId,
       ],
     );
   }
@@ -563,6 +614,9 @@ async function resolvePlanPrice({
   await ensureSubscriptionSchema(target);
   const cleanPlanCode = normalizeCode(planCode) || 'trial';
   const cleanProvider = normalizeText(provider) ? normalizeProvider(provider) : null;
+  if (cleanProvider && !isSubscriptionPaymentProviderAllowed(cleanProvider)) {
+    return null;
+  }
   const cleanCountry = normalizeCountryCode(countryCode);
   const cleanBillingPeriod = normalizeBillingPeriod(billingPeriod);
 
@@ -604,6 +658,7 @@ async function listPublicPlans({ countryCode } = {}, target = query) {
       (price) => {
         return (
           price.isActive &&
+          isSubscriptionPaymentProviderAllowed(price.provider) &&
           isPriceVisibleInPublicCatalog(price) &&
           (!cleanCountry ||
             price.countryCode === cleanCountry ||
@@ -667,15 +722,17 @@ async function listPublicMarkets(target = query) {
     `,
   );
 
-  return result.rows.map((row) => ({
-    countryCode: normalizeCountryCode(row.country_code),
-    label: countryLabel(row.country_code),
-    currency: normalizeCurrency(row.currency),
-    provider: normalizeProvider(row.provider),
-    providerLabel: row.display_name || providerLabel(row.provider),
-    paymentActive: Boolean(row.payment_active),
-    publicConfig: parseJsonValue(row.public_config_json, {}),
-  }));
+  return result.rows
+    .map((row) => ({
+      countryCode: normalizeCountryCode(row.country_code),
+      label: countryLabel(row.country_code),
+      currency: normalizeCurrency(row.currency),
+      provider: normalizeProvider(row.provider),
+      providerLabel: row.display_name || providerLabel(row.provider),
+      paymentActive: Boolean(row.payment_active),
+      publicConfig: parseJsonValue(row.public_config_json, {}),
+    }))
+    .filter((market) => isSubscriptionPaymentProviderAllowed(market.provider));
 }
 
 async function listPaymentGateways({ includeSecrets = false } = {}, target = query) {
@@ -685,10 +742,12 @@ async function listPaymentGateways({ includeSecrets = false } = {}, target = que
     `
     SELECT *
     FROM platform_payment_gateways
+    WHERE provider NOT IN ('mpesa', 'google_pay')
     ORDER BY CASE provider
-      WHEN 'mpesa' THEN 0
-      WHEN 'google_pay' THEN 1
-      ELSE 2
+      WHEN 'google_play' THEN 0
+      WHEN 'flutterwave' THEN 1
+      WHEN 'paypal' THEN 2
+      ELSE 3
     END, provider ASC
     `,
   );
@@ -717,6 +776,12 @@ async function loadPaymentGateway(
 async function savePaymentGateway(provider, input = {}, target = query) {
   await ensureSubscriptionSchema(target);
   const cleanProvider = normalizeProvider(provider || input.provider);
+  if (!isSubscriptionPaymentProviderAllowed(cleanProvider)) {
+    throw createError(
+      400,
+      'This provider is not available for subscriptions.',
+    );
+  }
   const existing = await loadPaymentGateway(cleanProvider, target, {
     includeSecrets: true,
   });
@@ -791,55 +856,42 @@ async function seedDefaultPaymentGateways(target = query) {
 }
 
 function defaultPaymentGateways() {
-  const mpesaPublicConfig = removeEmptyValues({
-    baseUrl: config.mpesaBaseUrl,
-    shortcode: config.mpesaShortcode,
-    callbackUrl: config.mpesaCallbackUrl,
-  });
-  const mpesaSecretConfig = removeEmptyValues({
-    consumerKey: config.mpesaConsumerKey,
-    consumerSecret: config.mpesaConsumerSecret,
-    passkey: config.mpesaPasskey,
-  });
-  const googlePublicConfig = removeEmptyValues({
-    environment: config.googlePayEnvironment,
-    merchantId: config.googlePayMerchantId,
-    merchantName: 'Piki POS',
-    gateway: config.googlePayGateway,
-    gatewayMerchantId: config.googlePayGatewayMerchantId,
-  });
-  const googleSecretConfig = removeEmptyValues({
-    gatewayChargeUrl: config.googlePayGatewayChargeUrl,
-    gatewayApiKey: config.googlePayGatewayApiKey,
-  });
-
   return [
     {
-      provider: 'mpesa',
-      displayName: 'M-Pesa',
+      provider: 'google_play',
+      displayName: 'Google Play',
       isActive: Boolean(
-        config.mpesaConsumerKey &&
-          config.mpesaConsumerSecret &&
-          config.mpesaShortcode &&
-          config.mpesaPasskey &&
-          config.mpesaCallbackUrl,
+        config.googlePlayPackageName &&
+          config.googlePlayServiceAccountEmail &&
+          config.googlePlayServiceAccountPrivateKey,
       ),
-      countries: ['KE'],
-      publicConfig: mpesaPublicConfig,
-      secretConfig: mpesaSecretConfig,
+      countries: ['KE', 'GLOBAL'],
+      publicConfig: removeEmptyValues({ packageName: config.googlePlayPackageName }),
+      secretConfig: removeEmptyValues({
+        serviceAccountEmail: config.googlePlayServiceAccountEmail,
+        serviceAccountPrivateKey: config.googlePlayServiceAccountPrivateKey,
+      }),
     },
     {
-      provider: 'google_pay',
-      displayName: 'Google Pay',
+      provider: 'flutterwave',
+      displayName: 'Flutterwave',
+      isActive: Boolean(config.flutterwaveSecretKey && config.publicBaseUrl),
+      countries: ['KE', 'GLOBAL'],
+      publicConfig: removeEmptyValues({ baseUrl: config.flutterwaveBaseUrl }),
+      secretConfig: removeEmptyValues({ secretKey: config.flutterwaveSecretKey }),
+    },
+    {
+      provider: 'paypal',
+      displayName: 'PayPal',
       isActive: Boolean(
-        config.googlePayMerchantId &&
-          config.googlePayGatewayMerchantId &&
-          config.googlePayGateway &&
-          config.googlePayGateway !== 'example',
+        config.paypalClientId && config.paypalClientSecret && config.publicBaseUrl,
       ),
       countries: ['GLOBAL'],
-      publicConfig: googlePublicConfig,
-      secretConfig: googleSecretConfig,
+      publicConfig: removeEmptyValues({ baseUrl: config.paypalBaseUrl }),
+      secretConfig: removeEmptyValues({
+        clientId: config.paypalClientId,
+        clientSecret: config.paypalClientSecret,
+      }),
     },
   ];
 }
@@ -955,6 +1007,12 @@ function providerLabel(provider) {
       return 'M-Pesa';
     case 'google_pay':
       return 'Google Pay';
+    case 'google_play':
+      return 'Google Play';
+    case 'paypal':
+      return 'PayPal';
+    case 'flutterwave':
+      return 'Flutterwave';
     default:
       return normalizeProvider(provider).replace(/_/g, ' ');
   }
@@ -1011,61 +1069,40 @@ function validatePaymentGatewayConfiguration(gateway) {
     return;
   }
 
-  if (gateway.provider === 'mpesa') {
+  if (gateway.provider === 'google_play') {
     const publicConfig = gateway.publicConfig || {};
     const secretConfig = gateway.secretConfig || {};
     const missing = [];
-    if (!publicConfig.baseUrl) missing.push('Daraja base URL');
-    if (!publicConfig.shortcode) missing.push('shortcode');
-    if (!publicConfig.callbackUrl) missing.push('callback URL');
-    if (!secretConfig.consumerKey) missing.push('consumer key');
-    if (!secretConfig.consumerSecret) missing.push('consumer secret');
-    if (!secretConfig.passkey) missing.push('passkey');
+    if (!publicConfig.packageName) missing.push('Android package name');
+    if (!secretConfig.serviceAccountEmail) missing.push('service account email');
+    if (!secretConfig.serviceAccountPrivateKey) missing.push('service account private key');
     if (missing.length > 0) {
       throw createError(
         400,
-        `Complete M-Pesa settings before enabling: ${missing.join(', ')}.`,
-      );
-    }
-    if (!isHttpsUrl(publicConfig.baseUrl)) {
-      throw createError(400, 'Daraja base URL must be a valid HTTPS URL.');
-    }
-    if (!isHttpsUrl(publicConfig.callbackUrl)) {
-      throw createError(400, 'M-Pesa callback URL must be a valid HTTPS URL.');
-    }
-    if (!isPlausibleMpesaPasskey(secretConfig.passkey)) {
-      throw createError(
-        400,
-        'M-Pesa passkey looks invalid. Use the Lipa na M-Pesa Online passkey for this shortcode, not your Daraja login password or a certificate key.',
+        `Complete Google Play settings before enabling: ${missing.join(', ')}.`,
       );
     }
   }
 
-  if (gateway.provider === 'google_pay') {
+  if (gateway.provider === 'paypal') {
     const publicConfig = gateway.publicConfig || {};
     const secretConfig = gateway.secretConfig || {};
-    const missing = [];
-    if (!publicConfig.merchantId) missing.push('merchant ID');
-    if (!publicConfig.gateway || publicConfig.gateway === 'example') {
-      missing.push('payment gateway');
+    if (!isHttpsUrl(publicConfig.baseUrl)) {
+      throw createError(400, 'PayPal base URL must be a valid HTTPS URL.');
     }
-    if (
-      !publicConfig.gatewayMerchantId ||
-      publicConfig.gatewayMerchantId === 'exampleGatewayMerchantId'
-    ) {
-      missing.push('gateway merchant ID');
+    if (!secretConfig.clientId || !secretConfig.clientSecret) {
+      throw createError(400, 'PayPal client ID and client secret are required.');
     }
-    if (missing.length > 0) {
-      throw createError(
-        400,
-        `Complete Google Pay settings before enabling: ${missing.join(', ')}.`,
-      );
+  }
+
+  if (gateway.provider === 'flutterwave') {
+    const publicConfig = gateway.publicConfig || {};
+    const secretConfig = gateway.secretConfig || {};
+    if (!isHttpsUrl(publicConfig.baseUrl)) {
+      throw createError(400, 'Flutterwave base URL must be a valid HTTPS URL.');
     }
-    if (
-      secretConfig.gatewayChargeUrl &&
-      !isHttpsUrl(secretConfig.gatewayChargeUrl)
-    ) {
-      throw createError(400, 'Google Pay charge URL must be a valid HTTPS URL.');
+    if (!secretConfig.secretKey) {
+      throw createError(400, 'Flutterwave secret key is required.');
     }
   }
 }
@@ -1076,6 +1113,94 @@ function isHttpsUrl(value) {
   } catch (_) {
     return false;
   }
+}
+
+async function migrateMpesaSubscriptionPrices(target = query) {
+  for (const provider of ['google_play', 'flutterwave']) {
+    await runQuery(
+      target,
+      `
+      INSERT INTO subscription_plan_prices (
+        id, plan_code, country_code, currency, amount_minor, billing_period,
+        provider, store_product_id, is_active, created_at, updated_at
+      )
+      SELECT
+        id || $1,
+        plan_code,
+        country_code,
+        currency,
+        amount_minor,
+        billing_period,
+        $2,
+        CASE WHEN $2 = 'google_play' AND plan_code <> 'trial'
+          THEN 'piki_' || plan_code || '_' || billing_period
+          ELSE NULL
+        END,
+        is_active,
+        created_at,
+        NOW()
+      FROM subscription_plan_prices
+      WHERE provider IN ('mpesa', 'google_pay')
+      ON CONFLICT (plan_code, country_code, provider, billing_period) DO NOTHING
+      `,
+      [`-${provider}`, provider],
+    );
+  }
+
+  await runQuery(
+    target,
+    `
+    INSERT INTO subscription_plan_prices (
+      id, plan_code, country_code, currency, amount_minor, billing_period,
+      provider, is_active, created_at, updated_at
+    )
+    SELECT
+      id || '-paypal', plan_code, country_code, currency, amount_minor,
+      billing_period, 'paypal', is_active, created_at, NOW()
+    FROM subscription_plan_prices
+    WHERE provider IN ('mpesa', 'google_pay')
+      AND country_code = 'GLOBAL'
+    ON CONFLICT (plan_code, country_code, provider, billing_period) DO NOTHING
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    UPDATE subscription_plan_prices
+    SET is_active = false,
+        updated_at = NOW()
+    WHERE provider IN ('mpesa', 'google_pay')
+      AND is_active = true
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    UPDATE platform_payment_gateways
+    SET is_active = false,
+        updated_at = NOW()
+    WHERE provider IN ('mpesa', 'google_pay')
+      AND is_active = true
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    UPDATE subscription_plan_prices
+    SET store_product_id = 'piki_' || plan_code || '_' || billing_period,
+        updated_at = NOW()
+    WHERE provider = 'google_play'
+      AND plan_code <> 'trial'
+      AND (store_product_id IS NULL OR store_product_id = '')
+    `,
+  );
+}
+
+function isSubscriptionPaymentProviderAllowed(provider) {
+  return ALLOWED_SUBSCRIPTION_PROVIDERS.has(normalizeProvider(provider));
 }
 
 function isPlausibleMpesaPasskey(value) {
@@ -1152,6 +1277,7 @@ function normalizePriceInput(input, planCode) {
     amountMinor: normalizeLimit(raw.amountMinor ?? raw.amount_minor, 0),
     billingPeriod: normalizeBillingPeriod(raw.billingPeriod ?? raw.billing_period),
     provider: normalizeProvider(raw.provider),
+    storeProductId: normalizeText(raw.storeProductId ?? raw.store_product_id),
     isActive:
       raw.isActive == null && raw.is_active == null
         ? true
@@ -1189,7 +1315,8 @@ function normalizePriceRow(row) {
     currency: row.currency,
     amountMinor: Number(row.amount_minor || 0),
     billingPeriod: row.billing_period || 'monthly',
-    provider: row.provider || 'google_pay',
+    provider: row.provider || 'google_play',
+    storeProductId: normalizeText(row.store_product_id),
     isActive: row.is_active !== false,
     updatedAt: toIsoString(row.updated_at),
   };
@@ -1238,7 +1365,7 @@ function defaultTrialEntitlements() {
 }
 
 function providerForCountry(countryCode) {
-  return normalizeCountryCode(countryCode) === 'KE' ? 'mpesa' : 'google_pay';
+  return 'google_play';
 }
 
 function normalizePrices(values) {
@@ -1422,7 +1549,7 @@ function normalizeCurrency(value) {
 
 function normalizeProvider(value) {
   const text = normalizeText(value);
-  return (text || 'google_pay').toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+  return (text || 'google_play').toLowerCase().replace(/[^a-z0-9_]+/g, '_');
 }
 
 function normalizeBillingPeriod(value) {
@@ -1519,6 +1646,7 @@ module.exports = {
   loadPaymentGateway,
   isPriceAvailableForPublicCatalog,
   isPriceVisibleInPublicCatalog,
+  isSubscriptionPaymentProviderAllowed,
   isHttpsUrl,
   isPlausibleMpesaPasskey,
   normalizePlanInput,

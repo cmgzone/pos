@@ -1,3 +1,4 @@
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/cloud_auth_service.dart';
@@ -38,8 +39,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _showConfirmPassword = false;
   SubscriptionCatalog? _catalog;
   String? _selectedMarketKey;
+  Country _selectedCountry = Country.parse('KE');
   String _selectedSellingMode = 'products';
-  String _selectedCurrency = r'$';
+  String _selectedCurrency = 'KSh';
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
@@ -53,14 +55,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
     return catalog.selectedMarket ??
         (catalog.markets.isEmpty ? null : catalog.markets.first);
-  }
-
-  SubscriptionMarket? _marketForKey(SubscriptionCatalog catalog, String? key) {
-    if (key == null) return null;
-    for (final market in catalog.markets) {
-      if (market.key == key) return market;
-    }
-    return null;
   }
 
   List<String> _availableSellingModesForMarket(
@@ -129,10 +123,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoadingCatalog = true);
     try {
       await SyncSettingsService.init();
-      final catalog = await SubscriptionService.fetchPlans();
-      final market =
-          catalog.selectedMarket ??
-          (catalog.markets.isNotEmpty ? catalog.markets.first : null);
+      final catalog = await SubscriptionService.fetchPlans(
+        countryCode: _selectedCountry.countryCode,
+      );
+      final market = _preferredMarket(catalog);
       final catalogMessage = market == null
           ? 'No subscription markets are active yet. In Super Admin, enable at least one country price or payment gateway.'
           : null;
@@ -142,7 +136,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _selectedMarketKey = market?.key;
         _selectedSellingMode = _preferredSellingModeForMarket(catalog, market);
         _selectedCurrency = ShopSettings.suggestedCurrencyForCountry(
-          market?.countryCode,
+          _selectedCountry.countryCode,
         );
         _error = catalogMessage;
         _isLoadingCatalog = false;
@@ -160,17 +154,45 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  void _selectMarket(String? key) {
-    final catalog = _catalog;
-    if (catalog == null || key == null) return;
-    final market = _marketForKey(catalog, key);
-    setState(() {
-      _selectedMarketKey = key;
-      _selectedSellingMode = _preferredSellingModeForMarket(catalog, market);
-      _selectedCurrency = ShopSettings.suggestedCurrencyForCountry(
-        market?.countryCode,
-      );
-    });
+  SubscriptionMarket? _preferredMarket(SubscriptionCatalog catalog) {
+    if (catalog.markets.isEmpty) return null;
+    final preferredProvider = SubscriptionService.currentPlatform == 'windows'
+        ? (_selectedCountry.countryCode == 'KE' ? 'flutterwave' : 'paypal')
+        : 'google_play';
+    return catalog.markets
+            .where((market) => market.provider == preferredProvider)
+            .firstOrNull ??
+        catalog.selectedMarket ??
+        catalog.markets.first;
+  }
+
+  Future<void> _selectCountry() async {
+    showCountryPicker(
+      context: context,
+      favorite: const ['KE', 'US', 'GB', 'CA', 'AU', 'ZA', 'NG', 'TZ', 'UG'],
+      showPhoneCode: false,
+      countryListTheme: CountryListThemeData(
+        backgroundColor: AppColors.surface,
+        textStyle: const TextStyle(color: AppColors.textPrimary),
+        searchTextStyle: const TextStyle(color: AppColors.textPrimary),
+        inputDecoration: const InputDecoration(
+          labelText: 'Search country',
+          prefixIcon: Icon(Icons.search),
+        ),
+        bottomSheetHeight: MediaQuery.sizeOf(context).height * 0.75,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      onSelect: (country) {
+        setState(() {
+          _selectedCountry = country;
+          _selectedCurrency = ShopSettings.suggestedCurrencyForCountry(
+            country.countryCode,
+          );
+          _selectedMarketKey = null;
+        });
+        _loadSubscriptionCatalog();
+      },
+    );
   }
 
   String? _readInitialPlanCode(CloudAuthResponse response) {
@@ -276,11 +298,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         phone: phone,
         password: password,
         deviceId: deviceId,
-        countryCode: market?.countryCode ?? 'GLOBAL',
+        countryCode: _selectedCountry.countryCode,
         currency: _selectedCurrency,
         requestedPlanCode: signupPlan?.code,
         sellingMode: _isBusinessSetupFlow ? _selectedSellingMode : null,
         provider: market?.provider,
+        platform: SubscriptionService.currentPlatform,
       );
 
       if (backendUrl != SyncSettingsService.backendUrl) {
@@ -353,7 +376,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final destination = _isBusinessSetupFlow
           ? SubscriptionScreen(
               afterSignup: true,
-              initialCountryCode: market?.countryCode,
+              initialCountryCode: _selectedCountry.countryCode,
               initialProvider: market?.provider,
               initialPlanCode: _readInitialPlanCode(response),
             )
@@ -430,21 +453,43 @@ class _SignUpScreenState extends State<SignUpScreen> {
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _selectedMarketKey,
-          decoration: const InputDecoration(
-            prefixIcon: _GradientIcon(Icons.public_outlined),
-          ),
-          items: catalog.markets
-              .map(
-                (market) => DropdownMenuItem(
-                  value: market.key,
-                  child: Text(market.displayLabel),
+        InkWell(
+          onTap: _isLoading ? null : _selectCountry,
+          borderRadius: BorderRadius.circular(12),
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              prefixIcon: _GradientIcon(Icons.public_outlined),
+              suffixIcon: Icon(Icons.keyboard_arrow_down_rounded),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  _selectedCountry.flagEmoji,
+                  style: const TextStyle(fontSize: 24),
                 ),
-              )
-              .toList(),
-          onChanged: _isLoading ? null : _selectMarket,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${_selectedCountry.name} (${_selectedCountry.countryCode})',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
+        if (market != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            SubscriptionService.currentPlatform == 'android'
+                ? 'Subscriptions are billed securely through Google Play.'
+                : '${market.providerLabel} will be selected first. You can switch payment method on the plans screen.',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         const Text(
           'Display Currency',

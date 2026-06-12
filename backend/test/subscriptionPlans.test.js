@@ -6,12 +6,11 @@ const {
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
   isPriceVisibleInPublicCatalog,
-  isPlausibleMpesaPasskey,
+  isSubscriptionPaymentProviderAllowed,
   normalizeSellingMode,
   normalizeGraceDays,
   normalizeTrialDays,
   renewalBaseDate,
-  validatePaymentGatewayConfiguration,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
 
@@ -158,31 +157,13 @@ test('public catalog visibility follows active plan prices', () => {
   );
 });
 
-test('active M-Pesa gateway requires a valid HTTPS callback URL', () => {
-  assert.throws(
-    () =>
-      validatePaymentGatewayConfiguration({
-        provider: 'mpesa',
-        isActive: true,
-        publicConfig: {
-          baseUrl: 'https://sandbox.safaricom.co.ke',
-          shortcode: '123456',
-          callbackUrl: 'superadmin@example.com',
-        },
-        secretConfig: {
-          consumerKey: 'key',
-          consumerSecret: 'secret',
-          passkey: 'passkey',
-        },
-      }),
-    /callback URL must be a valid HTTPS URL/,
-  );
-});
-
-test('M-Pesa passkey rejects login passwords and certificate-sized values', () => {
-  assert.equal(isPlausibleMpesaPasskey('short-password'), false);
-  assert.equal(isPlausibleMpesaPasskey('x'.repeat(344)), false);
-  assert.equal(isPlausibleMpesaPasskey('x'.repeat(64)), true);
+test('only supported subscription providers are enabled', () => {
+  assert.equal(isSubscriptionPaymentProviderAllowed('mpesa'), false);
+  assert.equal(isSubscriptionPaymentProviderAllowed('google_pay'), false);
+  assert.equal(isSubscriptionPaymentProviderAllowed('google_play'), true);
+  assert.equal(isSubscriptionPaymentProviderAllowed('paypal'), true);
+  assert.equal(isSubscriptionPaymentProviderAllowed('flutterwave'), true);
+  assert.equal(isSubscriptionPaymentProviderAllowed('unknown'), false);
 });
 
 test('renewal keeps remaining subscription time', () => {

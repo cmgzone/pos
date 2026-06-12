@@ -198,6 +198,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
     const requestedCountry = normalizeOptionalText(req.body?.countryCode);
     const requestedCurrency = normalizeBusinessCurrency(req.body?.currency);
     const requestedProvider = normalizeOptionalText(req.body?.provider);
+    const platform = normalizeSubscriptionPlatform(req.body?.platform);
     const requestedPlanCode = normalizeOptionalText(
       req.body?.requestedPlanCode || req.body?.planCode || req.body?.plan,
     );
@@ -227,7 +228,12 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
 
     await ensureSubscriptionSchema();
     await ensureDeviceUserSchema();
-    const markets = await listPublicMarkets();
+    const countryCode = normalizeCountryCode(requestedCountry);
+    const markets = subscriptionMarketsForPlatform(
+      await listPublicMarkets(),
+      platform,
+      countryCode,
+    );
     const market = selectSubscriptionMarket(markets, {
       countryCode: requestedCountry,
       provider: requestedProvider,
@@ -235,7 +241,6 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
     if (!market) {
       throw createHttpError(400, 'No active subscription market is configured for this country');
     }
-    const countryCode = normalizeCountryCode(market.countryCode || requestedCountry);
     const currency = requestedCurrency || displayCurrencyForCountry(countryCode);
     const provider = normalizeProvider(market.provider || requestedProvider);
     const registrationSelection = await resolveRegistrationPlanSelection({
@@ -1334,7 +1339,10 @@ app.get('/api/platform/users', requirePlatformAdmin, async (req, res, next) => {
 
 app.get('/api/platform/plans', requirePlatformAdmin, async (req, res, next) => {
   try {
-    const plans = await listPlans({ includeInactive: true });
+    const plans = (await listPlans({ includeInactive: true })).map((plan) => ({
+      ...plan,
+      prices: (plan.prices || []).filter((price) => price.provider !== 'mpesa'),
+    }));
     res.json({ ok: true, data: plans, features: Object.values(FEATURE_KEYS) });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -1770,31 +1778,32 @@ app.post('/api/platform/web-search-test', requirePlatformAdmin, async (req, res,
 // Subscription catalog and checkout routes
 app.get('/api/subscription/plans', async (req, res, next) => {
   try {
-    const requestedCountry = normalizeOptionalText(req.query?.countryCode);
+    const requestedCountry = normalizeCountryCode(
+      normalizeOptionalText(req.query?.countryCode) || 'KE',
+    );
     const requestedProvider = normalizeOptionalText(req.query?.provider);
-    const markets = await listPublicMarkets();
+    const platform = normalizeSubscriptionPlatform(req.query?.platform);
+    const markets = subscriptionMarketsForPlatform(
+      await listPublicMarkets(),
+      platform,
+      requestedCountry,
+    );
     const selectedMarket = selectSubscriptionMarket(markets, {
       countryCode: requestedCountry,
       provider: requestedProvider,
     });
-    const countryCode = selectedMarket?.countryCode || requestedCountry || null;
+    const countryCode = requestedCountry;
     const plans = selectedMarket
       ? await listPublicPlans({ countryCode })
       : [];
-    const gateway = selectedMarket
-      ? await loadPaymentGateway(selectedMarket.provider)
-      : null;
     res.json({
       ok: true,
-      countryCode: countryCode ? normalizeCountryCode(countryCode) : null,
+      countryCode,
+      platform,
       provider: selectedMarket?.provider || null,
       selectedMarket,
       markets,
       plans,
-      googlePayConfig:
-        selectedMarket?.provider === 'google_pay' && gateway?.isActive
-          ? buildGooglePayConfig(countryCode, null, gateway)
-          : null,
     });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -1810,11 +1819,13 @@ app.get('/api/subscription/current', async (req, res, next) => {
       normalizeOptionalText(req.query?.countryCode) ||
       businessContext.countryCode ||
       'GLOBAL';
+    const platform = normalizeSubscriptionPlatform(req.query?.platform);
     const overview = await loadSubscriptionOverview(
       businessContext.businessId,
       businessContext.plan,
       countryCode,
       businessContext.sellingMode,
+      platform,
     );
     res.json({ ok: true, data: overview });
   } catch (error) {
@@ -1855,14 +1866,29 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
       businessContext.countryCode ||
       'GLOBAL';
     const requestedProvider = normalizeOptionalText(req.body?.provider);
-    const markets = await listPublicMarkets();
+    const platform = normalizeSubscriptionPlatform(req.body?.platform);
+    if (
+      requestedProvider &&
+      !subscriptionProviderAllowedForPlatform(requestedProvider, platform)
+    ) {
+      throw createHttpError(
+        400,
+        platform === 'android'
+          ? 'Android subscriptions must use Google Play Billing.'
+          : 'Windows subscriptions must use PayPal or Flutterwave.',
+      );
+    }
+    const countryCode = normalizeCountryCode(requestedCountry);
+    const markets = subscriptionMarketsForPlatform(
+      await listPublicMarkets(),
+      platform,
+      countryCode,
+    );
     const market = selectSubscriptionMarket(markets, {
       countryCode: requestedCountry,
       provider: requestedProvider,
     });
-    const countryCode = normalizeCountryCode(market?.countryCode || requestedCountry);
     const provider = normalizeProvider(market?.provider || requestedProvider);
-    const phoneNumber = normalizeOptionalText(req.body?.phoneNumber);
     if (!planCode) {
       throw createHttpError(400, 'planCode is required');
     }
@@ -1874,6 +1900,9 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
     }
     if (!market) {
       throw createHttpError(400, 'No active subscription payment gateway is configured for this market');
+    }
+    if (!subscriptionProviderAllowedForPlatform(market.provider, platform)) {
+      throw createHttpError(400, 'This payment method is not available on this platform');
     }
     const price = await resolvePlanPrice({
       planCode,
@@ -1896,10 +1925,12 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
     if (!isFreePlan && (!gateway || !gateway.isActive)) {
       throw createHttpError(400, 'This payment gateway is not active');
     }
-    if (!isFreePlan && provider === 'mpesa' && !phoneNumber) {
-      throw createHttpError(400, 'phoneNumber is required for M-Pesa checkout');
+    if (!isFreePlan && provider === 'google_play' && !price.storeProductId) {
+      throw createHttpError(400, 'Google Play product ID is not configured for this plan');
     }
-
+    if (!isFreePlan && (provider === 'paypal' || provider === 'flutterwave')) {
+      assertPublicPaymentReturnUrl();
+    }
     const checkout = await withTransaction(async (client) => {
       const payment = await createSubscriptionPayment(client, {
         businessId: businessContext.businessId,
@@ -1908,8 +1939,7 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
         provider,
         countryCode,
         sellingMode,
-        phoneNumber,
-        googlePayToken: req.body?.googlePayToken || req.body?.paymentData,
+        phoneNumber: null,
       });
 
       if (price.amountMinor === 0) {
@@ -1930,16 +1960,23 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
       });
     }
 
-    if (provider === 'mpesa') {
-      const mpesa = await initiateMpesaCheckout(checkout, gateway);
-      return res.json({ ok: true, data: { ...checkout, mpesa } });
+    let providerCheckout = {};
+    if (provider === 'paypal') {
+      providerCheckout = await initiatePayPalCheckout(checkout, gateway);
+    } else if (provider === 'flutterwave') {
+      providerCheckout = await initiateFlutterwaveCheckout(checkout, gateway);
+    } else if (provider === 'google_play') {
+      providerCheckout = {
+        storeProductId: price.storeProductId,
+        message: 'Complete this purchase through Google Play.',
+      };
     }
 
     res.json({
       ok: true,
       data: {
         ...checkout,
-        googlePayConfig: buildGooglePayConfig(countryCode, price, gateway),
+        ...providerCheckout,
       },
     });
   } catch (error) {
@@ -1947,21 +1984,26 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
   }
 });
 
-app.post('/api/subscription/google-pay/confirm', async (req, res, next) => {
+app.post('/api/subscription/google-play/confirm', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req, {
       allowExpired: true,
     });
     const paymentId = normalizeOptionalText(req.body?.paymentId);
-    const paymentData = req.body?.paymentData || req.body?.googlePayToken;
-    if (!paymentId || !paymentData) {
-      throw createHttpError(400, 'paymentId and paymentData are required');
+    const productId = normalizeOptionalText(req.body?.productId);
+    const purchaseToken = normalizeOptionalText(req.body?.purchaseToken);
+    if (!paymentId || !productId || !purchaseToken) {
+      throw createHttpError(
+        400,
+        'paymentId, productId, and purchaseToken are required',
+      );
     }
 
-    const result = await processGooglePayConfirmation({
+    const result = await processGooglePlayConfirmation({
       businessId: businessContext.businessId,
       paymentId,
-      paymentData,
+      productId,
+      purchaseToken,
     });
     res.json({ ok: true, data: result });
   } catch (error) {
@@ -1969,7 +2011,90 @@ app.post('/api/subscription/google-pay/confirm', async (req, res, next) => {
   }
 });
 
-app.post('/api/subscription/mpesa/callback', async (req, res, next) => {
+app.get('/api/subscription/paypal/return', async (req, res) => {
+  try {
+    const paymentId = normalizeOptionalText(req.query?.paymentId);
+    const orderId = normalizeOptionalText(req.query?.token);
+    if (!paymentId || !orderId) {
+      throw createHttpError(400, 'PayPal payment reference is missing');
+    }
+    await processPayPalReturn({ paymentId, orderId });
+    sendPaymentReturnPage(res, {
+      title: 'Payment completed',
+      message: 'Your Piki subscription is active. You can return to the app.',
+    });
+  } catch (error) {
+    sendPaymentReturnPage(res, {
+      statusCode: error.statusCode || 400,
+      title: 'Payment not completed',
+      message: error.message || 'PayPal payment could not be confirmed.',
+    });
+  }
+});
+
+app.get('/api/subscription/paypal/cancel', async (req, res) => {
+  try {
+    const paymentId = normalizeOptionalText(req.query?.paymentId);
+    if (paymentId) {
+      await markSubscriptionPaymentStatus(paymentId, 'cancelled', {
+        message: 'PayPal checkout was cancelled.',
+      });
+    }
+    sendPaymentReturnPage(res, {
+      title: 'Payment cancelled',
+      message: 'No payment was taken. You can return to the app and try again.',
+    });
+  } catch (error) {
+    sendPaymentReturnPage(res, {
+      statusCode: 500,
+      title: 'Payment cancelled',
+      message: 'Return to the app to check your subscription status.',
+    });
+  }
+});
+
+app.get('/api/subscription/flutterwave/return', async (req, res) => {
+  try {
+    const paymentId = normalizeOptionalText(req.query?.paymentId);
+    const transactionId = normalizeOptionalText(req.query?.transaction_id);
+    const transactionReference = normalizeOptionalText(req.query?.tx_ref);
+    const status = normalizeOptionalText(req.query?.status);
+    if (status !== 'successful') {
+      if (paymentId) {
+        await markSubscriptionPaymentStatus(paymentId, 'cancelled', {
+          message: 'Flutterwave checkout was not completed.',
+          status,
+        });
+      }
+      throw createHttpError(400, 'Flutterwave payment was not completed');
+    }
+    if (!paymentId || !transactionId || !transactionReference) {
+      throw createHttpError(400, 'Flutterwave payment reference is missing');
+    }
+    await processFlutterwaveReturn({
+      paymentId,
+      transactionId,
+      transactionReference,
+    });
+    sendPaymentReturnPage(res, {
+      title: 'Payment completed',
+      message: 'Your Piki subscription is active. You can return to the app.',
+    });
+  } catch (error) {
+    sendPaymentReturnPage(res, {
+      statusCode: error.statusCode || 400,
+      title: 'Payment not completed',
+      message: error.message || 'Flutterwave payment could not be confirmed.',
+    });
+  }
+});
+
+app.post('/api/payments/mpesa/stk-callback', handlePosMpesaStkCallback);
+
+// Keep the old callback URL working for shops that have not updated Daraja yet.
+app.post('/api/subscription/mpesa/callback', handlePosMpesaStkCallback);
+
+async function handlePosMpesaStkCallback(req, res, next) {
   try {
     validateMpesaCallbackSecret(req);
     const callback = req.body?.Body?.stkCallback || req.body?.stkCallback || {};
@@ -1986,12 +2111,6 @@ app.post('/api/subscription/mpesa/callback', async (req, res, next) => {
     }
 
     if (checkoutRequestId) {
-      await handleMpesaCallback({
-        checkoutRequestId,
-        resultCode,
-        resultDescription: callback.ResultDesc,
-        metadata,
-      });
       await handlePosMpesaCallback({
         checkoutRequestId,
         resultCode,
@@ -2004,7 +2123,7 @@ app.post('/api/subscription/mpesa/callback', async (req, res, next) => {
   } catch (error) {
     next(normalizeRouteError(error));
   }
-});
+}
 
 app.get('/api/business/payment-gateways/:provider', async (req, res, next) => {
   try {
@@ -3811,6 +3930,9 @@ async function saveSubscriptionPlan(rawInput) {
       ]);
       for (const rawPrice of rawInput.prices) {
         const price = normalizePriceInput(rawPrice, plan.code);
+        if (price.provider === 'mpesa' || price.provider === 'google_pay') {
+          continue;
+        }
         await client.query(
           `
           INSERT INTO subscription_plan_prices (
@@ -3821,11 +3943,12 @@ async function saveSubscriptionPlan(rawInput) {
             amount_minor,
             billing_period,
             provider,
+            store_product_id,
             is_active,
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
           `,
           [
             price.id,
@@ -3835,6 +3958,7 @@ async function saveSubscriptionPlan(rawInput) {
             price.amountMinor,
             price.billingPeriod,
             price.provider,
+            price.storeProductId,
             price.isActive,
           ],
         );
@@ -3846,7 +3970,13 @@ async function saveSubscriptionPlan(rawInput) {
   });
 }
 
-async function loadSubscriptionOverview(businessId, planCode, countryCode, sellingMode) {
+async function loadSubscriptionOverview(
+  businessId,
+  planCode,
+  countryCode,
+  sellingMode,
+  platform,
+) {
   await ensureSubscriptionSchema();
   const subscriptionResult = await query(
     'SELECT * FROM subscriptions WHERE business_id = $1 LIMIT 1',
@@ -3861,15 +3991,16 @@ async function loadSubscriptionOverview(businessId, planCode, countryCode, selli
     sellingMode,
   );
   const usage = await getBusinessUsage(businessId);
-  const markets = await listPublicMarkets();
+  const effectiveCountryCode = normalizeCountryCode(countryCode || 'KE');
+  const markets = subscriptionMarketsForPlatform(
+    await listPublicMarkets(),
+    platform,
+    effectiveCountryCode,
+  );
   const selectedMarket = selectSubscriptionMarket(markets, { countryCode });
-  const effectiveCountryCode = selectedMarket?.countryCode || countryCode;
   const plans = selectedMarket
     ? await listPublicPlans({ countryCode: effectiveCountryCode })
     : [];
-  const gateway = selectedMarket
-    ? await loadPaymentGateway(selectedMarket.provider)
-    : null;
   return {
     subscription: {
       plan: String(subscription.plan || 'trial'),
@@ -3883,10 +4014,7 @@ async function loadSubscriptionOverview(businessId, planCode, countryCode, selli
     markets,
     selectedMarket,
     plans,
-    googlePayConfig:
-      selectedMarket?.provider === 'google_pay' && gateway?.isActive
-        ? buildGooglePayConfig(effectiveCountryCode, null, gateway)
-        : null,
+    platform: normalizeSubscriptionPlatform(platform),
   };
 }
 
@@ -3930,7 +4058,6 @@ async function createSubscriptionPayment(
     countryCode,
     sellingMode,
     phoneNumber,
-    googlePayToken,
   },
 ) {
   await ensureSubscriptionSchema(client);
@@ -3953,11 +4080,10 @@ async function createSubscriptionPayment(
       status,
       phone_number,
       external_reference,
-      google_pay_token_json,
       created_at,
       updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13::jsonb, $14, $14)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13, $13)
     RETURNING *
     `,
     [
@@ -3973,7 +4099,6 @@ async function createSubscriptionPayment(
       normalizeSellingMode(sellingMode) || 'products',
       phoneNumber,
       externalReference,
-      googlePayToken ? JSON.stringify(googlePayToken) : null,
       now,
     ],
   );
@@ -4231,113 +4356,439 @@ function mpesaProviderMessage(body = {}) {
   );
 }
 
-async function processGooglePayConfirmation({ businessId, paymentId, paymentData }) {
-  return withTransaction(async (client) => {
-    const result = await client.query(
-      `
-      SELECT *
-      FROM subscription_payments
-      WHERE id = $1 AND business_id = $2
-      FOR UPDATE
-      `,
-      [paymentId, businessId],
-    );
-    const payment = result.rows[0];
-    if (!payment) {
-      throw createHttpError(404, 'Subscription payment was not found');
-    }
-    if (payment.provider !== 'google_pay') {
-      throw createHttpError(400, 'Payment is not a Google Pay checkout');
-    }
-    if (payment.status === 'paid' && payment.completed_at) {
-      return {
-        status: 'paid',
-        activated: true,
-      };
-    }
-    const gateway = await loadPaymentGateway(payment.provider, client);
-    if (!gateway || !gateway.isActive) {
-      throw createHttpError(400, 'Google Pay is not active in the admin panel');
-    }
-    const googleConfig = resolveGoogleGatewayConfig(gateway);
+async function processGooglePlayConfirmation({
+  businessId,
+  paymentId,
+  productId,
+  purchaseToken,
+}) {
+  const paymentResult = await query(
+    `
+    SELECT p.*, price.store_product_id
+    FROM subscription_payments p
+    LEFT JOIN subscription_plan_prices price ON price.id = p.price_id
+    WHERE p.id = $1 AND p.business_id = $2
+    LIMIT 1
+    `,
+    [paymentId, businessId],
+  );
+  const payment = paymentResult.rows[0];
+  if (!payment) {
+    throw createHttpError(404, 'Subscription payment was not found');
+  }
+  if (payment.provider !== 'google_play') {
+    throw createHttpError(400, 'Payment is not a Google Play checkout');
+  }
+  if (payment.status === 'paid' && payment.completed_at) {
+    return { status: 'paid', activated: true };
+  }
+  if (!payment.store_product_id || payment.store_product_id !== productId) {
+    throw createHttpError(400, 'Google Play product does not match this plan');
+  }
 
+  const reused = await query(
+    `
+    SELECT id
+    FROM subscription_payments
+    WHERE provider = 'google_play'
+      AND provider_reference = $1
+      AND id <> $2
+    LIMIT 1
+    `,
+    [purchaseToken, paymentId],
+  );
+  if (reused.rows.length > 0) {
+    throw createHttpError(409, 'This Google Play purchase was already used');
+  }
+
+  const gateway = await loadPaymentGateway('google_play');
+  if (!gateway?.isActive) {
+    throw createHttpError(400, 'Google Play Billing is not active');
+  }
+  const googleConfig = resolveGooglePlayGatewayConfig(gateway);
+  const verification = await verifyGooglePlaySubscription({
+    productId,
+    purchaseToken,
+    googleConfig,
+  });
+
+  await acknowledgeGooglePlaySubscription({
+    productId,
+    purchaseToken,
+    googleConfig,
+    verification,
+  });
+
+  await withTransaction(async (client) => {
     await client.query(
       `
       UPDATE subscription_payments
-      SET google_pay_token_json = $2::jsonb,
+      SET provider_reference = $2,
+          metadata_json = metadata_json || $3::jsonb,
           updated_at = NOW()
       WHERE id = $1
       `,
-      [paymentId, JSON.stringify(paymentData)],
+      [paymentId, purchaseToken, JSON.stringify({ googlePlay: verification })],
     );
-
-    if (!googleConfig.gatewayChargeUrl) {
-      await client.query(
-        `
-        UPDATE subscription_payments
-        SET status = 'pending_gateway',
-            updated_at = NOW()
-        WHERE id = $1
-        `,
-        [paymentId],
-      );
-      return {
-        status: 'pending_gateway',
-        message:
-          'Google Pay token received. Configure the gateway capture URL in the admin panel to capture automatically.',
-      };
-    }
-
-    const charged = await chargeGooglePayGateway(payment, paymentData, gateway);
-    if (!charged.ok) {
-      await client.query(
-        `
-        UPDATE subscription_payments
-        SET status = 'failed',
-            metadata_json = $2::jsonb,
-            updated_at = NOW()
-        WHERE id = $1
-        `,
-        [paymentId, JSON.stringify(charged.body || {})],
-      );
-      throw createHttpError(charged.status || 502, charged.message || 'Google Pay charge failed');
-    }
-
     await activateSubscriptionFromPayment(client, paymentId);
-    return {
-      status: 'paid',
-      activated: true,
-      gateway: charged.body || {},
-    };
   });
+  return { status: 'paid', activated: true };
 }
 
-async function chargeGooglePayGateway(payment, paymentData, gateway) {
-  const googleConfig = resolveGoogleGatewayConfig(gateway);
+async function verifyGooglePlaySubscription({
+  productId,
+  purchaseToken,
+  googleConfig,
+}) {
+  const accessToken = await getGooglePlayAccessToken(googleConfig);
   const fetch = (await import('node-fetch')).default;
-  const headers = { 'Content-Type': 'application/json' };
-  if (googleConfig.gatewayApiKey) {
-    headers.Authorization = `Bearer ${googleConfig.gatewayApiKey}`;
+  const url = `${googleConfig.apiBaseUrl}/${encodeURIComponent(
+    googleConfig.packageName,
+  )}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(response.status, body.error?.message || 'Google Play verification failed');
   }
-  const response = await fetch(googleConfig.gatewayChargeUrl, {
+  const validStates = new Set([
+    'SUBSCRIPTION_STATE_ACTIVE',
+    'SUBSCRIPTION_STATE_IN_GRACE_PERIOD',
+  ]);
+  const productMatches = (body.lineItems || []).some(
+    (item) => item.productId === productId,
+  );
+  if (!validStates.has(body.subscriptionState) || !productMatches) {
+    throw createHttpError(400, 'Google Play subscription is not active for this product');
+  }
+  return body;
+}
+
+async function getGooglePlayAccessToken(googleConfig) {
+  const assertion = jwt.sign(
+    {
+      iss: googleConfig.serviceAccountEmail,
+      scope: 'https://www.googleapis.com/auth/androidpublisher',
+      aud: 'https://oauth2.googleapis.com/token',
+    },
+    googleConfig.serviceAccountPrivateKey,
+    { algorithm: 'RS256', expiresIn: '1h' },
+  );
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
-    headers,
-    body: JSON.stringify({
-      paymentId: payment.id,
-      externalReference: payment.external_reference,
-      amountMinor: Number(payment.amount_minor || 0),
-      currency: payment.currency,
-      sellingMode: payment.selling_mode,
-      paymentData,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
     }),
   });
   const body = await readMaybeJson(response);
+  if (!response.ok || !body.access_token) {
+    throw createHttpError(502, body.error_description || 'Google Play authentication failed');
+  }
+  return body.access_token;
+}
+
+async function acknowledgeGooglePlaySubscription({
+  productId,
+  purchaseToken,
+  googleConfig,
+  verification,
+}) {
+  if (verification.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED') {
+    return;
+  }
+  const accessToken = await getGooglePlayAccessToken(googleConfig);
+  const fetch = (await import('node-fetch')).default;
+  const url = `${googleConfig.apiBaseUrl}/${encodeURIComponent(
+    googleConfig.packageName,
+  )}/purchases/subscriptions/${encodeURIComponent(
+    productId,
+  )}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: '{}',
+  });
+  if (!response.ok) {
+    const body = await readMaybeJson(response);
+    throw createHttpError(502, body.error?.message || 'Google Play acknowledgement failed');
+  }
+}
+
+async function initiatePayPalCheckout(payment, gateway) {
+  assertPublicPaymentReturnUrl();
+  const paypalConfig = resolvePayPalGatewayConfig(gateway);
+  const accessToken = await getPayPalAccessToken(paypalConfig);
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch(`${paypalConfig.baseUrl}/v2/checkout/orders`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'PayPal-Request-Id': payment.id,
+    },
+    body: JSON.stringify({
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          reference_id: payment.externalReference,
+          custom_id: payment.id,
+          description: `Piki ${payment.planCode} subscription`,
+          amount: {
+            currency_code: payment.currency,
+            value: minorAmountToMajor(payment.amountMinor),
+          },
+        },
+      ],
+      application_context: {
+        brand_name: 'Piki POS',
+        user_action: 'PAY_NOW',
+        return_url: `${config.publicBaseUrl}/api/subscription/paypal/return?paymentId=${encodeURIComponent(payment.id)}`,
+        cancel_url: `${config.publicBaseUrl}/api/subscription/paypal/cancel?paymentId=${encodeURIComponent(payment.id)}`,
+      },
+    }),
+  });
+  const body = await readMaybeJson(response);
+  const checkoutUrl = (body.links || []).find((link) => link.rel === 'approve')?.href;
+  if (!response.ok || !body.id || !checkoutUrl) {
+    await markSubscriptionPaymentStatus(payment.id, 'failed', body);
+    throw createHttpError(502, body.message || 'PayPal checkout could not be created');
+  }
+  await setSubscriptionProviderReference(payment.id, body.id, { paypalOrder: body });
+  return { checkoutUrl, message: 'Continue in PayPal to complete payment.' };
+}
+
+async function getPayPalAccessToken(paypalConfig) {
+  const fetch = (await import('node-fetch')).default;
+  const credentials = Buffer.from(
+    `${paypalConfig.clientId}:${paypalConfig.clientSecret}`,
+  ).toString('base64');
+  const response = await fetch(`${paypalConfig.baseUrl}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+  const body = await readMaybeJson(response);
+  if (!response.ok || !body.access_token) {
+    throw createHttpError(502, body.error_description || 'PayPal authentication failed');
+  }
+  return body.access_token;
+}
+
+async function processPayPalReturn({ paymentId, orderId }) {
+  const payment = await loadSubscriptionPaymentById(paymentId);
+  if (!payment || payment.provider !== 'paypal') {
+    throw createHttpError(404, 'PayPal payment was not found');
+  }
+  if (payment.status === 'paid') return;
+  if (payment.providerReference !== orderId) {
+    throw createHttpError(400, 'PayPal order does not match this payment');
+  }
+  const gateway = await loadPaymentGateway('paypal');
+  const paypalConfig = resolvePayPalGatewayConfig(gateway);
+  const accessToken = await getPayPalAccessToken(paypalConfig);
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch(
+    `${paypalConfig.baseUrl}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    },
+  );
+  const body = await readMaybeJson(response);
+  const capture = body.purchase_units?.[0]?.payments?.captures?.[0];
+  if (
+    !response.ok ||
+    body.status !== 'COMPLETED' ||
+    capture?.status !== 'COMPLETED' ||
+    capture.amount?.currency_code !== payment.currency ||
+    majorAmountToMinor(capture.amount?.value) !== payment.amountMinor
+  ) {
+    throw createHttpError(400, body.message || 'PayPal payment details did not match');
+  }
+  await completeHostedSubscriptionPayment(paymentId, { paypalCapture: body });
+}
+
+async function initiateFlutterwaveCheckout(payment, gateway) {
+  assertPublicPaymentReturnUrl();
+  const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+  const customer = await loadSubscriptionCustomer(payment.businessId);
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch(`${flutterwaveConfig.baseUrl}/payments`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${flutterwaveConfig.secretKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tx_ref: payment.externalReference,
+      amount: Number(minorAmountToMajor(payment.amountMinor)),
+      currency: payment.currency,
+      redirect_url: `${config.publicBaseUrl}/api/subscription/flutterwave/return?paymentId=${encodeURIComponent(payment.id)}`,
+      customer,
+      meta: { paymentId: payment.id, planCode: payment.planCode },
+      customizations: {
+        title: 'Piki POS Subscription',
+        description: `${payment.planCode} subscription`,
+      },
+    }),
+  });
+  const body = await readMaybeJson(response);
+  const checkoutUrl = body.data?.link;
+  if (!response.ok || body.status !== 'success' || !checkoutUrl) {
+    await markSubscriptionPaymentStatus(payment.id, 'failed', body);
+    throw createHttpError(502, body.message || 'Flutterwave checkout could not be created');
+  }
+  await setSubscriptionProviderReference(payment.id, payment.externalReference, {
+    flutterwaveCheckout: body,
+  });
+  return { checkoutUrl, message: 'Continue in Flutterwave to complete payment.' };
+}
+
+async function processFlutterwaveReturn({
+  paymentId,
+  transactionId,
+  transactionReference,
+}) {
+  const payment = await loadSubscriptionPaymentById(paymentId);
+  if (!payment || payment.provider !== 'flutterwave') {
+    throw createHttpError(404, 'Flutterwave payment was not found');
+  }
+  if (payment.status === 'paid') return;
+  if (payment.providerReference !== transactionReference) {
+    throw createHttpError(400, 'Flutterwave reference does not match this payment');
+  }
+  const gateway = await loadPaymentGateway('flutterwave');
+  const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch(
+    `${flutterwaveConfig.baseUrl}/transactions/${encodeURIComponent(transactionId)}/verify`,
+    { headers: { Authorization: `Bearer ${flutterwaveConfig.secretKey}` } },
+  );
+  const body = await readMaybeJson(response);
+  const data = body.data || {};
+  if (
+    !response.ok ||
+    body.status !== 'success' ||
+    data.status !== 'successful' ||
+    data.tx_ref !== payment.providerReference ||
+    data.currency !== payment.currency ||
+    majorAmountToMinor(data.amount) !== payment.amountMinor
+  ) {
+    throw createHttpError(400, body.message || 'Flutterwave payment details did not match');
+  }
+  await completeHostedSubscriptionPayment(paymentId, {
+    flutterwaveVerification: body,
+  });
+}
+
+async function loadSubscriptionPaymentById(paymentId) {
+  const result = await query(
+    'SELECT * FROM subscription_payments WHERE id = $1 LIMIT 1',
+    [paymentId],
+  );
+  return result.rows[0]
+    ? {
+        ...normalizePaymentRow(result.rows[0]),
+        providerReference: result.rows[0].provider_reference,
+      }
+    : null;
+}
+
+async function loadSubscriptionCustomer(businessId) {
+  const result = await query(
+    `
+    SELECT name, email, phone
+    FROM users
+    WHERE business_id = $1 AND role = 'ADMIN' AND deleted_at IS NULL
+    ORDER BY created_at ASC
+    LIMIT 1
+    `,
+    [businessId],
+  );
+  const user = result.rows[0] || {};
   return {
-    ok: response.ok && body.success !== false,
-    status: response.status,
-    message: body.error || body.message,
-    body,
+    name: user.name || 'Piki customer',
+    email: user.email || 'customer@pikipos.com',
+    phonenumber: user.phone || undefined,
   };
+}
+
+async function setSubscriptionProviderReference(paymentId, reference, metadata) {
+  await query(
+    `
+    UPDATE subscription_payments
+    SET provider_reference = $2,
+        metadata_json = metadata_json || $3::jsonb,
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [paymentId, reference, JSON.stringify(metadata || {})],
+  );
+}
+
+async function markSubscriptionPaymentStatus(paymentId, status, metadata) {
+  await query(
+    `
+    UPDATE subscription_payments
+    SET status = $2,
+        metadata_json = metadata_json || $3::jsonb,
+        updated_at = NOW()
+    WHERE id = $1 AND status <> 'paid'
+    `,
+    [paymentId, status, JSON.stringify(metadata || {})],
+  );
+}
+
+async function completeHostedSubscriptionPayment(paymentId, metadata) {
+  await withTransaction(async (client) => {
+    await client.query(
+      `
+      UPDATE subscription_payments
+      SET metadata_json = metadata_json || $2::jsonb,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [paymentId, JSON.stringify(metadata || {})],
+    );
+    await activateSubscriptionFromPayment(client, paymentId);
+  });
+}
+
+function minorAmountToMajor(amountMinor) {
+  return (Number(amountMinor || 0) / 100).toFixed(2);
+}
+
+function majorAmountToMinor(amount) {
+  return Math.round(Number(amount || 0) * 100);
+}
+
+function assertPublicPaymentReturnUrl() {
+  if (!isHttpsUrl(config.publicBaseUrl)) {
+    throw createHttpError(400, 'PUBLIC_BASE_URL must be a public HTTPS URL');
+  }
+}
+
+function sendPaymentReturnPage(
+  res,
+  { statusCode = 200, title, message },
+) {
+  res.status(statusCode).type('html').send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head>
+<body style="font-family:system-ui,sans-serif;background:#10050d;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:520px;padding:32px;text-align:center"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p></main></body></html>`);
 }
 
 async function handleMpesaCallback({
@@ -4990,6 +5441,48 @@ function selectSubscriptionMarket(markets, { countryCode, provider } = {}) {
   return markets[0] || null;
 }
 
+function normalizeSubscriptionPlatform(value) {
+  const platform = String(value || '').trim().toLowerCase();
+  if (platform === 'android') return 'android';
+  if (platform === 'windows') return 'windows';
+  return platform || 'windows';
+}
+
+function subscriptionProviderAllowedForPlatform(provider, platform) {
+  const cleanProvider = normalizeProvider(provider);
+  const cleanPlatform = normalizeSubscriptionPlatform(platform);
+  if (cleanPlatform === 'android') {
+    return cleanProvider === 'google_play';
+  }
+  return cleanProvider === 'paypal' || cleanProvider === 'flutterwave';
+}
+
+function subscriptionMarketsForPlatform(markets, platform, countryCode) {
+  const cleanCountry = normalizeCountryCode(countryCode || 'KE');
+  const filtered = (markets || []).filter((market) =>
+    subscriptionProviderAllowedForPlatform(market.provider, platform),
+  );
+  const providers = [...new Set(filtered.map((market) => market.provider))];
+  return providers.flatMap((provider) => {
+    const exact = filtered.find(
+      (market) =>
+        market.provider === provider && market.countryCode === cleanCountry,
+    );
+    if (exact) return [exact];
+    const global = filtered.find(
+      (market) => market.provider === provider && market.countryCode === 'GLOBAL',
+    );
+    if (!global) return [];
+    return [
+      {
+        ...global,
+        countryCode: cleanCountry,
+        label: cleanCountry === 'KE' ? 'Kenya' : cleanCountry,
+      },
+    ];
+  });
+}
+
 async function resolveRegistrationPlanSelection({
   requestedPlanCode,
   countryCode,
@@ -5111,67 +5604,38 @@ function firstConfiguredText(...values) {
   return '';
 }
 
-function resolveGoogleGatewayConfig(gateway) {
+function resolveGooglePlayGatewayConfig(gateway) {
   const publicConfig = gateway?.publicConfig || {};
   const secretConfig = gateway?.secretConfig || {};
   return {
-    environment: publicConfig.environment || config.googlePayEnvironment,
-    merchantId: publicConfig.merchantId || config.googlePayMerchantId,
-    merchantName: publicConfig.merchantName || 'Piki POS',
-    gateway: publicConfig.gateway || config.googlePayGateway,
-    gatewayMerchantId:
-      publicConfig.gatewayMerchantId || config.googlePayGatewayMerchantId,
-    gatewayChargeUrl:
-      secretConfig.gatewayChargeUrl || config.googlePayGatewayChargeUrl,
-    gatewayApiKey: secretConfig.gatewayApiKey || config.googlePayGatewayApiKey,
+    packageName: publicConfig.packageName || config.googlePlayPackageName,
+    serviceAccountEmail:
+      secretConfig.serviceAccountEmail || config.googlePlayServiceAccountEmail,
+    serviceAccountPrivateKey: String(
+      secretConfig.serviceAccountPrivateKey ||
+        config.googlePlayServiceAccountPrivateKey ||
+        '',
+    ).replace(/\\n/g, '\n'),
+    apiBaseUrl: config.googlePlayApiBaseUrl.replace(/\/+$/, ''),
   };
 }
 
-function buildGooglePayConfig(countryCode, price = null, gateway = null) {
-  const googleConfig = resolveGoogleGatewayConfig(gateway);
-  const cleanCountry = normalizeCountryCode(countryCode);
-  const transactionCountry = cleanCountry === 'GLOBAL' ? 'US' : cleanCountry;
-  const currency = price?.currency || (cleanCountry === 'KE' ? 'KES' : 'USD');
+function resolvePayPalGatewayConfig(gateway) {
+  const publicConfig = gateway?.publicConfig || {};
+  const secretConfig = gateway?.secretConfig || {};
   return {
-    environment: googleConfig.environment,
-    merchantId: googleConfig.merchantId,
-    merchantName: googleConfig.merchantName,
-    gateway: googleConfig.gateway,
-    gatewayMerchantId: googleConfig.gatewayMerchantId,
-    paymentConfiguration: {
-      provider: 'google_pay',
-      data: {
-        environment: googleConfig.environment,
-        apiVersion: 2,
-        apiVersionMinor: 0,
-        allowedPaymentMethods: [
-          {
-            type: 'CARD',
-            parameters: {
-              allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
-              allowedCardNetworks: ['AMEX', 'DISCOVER', 'MASTERCARD', 'VISA'],
-            },
-            tokenizationSpecification: {
-              type: 'PAYMENT_GATEWAY',
-              parameters: {
-                gateway: googleConfig.gateway,
-                gatewayMerchantId: googleConfig.gatewayMerchantId,
-              },
-            },
-          },
-        ],
-        merchantInfo: {
-          merchantId: googleConfig.merchantId,
-          merchantName: googleConfig.merchantName,
-        },
-        transactionInfo: {
-          totalPriceStatus: 'FINAL',
-          totalPrice: price ? (Number(price.amountMinor || 0) / 100).toFixed(2) : '0.00',
-          currencyCode: currency,
-          countryCode: transactionCountry,
-        },
-      },
-    },
+    baseUrl: String(publicConfig.baseUrl || config.paypalBaseUrl).replace(/\/+$/, ''),
+    clientId: secretConfig.clientId || config.paypalClientId,
+    clientSecret: secretConfig.clientSecret || config.paypalClientSecret,
+  };
+}
+
+function resolveFlutterwaveGatewayConfig(gateway) {
+  const publicConfig = gateway?.publicConfig || {};
+  const secretConfig = gateway?.secretConfig || {};
+  return {
+    baseUrl: String(publicConfig.baseUrl || config.flutterwaveBaseUrl).replace(/\/+$/, ''),
+    secretKey: secretConfig.secretKey || config.flutterwaveSecretKey,
   };
 }
 

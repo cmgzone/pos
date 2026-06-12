@@ -501,6 +501,11 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
             ),
           ],
         ),
+        const SizedBox(height: 6),
+        const Text(
+          'These merchant credentials belong to this business and are used only to collect customer sale payments.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
         const SizedBox(height: 16),
         Wrap(
           spacing: 12,

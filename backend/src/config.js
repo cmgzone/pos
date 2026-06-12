@@ -45,21 +45,29 @@ const config = {
     process.env.PLATFORM_ADMIN_PASSWORD || DEFAULT_PLATFORM_ADMIN_PASSWORD,
   platformJwtSecret:
     process.env.PLATFORM_JWT_SECRET?.trim() || DEFAULT_PLATFORM_JWT_SECRET,
-  googlePayEnvironment:
-    process.env.GOOGLE_PAY_ENVIRONMENT?.trim().toUpperCase() || 'TEST',
-  googlePayMerchantId: process.env.GOOGLE_PAY_MERCHANT_ID?.trim() || '',
-  googlePayGateway: process.env.GOOGLE_PAY_GATEWAY?.trim() || 'example',
-  googlePayGatewayMerchantId:
-    process.env.GOOGLE_PAY_GATEWAY_MERCHANT_ID?.trim() || 'exampleGatewayMerchantId',
-  googlePayGatewayChargeUrl:
-    process.env.GOOGLE_PAY_GATEWAY_CHARGE_URL?.trim() || '',
-  googlePayGatewayApiKey: process.env.GOOGLE_PAY_GATEWAY_API_KEY?.trim() || '',
+  publicBaseUrl:
+    process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, '') ||
+    process.env.APP_PUBLIC_URL?.trim().replace(/\/+$/, '') ||
+    '',
+  googlePlayPackageName:
+    process.env.GOOGLE_PLAY_PACKAGE_NAME?.trim() || 'com.example.pos_app',
+  googlePlayServiceAccountEmail:
+    process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL?.trim() || '',
+  googlePlayServiceAccountPrivateKey: String(
+    process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY || '',
+  ).replace(/\\n/g, '\n'),
+  googlePlayApiBaseUrl:
+    process.env.GOOGLE_PLAY_API_BASE_URL?.trim() ||
+    'https://androidpublisher.googleapis.com/androidpublisher/v3/applications',
+  paypalBaseUrl:
+    process.env.PAYPAL_BASE_URL?.trim() || 'https://api-m.sandbox.paypal.com',
+  paypalClientId: process.env.PAYPAL_CLIENT_ID?.trim() || '',
+  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET?.trim() || '',
+  flutterwaveBaseUrl:
+    process.env.FLUTTERWAVE_BASE_URL?.trim() || 'https://api.flutterwave.com/v3',
+  flutterwaveSecretKey: process.env.FLUTTERWAVE_SECRET_KEY?.trim() || '',
   mpesaBaseUrl:
     process.env.MPESA_BASE_URL?.trim() || 'https://sandbox.safaricom.co.ke',
-  mpesaConsumerKey: process.env.MPESA_CONSUMER_KEY?.trim() || '',
-  mpesaConsumerSecret: process.env.MPESA_CONSUMER_SECRET?.trim() || '',
-  mpesaShortcode: process.env.MPESA_SHORTCODE?.trim() || '',
-  mpesaPasskey: process.env.MPESA_PASSKEY?.trim() || '',
   mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL?.trim() || '',
   mpesaCallbackSecret: process.env.MPESA_CALLBACK_SECRET?.trim() || '',
   serpApiKey:

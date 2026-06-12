@@ -2609,7 +2609,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Manage subscriptions, integrations, locations, and staff access.',
+          'Manage billing, integrations, locations, and staff access.',
           style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
         ),
         const SizedBox(height: 16),
@@ -2658,7 +2658,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: _buildFeaturePageCard(
                     icon: Icons.payment_outlined,
                     title: 'Payments',
-                    subtitle: 'Checkout methods and business M-Pesa.',
+                    subtitle: 'Checkout methods and your own sales M-Pesa.',
                     onTap: () => _openSettingsMiniPage(
                       title: 'Payments',
                       icon: Icons.payment_outlined,

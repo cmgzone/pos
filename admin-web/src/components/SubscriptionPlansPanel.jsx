@@ -33,30 +33,23 @@ const SELLING_MODE_LABELS = {
 const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
 
 const GATEWAY_FIELDS = {
-  mpesa: {
-    public: [
-      ['baseUrl', 'Daraja Base URL'],
-      ['shortcode', 'Shortcode'],
-      ['callbackUrl', 'Callback URL'],
-    ],
+  google_play: {
+    public: [['packageName', 'Android Package Name']],
     secret: [
-      ['consumerKey', 'Daraja Consumer Key'],
-      ['consumerSecret', 'Daraja Consumer Secret'],
-      ['passkey', 'Lipa na M-Pesa Online Passkey (not login password)'],
+      ['serviceAccountEmail', 'Service Account Email'],
+      ['serviceAccountPrivateKey', 'Service Account Private Key'],
     ],
   },
-  google_pay: {
-    public: [
-      ['environment', 'Environment'],
-      ['merchantId', 'Merchant ID'],
-      ['merchantName', 'Merchant Name'],
-      ['gateway', 'Gateway'],
-      ['gatewayMerchantId', 'Gateway Merchant ID'],
-    ],
+  paypal: {
+    public: [['baseUrl', 'PayPal API Base URL']],
     secret: [
-      ['gatewayChargeUrl', 'Gateway Charge URL'],
-      ['gatewayApiKey', 'Gateway API Key'],
+      ['clientId', 'Client ID'],
+      ['clientSecret', 'Client Secret'],
     ],
+  },
+  flutterwave: {
+    public: [['baseUrl', 'Flutterwave API Base URL']],
+    secret: [['secretKey', 'Secret Key']],
   },
 }
 
@@ -96,7 +89,11 @@ const DEFAULT_ETIMS_CONFIG = {
 
 function clonePlan(plan) {
   if (!plan) return null
-  return JSON.parse(JSON.stringify(plan))
+  const cloned = JSON.parse(JSON.stringify(plan))
+  cloned.prices = (cloned.prices || []).filter(
+    (price) => price.provider !== 'mpesa' && price.provider !== 'google_pay',
+  )
+  return cloned
 }
 
 function cloneGateway(gateway) {
@@ -136,67 +133,33 @@ function isHttpsUrl(value) {
   }
 }
 
-function isPlausibleMpesaPasskey(value) {
-  const passkey = String(value || '').trim()
-  if (passkey.startsWith('********')) return true
-  return (
-    passkey.length >= 32 &&
-    passkey.length <= 128 &&
-    !/\s/.test(passkey) &&
-    !passkey.includes('-----BEGIN')
-  )
-}
-
 function gatewayConfigurationError(gateway) {
   if (!gateway?.isActive) return ''
 
-  if (gateway.provider === 'mpesa') {
+  if (gateway.provider === 'google_play') {
     const publicConfig = gateway.publicConfig || {}
     const secretConfig = gateway.secretConfig || {}
     const missing = []
-    if (!publicConfig.baseUrl) missing.push('Daraja base URL')
-    if (!publicConfig.shortcode) missing.push('shortcode')
-    if (!publicConfig.callbackUrl) missing.push('callback URL')
-    if (!secretConfig.consumerKey) missing.push('consumer key')
-    if (!secretConfig.consumerSecret) missing.push('consumer secret')
-    if (!secretConfig.passkey) missing.push('passkey')
+    if (!publicConfig.packageName) missing.push('Android package name')
+    if (!secretConfig.serviceAccountEmail) missing.push('service account email')
+    if (!secretConfig.serviceAccountPrivateKey) missing.push('service account private key')
     if (missing.length) {
-      return `Complete M-Pesa settings before enabling: ${missing.join(', ')}.`
-    }
-    if (!isHttpsUrl(publicConfig.baseUrl)) {
-      return 'Daraja base URL must be a valid HTTPS URL.'
-    }
-    if (!isHttpsUrl(publicConfig.callbackUrl)) {
-      return 'M-Pesa callback URL must be a valid HTTPS URL.'
-    }
-    if (!isPlausibleMpesaPasskey(secretConfig.passkey)) {
-      return 'M-Pesa passkey looks invalid. Use the Lipa na M-Pesa Online passkey for this shortcode, not your Daraja login password or a certificate key.'
+      return `Complete Google Play settings before enabling: ${missing.join(', ')}.`
     }
   }
 
-  if (gateway.provider === 'google_pay') {
-    const publicConfig = gateway.publicConfig || {}
-    const secretConfig = gateway.secretConfig || {}
-    const missing = []
-    if (!publicConfig.merchantId) missing.push('merchant ID')
-    if (!publicConfig.gateway || publicConfig.gateway === 'example') {
-      missing.push('payment gateway')
+  if (gateway.provider === 'paypal') {
+    if (!isHttpsUrl(gateway.publicConfig?.baseUrl)) return 'PayPal API URL must use HTTPS.'
+    if (!gateway.secretConfig?.clientId || !gateway.secretConfig?.clientSecret) {
+      return 'PayPal client ID and client secret are required.'
     }
-    if (
-      !publicConfig.gatewayMerchantId ||
-      publicConfig.gatewayMerchantId === 'exampleGatewayMerchantId'
-    ) {
-      missing.push('gateway merchant ID')
+  }
+
+  if (gateway.provider === 'flutterwave') {
+    if (!isHttpsUrl(gateway.publicConfig?.baseUrl)) {
+      return 'Flutterwave API URL must use HTTPS.'
     }
-    if (missing.length) {
-      return `Complete Google Pay settings before enabling: ${missing.join(', ')}.`
-    }
-    if (
-      secretConfig.gatewayChargeUrl &&
-      !isHttpsUrl(secretConfig.gatewayChargeUrl)
-    ) {
-      return 'Google Pay charge URL must be a valid HTTPS URL.'
-    }
+    if (!gateway.secretConfig?.secretKey) return 'Flutterwave secret key is required.'
   }
 
   return ''
@@ -284,7 +247,10 @@ export default function SubscriptionPlansPanel({ token }) {
         setSubscriptionSettings(subscriptionSettingsResult.value.data)
       }
       if (gatewayResult.status === 'fulfilled') {
-        const nextGateways = gatewayResult.value.data || []
+        const nextGateways = (gatewayResult.value.data || []).filter(
+          (gateway) =>
+            gateway.provider !== 'mpesa' && gateway.provider !== 'google_pay',
+        )
         setGateways(nextGateways)
         setGatewayDrafts(
           Object.fromEntries(
@@ -445,6 +411,15 @@ export default function SubscriptionPlansPanel({ token }) {
         amountMinor: Math.max(0, Math.round(Number(amountMajor || 0) * 100)),
       })
     })
+  }
+
+  const updateGooglePlayProductId = (storeProductId) => {
+    setDraft((current) => ({
+      ...current,
+      prices: (current.prices || []).map((price) =>
+        price.provider === 'google_play' ? { ...price, storeProductId } : price,
+      ),
+    }))
   }
 
   const savePlan = async () => {
@@ -684,9 +659,12 @@ export default function SubscriptionPlansPanel({ token }) {
     return <div style={{ color: 'var(--text-muted)' }}>No plans found.</div>
   }
 
-  const kenyaPrice = priceFor(draft, 'KE', 'mpesa') || { amountMinor: 0 }
-  const googlePrice =
-    priceFor(draft, 'GLOBAL', 'google_pay') || { amountMinor: 0 }
+  const playKenyaPrice = priceFor(draft, 'KE', 'google_play') || { amountMinor: 0 }
+  const playGlobalPrice = priceFor(draft, 'GLOBAL', 'google_play') || { amountMinor: 0 }
+  const flutterwaveKenyaPrice = priceFor(draft, 'KE', 'flutterwave') || { amountMinor: 0 }
+  const flutterwaveGlobalPrice = priceFor(draft, 'GLOBAL', 'flutterwave') || { amountMinor: 0 }
+  const paypalGlobalPrice = priceFor(draft, 'GLOBAL', 'paypal') || { amountMinor: 0 }
+  const googlePlayProductId = playKenyaPrice.storeProductId || playGlobalPrice.storeProductId || ''
 
   return (
     <div className="subscription-admin-stack">
@@ -1075,30 +1053,34 @@ export default function SubscriptionPlansPanel({ token }) {
           </div>
 
           <div className="editor-grid">
+            {[
+              ['Kenya Google Play Price (KES)', 'KE', 'google_play', 'KES', playKenyaPrice, '1'],
+              ['Global Google Play Price (USD)', 'GLOBAL', 'google_play', 'USD', playGlobalPrice, '0.01'],
+              ['Kenya Flutterwave Price (KES)', 'KE', 'flutterwave', 'KES', flutterwaveKenyaPrice, '1'],
+              ['Global Flutterwave Price (USD)', 'GLOBAL', 'flutterwave', 'USD', flutterwaveGlobalPrice, '0.01'],
+              ['Global PayPal Price (USD)', 'GLOBAL', 'paypal', 'USD', paypalGlobalPrice, '0.01'],
+            ].map(([label, country, provider, currency, price, step]) => (
+              <label className="form-group" key={`${country}-${provider}`}>
+                <span className="form-label">{label}</span>
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  step={step}
+                  value={(price.amountMinor || 0) / 100}
+                  onChange={(event) =>
+                    updateMoney(country, provider, currency, event.target.value)
+                  }
+                />
+              </label>
+            ))}
             <label className="form-group">
-              <span className="form-label">Kenya M-Pesa Price (KES)</span>
+              <span className="form-label">Google Play Product ID</span>
               <input
                 className="form-input"
-                type="number"
-                min="0"
-                step="1"
-                value={(kenyaPrice.amountMinor || 0) / 100}
-                onChange={(event) =>
-                  updateMoney('KE', 'mpesa', 'KES', event.target.value)
-                }
-              />
-            </label>
-            <label className="form-group">
-              <span className="form-label">Google Pay Price (USD)</span>
-              <input
-                className="form-input"
-                type="number"
-                min="0"
-                step="0.01"
-                value={((googlePrice.amountMinor || 0) / 100).toFixed(2)}
-                onChange={(event) =>
-                  updateMoney('GLOBAL', 'google_pay', 'USD', event.target.value)
-                }
+                value={googlePlayProductId}
+                placeholder={`piki_${draft.code}_monthly`}
+                onChange={(event) => updateGooglePlayProductId(event.target.value)}
               />
             </label>
           </div>
@@ -1157,7 +1139,7 @@ export default function SubscriptionPlansPanel({ token }) {
         <div className="gateway-panel-header">
           <div>
             <h3>Payment Gateways</h3>
-            <p>Active plan prices appear in the POS app. Enable gateways to collect paid subscriptions.</p>
+            <p>Subscription billing is separate from each shop's M-Pesa sales settings.</p>
           </div>
         </div>
         <div className="gateway-grid">

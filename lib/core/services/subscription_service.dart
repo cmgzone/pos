@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 import 'license_service.dart';
@@ -11,6 +13,7 @@ class SubscriptionPlanPrice {
   final int amountMinor;
   final String billingPeriod;
   final String provider;
+  final String? storeProductId;
 
   const SubscriptionPlanPrice({
     required this.id,
@@ -20,6 +23,7 @@ class SubscriptionPlanPrice {
     required this.amountMinor,
     required this.billingPeriod,
     required this.provider,
+    this.storeProductId,
   });
 
   factory SubscriptionPlanPrice.fromJson(Map<String, dynamic> json) {
@@ -30,7 +34,8 @@ class SubscriptionPlanPrice {
       currency: json['currency']?.toString() ?? 'USD',
       amountMinor: (json['amountMinor'] as num? ?? 0).toInt(),
       billingPeriod: json['billingPeriod']?.toString() ?? 'monthly',
-      provider: json['provider']?.toString() ?? 'google_pay',
+      provider: json['provider']?.toString() ?? 'google_play',
+      storeProductId: _readText(json['storeProductId']),
     );
   }
 
@@ -78,8 +83,8 @@ class SubscriptionMarket {
       countryCode: json['countryCode']?.toString() ?? 'GLOBAL',
       label: json['label']?.toString() ?? 'Other Countries',
       currency: json['currency']?.toString() ?? 'USD',
-      provider: json['provider']?.toString() ?? 'google_pay',
-      providerLabel: json['providerLabel']?.toString() ?? 'Google Pay',
+      provider: json['provider']?.toString() ?? 'google_play',
+      providerLabel: json['providerLabel']?.toString() ?? 'Google Play',
       paymentActive: json['paymentActive'] == null
           ? true
           : json['paymentActive'] == true,
@@ -116,6 +121,9 @@ class SubscriptionPlanSummary {
     final rawFeatures = json['features'];
     final rawSellingModes =
         json['sellingModes'] ?? json['availableSellingModes'];
+    final parsedPrice = json['price'] is Map<String, dynamic>
+        ? SubscriptionPlanPrice.fromJson(json['price'] as Map<String, dynamic>)
+        : null;
     return SubscriptionPlanSummary(
       code: json['code']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
@@ -131,13 +139,18 @@ class SubscriptionPlanSummary {
           ? (json['prices'] as List)
                 .whereType<Map<String, dynamic>>()
                 .map(SubscriptionPlanPrice.fromJson)
+                .where(
+                  (price) =>
+                      price.provider != 'mpesa' &&
+                      price.provider != 'google_pay',
+                )
                 .toList()
           : const [],
-      price: json['price'] is Map<String, dynamic>
-          ? SubscriptionPlanPrice.fromJson(
-              json['price'] as Map<String, dynamic>,
-            )
-          : null,
+      price:
+          parsedPrice?.provider == 'mpesa' ||
+              parsedPrice?.provider == 'google_pay'
+          ? null
+          : parsedPrice,
     );
   }
 
@@ -191,7 +204,7 @@ class SubscriptionCatalog {
   final SubscriptionMarket? selectedMarket;
   final List<SubscriptionMarket> markets;
   final List<SubscriptionPlanSummary> plans;
-  final Map<String, dynamic>? googlePayConfig;
+  final String platform;
 
   const SubscriptionCatalog({
     required this.backendUrl,
@@ -200,7 +213,7 @@ class SubscriptionCatalog {
     required this.selectedMarket,
     required this.markets,
     required this.plans,
-    required this.googlePayConfig,
+    required this.platform,
   });
 }
 
@@ -209,28 +222,26 @@ class SubscriptionCheckoutResult {
   final String provider;
   final String status;
   final String? message;
-  final Map<String, dynamic>? googlePayConfig;
+  final String? checkoutUrl;
+  final String? storeProductId;
 
   const SubscriptionCheckoutResult({
     required this.paymentId,
     required this.provider,
     required this.status,
     required this.message,
-    required this.googlePayConfig,
+    required this.checkoutUrl,
+    required this.storeProductId,
   });
 
   factory SubscriptionCheckoutResult.fromJson(Map<String, dynamic> json) {
-    final mpesa = json['mpesa'];
     return SubscriptionCheckoutResult(
       paymentId: json['id']?.toString() ?? '',
       provider: json['provider']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
-      message:
-          json['message']?.toString() ??
-          (mpesa is Map ? mpesa['message']?.toString() : null),
-      googlePayConfig: json['googlePayConfig'] is Map<String, dynamic>
-          ? json['googlePayConfig'] as Map<String, dynamic>
-          : null,
+      message: json['message']?.toString(),
+      checkoutUrl: _readText(json['checkoutUrl']),
+      storeProductId: _readText(json['storeProductId']),
     );
   }
 }
@@ -253,6 +264,7 @@ class SubscriptionService {
       if (countryCode != null && countryCode.trim().isNotEmpty)
         'countryCode': countryCode,
       if (provider != null && provider.trim().isNotEmpty) 'provider': provider,
+      'platform': currentPlatform,
     };
     final response = await _getWithFallback(
       'subscription/plans',
@@ -261,30 +273,39 @@ class SubscriptionService {
     final body = _requireOk(response);
     final rawPlans = body['plans'];
     final rawMarkets = body['markets'];
+    final markets = rawMarkets is List
+        ? rawMarkets
+              .whereType<Map<String, dynamic>>()
+              .map(SubscriptionMarket.fromJson)
+              .where(
+                (market) =>
+                    market.provider != 'mpesa' &&
+                    market.provider != 'google_pay',
+              )
+              .toList()
+        : <SubscriptionMarket>[];
+    final parsedSelectedMarket = body['selectedMarket'] is Map<String, dynamic>
+        ? SubscriptionMarket.fromJson(
+            body['selectedMarket'] as Map<String, dynamic>,
+          )
+        : null;
     return SubscriptionCatalog(
       backendUrl: _sourceBackendUrl(response),
       countryCode: body['countryCode']?.toString(),
       provider: body['provider']?.toString(),
-      selectedMarket: body['selectedMarket'] is Map<String, dynamic>
-          ? SubscriptionMarket.fromJson(
-              body['selectedMarket'] as Map<String, dynamic>,
-            )
-          : null,
-      markets: rawMarkets is List
-          ? rawMarkets
-                .whereType<Map<String, dynamic>>()
-                .map(SubscriptionMarket.fromJson)
-                .toList()
-          : const [],
+      selectedMarket:
+          parsedSelectedMarket?.provider == 'mpesa' ||
+              parsedSelectedMarket?.provider == 'google_pay'
+          ? (markets.isEmpty ? null : markets.first)
+          : parsedSelectedMarket,
+      markets: markets,
       plans: rawPlans is List
           ? rawPlans
                 .whereType<Map<String, dynamic>>()
                 .map(SubscriptionPlanSummary.fromJson)
                 .toList()
           : const [],
-      googlePayConfig: body['googlePayConfig'] is Map<String, dynamic>
-          ? body['googlePayConfig'] as Map<String, dynamic>
-          : null,
+      platform: body['platform']?.toString() ?? currentPlatform,
     );
   }
 
@@ -299,6 +320,7 @@ class SubscriptionService {
         if (countryCode != null && countryCode.trim().isNotEmpty)
           'countryCode': countryCode,
         'deviceId': deviceId,
+        'platform': currentPlatform,
       },
       options: Options(headers: headers),
     );
@@ -311,8 +333,12 @@ class SubscriptionService {
     required String provider,
     required String billingPeriod,
     required String sellingMode,
-    String? phoneNumber,
   }) async {
+    if (const {'mpesa', 'google_pay'}.contains(provider.trim().toLowerCase())) {
+      throw UnsupportedError(
+        'M-Pesa is available only for customer sales configured by the business.',
+      );
+    }
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
     final response = await _postWithFallback(
@@ -324,7 +350,7 @@ class SubscriptionService {
         'provider': provider,
         'billingPeriod': billingPeriod,
         'sellingMode': sellingMode,
-        ...?(phoneNumber == null ? null : {'phoneNumber': phoneNumber}),
+        'platform': currentPlatform,
       },
       options: Options(headers: headers),
     );
@@ -332,18 +358,20 @@ class SubscriptionService {
     return SubscriptionCheckoutResult.fromJson(data);
   }
 
-  static Future<Map<String, dynamic>> confirmGooglePay({
+  static Future<Map<String, dynamic>> confirmGooglePlay({
     required String paymentId,
-    required Map<String, dynamic> paymentData,
+    required String productId,
+    required String purchaseToken,
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
     final response = await _postWithFallback(
-      'subscription/google-pay/confirm',
+      'subscription/google-play/confirm',
       data: {
         'deviceId': deviceId,
         'paymentId': paymentId,
-        'paymentData': paymentData,
+        'productId': productId,
+        'purchaseToken': purchaseToken,
       },
       options: Options(headers: headers),
     );
@@ -362,6 +390,12 @@ class SubscriptionService {
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
     return SubscriptionCheckoutResult.fromJson(data);
+  }
+
+  static String get currentPlatform {
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isWindows) return 'windows';
+    return Platform.operatingSystem.toLowerCase();
   }
 
   static Future<String> resolveReachableBackendUrl() async {
@@ -502,4 +536,9 @@ class SubscriptionService {
     }
     throw Exception(body['error']?.toString() ?? 'Subscription request failed');
   }
+}
+
+String? _readText(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? null : text;
 }
