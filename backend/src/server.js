@@ -5069,13 +5069,32 @@ function resolveMpesaGatewayConfig(gateway) {
   const publicConfig = gateway?.publicConfig || {};
   const secretConfig = gateway?.secretConfig || {};
   return {
-    baseUrl: publicConfig.baseUrl || config.mpesaBaseUrl,
-    shortcode: publicConfig.shortcode || config.mpesaShortcode,
-    callbackUrl: publicConfig.callbackUrl || config.mpesaCallbackUrl,
-    consumerKey: secretConfig.consumerKey || config.mpesaConsumerKey,
-    consumerSecret: secretConfig.consumerSecret || config.mpesaConsumerSecret,
-    passkey: secretConfig.passkey || config.mpesaPasskey,
+    baseUrl: firstConfiguredText(publicConfig.baseUrl, config.mpesaBaseUrl),
+    shortcode: firstConfiguredText(publicConfig.shortcode, config.mpesaShortcode),
+    callbackUrl: firstConfiguredText(
+      publicConfig.callbackUrl,
+      config.mpesaCallbackUrl,
+    ),
+    consumerKey: firstConfiguredText(
+      secretConfig.consumerKey,
+      config.mpesaConsumerKey,
+    ),
+    consumerSecret: firstConfiguredText(
+      secretConfig.consumerSecret,
+      config.mpesaConsumerSecret,
+    ),
+    passkey: firstConfiguredText(secretConfig.passkey, config.mpesaPasskey),
   };
+}
+
+function firstConfiguredText(...values) {
+  for (const value of values) {
+    const normalized = normalizeOptionalText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return '';
 }
 
 function resolveGoogleGatewayConfig(gateway) {

@@ -827,22 +827,34 @@ function resolveMpesaGatewayConfig(platformGateway, businessGateway) {
   const businessPublicConfig = businessGateway?.publicConfig || {};
   const businessSecretConfig = businessGateway?.secretConfig || {};
   return {
-    baseUrl:
-      businessPublicConfig.baseUrl ||
-      platformPublicConfig.baseUrl ||
+    baseUrl: firstConfiguredText(
+      businessPublicConfig.baseUrl,
+      platformPublicConfig.baseUrl,
       config.mpesaBaseUrl,
-    shortcode: businessPublicConfig.shortcode || '',
-    callbackUrl:
-      platformPublicConfig.callbackUrl ||
+    ),
+    shortcode: firstConfiguredText(businessPublicConfig.shortcode),
+    callbackUrl: firstConfiguredText(
+      platformPublicConfig.callbackUrl,
       config.mpesaCallbackUrl,
+    ),
     transactionType: normalizeMpesaTransactionType(
       businessPublicConfig.transactionType,
     ),
-    accountReference: businessPublicConfig.accountReference || '',
-    consumerKey: businessSecretConfig.consumerKey || '',
-    consumerSecret: businessSecretConfig.consumerSecret || '',
-    passkey: businessSecretConfig.passkey || '',
+    accountReference: firstConfiguredText(businessPublicConfig.accountReference),
+    consumerKey: firstConfiguredText(businessSecretConfig.consumerKey),
+    consumerSecret: firstConfiguredText(businessSecretConfig.consumerSecret),
+    passkey: firstConfiguredText(businessSecretConfig.passkey),
   };
+}
+
+function firstConfiguredText(...values) {
+  for (const value of values) {
+    const normalized = normalizeText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return '';
 }
 
 async function resolveMpesaC2BBusinessId(parsed) {

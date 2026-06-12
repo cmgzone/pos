@@ -44,6 +44,36 @@ test('POS M-Pesa config uses business merchant credentials', () => {
   assert.equal(config.passkey, 'business-passkey');
 });
 
+test('POS M-Pesa config trims copied merchant credentials', () => {
+  const config = resolveMpesaGatewayConfig(
+    {
+      publicConfig: {
+        baseUrl: ' https://sandbox.safaricom.co.ke ',
+        callbackUrl: ' https://platform.example/mpesa/callback ',
+      },
+    },
+    {
+      publicConfig: {
+        shortcode: ' 123456 ',
+        accountReference: ' SHOP-1 ',
+      },
+      secretConfig: {
+        consumerKey: ' key ',
+        consumerSecret: ' secret ',
+        passkey: ' passkey ',
+      },
+    },
+  );
+
+  assert.equal(config.baseUrl, 'https://sandbox.safaricom.co.ke');
+  assert.equal(config.callbackUrl, 'https://platform.example/mpesa/callback');
+  assert.equal(config.shortcode, '123456');
+  assert.equal(config.accountReference, 'SHOP-1');
+  assert.equal(config.consumerKey, 'key');
+  assert.equal(config.consumerSecret, 'secret');
+  assert.equal(config.passkey, 'passkey');
+});
+
 test('POS M-Pesa config does not fall back to platform merchant credentials', () => {
   const config = resolveMpesaGatewayConfig(
     {
