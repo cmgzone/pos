@@ -61,6 +61,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class AppShellState extends ConsumerState<AppShell> {
   late int _selectedIndex;
+  final Map<int, Widget> _screenCache = <int, Widget>{};
   String _trainingPromptUserId = '';
   bool _subscriptionPromptShown = false;
   bool _setupPromptShown = false;
@@ -1405,7 +1406,7 @@ class AppShellState extends ConsumerState<AppShell> {
           Expanded(
             child: ColoredBox(
               color: AppColors.background,
-              child: _buildScreen(currentIndex),
+              child: _buildScreenStack(currentIndex),
             ),
           ),
         ],
@@ -1608,6 +1609,30 @@ class AppShellState extends ConsumerState<AppShell> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildScreenStack(int currentIndex) {
+    final allowed = _allowedIndices.toSet();
+    _screenCache.removeWhere((index, _) => !allowed.contains(index));
+    _screenCache.putIfAbsent(currentIndex, () => _buildScreen(currentIndex));
+
+    final cachedIndices = _screenCache.keys.toList(growable: false)..sort();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (final index in cachedIndices)
+          Offstage(
+            offstage: index != currentIndex,
+            child: TickerMode(
+              enabled: index == currentIndex,
+              child: KeyedSubtree(
+                key: ValueKey('shell-screen-$index'),
+                child: _screenCache[index]!,
+              ),
+            ),
+          ),
+      ],
     );
   }
 

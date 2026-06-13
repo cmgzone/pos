@@ -9,6 +9,7 @@ import '../../features/shifts/data/shift_provider.dart';
 import 'connectivity_service.dart';
 import 'database_service.dart';
 import 'license_service.dart';
+import 'realtime_sync_service.dart';
 import 'session_service.dart';
 import 'sync_service.dart';
 import 'sync_settings_service.dart';
@@ -171,19 +172,24 @@ class SyncState {
 }
 
 class SyncController extends Notifier<SyncState> {
-  static const _remotePollInterval = Duration(seconds: 3);
+  static const _remotePollInterval = Duration(seconds: 30);
   static const _localChangeDebounce = Duration(milliseconds: 700);
+  static const _realtimeChangeDebounce = Duration(milliseconds: 500);
 
   Timer? _timer;
   Timer? _localChangeTimer;
+  Timer? _realtimeChangeTimer;
   bool _initialized = false;
   bool _busy = false;
+  bool _remoteSyncQueued = false;
 
   @override
   SyncState build() {
     ref.onDispose(() {
       _timer?.cancel();
       _localChangeTimer?.cancel();
+      _realtimeChangeTimer?.cancel();
+      RealtimeSyncService.disconnect();
     });
 
     final localChangeSubscription = DatabaseService.localChanges.listen((_) {
@@ -200,6 +206,7 @@ class SyncController extends Notifier<SyncState> {
     ref.listen<AsyncValue<bool>>(connectivityServiceProvider, (previous, next) {
       final isOnline = next.valueOrNull ?? false;
       state = state.copyWith(isOnline: isOnline);
+      _configureRealtime();
       if (!_initialized) {
         return;
       }
@@ -238,6 +245,7 @@ class SyncController extends Notifier<SyncState> {
       licenseSnapshot: LicenseService.currentSnapshot,
     );
     _configureTimer();
+    _configureRealtime();
     await refreshLocalState();
     if (state.isConfigured && state.isOnline) {
       if (state.autoSyncEnabled) {
@@ -246,6 +254,7 @@ class SyncController extends Notifier<SyncState> {
         await refreshStatus();
       }
     }
+    _configureRealtime();
   }
 
   Future<void> reloadConfiguration({bool triggerSync = false}) async {
@@ -262,6 +271,7 @@ class SyncController extends Notifier<SyncState> {
       clearLastMessage: !SyncSettingsService.isConfigured,
     );
     _configureTimer();
+    _configureRealtime();
     await refreshLocalState();
 
     if (!state.isConfigured) {
@@ -270,10 +280,12 @@ class SyncController extends Notifier<SyncState> {
         clearLastSyncAt: true,
         cursor: SyncSettingsService.syncCursor,
       );
+      _configureRealtime();
       return;
     }
 
     if (!state.isOnline) {
+      _configureRealtime();
       return;
     }
 
@@ -282,18 +294,30 @@ class SyncController extends Notifier<SyncState> {
       return;
     }
     await refreshStatus();
+    _configureRealtime();
   }
 
   Future<void> refreshLocalState() async {
     final snapshot = await SyncService.getLocalSnapshot();
+    final cursor = SyncSettingsService.syncCursor;
+    final deviceId = SyncSettingsService.deviceId;
+    final lastSyncAt = SyncSettingsService.lastSyncAt;
+    if (snapshot.pendingCount == state.pendingChanges &&
+        snapshot.conflictCount == state.conflictCount &&
+        snapshot.errorCount == state.errorCount &&
+        cursor == state.cursor &&
+        deviceId == state.deviceId &&
+        lastSyncAt == state.lastSyncAt) {
+      return;
+    }
+
     state = state.copyWith(
       pendingChanges: snapshot.pendingCount,
       conflictCount: snapshot.conflictCount,
       errorCount: snapshot.errorCount,
-      cursor: SyncSettingsService.syncCursor,
-      deviceId: SyncSettingsService.deviceId,
-      lastSyncAt: SyncSettingsService.lastSyncAt,
-      licenseSnapshot: LicenseService.currentSnapshot,
+      cursor: cursor,
+      deviceId: deviceId,
+      lastSyncAt: lastSyncAt,
     );
   }
 
@@ -305,10 +329,13 @@ class SyncController extends Notifier<SyncState> {
 
     try {
       final remote = await SyncService.fetchRemoteStatus();
-      state = state.copyWith(
-        remoteChanges: remote.changedCount,
-        licenseSnapshot: LicenseService.currentSnapshot,
-      );
+      if (remote.changedCount != state.remoteChanges) {
+        state = state.copyWith(
+          remoteChanges: remote.changedCount,
+          licenseSnapshot: LicenseService.currentSnapshot,
+        );
+      }
+      _configureRealtime();
     } catch (error) {
       state = state.copyWith(
         licenseSnapshot: LicenseService.currentSnapshot,
@@ -317,6 +344,7 @@ class SyncController extends Notifier<SyncState> {
           fallback: AppErrorMessage.syncFailed,
         ),
       );
+      _configureRealtime();
     }
   }
 
@@ -367,6 +395,7 @@ class SyncController extends Notifier<SyncState> {
             ? state.dataVersion + 1
             : state.dataVersion,
       );
+      _configureRealtime();
       return true;
     } catch (error) {
       await refreshLocalState();
@@ -378,9 +407,11 @@ class SyncController extends Notifier<SyncState> {
           fallback: AppErrorMessage.syncFailed,
         ),
       );
+      _configureRealtime();
       return false;
     } finally {
       _busy = false;
+      _runQueuedRealtimeSync();
     }
   }
 
@@ -409,6 +440,78 @@ class SyncController extends Notifier<SyncState> {
       if (state.isOnline) {
         unawaited(_syncIfChanged());
       }
+    });
+  }
+
+  void _configureRealtime() {
+    if (!_initialized ||
+        !SyncSettingsService.autoSyncEnabled ||
+        !SyncSettingsService.isConfigured ||
+        !state.isOnline) {
+      RealtimeSyncService.disconnect();
+      return;
+    }
+
+    RealtimeSyncService.configure(
+      backendUrl: SyncSettingsService.backendUrl,
+      deviceId: SyncSettingsService.deviceId,
+      licenseSnapshot: LicenseService.currentSnapshot,
+      onRemoteChange: _handleRealtimeChange,
+    );
+  }
+
+  void _handleRealtimeChange(RealtimeSyncChange change) {
+    final sourceDeviceId = change.sourceDeviceId?.trim();
+    if (sourceDeviceId != null &&
+        sourceDeviceId.isNotEmpty &&
+        sourceDeviceId == state.deviceId) {
+      return;
+    }
+    if (!_initialized ||
+        !state.autoSyncEnabled ||
+        !state.isConfigured ||
+        !state.isOnline) {
+      return;
+    }
+
+    if (change.affectsCatalogOrders) {
+      state = state.copyWith(dataVersion: state.dataVersion + 1);
+    }
+
+    _realtimeChangeTimer?.cancel();
+    _realtimeChangeTimer = Timer(_realtimeChangeDebounce, () {
+      if (!_initialized ||
+          !state.autoSyncEnabled ||
+          !state.isConfigured ||
+          !state.isOnline) {
+        return;
+      }
+      if (_busy) {
+        _remoteSyncQueued = true;
+        return;
+      }
+      unawaited(syncNow());
+    });
+  }
+
+  void _runQueuedRealtimeSync() {
+    if (!_remoteSyncQueued) {
+      return;
+    }
+    _remoteSyncQueued = false;
+    if (!state.autoSyncEnabled || !state.isConfigured || !state.isOnline) {
+      return;
+    }
+    _realtimeChangeTimer?.cancel();
+    _realtimeChangeTimer = Timer(_realtimeChangeDebounce, () {
+      if (_busy ||
+          !state.autoSyncEnabled ||
+          !state.isConfigured ||
+          !state.isOnline) {
+        _remoteSyncQueued = true;
+        return;
+      }
+      unawaited(syncNow());
     });
   }
 

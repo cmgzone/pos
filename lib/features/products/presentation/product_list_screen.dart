@@ -45,6 +45,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   String _searchQuery = '';
   String? _selectedCategory;
   bool _isImporting = false;
+  late Future<List<Map<String, dynamic>>> _productsFuture;
+  late Future<List<Map<String, dynamic>>> _expiryAlertsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reloadProductFutures();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +181,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             child: TrainingAnchor(
               id: 'products.list',
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _getFilteredProducts(),
+                future: _productsFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return ListView.separated(
@@ -271,7 +279,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 border: Border(top: BorderSide(color: AppColors.border)),
               ),
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _getFilteredProducts(),
+                future: _productsFuture,
                 builder: (context, snapshot) {
                   final products = snapshot.data ?? [];
                   final lowStock = products.where((p) {
@@ -308,7 +316,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                           color: AppColors.warning,
                         ),
                       FutureBuilder<List<Map<String, dynamic>>>(
-                        future: ProductRepository.getExpiryAlerts(),
+                        future: _expiryAlertsFuture,
                         builder: (context, expirySnapshot) {
                           final alertCount = expirySnapshot.data?.length ?? 0;
                           if (alertCount == 0) {
@@ -338,7 +346,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     bool isMobile,
   ) {
     final search = TextField(
-      onChanged: (value) => setState(() => _searchQuery = value),
+      onChanged: _setSearchQuery,
       decoration: const InputDecoration(
         hintText: 'Search name, SKU, or barcode...',
         prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
@@ -365,7 +373,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               ),
             ),
           ],
-          onChanged: (value) => setState(() => _selectedCategory = value),
+          onChanged: _setSelectedCategory,
         ),
       ),
       loading: () => const SizedBox(
@@ -405,9 +413,34 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     return ProductRepository.getAll(categoryId: _selectedCategory);
   }
 
+  void _reloadProductFutures() {
+    _productsFuture = _getFilteredProducts();
+    _expiryAlertsFuture = ProductRepository.getExpiryAlerts();
+  }
+
+  void _setSearchQuery(String value) {
+    if (_searchQuery == value) {
+      return;
+    }
+    setState(() {
+      _searchQuery = value;
+      _reloadProductFutures();
+    });
+  }
+
+  void _setSelectedCategory(String? value) {
+    if (_selectedCategory == value) {
+      return;
+    }
+    setState(() {
+      _selectedCategory = value;
+      _reloadProductFutures();
+    });
+  }
+
   void _refreshProducts() {
     ref.invalidate(filteredProductsProvider);
-    setState(() {});
+    setState(_reloadProductFutures);
   }
 
   Future<void> _addProduct() async {
@@ -448,6 +481,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     );
     ref.invalidate(categoriesProvider);
     ref.invalidate(filteredProductsProvider);
+    _refreshProducts();
   }
 
   Future<void> _handleMobilePageAction(_MobileProductPageAction action) async {

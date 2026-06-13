@@ -6,6 +6,7 @@ import '../../../core/services/catalog_order_service.dart';
 import '../../../core/services/branch_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/compact_header_actions.dart';
@@ -280,6 +281,15 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(syncControllerProvider.select((sync) => sync.dataVersion), (
+      previous,
+      next,
+    ) {
+      if (previous != null && previous != next && mounted) {
+        _refresh();
+      }
+    });
+
     final isMobile = MediaQuery.sizeOf(context).width <= 720;
 
     return Scaffold(

@@ -1,7 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
+const http = require('http');
 const path = require('path');
+const { Server } = require('socket.io');
 
 const { config } = require('./config');
 const { query, withTransaction, withReadTransaction } = require('./db');
@@ -117,6 +119,10 @@ const {
 const { normalizePublicCatalogBranches } = require('./catalogBranches');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: buildCorsOptions(),
+});
 const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
 const landingIndexPath = path.join(landingPageDir, 'index.html');
 const authRateLimit = createRateLimiter({
@@ -154,6 +160,42 @@ app.disable('x-powered-by');
 app.use(applySecurityHeaders);
 app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '10mb' }));
+
+io.use(async (socket, next) => {
+  try {
+    const accessToken =
+      parseBearerToken(socket.handshake.headers?.authorization) ||
+      normalizeOptionalText(socket.handshake.auth?.accessToken) ||
+      normalizeOptionalText(socket.handshake.query?.accessToken);
+    const deviceId =
+      normalizeOptionalText(socket.handshake.auth?.deviceId) ||
+      normalizeOptionalText(socket.handshake.query?.deviceId);
+    const businessContext = await resolveBusinessAccess({
+      accessToken,
+      deviceId,
+    });
+
+    if (!businessContext) {
+      next(createHttpError(401, 'Invalid realtime sync credentials'));
+      return;
+    }
+
+    socket.data.businessId = businessContext.businessId;
+    socket.data.deviceId = deviceId;
+    socket.join(realtimeBusinessRoom(businessContext.businessId));
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.emit('sync:connected', {
+    businessId: socket.data.businessId,
+    deviceId: socket.data.deviceId,
+    serverTime: new Date().toISOString(),
+  });
+});
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -1330,6 +1372,15 @@ app.post('/api/sync/push', async (req, res, next) => {
     if (hasCatalogCacheChanges(summary)) {
       await invalidateCatalogCache(businessContext.businessId);
     }
+    const changedTables = changedTablesFromPushSummary(summary);
+    if (changedTables.length > 0) {
+      notifyBusinessRealtimeChange({
+        businessId: businessContext.businessId,
+        sourceDeviceId: deviceId,
+        reason: 'sync_push',
+        tables: changedTables,
+      });
+    }
 
     res.json({
       ok: true,
@@ -2228,12 +2279,19 @@ async function handlePosMpesaStkCallback(req, res, next) {
     }
 
     if (checkoutRequestId) {
-      await handlePosMpesaCallback({
+      const paymentResult = await handlePosMpesaCallback({
         checkoutRequestId,
         resultCode,
         resultDescription: callback.ResultDesc,
         metadata,
       });
+      if (paymentResult?.businessId) {
+        notifyBusinessRealtimeChange({
+          businessId: paymentResult.businessId,
+          reason: 'payment',
+          tables: paymentResult.saleId ? ['sales'] : [],
+        });
+      }
     }
 
     res.json({ ok: true });
@@ -2422,6 +2480,12 @@ app.post('/api/payments/mpesa/claim-c2b', async (req, res, next) => {
       checkoutCode: req.body?.checkoutCode,
       saleId: req.body?.saleId,
     });
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'payment',
+      tables: ['sales'],
+    });
     res.json({ ok: true, data: payment });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -2455,6 +2519,12 @@ app.post('/api/payments/:paymentId/link-sale', async (req, res, next) => {
       businessId: businessContext.businessId,
       paymentId: req.params.paymentId,
       saleId,
+    });
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'payment',
+      tables: ['sales'],
     });
     res.json({ ok: true, data: payment });
   } catch (error) {
@@ -3802,6 +3872,12 @@ app.put('/api/catalog/orders/:orderId/status', async (req, res, next) => {
       status,
       branchIds: scope.branchIds,
     });
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'catalog_order',
+      tables: ['public_catalog_orders'],
+    });
     res.json({ ok: true, data: order });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -3831,6 +3907,12 @@ app.post('/api/catalog/orders/:orderId/payment-request', async (req, res, next) 
       userId: businessContext.userId,
       sendViaApi: req.body?.sendViaApi === true || req.body?.send_via_api === true,
     });
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'catalog_order',
+      tables: ['public_catalog_orders'],
+    });
     res.json({ ok: true, data: result });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -3845,6 +3927,11 @@ app.post('/api/public/catalog/:businessId/orders', publicWriteRateLimit, async (
     }
 
     const order = await createPublicCatalogOrder(businessId, req.body || {});
+    notifyBusinessRealtimeChange({
+      businessId,
+      reason: 'catalog_order',
+      tables: ['public_catalog_orders'],
+    });
     res.status(201).json({ ok: true, data: order });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -3960,7 +4047,7 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(config.port, () => {
+server.listen(config.port, () => {
   console.log(
     `Piki POS sync backend listening on port ${config.port} (${config.nodeEnv})`,
   );
@@ -3986,6 +4073,45 @@ Promise.all([
   .catch((error) => {
     console.error('Could not initialize backend schema:', error.message);
   });
+
+function realtimeBusinessRoom(businessId) {
+  return `business:${normalizeCacheKeyPart(businessId)}`;
+}
+
+function changedTablesFromPushSummary(summary) {
+  return syncTables
+    .map((table) => table.name)
+    .filter((tableName) => Number(summary?.applied?.[tableName] || 0) > 0);
+}
+
+function notifyBusinessRealtimeChange({
+  businessId,
+  sourceDeviceId = null,
+  reason = 'sync',
+  tables = [],
+}) {
+  const cleanBusinessId = normalizeOptionalText(businessId);
+  if (!cleanBusinessId) {
+    return;
+  }
+
+  const cleanTables = Array.isArray(tables)
+    ? [
+        ...new Set(
+          tables.map((table) => normalizeOptionalText(table)).filter(Boolean),
+        ),
+      ]
+    : [];
+
+  io.to(realtimeBusinessRoom(cleanBusinessId)).emit('sync:changed', {
+    type: 'sync_changed',
+    businessId: cleanBusinessId,
+    sourceDeviceId: normalizeOptionalText(sourceDeviceId),
+    reason: normalizeOptionalText(reason) || 'sync',
+    tables: cleanTables,
+    serverTime: new Date().toISOString(),
+  });
+}
 
 function buildCorsOptions() {
   const allowedOrigins = new Set(

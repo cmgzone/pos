@@ -410,6 +410,7 @@ async function linkPosPaymentToSale({ businessId, paymentId, saleId }) {
           payment_reference = COALESCE($3, $4, $1),
           payment_status = 'paid',
           payment_metadata_json = $5::jsonb,
+          server_revision = nextval('sync_revision_seq'),
           updated_at = NOW()
       WHERE id = $2 AND business_id = $6
       `,
@@ -454,7 +455,7 @@ async function handlePosMpesaCallback({
     );
     const payment = paymentResult.rows[0];
     if (!payment) {
-      return false;
+      return null;
     }
     if (payment.status === 'paid' && Number(resultCode) !== 0) {
       await client.query(
@@ -473,7 +474,12 @@ async function handlePosMpesaCallback({
           }),
         ],
       );
-      return true;
+      return {
+        businessId: payment.business_id,
+        paymentId: payment.id,
+        saleId: payment.sale_id || null,
+        status: payment.status,
+      };
     }
     const status = Number(resultCode) === 0 ? 'paid' : 'failed';
     const nextMetadata = {
@@ -501,6 +507,7 @@ async function handlePosMpesaCallback({
             payment_reference = COALESCE($3, payment_reference, $1),
             payment_status = 'paid',
             payment_metadata_json = COALESCE(payment_metadata_json, '{}'::jsonb) || $4::jsonb,
+            server_revision = nextval('sync_revision_seq'),
             updated_at = NOW()
         WHERE id = $2 AND business_id = $5
         `,
@@ -513,7 +520,12 @@ async function handlePosMpesaCallback({
         ],
       );
     }
-    return true;
+    return {
+      businessId: payment.business_id,
+      paymentId: payment.id,
+      saleId: payment.sale_id || null,
+      status,
+    };
   });
 }
 
@@ -1010,6 +1022,7 @@ async function updateSaleForManualMpesaPayment(client, payment, saleId) {
         payment_reference = $3,
         payment_status = 'paid',
         payment_metadata_json = COALESCE(payment_metadata_json, '{}'::jsonb) || $4::jsonb,
+        server_revision = nextval('sync_revision_seq'),
         updated_at = NOW()
     WHERE id = $2 AND business_id = $1
     `,
