@@ -5,6 +5,7 @@ const { runSqlFile } = require('./sqlStatements');
 const { ensureSubscriptionSchema } = require('./subscriptionPlans');
 const { ensureCommunicationSchema } = require('./communication');
 const { ensurePosPaymentSchema } = require('./posPayments');
+const { ensureCatalogSubdomainSchema } = require('./catalogSubdomains');
 
 async function main() {
   const sqlPath = path.resolve(__dirname, '..', 'sql', 'init.sql');
@@ -16,6 +17,7 @@ async function main() {
     await ensureSubscriptionSchema(client);
     await ensureCommunicationSchema(client);
     await ensurePosPaymentSchema(client);
+    await ensureCatalogSubdomainSchema(client);
     await client.query('COMMIT');
 
     console.log(

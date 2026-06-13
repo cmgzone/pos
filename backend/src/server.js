@@ -91,6 +91,14 @@ const {
   platformEtimsReadinessErrors,
 } = require('./etims');
 const { searchWithSerpApi } = require('./serpApi');
+const {
+  buildCatalogStorefrontUrl,
+  ensureBusinessCatalogSubdomain,
+  ensureCatalogSubdomainSchema,
+  extractCatalogSubdomain,
+  findBusinessIdByCatalogSubdomain,
+  initializeCatalogSubdomainSchema,
+} = require('./catalogSubdomains');
 
 const app = express();
 const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
@@ -272,6 +280,8 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
     const initialPlan = activatesSelectedPlan ? selectedPlanCode : 'trial';
 
     const result = await withTransaction(async (client) => {
+      await ensureCatalogSubdomainSchema(client);
+
       // Check for existing user with same email across all businesses
       const existingUser = await client.query(
         `SELECT id, business_id FROM users
@@ -373,6 +383,10 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
           now.toISOString(),
         ],
       );
+      const publicSubdomain = await ensureBusinessCatalogSubdomain(client, {
+        businessId,
+        businessName,
+      });
 
       await client.query(
         `UPDATE devices
@@ -408,7 +422,14 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
       });
 
       return {
-        business: { id: businessId, name: businessName, countryCode, currency, sellingMode },
+        business: {
+          id: businessId,
+          name: businessName,
+          countryCode,
+          currency,
+          sellingMode,
+          publicSubdomain,
+        },
         accessToken,
         subscription: {
           plan: initialPlan,
@@ -1300,8 +1321,10 @@ app.get('/api/platform/dashboard', requirePlatformAdmin, async (req, res, next) 
 app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next) => {
   try {
     await ensureSubscriptionSchema();
+    await initializeCatalogSubdomainSchema(query);
     const result = await query(`
-      SELECT b.id, b.name, b.owner_name, b.owner_email, b.country_code, b.currency, b.selling_mode, b.created_at,
+      SELECT b.id, b.name, b.owner_name, b.owner_email, b.public_subdomain,
+             b.country_code, b.currency, b.selling_mode, b.created_at,
              s.plan,
              CASE
                WHEN s.status NOT IN ('active', 'grace') THEN s.status
@@ -3594,6 +3617,61 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
   }
 });
 
+app.get('/api/public/catalog', async (req, res, next) => {
+  try {
+    const subdomain = extractCatalogSubdomain(
+      req.get('x-forwarded-host') || req.get('host'),
+      config.publicCatalogRootDomain,
+    );
+    if (!subdomain) {
+      throw createHttpError(400, 'Catalog subdomain is required');
+    }
+    const businessId = await findBusinessIdByCatalogSubdomain(query, subdomain);
+    if (!businessId) {
+      throw createHttpError(404, 'Catalog not found');
+    }
+
+    const catalog = await loadPublicCatalog(businessId, {
+      currencyOverride: req.query?.currency,
+      branchId: req.query?.branchId,
+    });
+    res.json({ ok: true, data: catalog });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/storefront', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    const url = buildCatalogStorefrontUrl(
+      config.publicCatalogRootDomain,
+      publicSubdomain,
+    );
+    const legacyBaseUrl =
+      config.publicBaseUrl ||
+      `https://${config.publicCatalogRootDomain}`;
+
+    res.json({
+      ok: true,
+      data: {
+        businessId: businessContext.businessId,
+        subdomain: publicSubdomain,
+        url,
+        legacyUrl: `${legacyBaseUrl}/catalog/${encodeURIComponent(
+          businessContext.businessId,
+        )}`,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/api/catalog/orders', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -3730,6 +3808,35 @@ app.get('/catalog/:businessId', async (req, res, next) => {
   }
 });
 
+app.get(['/', '/catalog'], async (req, res, next) => {
+  try {
+    const subdomain = extractCatalogSubdomain(
+      req.get('x-forwarded-host') || req.get('host'),
+      config.publicCatalogRootDomain,
+    );
+    if (!subdomain) {
+      next();
+      return;
+    }
+
+    const businessId = await findBusinessIdByCatalogSubdomain(query, subdomain);
+    if (!businessId) {
+      throw createHttpError(404, 'Catalog not found');
+    }
+
+    const catalog = await loadPublicCatalog(businessId, {
+      currencyOverride: req.query?.currency,
+      branchId: req.query?.branchId,
+    });
+    res
+      .status(200)
+      .type('html')
+      .send(renderPublicCatalogPage(catalog));
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.use(express.static(landingPageDir, { index: false }));
 app.use('/landing', express.static(landingPageDir, { index: false }));
 
@@ -3766,6 +3873,7 @@ app.listen(config.port, () => {
 
 Promise.all([
   ensureSubscriptionSchema(),
+  initializeCatalogSubdomainSchema(query),
   ensureDeviceUserSchema(),
   ensureEtimsSchema(),
   ensureLandingDemoRequestSchema(),

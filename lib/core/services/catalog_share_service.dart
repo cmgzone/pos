@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
@@ -22,6 +25,8 @@ class CatalogShareInfo {
 }
 
 class CatalogShareService {
+  static const _timeout = Duration(seconds: 20);
+
   static Future<CatalogShareInfo> prepare({bool syncBeforeShare = true}) async {
     await SyncSettingsService.init();
     await LicenseService.init();
@@ -44,8 +49,22 @@ class CatalogShareService {
       }
     }
 
+    var catalogUrl = buildCatalogUrl(businessId);
+    try {
+      final storefrontBaseUrl = await _loadStorefrontBaseUrl(
+        snapshot.accessToken!,
+      );
+      catalogUrl = buildStorefrontCatalogUrl(storefrontBaseUrl);
+    } catch (error) {
+      final storefrontWarning =
+          'Custom store link could not be refreshed, so the classic catalog link is being used: ${_errorMessage(error)}';
+      syncWarning = syncWarning == null
+          ? storefrontWarning
+          : '$syncWarning $storefrontWarning';
+    }
+
     return CatalogShareInfo(
-      url: buildCatalogUrl(businessId),
+      url: catalogUrl,
       businessName: snapshot.businessName?.trim().isNotEmpty == true
           ? snapshot.businessName!.trim()
           : 'our shop',
@@ -67,6 +86,24 @@ class CatalogShareService {
       queryParameters['currency'] = currency;
     }
     return uri.replace(queryParameters: queryParameters).toString();
+  }
+
+  static String buildStorefrontCatalogUrl(String storefrontBaseUrl) {
+    final uri = Uri.parse(storefrontBaseUrl.trim());
+    final queryParameters = <String, String>{
+      'branchId': DatabaseService.currentBranchId,
+    };
+    final currency = ShopSettings.currency.trim();
+    if (currency.isNotEmpty) {
+      queryParameters['currency'] = currency;
+    }
+    return uri
+        .replace(
+          path: uri.path == '/' ? '' : uri.path,
+          queryParameters: queryParameters,
+          fragment: null,
+        )
+        .toString();
   }
 
   static String buildMessage(CatalogShareInfo info) {
@@ -96,5 +133,47 @@ class CatalogShareService {
 
   static String _errorMessage(Object error) {
     return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  static Future<String> _loadStorefrontBaseUrl(String accessToken) async {
+    final backendUrl = SyncSettingsService.backendUrl.replaceFirst(
+      RegExp(r'/+$'),
+      '',
+    );
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud backend is not configured.');
+    }
+
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final uri = Uri.parse(
+      '$backendUrl/catalog/storefront',
+    ).replace(queryParameters: {'deviceId': deviceId});
+    final response = await http
+        .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+        .timeout(_timeout);
+
+    Map<String, dynamic> body;
+    try {
+      body = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Storefront service returned an invalid response.');
+    }
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        body['ok'] != true) {
+      throw Exception(
+        body['error']?.toString() ?? 'Storefront link request failed.',
+      );
+    }
+
+    final data = body['data'];
+    final url = data is Map<String, dynamic>
+        ? data['url']?.toString().trim() ?? ''
+        : '';
+    final parsed = Uri.tryParse(url);
+    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+      throw Exception('Storefront service did not return a valid URL.');
+    }
+    return parsed.toString();
   }
 }

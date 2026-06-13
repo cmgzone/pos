@@ -10,6 +10,10 @@ const {
   normalizeCountryCode,
   normalizeSellingMode,
 } = require('./subscriptionPlans');
+const {
+  ensureBusinessCatalogSubdomain,
+  ensureCatalogSubdomainSchema,
+} = require('./catalogSubdomains');
 
 let deviceUserSchemaPromise = null;
 
@@ -39,6 +43,7 @@ async function activateBusinessAccess({
 
   return withTransaction(async (client) => {
     await ensureSubscriptionSchema(client);
+    await ensureCatalogSubdomainSchema(client);
     const subscriptionSettings = await loadPlatformSubscriptionSettings(client);
     const now = new Date();
     const existingContext = await loadBusinessContextByDevice(client, normalizedDeviceId);
@@ -128,6 +133,11 @@ async function activateBusinessAccess({
       );
     }
 
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(client, {
+      businessId,
+      businessName: normalizedBusinessName,
+    });
+
     await client.query(
       `
       INSERT INTO devices (id, business_id, name, last_seen_at, created_at, updated_at)
@@ -170,6 +180,7 @@ async function activateBusinessAccess({
       deviceId: normalizedDeviceId,
       accessToken,
       businessContext: refreshedContext,
+      publicSubdomain,
       issuedAt: now,
     });
   });
@@ -426,6 +437,7 @@ async function buildAccessResponse({
   deviceId,
   accessToken,
   businessContext,
+  publicSubdomain,
   issuedAt,
 }) {
   if (!businessContext) {
@@ -460,6 +472,7 @@ async function buildAccessResponse({
         normalizeCurrency(businessContext.currency) ||
         displayCurrencyForCountry(businessContext.country_code),
       sellingMode: normalizeSellingMode(businessContext.selling_mode) || 'combo',
+      publicSubdomain: normalizeText(publicSubdomain),
     },
     accessToken,
     subscription: {

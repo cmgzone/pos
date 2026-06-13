@@ -49,6 +49,9 @@ const config = {
     process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, '') ||
     process.env.APP_PUBLIC_URL?.trim().replace(/\/+$/, '') ||
     '',
+  publicCatalogRootDomain:
+    process.env.PUBLIC_CATALOG_ROOT_DOMAIN?.trim().toLowerCase() ||
+    'pikipos.com',
   googlePlayPackageName:
     process.env.GOOGLE_PLAY_PACKAGE_NAME?.trim() || 'com.example.pos_app',
   googlePlayServiceAccountEmail:

@@ -53,4 +53,9 @@ test('database initialization includes conflict-safe POS effect tables', () => {
     sql,
     /ALTER TABLE public_catalog_orders[\s\S]+ADD COLUMN IF NOT EXISTS branch_id/i,
   );
+  assert.match(
+    sql,
+    /ALTER TABLE businesses ADD COLUMN IF NOT EXISTS public_subdomain text/i,
+  );
+  assert.match(sql, /idx_businesses_public_subdomain_unique/i);
 });

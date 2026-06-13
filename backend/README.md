@@ -43,6 +43,7 @@ PLATFORM_ADMIN_PASSWORD=change-me
 PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
 PLATFORM_ALLOWED_ORIGINS=https://admin.your-domain.example,https://shop.your-domain.example
 PUBLIC_BASE_URL=https://api.your-domain.example
+PUBLIC_CATALOG_ROOT_DOMAIN=your-domain.example
 GOOGLE_PLAY_PACKAGE_NAME=com.example.pos_app
 GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL=play-billing@your-project.iam.gserviceaccount.com
 GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
@@ -92,6 +93,7 @@ PLATFORM_ADMIN_PASSWORD=change-me-to-a-strong-password
 PLATFORM_JWT_SECRET=replace-with-a-long-random-jwt-secret
 PLATFORM_ALLOWED_ORIGINS=https://your-api-host.example.com,https://admin.your-domain.example
 PUBLIC_BASE_URL=https://your-api-host.example.com
+PUBLIC_CATALOG_ROOT_DOMAIN=your-domain.example
 GOOGLE_PLAY_PACKAGE_NAME=com.example.pos_app
 GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL=play-billing@your-project.iam.gserviceaccount.com
 GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
@@ -159,6 +161,8 @@ Use `SOCKET_URL` too if you later add real-time features on a separate origin.
 
 - `GET /` serves the Piki POS landing page
 - `GET /api/health`
+- `GET /api/catalog/storefront?deviceId=<device id>`
+- `GET /api/public/catalog` resolves the catalog from the request subdomain
 - `POST /api/public/demo-requests`
 - `POST /api/auth/register`
 - `POST /api/auth/login`

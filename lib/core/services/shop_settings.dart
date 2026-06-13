@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ShopCurrencyOption {
@@ -41,6 +42,11 @@ class ShopSettings {
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
+  }
+
+  @visibleForTesting
+  static void resetForTesting() {
+    _prefs = null;
   }
 
   // Getters

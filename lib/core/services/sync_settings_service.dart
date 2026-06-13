@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,6 +20,11 @@ class SyncSettingsService {
   static Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
     await _migrateDeprecatedBackendUrl();
+  }
+
+  @visibleForTesting
+  static void resetForTesting() {
+    _prefs = null;
   }
 
   static String get backendUrl {

@@ -9,6 +9,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ShopSettings.resetForTesting();
+    SyncSettingsService.resetForTesting();
+  });
+
   test(
     'catalog link uses the public host even when sync points to localhost',
     () async {
@@ -26,6 +32,19 @@ void main() {
       );
     },
   );
+
+  test('storefront link preserves the selected branch and currency', () async {
+    SharedPreferences.setMockInitialValues({'currency': 'KSh'});
+    await ShopSettings.init();
+    await SyncSettingsService.init();
+
+    expect(
+      CatalogShareService.buildStorefrontCatalogUrl(
+        'https://my-shop.pikipos.com',
+      ),
+      'https://my-shop.pikipos.com?branchId=main_branch&currency=KSh',
+    );
+  });
 
   test('deprecated Render sync backend migrates to Piki production', () async {
     final prefs = await SharedPreferences.getInstance();

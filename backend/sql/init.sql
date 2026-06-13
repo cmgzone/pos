@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS businesses (
   name text NOT NULL,
   owner_name text,
   owner_email text,
+  public_subdomain text,
   country_code text NOT NULL DEFAULT 'GLOBAL',
   currency text,
   selling_mode text NOT NULL DEFAULT 'combo',
@@ -12,9 +13,14 @@ CREATE TABLE IF NOT EXISTS businesses (
   updated_at timestamptz NOT NULL
 );
 
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS public_subdomain text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL';
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS currency text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'combo';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_public_subdomain_unique
+  ON businesses (LOWER(public_subdomain))
+  WHERE public_subdomain IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
