@@ -63,6 +63,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _emailOtpController = TextEditingController();
 
   bool _isLoading = false;
   bool _isLoadingCatalog = false;
@@ -75,6 +76,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String _selectedSellingMode = 'products';
   String _selectedCurrency = 'KSh';
   int _currentStep = 0;
+  String? _emailOtpSentToEmail;
+  String? _verifiedEmail;
+  String? _emailVerificationToken;
+  DateTime? _emailOtpExpiresAt;
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
@@ -148,6 +153,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void initState() {
     super.initState();
     _businessNameController.addListener(_refreshStoreLinkPreview);
+    _emailController.addListener(_clearEmailVerificationIfEmailChanged);
     if (_isBusinessSetupFlow) {
       _loadSubscriptionCatalog();
     }
@@ -156,6 +162,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _refreshStoreLinkPreview() {
     if (mounted) setState(() {});
   }
+
+  void _clearEmailVerificationIfEmailChanged() {
+    final email = _normalizedSignupEmail;
+    if ((_emailOtpSentToEmail == null || _emailOtpSentToEmail == email) &&
+        (_verifiedEmail == null || _verifiedEmail == email) &&
+        _emailVerificationToken == null) {
+      return;
+    }
+    if (_emailOtpSentToEmail == email && _verifiedEmail == email) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _emailOtpSentToEmail = null;
+      _verifiedEmail = null;
+      _emailVerificationToken = null;
+      _emailOtpExpiresAt = null;
+      _emailOtpController.clear();
+    });
+  }
+
+  String get _normalizedSignupEmail =>
+      _emailController.text.trim().toLowerCase();
 
   String get _storeLinkPreview {
     final slug = signupStoreSlugPreview(_businessNameController.text);
@@ -221,24 +250,137 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return true;
   }
 
-  void _continueWizard() {
+  Future<void> _continueWizard() async {
     final valid = switch (_currentStep) {
       0 => _validateBusinessStep(),
       1 => _validateAccountStep(),
+      2 => _validateEmailOtpStep(),
       _ => true,
     };
     if (!valid) return;
+    if (_currentStep == 1) {
+      await _sendSignupOtp();
+      return;
+    }
+    if (_currentStep == 2) {
+      await _verifySignupOtp();
+      return;
+    }
     setState(() {
       _error = null;
-      _currentStep = (_currentStep + 1).clamp(0, 2);
+      _currentStep = (_currentStep + 1).clamp(0, 3);
     });
   }
 
   void _previousWizardStep() {
     setState(() {
       _error = null;
-      _currentStep = (_currentStep - 1).clamp(0, 2);
+      _currentStep = (_currentStep - 1).clamp(0, 3);
     });
+  }
+
+  bool _validateEmailOtpStep() {
+    final code = _emailOtpController.text.replaceAll(RegExp(r'\D'), '');
+    if (_emailOtpSentToEmail != _normalizedSignupEmail) {
+      setState(() => _error = 'Send a fresh code to this email first.');
+      return false;
+    }
+    if (code.length != 6) {
+      setState(() => _error = 'Enter the 6 digit code from your email.');
+      return false;
+    }
+    return true;
+  }
+
+  Future<String> _resolveSignupBackendUrl() async {
+    await SyncSettingsService.init();
+    final backendUrl =
+        _catalog?.backendUrl ??
+        await SubscriptionService.resolveReachableBackendUrl();
+
+    if (backendUrl.isEmpty) {
+      throw Exception(
+        'Cloud backend is not configured. Contact your administrator.',
+      );
+    }
+    return backendUrl;
+  }
+
+  Future<void> _sendSignupOtp() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final email = _normalizedSignupEmail;
+      final backendUrl = await _resolveSignupBackendUrl();
+      final response = await CloudAuthService.requestSignupEmailOtp(
+        backendUrl: backendUrl,
+        email: email,
+      );
+      if (!mounted) return;
+      setState(() {
+        _emailOtpSentToEmail = email;
+        _verifiedEmail = null;
+        _emailVerificationToken = null;
+        _emailOtpExpiresAt = response.expiresAt;
+        _emailOtpController.clear();
+        _currentStep = 2;
+        _error = response.sent
+            ? null
+            : 'A code was already sent. Try again in ${response.retryAfterSeconds ?? 60} seconds.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = AppErrorMessage.from(
+          error,
+          fallback: 'Could not send verification code. Please try again.',
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _verifySignupOtp() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final email = _normalizedSignupEmail;
+      final backendUrl = await _resolveSignupBackendUrl();
+      final response = await CloudAuthService.verifySignupEmailOtp(
+        backendUrl: backendUrl,
+        email: email,
+        code: _emailOtpController.text,
+      );
+      if (response.verificationToken.isEmpty) {
+        throw Exception('Email verification did not return a token.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _verifiedEmail = email;
+        _emailVerificationToken = response.verificationToken;
+        _emailOtpExpiresAt = response.expiresAt;
+        _currentStep = 3;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = AppErrorMessage.from(
+          error,
+          fallback: 'Could not verify the code. Please try again.',
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _loadSubscriptionCatalog() async {
@@ -392,6 +534,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
       return;
     }
+    if (_isBusinessSetupFlow &&
+        (_verifiedEmail != email || _emailVerificationToken == null)) {
+      setState(() => _error = 'Verify your email before creating account.');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -399,16 +546,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      await SyncSettingsService.init();
-      final backendUrl =
-          _catalog?.backendUrl ??
-          await SubscriptionService.resolveReachableBackendUrl();
-
-      if (backendUrl.isEmpty) {
-        throw Exception(
-          'Cloud backend is not configured. Contact your administrator.',
-        );
-      }
+      final backendUrl = await _resolveSignupBackendUrl();
 
       final deviceId = await SyncSettingsService.getOrCreateDeviceId();
 
@@ -426,6 +564,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         sellingMode: _isBusinessSetupFlow ? _selectedSellingMode : null,
         provider: market?.provider,
         platform: SubscriptionService.currentPlatform,
+        emailVerificationToken: _emailVerificationToken,
       );
 
       if (backendUrl != SyncSettingsService.backendUrl) {
@@ -706,12 +845,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _businessNameController.removeListener(_refreshStoreLinkPreview);
+    _emailController.removeListener(_clearEmailVerificationIfEmailChanged);
     _businessNameController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _emailOtpController.dispose();
     super.dispose();
   }
 
@@ -719,6 +860,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     const steps = [
       ('Business', Icons.storefront_outlined),
       ('Your account', Icons.person_outline_rounded),
+      ('Verify email', Icons.mark_email_read_outlined),
       ('Review', Icons.fact_check_outlined),
     ];
 
@@ -1014,6 +1156,82 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  Widget _buildEmailVerificationStep() {
+    final email = _emailOtpSentToEmail ?? _normalizedSignupEmail;
+    final expiryText = _formatOtpExpiry(_emailOtpExpiresAt);
+    return Column(
+      key: const ValueKey('signup-email-otp-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepHeading(
+          'Verify your email',
+          'We sent a 6 digit code to $email. Enter it here to protect your business account.',
+        ),
+        const SizedBox(height: 22),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              const _GradientIcon(Icons.mail_outline_rounded, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  expiryText == null
+                      ? 'Check your inbox and spam folder for the Piki POS code.'
+                      : 'Check your inbox and spam folder. $expiryText',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Verification Code',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-email-otp'),
+          controller: _emailOtpController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _continueWizard(),
+          decoration: const InputDecoration(
+            counterText: '',
+            hintText: 'Enter 6 digit code',
+            prefixIcon: _GradientIcon(Icons.password_outlined),
+          ),
+        ),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: _isLoading ? null : _sendSignupOtp,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Resend code'),
+        ),
+      ],
+    );
+  }
+
+  String? _formatOtpExpiry(DateTime? expiresAt) {
+    if (expiresAt == null) return null;
+    final local = expiresAt.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return 'Code expires at $hour:$minute.';
+  }
+
   Widget _buildReviewStep() {
     final market = _selectedMarket;
     final plan = _signupPlanForSellingMode(
@@ -1054,7 +1272,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           icon: Icons.person_outline_rounded,
           rows: [
             ('Name', _nameController.text.trim()),
-            ('Email', _emailController.text.trim().toLowerCase()),
+            (
+              'Email',
+              _verifiedEmail == _normalizedSignupEmail
+                  ? '$_normalizedSignupEmail (verified)'
+                  : _normalizedSignupEmail,
+            ),
             ('Phone', _phoneController.text.trim()),
           ],
           onEdit: () => setState(() {
@@ -1093,7 +1316,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildWizardActions() {
-    final isReview = _currentStep == 2;
+    final isReview = _currentStep == 3;
+    final actionLabel = isReview
+        ? 'Create my account'
+        : _currentStep == 1
+        ? 'Send verification code'
+        : _currentStep == 2
+        ? 'Verify email'
+        : 'Continue';
     return Row(
       children: [
         if (_currentStep > 0) ...[
@@ -1123,7 +1353,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       color: Colors.white,
                     ),
                   )
-                : Text(isReview ? 'Create my account' : 'Continue'),
+                : Text(actionLabel),
           ),
         ),
       ],
@@ -1264,6 +1494,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 child: switch (_currentStep) {
                   0 => _buildBusinessStep(),
                   1 => _buildAccountStep(),
+                  2 => _buildEmailVerificationStep(),
                   _ => _buildReviewStep(),
                 },
               ),

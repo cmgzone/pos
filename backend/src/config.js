@@ -99,6 +99,21 @@ const config = {
     process.env.BUNNY_MAX_IMAGE_BYTES,
     5 * 1024 * 1024,
   ),
+  resendApiKey: process.env.RESEND_API_KEY?.trim() || '',
+  resendApiBaseUrl:
+    trimTrailingUrl(process.env.RESEND_API_BASE_URL) ||
+    'https://api.resend.com',
+  otpFromEmail:
+    process.env.OTP_FROM_EMAIL?.trim() ||
+    process.env.EMAIL_OTP_FROM?.trim() ||
+    'Piki POS <otp@notify.pikipos.com>',
+  emailOtpRequired: parseBooleanEnv(process.env.EMAIL_OTP_REQUIRED, true),
+  emailOtpTtlMinutes: positiveNumberEnv(process.env.EMAIL_OTP_TTL_MINUTES, 10),
+  emailOtpCooldownSeconds: positiveNumberEnv(
+    process.env.EMAIL_OTP_COOLDOWN_SECONDS,
+    60,
+  ),
+  emailOtpMaxAttempts: positiveNumberEnv(process.env.EMAIL_OTP_MAX_ATTEMPTS, 5),
 };
 
 config.allowedOrigins = parseOriginList(
@@ -165,6 +180,13 @@ function trimSlashes(value) {
 function positiveNumberEnv(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseBooleanEnv(value, fallback) {
+  if (value == null || String(value).trim() === '') {
+    return fallback;
+  }
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
 }
 
 function buildBunnyStorageEndpoint({ endpoint, region }) {

@@ -61,6 +61,51 @@ class CloudAuthResponse {
   }
 }
 
+class EmailOtpRequestResponse {
+  final String email;
+  final bool sent;
+  final DateTime? expiresAt;
+  final int? retryAfterSeconds;
+
+  const EmailOtpRequestResponse({
+    required this.email,
+    required this.sent,
+    required this.expiresAt,
+    required this.retryAfterSeconds,
+  });
+
+  factory EmailOtpRequestResponse.fromJson(Map<String, dynamic> json) {
+    return EmailOtpRequestResponse(
+      email: (json['email'] as String?) ?? '',
+      sent: json['sent'] != false,
+      expiresAt: _parseAuthDate(json['expiresAt']),
+      retryAfterSeconds: json['retryAfterSeconds'] is num
+          ? (json['retryAfterSeconds'] as num).round()
+          : null,
+    );
+  }
+}
+
+class EmailOtpVerificationResponse {
+  final String email;
+  final String verificationToken;
+  final DateTime? expiresAt;
+
+  const EmailOtpVerificationResponse({
+    required this.email,
+    required this.verificationToken,
+    required this.expiresAt,
+  });
+
+  factory EmailOtpVerificationResponse.fromJson(Map<String, dynamic> json) {
+    return EmailOtpVerificationResponse(
+      email: (json['email'] as String?) ?? '',
+      verificationToken: (json['verificationToken'] as String?) ?? '',
+      expiresAt: _parseAuthDate(json['expiresAt']),
+    );
+  }
+}
+
 enum CloudAuthFailureKind { network, unauthorized, conflict, server }
 
 class CloudAuthException implements Exception {
@@ -99,6 +144,7 @@ class CloudAuthService {
     String? sellingMode,
     String? provider,
     String? platform,
+    String? emailVerificationToken,
   }) async {
     final normalizedUrl = backendUrl.trim();
     if (normalizedUrl.isEmpty) {
@@ -130,6 +176,9 @@ class CloudAuthService {
                 'provider': provider.trim(),
               if (platform != null && platform.trim().isNotEmpty)
                 'platform': platform.trim(),
+              if (emailVerificationToken != null &&
+                  emailVerificationToken.trim().isNotEmpty)
+                'emailVerificationToken': emailVerificationToken.trim(),
             }),
           )
           .timeout(_timeout);
@@ -165,6 +214,210 @@ class CloudAuthService {
       throw Exception(
         'No internet connection. An internet connection is required to create an account.',
       );
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<EmailOtpRequestResponse> requestSignupEmailOtp({
+    required String backendUrl,
+    required String email,
+  }) async {
+    return _requestEmailOtp(
+      backendUrl: backendUrl,
+      email: email,
+      purpose: 'signup',
+    );
+  }
+
+  static Future<EmailOtpRequestResponse> requestPasswordResetOtp({
+    required String backendUrl,
+    required String email,
+  }) async {
+    return _requestEmailOtp(
+      backendUrl: backendUrl,
+      email: email,
+      purpose: 'password_reset',
+    );
+  }
+
+  static Future<EmailOtpRequestResponse> _requestEmailOtp({
+    required String backendUrl,
+    required String email,
+    required String purpose,
+  }) async {
+    final normalizedUrl = backendUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      throw Exception('Cloud backend URL is not configured.');
+    }
+
+    final client = http.Client();
+    try {
+      final response = await client
+          .post(
+            Uri.parse('$normalizedUrl/auth/email-otp/request'),
+            headers: const {HttpHeaders.contentTypeHeader: 'application/json'},
+            body: jsonEncode({
+              'email': email.trim().toLowerCase(),
+              'purpose': purpose,
+            }),
+          )
+          .timeout(_timeout);
+
+      final body = _decodeJson(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          _readText(body['error']) ??
+              'Could not send verification code (${response.statusCode})',
+        );
+      }
+      if (body['ok'] != true) {
+        throw Exception(
+          _readText(body['error']) ?? 'Unexpected verification response.',
+        );
+      }
+      return EmailOtpRequestResponse.fromJson(body);
+    } on http.ClientException {
+      throw Exception(
+        'Could not reach the cloud server. Check your internet connection and try again.',
+      );
+    } on SocketException {
+      throw Exception(
+        'No internet connection. Connect to the internet to verify your email.',
+      );
+    } on TimeoutException {
+      throw Exception('Sending the verification code timed out. Try again.');
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<EmailOtpVerificationResponse> verifySignupEmailOtp({
+    required String backendUrl,
+    required String email,
+    required String code,
+  }) async {
+    return _verifyEmailOtp(
+      backendUrl: backendUrl,
+      email: email,
+      code: code,
+      purpose: 'signup',
+    );
+  }
+
+  static Future<EmailOtpVerificationResponse> verifyPasswordResetOtp({
+    required String backendUrl,
+    required String email,
+    required String code,
+  }) async {
+    return _verifyEmailOtp(
+      backendUrl: backendUrl,
+      email: email,
+      code: code,
+      purpose: 'password_reset',
+    );
+  }
+
+  static Future<EmailOtpVerificationResponse> _verifyEmailOtp({
+    required String backendUrl,
+    required String email,
+    required String code,
+    required String purpose,
+  }) async {
+    final normalizedUrl = backendUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      throw Exception('Cloud backend URL is not configured.');
+    }
+
+    final client = http.Client();
+    try {
+      final response = await client
+          .post(
+            Uri.parse('$normalizedUrl/auth/email-otp/verify'),
+            headers: const {HttpHeaders.contentTypeHeader: 'application/json'},
+            body: jsonEncode({
+              'email': email.trim().toLowerCase(),
+              'code': code.trim(),
+              'purpose': purpose,
+            }),
+          )
+          .timeout(_timeout);
+
+      final body = _decodeJson(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          _readText(body['error']) ??
+              'Could not verify code (${response.statusCode})',
+        );
+      }
+      if (body['ok'] != true) {
+        throw Exception(
+          _readText(body['error']) ?? 'Unexpected verification response.',
+        );
+      }
+      return EmailOtpVerificationResponse.fromJson(body);
+    } on http.ClientException {
+      throw Exception(
+        'Could not reach the cloud server. Check your internet connection and try again.',
+      );
+    } on SocketException {
+      throw Exception(
+        'No internet connection. Connect to the internet to verify your email.',
+      );
+    } on TimeoutException {
+      throw Exception('Verifying the code timed out. Try again.');
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<void> completePasswordReset({
+    required String backendUrl,
+    required String email,
+    required String verificationToken,
+    required String newPassword,
+  }) async {
+    final normalizedUrl = backendUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      throw Exception('Cloud backend URL is not configured.');
+    }
+
+    final client = http.Client();
+    try {
+      final response = await client
+          .post(
+            Uri.parse('$normalizedUrl/auth/password-reset/complete'),
+            headers: const {HttpHeaders.contentTypeHeader: 'application/json'},
+            body: jsonEncode({
+              'email': email.trim().toLowerCase(),
+              'verificationToken': verificationToken.trim(),
+              'newPassword': newPassword,
+            }),
+          )
+          .timeout(_timeout);
+
+      final body = _decodeJson(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          _readText(body['error']) ??
+              'Could not reset password (${response.statusCode})',
+        );
+      }
+      if (body['ok'] != true) {
+        throw Exception(
+          _readText(body['error']) ?? 'Unexpected password reset response.',
+        );
+      }
+    } on http.ClientException {
+      throw Exception(
+        'Could not reach the cloud server. Check your internet connection and try again.',
+      );
+    } on SocketException {
+      throw Exception(
+        'No internet connection. Connect to the internet to reset your password.',
+      );
+    } on TimeoutException {
+      throw Exception('Resetting the password timed out. Try again.');
     } finally {
       client.close();
     }
@@ -301,4 +554,10 @@ class CloudAuthService {
       return 'Piki device';
     }
   }
+}
+
+DateTime? _parseAuthDate(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty) return null;
+  return DateTime.tryParse(text);
 }

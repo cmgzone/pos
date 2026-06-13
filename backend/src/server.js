@@ -30,6 +30,13 @@ const {
   verifyPassword,
 } = require('./passwords');
 const {
+  consumeEmailOtpVerification,
+  ensureEmailOtpSchema,
+  requestEmailOtp,
+  resetPasswordWithVerifiedOtp,
+  verifyEmailOtp,
+} = require('./authOtp');
+const {
   ensurePikiProactiveSchema,
   refreshBusinessInsights,
   startPikiProactiveWorker,
@@ -195,6 +202,45 @@ app.post('/api/license/refresh', async (req, res, next) => {
 
 // ── SaaS Authentication ──────────────────────────────────────────────────────
 
+app.post('/api/auth/email-otp/request', authRateLimit, async (req, res, next) => {
+  try {
+    const result = await requestEmailOtp({
+      email: req.body?.email,
+      purpose: req.body?.purpose || 'signup',
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/auth/email-otp/verify', authRateLimit, async (req, res, next) => {
+  try {
+    const result = await verifyEmailOtp({
+      email: req.body?.email,
+      code: req.body?.code,
+      purpose: req.body?.purpose || 'signup',
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/auth/password-reset/complete', authRateLimit, async (req, res, next) => {
+  try {
+    const result = await resetPasswordWithVerifiedOtp({
+      email: req.body?.email,
+      verificationToken:
+        req.body?.emailVerificationToken || req.body?.verificationToken,
+      newPassword: req.body?.newPassword || req.body?.password,
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
   try {
     const businessName = normalizeOptionalText(req.body?.businessName);
@@ -202,6 +248,9 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
     const ownerEmail = normalizeOptionalText(req.body?.ownerEmail);
     const phone = normalizeOptionalText(req.body?.phone);
     const password = req.body?.password;
+    const emailVerificationToken = normalizeOptionalText(
+      req.body?.emailVerificationToken || req.body?.verificationToken,
+    );
     const deviceId = normalizeOptionalText(req.body?.deviceId);
     const deviceName = normalizeOptionalText(req.body?.deviceName);
     const requestedCountry = normalizeOptionalText(req.body?.countryCode);
@@ -296,6 +345,13 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
           'An account with that email already exists. Please sign in instead.',
         );
       }
+
+      await consumeEmailOtpVerification({
+        email: ownerEmail,
+        purpose: 'signup',
+        verificationToken: emailVerificationToken,
+        target: client,
+      });
 
       const now = new Date();
       const crypto = require('crypto');
@@ -3876,6 +3932,7 @@ Promise.all([
   ensureSubscriptionSchema(),
   initializeCatalogSubdomainSchema(query),
   ensureDeviceUserSchema(),
+  ensureEmailOtpSchema(),
   ensureEtimsSchema(),
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),

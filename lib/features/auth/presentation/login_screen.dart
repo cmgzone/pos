@@ -7,6 +7,7 @@ import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/seed_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -460,7 +461,25 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             onSubmitted: (_) => _login(),
           ),
-          const SizedBox(height: 32),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ForgotPasswordScreen(
+                            initialEmail: _emailController.text,
+                          ),
+                        ),
+                      );
+                    },
+              child: const Text('Forgot password?'),
+            ),
+          ),
+          const SizedBox(height: 20),
 
           // Sign In button
           ElevatedButton(
@@ -600,6 +619,452 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
         },
+      ),
+    );
+  }
+}
+
+class ForgotPasswordScreen extends StatefulWidget {
+  final String initialEmail;
+
+  const ForgotPasswordScreen({super.key, this.initialEmail = ''});
+
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final _emailController = TextEditingController();
+  final _codeController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  int _step = 0;
+  bool _isLoading = false;
+  bool _isComplete = false;
+  bool _showPassword = false;
+  bool _showConfirmPassword = false;
+  String? _error;
+  String? _sentEmail;
+  String? _verificationToken;
+  DateTime? _codeExpiresAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.text = widget.initialEmail.trim().toLowerCase();
+  }
+
+  String get _email => _emailController.text.trim().toLowerCase();
+
+  Future<String> _resolveBackendUrl() async {
+    await SyncSettingsService.init();
+    final configured = SyncSettingsService.backendUrl.trim();
+    if (configured.isNotEmpty) return configured;
+    final resolved = await SubscriptionService.resolveReachableBackendUrl();
+    if (resolved.isEmpty) {
+      throw Exception(
+        'Cloud backend is not configured. Contact your administrator.',
+      );
+    }
+    return resolved;
+  }
+
+  Future<void> _sendCode() async {
+    if (!_email.contains('@') || !_email.contains('.')) {
+      setState(() => _error = 'Enter the email used for your account.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final backendUrl = await _resolveBackendUrl();
+      final response = await CloudAuthService.requestPasswordResetOtp(
+        backendUrl: backendUrl,
+        email: _email,
+      );
+      if (!mounted) return;
+      setState(() {
+        _sentEmail = _email;
+        _verificationToken = null;
+        _codeExpiresAt = response.expiresAt;
+        _codeController.clear();
+        _step = 1;
+        _error = response.sent
+            ? null
+            : 'A code was already sent. Try again in ${response.retryAfterSeconds ?? 60} seconds.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = AppErrorMessage.from(
+          error,
+          fallback: 'Could not send reset code. Please try again.',
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _verifyCode() async {
+    final code = _codeController.text.replaceAll(RegExp(r'\D'), '');
+    if (_sentEmail != _email) {
+      setState(() => _error = 'Send a fresh code to this email first.');
+      return;
+    }
+    if (code.length != 6) {
+      setState(() => _error = 'Enter the 6 digit code from your email.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final backendUrl = await _resolveBackendUrl();
+      final response = await CloudAuthService.verifyPasswordResetOtp(
+        backendUrl: backendUrl,
+        email: _email,
+        code: code,
+      );
+      if (response.verificationToken.isEmpty) {
+        throw Exception('Verification did not return a reset token.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _verificationToken = response.verificationToken;
+        _codeExpiresAt = response.expiresAt;
+        _step = 2;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = AppErrorMessage.from(
+          error,
+          fallback: 'Could not verify the code. Please try again.',
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+    final token = _verificationToken;
+
+    if (token == null || token.isEmpty) {
+      setState(() => _error = 'Verify your email before resetting password.');
+      return;
+    }
+    if (password.length < 6) {
+      setState(() => _error = 'Password must be at least 6 characters.');
+      return;
+    }
+    if (password != confirmPassword) {
+      setState(() => _error = 'Passwords do not match.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final backendUrl = await _resolveBackendUrl();
+      await CloudAuthService.completePasswordReset(
+        backendUrl: backendUrl,
+        email: _email,
+        verificationToken: token,
+        newPassword: password,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isComplete = true;
+        _step = 3;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = AppErrorMessage.from(
+          error,
+          fallback: 'Could not reset password. Please try again.',
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handlePrimaryAction() async {
+    switch (_step) {
+      case 0:
+        await _sendCode();
+        break;
+      case 1:
+        await _verifyCode();
+        break;
+      case 2:
+        await _resetPassword();
+        break;
+      default:
+        if (mounted) Navigator.pop(context);
+    }
+  }
+
+  String get _primaryLabel {
+    if (_isComplete) return 'Back to sign in';
+    return switch (_step) {
+      0 => 'Send reset code',
+      1 => 'Verify code',
+      2 => 'Reset password',
+      _ => 'Back to sign in',
+    };
+  }
+
+  String? _formatExpiry(DateTime? expiresAt) {
+    if (expiresAt == null) return null;
+    final local = expiresAt.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return 'Code expires at $hour:$minute.';
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _codeController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Reset password')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 460),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  blurRadius: 40,
+                  offset: const Offset(0, 16),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _GradientIcon(Icons.lock_reset_rounded, size: 42),
+                const SizedBox(height: 18),
+                Text(
+                  _isComplete ? 'Password updated' : 'Forgot password?',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _isComplete
+                      ? 'You can now sign in with your new password.'
+                      : 'We will send a secure code to your account email.',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                if (_error != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                if (_step == 0) _buildEmailStep(),
+                if (_step == 1) _buildCodeStep(),
+                if (_step == 2) _buildPasswordStep(),
+                if (_step == 3) _buildSuccessStep(),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _handlePrimaryAction,
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(_primaryLabel),
+                ),
+                if (_step == 1 && !_isComplete) ...[
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: _isLoading ? null : _sendCode,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Resend code'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmailStep() {
+    return TextField(
+      controller: _emailController,
+      keyboardType: TextInputType.emailAddress,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _sendCode(),
+      decoration: const InputDecoration(
+        labelText: 'Account email',
+        hintText: 'Enter your email',
+        prefixIcon: _GradientIcon(Icons.email_outlined),
+      ),
+    );
+  }
+
+  Widget _buildCodeStep() {
+    final expiryText = _formatExpiry(_codeExpiresAt);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Enter the code sent to $_email.',
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        ),
+        if (expiryText != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            expiryText,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        TextField(
+          controller: _codeController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _verifyCode(),
+          decoration: const InputDecoration(
+            labelText: 'Verification code',
+            counterText: '',
+            hintText: 'Enter 6 digit code',
+            prefixIcon: _GradientIcon(Icons.password_outlined),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPasswordStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _passwordController,
+          obscureText: !_showPassword,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            labelText: 'New password',
+            hintText: 'At least 6 characters',
+            prefixIcon: const _GradientIcon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              tooltip: _showPassword ? 'Hide password' : 'Show password',
+              icon: Icon(
+                _showPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+              ),
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _confirmPasswordController,
+          obscureText: !_showConfirmPassword,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _resetPassword(),
+          decoration: InputDecoration(
+            labelText: 'Confirm password',
+            hintText: 'Enter the same password again',
+            prefixIcon: const _GradientIcon(Icons.lock_reset_outlined),
+            suffixIcon: IconButton(
+              tooltip: _showConfirmPassword ? 'Hide password' : 'Show password',
+              icon: Icon(
+                _showConfirmPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+              ),
+              onPressed: () =>
+                  setState(() => _showConfirmPassword = !_showConfirmPassword),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuccessStep() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.24)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.check_circle_outline, color: AppColors.success),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Your password was reset successfully.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }
