@@ -22,24 +22,30 @@ async function main() {
     `piki-pos-postgres-${Date.now()}.dump`,
   );
   try {
+    const sourceEnv = postgresConnectionEnv(sourceUrl);
     console.log('Creating a PostgreSQL backup from the source database...');
     await run('pg_dump', [
+      '--dbname',
+      sourceEnv.PGDATABASE,
       '--format=custom',
       '--no-owner',
       '--no-acl',
       '--file',
       dumpPath,
-    ], postgresConnectionEnv(sourceUrl));
+    ], sourceEnv);
 
+    const targetEnv = postgresConnectionEnv(targetUrl);
     console.log('Restoring the backup into the Coolify PostgreSQL database...');
     await run('pg_restore', [
+      '--dbname',
+      targetEnv.PGDATABASE,
       '--clean',
       '--if-exists',
       '--no-owner',
       '--no-acl',
       '--exit-on-error',
       dumpPath,
-    ], postgresConnectionEnv(targetUrl));
+    ], targetEnv);
     console.log('PostgreSQL migration completed successfully.');
   } finally {
     await fs.rm(dumpPath, { force: true });
