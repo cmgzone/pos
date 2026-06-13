@@ -15,6 +15,38 @@ import '../data/auth_password_service.dart';
 import '../../settings/presentation/subscription_screen.dart';
 import 'login_screen.dart';
 
+const _reservedStoreLinks = {
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'cdn',
+  'help',
+  'mail',
+  'pikipos',
+  'shop',
+  'status',
+  'store',
+  'support',
+  'www',
+};
+
+String signupStoreSlugPreview(String businessName) {
+  var slug = businessName
+      .trim()
+      .toLowerCase()
+      .replaceAll('&', ' and ')
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  if (slug.isEmpty) slug = 'your-business';
+  if (RegExp(r'^\d+$').hasMatch(slug)) slug = 'shop-$slug';
+  if (_reservedStoreLinks.contains(slug)) slug = '$slug-shop';
+  if (slug.length > 48) {
+    slug = slug.substring(0, 48).replaceAll(RegExp(r'-+$'), '');
+  }
+  return slug;
+}
+
 class SignUpScreen extends StatefulWidget {
   final String initialRole;
 
@@ -42,6 +74,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Country _selectedCountry = Country.parse('KE');
   String _selectedSellingMode = 'products';
   String _selectedCurrency = 'KSh';
+  int _currentStep = 0;
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
@@ -114,9 +147,98 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void initState() {
     super.initState();
+    _businessNameController.addListener(_refreshStoreLinkPreview);
     if (_isBusinessSetupFlow) {
       _loadSubscriptionCatalog();
     }
+  }
+
+  void _refreshStoreLinkPreview() {
+    if (mounted) setState(() {});
+  }
+
+  String get _storeLinkPreview {
+    final slug = signupStoreSlugPreview(_businessNameController.text);
+    return '$slug.pikipos.com';
+  }
+
+  bool _validateBusinessStep() {
+    if (_businessNameController.text.trim().isEmpty) {
+      setState(() => _error = 'Enter your business name to continue.');
+      return false;
+    }
+    if (_isLoadingCatalog) {
+      setState(() => _error = 'Please wait while business options load.');
+      return false;
+    }
+    final market = _selectedMarket;
+    if (market == null) {
+      setState(() => _error = 'Choose a country with an available plan.');
+      return false;
+    }
+    if (_signupPlanForSellingMode(_catalog, market, _selectedSellingMode) ==
+        null) {
+      setState(
+        () => _error =
+            'Choose a business type that is available for this country.',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  bool _validateAccountStep() {
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (name.isEmpty ||
+        phone.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        confirmPassword.isEmpty) {
+      setState(() => _error = 'Complete all account details to continue.');
+      return false;
+    }
+    if (!email.contains('@') || !email.contains('.')) {
+      setState(() => _error = 'Enter a valid email address.');
+      return false;
+    }
+    if (phone.length < 7) {
+      setState(() => _error = 'Enter a valid phone number.');
+      return false;
+    }
+    if (password.length < 6) {
+      setState(() => _error = 'Password must be at least 6 characters.');
+      return false;
+    }
+    if (password != confirmPassword) {
+      setState(() => _error = 'Passwords do not match.');
+      return false;
+    }
+    return true;
+  }
+
+  void _continueWizard() {
+    final valid = switch (_currentStep) {
+      0 => _validateBusinessStep(),
+      1 => _validateAccountStep(),
+      _ => true,
+    };
+    if (!valid) return;
+    setState(() {
+      _error = null;
+      _currentStep = (_currentStep + 1).clamp(0, 2);
+    });
+  }
+
+  void _previousWizardStep() {
+    setState(() {
+      _error = null;
+      _currentStep = (_currentStep - 1).clamp(0, 2);
+    });
   }
 
   Future<void> _loadSubscriptionCatalog() async {
@@ -583,6 +705,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _businessNameController.removeListener(_refreshStoreLinkPreview);
     _businessNameController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
@@ -592,13 +715,429 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
+  Widget _buildWizardProgress() {
+    const steps = [
+      ('Business', Icons.storefront_outlined),
+      ('Your account', Icons.person_outline_rounded),
+      ('Review', Icons.fact_check_outlined),
+    ];
+
+    return Row(
+      children: List.generate(steps.length, (index) {
+        final step = steps[index];
+        final isActive = index == _currentStep;
+        final isComplete = index < _currentStep;
+        final color = isActive || isComplete
+            ? AppColors.primary
+            : AppColors.textSecondary;
+        return Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? AppColors.primary
+                            : isComplete
+                            ? AppColors.success.withValues(alpha: 0.16)
+                            : AppColors.surfaceHighlight,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isActive || isComplete
+                              ? color
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Icon(
+                        isComplete ? Icons.check_rounded : step.$2,
+                        size: 19,
+                        color: isActive ? Colors.white : color,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      step.$1,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: isActive
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                        fontWeight: isActive
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (index < steps.length - 1)
+                Container(
+                  width: 28,
+                  height: 2,
+                  margin: const EdgeInsets.only(bottom: 22),
+                  color: isComplete ? AppColors.success : AppColors.border,
+                ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildStepHeading(String title, String description) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          description,
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            height: 1.45,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBusinessStep() {
+    return Column(
+      key: const ValueKey('signup-business-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepHeading(
+          'Tell us about your business',
+          'We use this to prepare your POS, currency, billing method, and online catalog.',
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Business Name',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-business-name'),
+          controller: _businessNameController,
+          autofocus: true,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            hintText: 'Example: Amina Fashion',
+            prefixIcon: _GradientIcon(Icons.storefront_outlined),
+          ),
+        ),
+        const SizedBox(height: 12),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.secondary.withValues(alpha: 0.09),
+                AppColors.primary.withValues(alpha: 0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppColors.secondary.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _GradientIcon(Icons.language_rounded, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your online store link',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    SelectableText(
+                      _storeLinkPreview,
+                      style: const TextStyle(
+                        color: AppColors.secondary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'If this link is already used, Piki POS adds a short unique code automatically.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        _buildSubscriptionChooser(),
+      ],
+    );
+  }
+
+  Widget _buildAccountStep() {
+    return Column(
+      key: const ValueKey('signup-account-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_isBusinessSetupFlow) ...[
+          _buildStepHeading(
+            'Create your owner account',
+            'These details let you sign in and recover access to your business.',
+          ),
+          const SizedBox(height: 24),
+        ],
+        const Text(
+          'Full Name',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-full-name'),
+          controller: _nameController,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            hintText: 'Enter your full name',
+            prefixIcon: _GradientIcon(Icons.person_outline),
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Phone Number',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-phone'),
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            hintText: 'Enter your phone number',
+            prefixIcon: _GradientIcon(Icons.phone_outlined),
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Email',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-email'),
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            hintText: 'Enter your email',
+            prefixIcon: _GradientIcon(Icons.email_outlined),
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Password',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-password'),
+          controller: _passwordController,
+          obscureText: !_showPassword,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            hintText: 'At least 6 characters',
+            prefixIcon: const _GradientIcon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              tooltip: _showPassword ? 'Hide password' : 'Show password',
+              icon: Icon(
+                _showPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+              ),
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Confirm Password',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('signup-confirm-password'),
+          controller: _confirmPasswordController,
+          obscureText: !_showConfirmPassword,
+          onSubmitted: (_) =>
+              _isBusinessSetupFlow ? _continueWizard() : _signUp(),
+          decoration: InputDecoration(
+            hintText: 'Enter the same password again',
+            prefixIcon: const _GradientIcon(Icons.lock_reset_outlined),
+            suffixIcon: IconButton(
+              tooltip: _showConfirmPassword ? 'Hide password' : 'Show password',
+              icon: Icon(
+                _showConfirmPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+              ),
+              onPressed: () =>
+                  setState(() => _showConfirmPassword = !_showConfirmPassword),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewStep() {
+    final market = _selectedMarket;
+    final plan = _signupPlanForSellingMode(
+      _catalog,
+      market,
+      _selectedSellingMode,
+    );
+    return Column(
+      key: const ValueKey('signup-review-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepHeading(
+          'Review and create your account',
+          'Check the important details below. You can go back to make changes.',
+        ),
+        const SizedBox(height: 22),
+        _ReviewCard(
+          title: 'Business',
+          icon: Icons.storefront_outlined,
+          rows: [
+            ('Name', _businessNameController.text.trim()),
+            ('Store link', _storeLinkPreview),
+            (
+              'Country',
+              '${_selectedCountry.flagEmoji} ${_selectedCountry.name}',
+            ),
+            ('Business type', _sellingModeLabel(_selectedSellingMode)),
+            ('Currency', _selectedCurrency),
+          ],
+          onEdit: () => setState(() {
+            _error = null;
+            _currentStep = 0;
+          }),
+        ),
+        const SizedBox(height: 12),
+        _ReviewCard(
+          title: 'Owner account',
+          icon: Icons.person_outline_rounded,
+          rows: [
+            ('Name', _nameController.text.trim()),
+            ('Email', _emailController.text.trim().toLowerCase()),
+            ('Phone', _phoneController.text.trim()),
+          ],
+          onEdit: () => setState(() {
+            _error = null;
+            _currentStep = 1;
+          }),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceHighlight,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              const _GradientIcon(Icons.credit_card_outlined, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  SubscriptionService.currentPlatform == 'android'
+                      ? 'Plan: ${plan?.name ?? 'Available plan'} • Billing: Google Play'
+                      : 'Plan: ${plan?.name ?? 'Available plan'} • Billing: ${market?.providerLabel ?? 'Selected after signup'}',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWizardActions() {
+    final isReview = _currentStep == 2;
+    return Row(
+      children: [
+        if (_currentStep > 0) ...[
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _isLoading ? null : _previousWizardStep,
+              child: const Text('Back'),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          flex: 2,
+          child: ElevatedButton(
+            key: Key(isReview ? 'signup-submit' : 'signup-continue'),
+            onPressed: _isLoading
+                ? null
+                : isReview
+                ? _signUp
+                : _continueWizard,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(isReview ? 'Create my account' : 'Continue'),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 520;
     final form = SingleChildScrollView(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 440),
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(40),
+        constraints: const BoxConstraints(maxWidth: 560),
+        margin: EdgeInsets.all(compact ? 14 : 24),
+        padding: EdgeInsets.all(compact ? 24 : 36),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(24),
@@ -643,7 +1182,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
             const SizedBox(height: 28),
             Text(
-              _isBusinessSetupFlow ? 'Create Account' : 'Create Staff Account',
+              _isBusinessSetupFlow ? 'Set up Piki POS' : 'Create Staff Account',
               style: Theme.of(
                 context,
               ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -651,11 +1190,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             const SizedBox(height: 8),
             Text(
               _isBusinessSetupFlow
-                  ? 'Register your business online to start using Piki POS'
+                  ? 'A guided setup for your business and owner account'
                   : 'Create a new team member account',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
 
             if (_isBusinessSetupFlow)
               Container(
@@ -718,133 +1257,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
             if (_isBusinessSetupFlow) ...[
-              const Text(
-                'Business Name',
-                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+              _buildWizardProgress(),
+              const SizedBox(height: 28),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: switch (_currentStep) {
+                  0 => _buildBusinessStep(),
+                  1 => _buildAccountStep(),
+                  _ => _buildReviewStep(),
+                },
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _businessNameController,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  hintText: 'Enter your business name',
-                  prefixIcon: _GradientIcon(Icons.storefront_outlined),
-                ),
+              const SizedBox(height: 28),
+              _buildWizardActions(),
+            ] else ...[
+              _buildAccountStep(),
+              const SizedBox(height: 28),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _signUp,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Create Account'),
               ),
-              const SizedBox(height: 20),
-              _buildSubscriptionChooser(),
-              const SizedBox(height: 20),
             ],
-            const Text(
-              'Full Name',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _nameController,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                hintText: 'Enter your full name',
-                prefixIcon: _GradientIcon(Icons.person_outline),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Phone Number',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                hintText: 'Enter your phone number',
-                prefixIcon: _GradientIcon(Icons.phone_outlined),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Email',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                hintText: 'Enter your email',
-                prefixIcon: _GradientIcon(Icons.email_outlined),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Password',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _passwordController,
-              obscureText: !_showPassword,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                hintText: 'Create a password',
-                prefixIcon: const _GradientIcon(Icons.lock_outline),
-                suffixIcon: IconButton(
-                  tooltip: _showPassword ? 'Hide password' : 'Show password',
-                  icon: Icon(
-                    _showPassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                  ),
-                  onPressed: () =>
-                      setState(() => _showPassword = !_showPassword),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Confirm Password',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _confirmPasswordController,
-              obscureText: !_showConfirmPassword,
-              onSubmitted: (_) => _signUp(),
-              decoration: InputDecoration(
-                hintText: 'Confirm your password',
-                prefixIcon: const _GradientIcon(Icons.lock_reset_outlined),
-                suffixIcon: IconButton(
-                  tooltip: _showConfirmPassword
-                      ? 'Hide password'
-                      : 'Show password',
-                  icon: Icon(
-                    _showConfirmPassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                  ),
-                  onPressed: () => setState(
-                    () => _showConfirmPassword = !_showConfirmPassword,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _signUp,
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Create Account'),
-            ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: _isLoading ? null : _goToSignIn,
@@ -914,6 +1355,83 @@ class _GradientIcon extends StatelessWidget {
         end: Alignment.bottomRight,
       ).createShader(bounds),
       child: Icon(icon, size: size, color: Colors.white),
+    );
+  }
+}
+
+class _ReviewCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<(String, String)> rows;
+  final VoidCallback onEdit;
+
+  const _ReviewCard({
+    required this.title,
+    required this.icon,
+    required this.rows,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHighlight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _GradientIcon(icon, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              TextButton(onPressed: onEdit, child: const Text('Edit')),
+            ],
+          ),
+          const Divider(height: 22, color: AppColors.border),
+          ...rows.map(
+            (row) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 105,
+                    child: Text(
+                      row.$1,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$2,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
