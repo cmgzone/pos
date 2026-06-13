@@ -29,7 +29,7 @@ async function main() {
       '--no-acl',
       '--file',
       dumpPath,
-    ], { PGDATABASE: sourceUrl });
+    ], postgresConnectionEnv(sourceUrl));
 
     console.log('Restoring the backup into the Coolify PostgreSQL database...');
     await run('pg_restore', [
@@ -39,7 +39,7 @@ async function main() {
       '--no-acl',
       '--exit-on-error',
       dumpPath,
-    ], { PGDATABASE: targetUrl });
+    ], postgresConnectionEnv(targetUrl));
     console.log('PostgreSQL migration completed successfully.');
   } finally {
     await fs.rm(dumpPath, { force: true });
@@ -52,6 +52,42 @@ function requiredEnv(name) {
     throw new Error(`${name} is required.`);
   }
   return value;
+}
+
+function postgresConnectionEnv(connectionUrl) {
+  const url = new URL(connectionUrl);
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error('Database URLs must use the postgres:// protocol.');
+  }
+
+  const database = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+  if (!url.hostname || !database) {
+    throw new Error('Database URLs must include a hostname and database name.');
+  }
+
+  const env = {
+    PGHOST: url.hostname,
+    PGPORT: url.port || '5432',
+    PGUSER: decodeURIComponent(url.username),
+    PGPASSWORD: decodeURIComponent(url.password),
+    PGDATABASE: database,
+  };
+  const queryEnvironmentVariables = {
+    sslmode: 'PGSSLMODE',
+    channel_binding: 'PGCHANNELBINDING',
+    connect_timeout: 'PGCONNECT_TIMEOUT',
+    application_name: 'PGAPPNAME',
+    sslrootcert: 'PGSSLROOTCERT',
+  };
+  for (const [queryName, environmentName] of Object.entries(
+    queryEnvironmentVariables,
+  )) {
+    const value = url.searchParams.get(queryName);
+    if (value) {
+      env[environmentName] = value;
+    }
+  }
+  return env;
 }
 
 function run(command, args, extraEnv = {}) {
@@ -71,7 +107,11 @@ function run(command, args, extraEnv = {}) {
   });
 }
 
-main().catch((error) => {
-  console.error('PostgreSQL migration failed:', error.message);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('PostgreSQL migration failed:', error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { postgresConnectionEnv };
