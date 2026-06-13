@@ -99,6 +99,7 @@ const {
   findBusinessIdByCatalogSubdomain,
   initializeCatalogSubdomainSchema,
 } = require('./catalogSubdomains');
+const { normalizePublicCatalogBranches } = require('./catalogBranches');
 
 const app = express();
 const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
@@ -6011,10 +6012,7 @@ async function loadPublicCatalog(
      ORDER BY CASE WHEN id = 'main_branch' THEN 0 ELSE 1 END, name ASC`,
     [businessId],
   );
-  const branches = branchesResult.rows.map((branch) => ({
-    id: branch.id,
-    name: branch.name || (branch.id === 'main_branch' ? 'Main' : branch.id),
-  }));
+  const branches = normalizePublicCatalogBranches(branchesResult.rows);
   const requested = normalizeOptionalText(requestedBranchId);
   if (requested && !branches.some((branch) => branch.id === requested)) {
     throw createHttpError(404, 'Catalog branch not found');
