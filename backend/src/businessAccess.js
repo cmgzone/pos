@@ -198,6 +198,7 @@ async function refreshBusinessAccess({ accessToken, deviceId }) {
 
   return withTransaction(async (client) => {
     await ensureSubscriptionSchema(client);
+    await ensureCatalogSubdomainSchema(client);
     const context = await loadBusinessContextByToken(
       client,
       normalizedToken,
@@ -250,6 +251,7 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
 
   await ensureSubscriptionSchema();
   await ensureDeviceUserSchema();
+  await ensureCatalogSubdomainSchema(query);
   const result = await query(
     `
     SELECT
@@ -273,7 +275,7 @@ async function resolveBusinessAccess({ accessToken, deviceId }) {
       u.pos_mode,
       u.service_order_scope
     FROM business_access_tokens t
-    JOIN businesses b ON b.id = t.business_id
+    JOIN businesses b ON b.id = t.business_id AND b.deleted_at IS NULL
     JOIN subscriptions s ON s.business_id = b.id
     JOIN devices d ON d.business_id = b.id AND d.id = $2
     LEFT JOIN users u
@@ -393,7 +395,7 @@ async function loadBusinessContextByDevice(client, deviceId) {
       s.last_verified_at,
       d.id AS device_id
     FROM devices d
-    JOIN businesses b ON b.id = d.business_id
+    JOIN businesses b ON b.id = d.business_id AND b.deleted_at IS NULL
     LEFT JOIN subscriptions s ON s.business_id = b.id
     WHERE d.id = $1
     LIMIT 1
@@ -420,7 +422,7 @@ async function loadBusinessContextByToken(client, accessToken, deviceId) {
       s.last_verified_at,
       d.id AS device_id
     FROM business_access_tokens t
-    JOIN businesses b ON b.id = t.business_id
+    JOIN businesses b ON b.id = t.business_id AND b.deleted_at IS NULL
     JOIN devices d ON d.business_id = b.id AND d.id = $2
     LEFT JOIN subscriptions s ON s.business_id = b.id
     WHERE t.access_token = $1

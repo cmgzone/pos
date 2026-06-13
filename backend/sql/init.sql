@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS businesses (
   owner_name text,
   owner_email text,
   public_subdomain text,
+  deleted_at timestamptz,
+  subdomain_released_at timestamptz,
   country_code text NOT NULL DEFAULT 'GLOBAL',
   currency text,
   selling_mode text NOT NULL DEFAULT 'combo',
@@ -14,13 +16,29 @@ CREATE TABLE IF NOT EXISTS businesses (
 );
 
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS public_subdomain text;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subdomain_released_at timestamptz;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL';
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS currency text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'combo';
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE indexname = 'idx_businesses_public_subdomain_unique'
+      AND indexdef NOT ILIKE '%deleted_at IS NULL%'
+  ) THEN
+    DROP INDEX idx_businesses_public_subdomain_unique;
+  END IF;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_public_subdomain_unique
   ON businesses (LOWER(public_subdomain))
-  WHERE public_subdomain IS NOT NULL;
+  WHERE public_subdomain IS NOT NULL
+    AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_businesses_deleted_at ON businesses(deleted_at);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,

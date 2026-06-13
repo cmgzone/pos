@@ -503,6 +503,72 @@ class CloudAuthService {
     }
   }
 
+  /// Permanently closes the current business on the backend.
+  ///
+  /// The server requires an admin session and the exact business name as a
+  /// confirmation. On success, the public storefront subdomain is released and
+  /// existing access tokens are invalidated server-side.
+  static Future<Map<String, dynamic>> deleteBusinessOnline({
+    required String backendUrl,
+    required String accessToken,
+    required String deviceId,
+    required String confirmBusinessName,
+  }) async {
+    final normalizedUrl = backendUrl.trim();
+    final token = accessToken.trim();
+    if (normalizedUrl.isEmpty) {
+      throw Exception('Cloud backend URL is not configured.');
+    }
+    if (token.isEmpty) {
+      throw Exception('Cloud access token is missing.');
+    }
+
+    final client = http.Client();
+    try {
+      final response = await client
+          .post(
+            Uri.parse('$normalizedUrl/business/delete'),
+            headers: {
+              HttpHeaders.contentTypeHeader: 'application/json',
+              HttpHeaders.authorizationHeader: 'Bearer $token',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'confirmBusinessName': confirmBusinessName.trim(),
+            }),
+          )
+          .timeout(_timeout);
+
+      final body = _decodeJson(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          _readText(body['error']) ??
+              'Could not delete business (${response.statusCode})',
+        );
+      }
+      if (body['ok'] != true) {
+        throw Exception(
+          _readText(body['error']) ?? 'Unexpected business deletion response.',
+        );
+      }
+      return body['data'] is Map<String, dynamic>
+          ? body['data'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+    } on http.ClientException {
+      throw Exception(
+        'Could not reach the cloud server. Check your internet connection and try again.',
+      );
+    } on SocketException {
+      throw Exception(
+        'No internet connection. Connect to the internet to delete the business.',
+      );
+    } on TimeoutException {
+      throw Exception('Deleting the business timed out. Try again.');
+    } finally {
+      client.close();
+    }
+  }
+
   /// Persist the cloud auth response locally: store the license binding,
   /// sync settings, and return the user record for local DB insertion.
   static Future<void> persistCloudResponse(CloudAuthResponse response) async {

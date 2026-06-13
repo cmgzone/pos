@@ -1,42 +1,46 @@
 # Piki POS Sync Backend
 
-Node.js + Express API for the POS cloud layer, backed by Neon Postgres.
+Node.js + Express API for the POS cloud layer, backed by PostgreSQL with
+optional Redis caching.
 
 ## Architecture
 
 - Flutter app keeps working locally with SQLite.
 - This backend handles cloud auth, license activation, and sync endpoints.
-- Neon is the hosted PostgreSQL database for shared cloud data.
+- PostgreSQL stores shared cloud data.
+- Redis caches public storefront responses when `REDIS_URL` is configured.
 
-Neon is the database only. You still deploy this API separately on a host such
-as Render, Railway, Fly.io, or your own server.
-
-For Coolify, deploy the repository root with the included `Dockerfile`. The
-container runs this backend, serves the landing page from `/`, and exposes port
-`3000`.
+For Coolify, create PostgreSQL and Redis using their one-click database
+resources. Deploy the application separately, then set `DATABASE_URL` and
+`REDIS_URL` to the resources' internal URLs. The container initializes the
+PostgreSQL schema before starting the API.
 
 ## Stack
 
 - Node.js
 - Express
-- Neon Postgres via `@neondatabase/serverless`
+- PostgreSQL via `pg`
+- Redis via `redis`
 
 ## Environment
 
 Copy `.env.example` to `.env` and fill in your real values.
 
-The backend accepts any of these database env vars:
+The backend accepts any of these database environment variables:
 
-- `NEON_DATABASE_URL`
 - `DATABASE_URL`
 - `POSTGRES_URL`
+- `NEON_DATABASE_URL` (legacy fallback during migration)
 
 Required or recommended values:
 
 ```bash
 PORT=3000
 NODE_ENV=development
-NEON_DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-ENDPOINT/velora_pos?sslmode=require
+DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES-HOST:5432/piki_pos
+DATABASE_SSL=false
+REDIS_URL=redis://:PASSWORD@REDIS-HOST:6379/0
+REDIS_CACHE_TTL_SECONDS=30
 LICENSE_SIGNING_SECRET=replace-with-a-long-random-secret
 PLATFORM_ADMIN_EMAIL=admin@your-domain.example
 PLATFORM_ADMIN_PASSWORD=change-me
@@ -86,7 +90,10 @@ Coolify production variables should include:
 ```bash
 NODE_ENV=production
 PORT=3000
-NEON_DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-ENDPOINT/piki_pos?sslmode=require
+DATABASE_URL=postgresql://USER:PASSWORD@INTERNAL-POSTGRES-HOST:5432/piki_pos
+DATABASE_SSL=false
+REDIS_URL=redis://:PASSWORD@INTERNAL-REDIS-HOST:6379/0
+REDIS_CACHE_TTL_SECONDS=30
 LICENSE_SIGNING_SECRET=replace-with-a-long-random-secret
 PLATFORM_ADMIN_EMAIL=admin@your-domain.example
 PLATFORM_ADMIN_PASSWORD=change-me-to-a-strong-password
@@ -106,17 +113,33 @@ MPESA_CALLBACK_URL=https://your-api-host.example.com/api/payments/mpesa/stk-call
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 ```
 
+### Move Existing Neon Data
+
+Keep the application using Neon while the Coolify PostgreSQL resource is being
+prepared. In the application terminal, set the source and target URLs and run:
+
+```bash
+SOURCE_DATABASE_URL='postgresql://...neon...?sslmode=require' \
+TARGET_DATABASE_URL='postgresql://...coolify-internal.../piki_pos' \
+MIGRATION_CONFIRM=copy-neon-to-coolify-postgres \
+npm run db:migrate:postgres
+```
+
+After the command succeeds, change the application's `DATABASE_URL` to the
+Coolify PostgreSQL internal URL and redeploy. Redis is cache-only and does not
+need data copied from Neon.
+
 ## Local Setup
 
 1. Copy `.env.example` to `.env`
-2. Add your Neon pooled connection string
+2. Add your PostgreSQL connection string
 3. Install dependencies
 
 ```bash
 npm install
 ```
 
-4. Initialize the Neon schema
+4. Initialize the PostgreSQL schema
 
 ```bash
 npm run db:init
@@ -145,7 +168,7 @@ npm run dev
 
 ## Flutter App Build Settings
 
-The Flutter app should point to your deployed API host, not directly to Neon.
+The Flutter app should point to your deployed API host, not directly to PostgreSQL.
 
 Example:
 

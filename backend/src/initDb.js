@@ -23,7 +23,7 @@ async function main() {
     await client.query('COMMIT');
 
     console.log(
-      `Initialized Neon schema from ${path.basename(sqlPath)} with ${statementCount} statements.`,
+      `Initialized PostgreSQL schema from ${path.basename(sqlPath)} with ${statementCount} statements.`,
     );
   } catch (error) {
     await client.query('ROLLBACK');
@@ -35,7 +35,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Failed to initialize Neon database.');
+  console.error('Failed to initialize PostgreSQL database.');
   console.error(error.message);
   process.exitCode = 1;
 });

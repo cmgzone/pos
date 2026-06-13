@@ -30,11 +30,30 @@ function requireAnyEnv(names) {
 const config = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
-  neonDatabaseUrl: requireAnyEnv([
-    'NEON_DATABASE_URL',
+  databaseUrl: requireAnyEnv([
     'DATABASE_URL',
     'POSTGRES_URL',
+    'NEON_DATABASE_URL',
   ]),
+  databasePoolMax: positiveNumberEnv(process.env.DATABASE_POOL_MAX, 20),
+  databaseIdleTimeoutMs: positiveNumberEnv(
+    process.env.DATABASE_IDLE_TIMEOUT_MS,
+    30000,
+  ),
+  databaseConnectionTimeoutMs: positiveNumberEnv(
+    process.env.DATABASE_CONNECTION_TIMEOUT_MS,
+    10000,
+  ),
+  databaseSsl: parseOptionalBooleanEnv(process.env.DATABASE_SSL),
+  databaseSslRejectUnauthorized: parseBooleanEnv(
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+    true,
+  ),
+  redisUrl: process.env.REDIS_URL?.trim() || '',
+  redisCacheTtlSeconds: positiveNumberEnv(
+    process.env.REDIS_CACHE_TTL_SECONDS,
+    30,
+  ),
   subscriptionTrialDays: Number(process.env.SUBSCRIPTION_TRIAL_DAYS || 30),
   subscriptionGraceDays: Number(process.env.SUBSCRIPTION_GRACE_DAYS || 5),
   licenseSigningSecret:
@@ -187,6 +206,13 @@ function parseBooleanEnv(value, fallback) {
     return fallback;
   }
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function parseOptionalBooleanEnv(value) {
+  if (value == null || String(value).trim() === '') {
+    return null;
+  }
+  return parseBooleanEnv(value, false);
 }
 
 function buildBunnyStorageEndpoint({ endpoint, region }) {

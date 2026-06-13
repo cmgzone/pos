@@ -5,6 +5,13 @@ const path = require('path');
 
 const { config } = require('./config');
 const { query, withTransaction, withReadTransaction } = require('./db');
+const {
+  cacheGetJson,
+  cacheGetText,
+  cacheIncrement,
+  cacheSetJson,
+  cacheStatus,
+} = require('./redisCache');
 const { syncTables } = require('./syncTables');
 const {
   buildRejectedWriteResult,
@@ -19,6 +26,7 @@ const {
   refreshBusinessAccess,
   resolveBusinessAccess,
 } = require('./businessAccess');
+const { deleteBusinessAccount } = require('./businessDeletion');
 const {
   issueLicense,
   resolveSubscriptionState,
@@ -130,6 +138,17 @@ const publicWriteRateLimit = createRateLimiter({
 // Serialize write transactions so revision cursors stay in commit order.
 const PUSH_LOCK_CLASS_ID = 41831;
 const PUSH_LOCK_OBJECT_ID = 1;
+const CATALOG_CACHE_TABLES = new Set([
+  'branches',
+  'categories',
+  'products',
+  'product_variants',
+  'stock_batches',
+  'sale_items',
+  'sales',
+  'purchase_invoices',
+  'stock_transfers',
+]);
 
 app.disable('x-powered-by');
 app.use(applySecurityHeaders);
@@ -139,9 +158,12 @@ app.use(express.json({ limit: '10mb' }));
 app.get('/api/health', async (req, res) => {
   try {
     await query('SELECT 1');
+    const cache = await cacheStatus();
     res.json({
       ok: true,
       service: 'velora-pos-sync-backend',
+      database: 'postgresql',
+      cache,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -539,6 +561,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
 app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
   try {
     await ensureDeviceUserSchema();
+    await ensureCatalogSubdomainSchema(query);
     const email = normalizeOptionalText(req.body?.email);
     const password = req.body?.password;
     const deviceId = normalizeOptionalText(req.body?.deviceId);
@@ -559,6 +582,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
         `SELECT u.*, b.name AS business_name, b.country_code, b.currency, b.selling_mode
          FROM users u
          JOIN businesses b ON b.id = u.business_id
+           AND b.deleted_at IS NULL
          WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
            AND u.deleted_at IS NULL
          ORDER BY u.last_seen_at DESC NULLS LAST, u.created_at DESC`,
@@ -707,6 +731,9 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
     next(normalizeRouteError(error));
   }
 });
+
+app.delete('/api/business', deleteBusinessRoute);
+app.post('/api/business/delete', deleteBusinessRoute);
 
 app.post('/api/users/upsert', async (req, res, next) => {
   try {
@@ -1300,6 +1327,10 @@ app.post('/api/sync/push', async (req, res, next) => {
       };
     });
 
+    if (hasCatalogCacheChanges(summary)) {
+      await invalidateCatalogCache(businessContext.businessId);
+    }
+
     res.json({
       ok: true,
       deviceId,
@@ -1354,8 +1385,11 @@ app.post('/api/platform/login', platformLoginRateLimit, (req, res, next) => {
 
 app.get('/api/platform/dashboard', requirePlatformAdmin, async (req, res, next) => {
   try {
+    await initializeCatalogSubdomainSchema(query);
     const result = await withReadTransaction(async (client) => {
-      const bizRes = await client.query('SELECT COUNT(*) FROM businesses');
+      const bizRes = await client.query(
+        'SELECT COUNT(*) FROM businesses WHERE deleted_at IS NULL',
+      );
       const subRes = await client.query(`
         SELECT COUNT(*)
         FROM subscriptions
@@ -1392,6 +1426,7 @@ app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next)
              s.expires_at, s.grace_until
       FROM businesses b
       LEFT JOIN subscriptions s ON s.business_id = b.id
+      WHERE b.deleted_at IS NULL
       ORDER BY b.created_at DESC
     `);
     res.json({ ok: true, data: result.rows });
@@ -1402,10 +1437,11 @@ app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next)
 
 app.get('/api/platform/users', requirePlatformAdmin, async (req, res, next) => {
   try {
+    await initializeCatalogSubdomainSchema(query);
     const result = await query(`
       SELECT u.id, u.name, u.email, u.role, u.created_at, u.last_seen_at, b.name as business_name
       FROM users u
-      LEFT JOIN businesses b ON b.id = u.business_id
+      LEFT JOIN businesses b ON b.id = u.business_id AND b.deleted_at IS NULL
       WHERE u.deleted_at IS NULL
       ORDER BY u.created_at DESC
     `);
@@ -1561,6 +1597,7 @@ app.put('/api/platform/app-version', requirePlatformAdmin, async (req, res, next
 app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmin, async (req, res, next) => {
   try {
     await ensureSubscriptionSchema();
+    await initializeCatalogSubdomainSchema(query);
     const businessId = normalizeOptionalText(req.params.businessId);
     const plan = normalizeOptionalText(req.body?.plan || req.body?.planCode);
     const status = normalizeOptionalText(req.body?.status) || 'active';
@@ -1569,7 +1606,7 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
     }
 
     const businessResult = await query(
-      'SELECT id, selling_mode FROM businesses WHERE id = $1 LIMIT 1',
+      'SELECT id, selling_mode FROM businesses WHERE id = $1 AND deleted_at IS NULL LIMIT 1',
       [businessId],
     );
     if (!businessResult.rows.length) {
@@ -2444,6 +2481,7 @@ app.put('/api/business/communication-settings', async (req, res, next) => {
       businessContext.businessId,
       req.body || {},
     );
+    await invalidateCatalogCache(businessContext.businessId);
     res.json({ ok: true, data: settings });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -4040,6 +4078,54 @@ function safeEquals(left, right) {
     crypto.timingSafeEqual(leftBuffer, rightBuffer) &&
     leftValue.length === rightValue.length
   );
+}
+
+async function deleteBusinessRoute(req, res, next) {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      allowExpired: true,
+      allowReadOnlyExpired: true,
+    });
+    requireAdmin(businessContext);
+
+    const confirmBusinessName = normalizeOptionalText(
+      req.body?.confirmBusinessName ?? req.body?.businessName,
+    );
+    if (
+      normalizeDeletionConfirmation(confirmBusinessName) !==
+      normalizeDeletionConfirmation(businessContext.businessName)
+    ) {
+      throw createHttpError(
+        400,
+        'Type the business name exactly to confirm business deletion.',
+      );
+    }
+
+    const deleted = await withTransaction((client) =>
+      deleteBusinessAccount(client, {
+        businessId: businessContext.businessId,
+        deletedByUserId: businessContext.userId,
+      }),
+    );
+    if (!deleted) {
+      throw createHttpError(404, 'Business not found');
+    }
+    await invalidateCatalogCache(businessContext.businessId);
+
+    res.json({
+      ok: true,
+      data: {
+        businessId: deleted.businessId,
+        businessName: deleted.businessName,
+        deleted: deleted.deleted,
+        releasedSubdomain: deleted.releasedSubdomain,
+        deletedAt: deleted.deletedAt,
+        subdomainReleasedAt: deleted.subdomainReleasedAt,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
 }
 
 async function requireBusinessContext(
@@ -6043,6 +6129,15 @@ async function loadPublicCatalog(
   businessId,
   { currencyOverride, branchId: requestedBranchId } = {},
 ) {
+  await ensureCatalogSubdomainSchema(query);
+  const cacheKey = await buildCatalogCacheKey(businessId, {
+    currencyOverride,
+    branchId: requestedBranchId,
+  });
+  const cached = await cacheGetJson(cacheKey);
+  if (cached) {
+    return cached;
+  }
   const businessResult = await query(
     `
     SELECT b.id, b.name, b.country_code, b.currency, b.updated_at,
@@ -6051,6 +6146,7 @@ async function loadPublicCatalog(
     LEFT JOIN business_communication_settings cs
       ON cs.business_id = b.id
     WHERE b.id = $1
+      AND b.deleted_at IS NULL
     LIMIT 1
     `,
     [businessId],
@@ -6157,7 +6253,7 @@ async function loadPublicCatalog(
     business.country_code,
   );
 
-  return {
+  const catalog = {
     business: {
       id: business.id,
       name: business.name,
@@ -6178,9 +6274,44 @@ async function loadPublicCatalog(
       return latest;
     }, toIsoString(business.updated_at)),
   };
+  await cacheSetJson(cacheKey, catalog);
+  return catalog;
+}
+
+async function buildCatalogCacheKey(
+  businessId,
+  { currencyOverride, branchId } = {},
+) {
+  const version = (await cacheGetText(catalogCacheVersionKey(businessId))) || '0';
+  return [
+    'catalog',
+    normalizeCacheKeyPart(businessId),
+    normalizeCacheKeyPart(version),
+    normalizeCacheKeyPart(branchId || 'default'),
+    normalizeCacheKeyPart(currencyOverride || 'default'),
+  ].join(':');
+}
+
+async function invalidateCatalogCache(businessId) {
+  await cacheIncrement(catalogCacheVersionKey(businessId));
+}
+
+function catalogCacheVersionKey(businessId) {
+  return `catalog-version:${normalizeCacheKeyPart(businessId)}`;
+}
+
+function normalizeCacheKeyPart(value) {
+  return encodeURIComponent(String(value || '').trim().toLowerCase());
+}
+
+function hasCatalogCacheChanges(summary) {
+  return [...CATALOG_CACHE_TABLES].some(
+    (table) => Number(summary?.applied?.[table] || 0) > 0,
+  );
 }
 
 async function createPublicCatalogOrder(businessId, payload) {
+  await ensureCatalogSubdomainSchema(query);
   await ensurePublicCatalogOrderSchema(query);
 
   const requestedBranchId = normalizeOptionalText(
@@ -6212,7 +6343,7 @@ async function createPublicCatalogOrder(businessId, payload) {
   }
 
   const businessResult = await query(
-    'SELECT id, name FROM businesses WHERE id = $1 LIMIT 1',
+    'SELECT id, name FROM businesses WHERE id = $1 AND deleted_at IS NULL LIMIT 1',
     [businessId],
   );
   const business = businessResult.rows[0];
@@ -6394,6 +6525,7 @@ async function loadPublicCatalogOrderForCustomer({
   orderNumber,
   phone,
 }) {
+  await ensureCatalogSubdomainSchema(query);
   await ensurePublicCatalogOrderSchema(query);
   const cleanOrderNumber = normalizeOptionalText(orderNumber)
     ?.replace(/[^a-zA-Z0-9-]/g, '')
@@ -6407,11 +6539,14 @@ async function loadPublicCatalogOrderForCustomer({
 
   const result = await query(
     `
-    SELECT *
-    FROM public_catalog_orders
-    WHERE business_id = $1
-      AND LOWER(SUBSTRING(id FROM 1 FOR 8)) = $2
-      AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = ANY($3::text[])
+    SELECT o.*
+    FROM public_catalog_orders o
+    JOIN businesses b
+      ON b.id = o.business_id
+     AND b.deleted_at IS NULL
+    WHERE o.business_id = $1
+      AND LOWER(SUBSTRING(o.id FROM 1 FOR 8)) = $2
+      AND regexp_replace(COALESCE(o.phone, ''), '[^0-9]', '', 'g') = ANY($3::text[])
     LIMIT 1
     `,
     [businessId, cleanOrderNumber.slice(0, 8), phoneCandidates],
@@ -8501,6 +8636,11 @@ function normalizeOptionalText(value) {
 
   const normalized = String(value).trim();
   return normalized === '' ? null : normalized;
+}
+
+function normalizeDeletionConfirmation(value) {
+  const normalized = normalizeOptionalText(value);
+  return normalized ? normalized.replace(/\s+/g, ' ').toLowerCase() : null;
 }
 
 function maskSecret(value) {

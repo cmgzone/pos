@@ -10,7 +10,7 @@ async function main() {
 
   const row = result.rows[0];
   console.log(
-    `Connected to Neon database "${row.database_name}" as "${row.database_user}" at ${new Date(
+    `Connected to PostgreSQL database "${row.database_name}" as "${row.database_user}" at ${new Date(
       row.server_time,
     ).toISOString()}.`,
   );
@@ -19,7 +19,7 @@ async function main() {
 }
 
 main().catch(async (error) => {
-  console.error('Failed to connect to Neon database.');
+  console.error('Failed to connect to PostgreSQL database.');
   console.error(error.message);
   await pool.end().catch(() => {});
   process.exitCode = 1;

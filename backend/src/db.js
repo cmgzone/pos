@@ -1,13 +1,22 @@
-const { neonConfig, Pool } = require('@neondatabase/serverless');
-const ws = require('ws');
+const { Pool } = require('pg');
 
 const { config } = require('./config');
 
-neonConfig.webSocketConstructor = ws;
+const poolOptions = {
+  connectionString: config.databaseUrl,
+  max: config.databasePoolMax,
+  idleTimeoutMillis: config.databaseIdleTimeoutMs,
+  connectionTimeoutMillis: config.databaseConnectionTimeoutMs,
+  keepAlive: true,
+};
 
-const pool = new Pool({
-  connectionString: config.neonDatabaseUrl,
-});
+if (config.databaseSsl !== null) {
+  poolOptions.ssl = config.databaseSsl
+    ? { rejectUnauthorized: config.databaseSslRejectUnauthorized }
+    : false;
+}
+
+const pool = new Pool(poolOptions);
 
 async function query(text, params) {
   return pool.query(text, params);

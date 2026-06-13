@@ -35,9 +35,39 @@ async function applyCatalogSubdomainSchema(target) {
   );
   await runQuery(
     target,
+    `ALTER TABLE businesses
+     ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
+  );
+  await runQuery(
+    target,
+    `ALTER TABLE businesses
+     ADD COLUMN IF NOT EXISTS subdomain_released_at timestamptz`,
+  );
+  await runQuery(
+    target,
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1
+         FROM pg_indexes
+         WHERE indexname = 'idx_businesses_public_subdomain_unique'
+           AND indexdef NOT ILIKE '%deleted_at IS NULL%'
+       ) THEN
+         DROP INDEX idx_businesses_public_subdomain_unique;
+       END IF;
+     END $$`,
+  );
+  await runQuery(
+    target,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_public_subdomain_unique
      ON businesses (LOWER(public_subdomain))
-     WHERE public_subdomain IS NOT NULL`,
+     WHERE public_subdomain IS NOT NULL
+       AND deleted_at IS NULL`,
+  );
+  await runQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_businesses_deleted_at
+     ON businesses (deleted_at)`,
   );
 }
 
@@ -66,6 +96,7 @@ async function ensureBusinessCatalogSubdomain(
     `SELECT name, public_subdomain
      FROM businesses
      WHERE id = $1
+       AND deleted_at IS NULL
      LIMIT 1`,
     [cleanBusinessId],
   );
@@ -92,6 +123,7 @@ async function ensureBusinessCatalogSubdomain(
              updated_at = NOW()
          WHERE id = $1
            AND public_subdomain IS NULL
+           AND deleted_at IS NULL
          RETURNING public_subdomain`,
         [cleanBusinessId, candidate],
       );
@@ -107,6 +139,7 @@ async function ensureBusinessCatalogSubdomain(
         `SELECT public_subdomain
          FROM businesses
          WHERE id = $1
+           AND deleted_at IS NULL
          LIMIT 1`,
         [cleanBusinessId],
       );
@@ -138,6 +171,7 @@ async function findBusinessIdByCatalogSubdomain(target, subdomain) {
     `SELECT id
      FROM businesses
      WHERE LOWER(public_subdomain) = LOWER($1)
+       AND deleted_at IS NULL
      LIMIT 1`,
     [normalized],
   );

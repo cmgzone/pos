@@ -7,6 +7,7 @@ const {
   catalogSubdomainBase,
   ensureBusinessCatalogSubdomain,
   extractCatalogSubdomain,
+  findBusinessIdByCatalogSubdomain,
   normalizeCatalogSubdomain,
 } = require('../src/catalogSubdomains');
 
@@ -66,7 +67,7 @@ test('catalog subdomain assignment falls back when the preferred name is taken',
     public_subdomain: null,
   };
   const target = async (sql, params = []) => {
-    if (/ALTER TABLE|CREATE UNIQUE INDEX/i.test(sql)) {
+    if (/ALTER TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
       return { rows: [] };
     }
     if (/SELECT name, public_subdomain/i.test(sql)) {
@@ -93,4 +94,28 @@ test('catalog subdomain assignment falls back when the preferred name is taken',
   });
 
   assert.equal(assigned, 'my-shop-d28ba96d');
+});
+
+test('catalog subdomain lookup ignores deleted businesses', async () => {
+  const calls = [];
+  const target = {
+    query: async (sql, params = []) => {
+      calls.push({ sql, params });
+      if (/ALTER TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
+        return { rows: [] };
+      }
+      if (/SELECT id/i.test(sql)) {
+        return { rows: [{ id: 'business-1' }] };
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    },
+  };
+
+  const businessId = await findBusinessIdByCatalogSubdomain(target, 'my-shop');
+
+  assert.equal(businessId, 'business-1');
+  assert.match(
+    calls.find((call) => /SELECT id/i.test(call.sql))?.sql || '',
+    /deleted_at IS NULL/i,
+  );
 });

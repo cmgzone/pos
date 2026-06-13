@@ -57,5 +57,15 @@ test('database initialization includes conflict-safe POS effect tables', () => {
     sql,
     /ALTER TABLE businesses ADD COLUMN IF NOT EXISTS public_subdomain text/i,
   );
+  assert.match(
+    sql,
+    /ALTER TABLE businesses ADD COLUMN IF NOT EXISTS deleted_at timestamptz/i,
+  );
+  assert.match(
+    sql,
+    /ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subdomain_released_at timestamptz/i,
+  );
   assert.match(sql, /idx_businesses_public_subdomain_unique/i);
+  assert.match(sql, /DROP INDEX idx_businesses_public_subdomain_unique/i);
+  assert.match(sql, /public_subdomain IS NOT NULL\s+AND deleted_at IS NULL/i);
 });
