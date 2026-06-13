@@ -6889,19 +6889,10 @@ function normalizePublicCatalogProduct(row) {
 function renderPublicCatalogPage(catalog) {
   const businessName = catalog.business.name || 'Catalog';
   const productCount = catalog.products.length;
-  const categoryCount = catalog.categories.length;
   const branchName = catalog.business.selectedBranch?.name || 'Main store';
-  const branchCount = catalog.business.branches?.length || 1;
   const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
   const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
   const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
-  const updated = catalog.updatedAt
-    ? new Date(catalog.updatedAt).toLocaleDateString('en', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : '';
 
   return `<!doctype html>
 <html lang="en">
@@ -7441,12 +7432,11 @@ function renderPublicCatalogPage(catalog) {
       position: relative;
       z-index: 1;
       min-height: 330px;
-      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
       align-items: center;
-      gap: 36px;
       padding: 34px 0 52px;
     }
     .store {
+      max-width: 760px;
       gap: 18px;
     }
     .eyebrow {
@@ -7500,47 +7490,6 @@ function renderPublicCatalogPage(catalog) {
       color: rgba(255, 255, 255, 0.88);
       background: rgba(255, 255, 255, 0.10);
       border: 1px solid rgba(255, 255, 255, 0.16);
-    }
-    .hero-card {
-      padding: 20px;
-      border-radius: 28px;
-      background: rgba(255, 255, 255, 0.11);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28);
-      backdrop-filter: blur(18px);
-    }
-    .hero-card h2 {
-      margin: 0;
-      font-size: 20px;
-      letter-spacing: -0.03em;
-    }
-    .hero-card p {
-      margin: 8px 0 18px;
-      color: rgba(255, 255, 255, 0.68);
-      line-height: 1.5;
-    }
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .stat {
-      padding: 14px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.10);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-    .stat strong {
-      display: block;
-      font-size: 24px;
-      line-height: 1;
-    }
-    .stat span {
-      display: block;
-      margin-top: 5px;
-      color: rgba(255, 255, 255, 0.62);
-      font-size: 12px;
-      font-weight: 800;
     }
     .shop-bar {
       position: sticky;
@@ -7769,10 +7718,8 @@ function renderPublicCatalogPage(catalog) {
       .topbar { align-items: flex-start; }
       .header-pill.secondary-mobile { display: none; }
       .hero {
-        grid-template-columns: 1fr;
         min-height: auto;
         padding: 22px 0 34px;
-        gap: 24px;
       }
       h1 { font-size: clamp(38px, 12vw, 54px); }
       .section-head {
@@ -7836,28 +7783,6 @@ function renderPublicCatalogPage(catalog) {
           <a class="secondary-link" href="#track">Track an order</a>
         </div>
       </div>
-      <aside class="hero-card" aria-label="Store information">
-        <h2>Storefront ready</h2>
-        <p>${productCount} product${productCount === 1 ? '' : 's'} available${updated ? ` - updated ${escapeHtml(updated)}` : ''}.</p>
-        <div class="stat-grid">
-          <div class="stat">
-            <strong>${productCount}</strong>
-            <span>Products</span>
-          </div>
-          <div class="stat">
-            <strong>${categoryCount}</strong>
-            <span>Categories</span>
-          </div>
-          <div class="stat">
-            <strong>${escapeHtml(branchName)}</strong>
-            <span>Branch</span>
-          </div>
-          <div class="stat">
-            <strong>${branchCount}</strong>
-            <span>Locations</span>
-          </div>
-        </div>
-      </aside>
     </div>
   </header>
   <section class="shop-bar">
