@@ -644,7 +644,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.premiumPanel,
         leading: isMobile
             ? IconButton(
                 icon: const Icon(Icons.menu),
@@ -663,207 +663,155 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SizedBox(width: 16),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 1100),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Missing Cost Warning ──
-                if (_missingCostProducts.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 20),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppColors.warning.withValues(alpha: 0.3),
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.background,
+              Color(0xFF120B16),
+              AppColors.background,
+            ],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Missing Cost Warning ──
+                  if (_missingCostProducts.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: AppColors.warning.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: AppColors.warning,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Missing Cost Prices',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.warning,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_missingCostProducts.length} product(s) have no cost price. P&L reports may be inaccurate: ${_missingCostProducts.take(3).map((p) => p['name']).join(', ')}${_missingCostProducts.length > 3 ? '...' : ''}',
+                                  style: TextStyle(
+                                    color: AppColors.warning.withValues(
+                                      alpha: 0.8,
+                                    ),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: AppColors.warning,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+
+                  // ── KPI Cards ──
+                  if (_expiryAlerts.isNotEmpty)
+                    Builder(
+                      builder: (context) {
+                        final hasExpired = _expiryAlerts.any(
+                          (batch) =>
+                              ExpiryUtils.statusFor(batch['expiry_date']) ==
+                              ExpiryStatus.expired,
+                        );
+                        final tone = hasExpired
+                            ? AppColors.error
+                            : AppColors.warning;
+                        final preview = _expiryAlerts
+                            .take(3)
+                            .map(
+                              (batch) =>
+                                  '${batch['product_name']} (${ExpiryUtils.statusLabel(batch['expiry_date'])})',
+                            )
+                            .join(', ');
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 20),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: tone.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: tone.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              const Text(
-                                'Missing Cost Prices',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.warning,
-                                ),
+                              Icon(
+                                hasExpired
+                                    ? Icons.error_outline
+                                    : Icons.event_busy_outlined,
+                                color: tone,
+                                size: 22,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${_missingCostProducts.length} product(s) have no cost price. P&L reports may be inaccurate: ${_missingCostProducts.take(3).map((p) => p['name']).join(', ')}${_missingCostProducts.length > 3 ? '...' : ''}',
-                                style: TextStyle(
-                                  color: AppColors.warning.withValues(
-                                    alpha: 0.8,
-                                  ),
-                                  fontSize: 13,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      hasExpired
+                                          ? 'Expired Stock Alert'
+                                          : 'Expiry Alert',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: tone,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_expiryAlerts.length} batch(es) need attention: $preview${_expiryAlerts.length > 3 ? '...' : ''}',
+                                      style: TextStyle(
+                                        color: tone.withValues(alpha: 0.85),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  ),
-
-                // ── KPI Cards ──
-                if (_expiryAlerts.isNotEmpty)
-                  Builder(
-                    builder: (context) {
-                      final hasExpired = _expiryAlerts.any(
-                        (batch) =>
-                            ExpiryUtils.statusFor(batch['expiry_date']) ==
-                            ExpiryStatus.expired,
-                      );
-                      final tone = hasExpired
-                          ? AppColors.error
-                          : AppColors.warning;
-                      final preview = _expiryAlerts
-                          .take(3)
-                          .map(
-                            (batch) =>
-                                '${batch['product_name']} (${ExpiryUtils.statusLabel(batch['expiry_date'])})',
-                          )
-                          .join(', ');
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 20),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: tone.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: tone.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              hasExpired
-                                  ? Icons.error_outline
-                                  : Icons.event_busy_outlined,
-                              color: tone,
-                              size: 22,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    hasExpired
-                                        ? 'Expired Stock Alert'
-                                        : 'Expiry Alert',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: tone,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${_expiryAlerts.length} batch(es) need attention: $preview${_expiryAlerts.length > 3 ? '...' : ''}',
-                                    style: TextStyle(
-                                      color: tone.withValues(alpha: 0.85),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                TrainingAnchor(
-                  id: 'dashboard.kpis',
-                  child: isMobile
-                      ? GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 1.48,
-                          children: [
-                            _KpiCard(
-                              icon: Icons.attach_money,
-                              label: revenueLabel,
-                              value:
-                                  '${ShopSettings.currency}${(_todaySummary['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
-                              compactValue: _formatCompact(
-                                _todaySummary['total_revenue'] as num?,
-                                isCurrency: true,
-                              ),
-                              color: AppColors.success,
-                              compact: true,
-                            ),
-                            _KpiCard(
-                              icon: Icons.monetization_on,
-                              label: profitLabel,
-                              value:
-                                  '${ShopSettings.currency}${(_todaySummary['total_profit'] as num? ?? 0).toStringAsFixed(2)}',
-                              compactValue: _formatCompact(
-                                _todaySummary['total_profit'] as num?,
-                                isCurrency: true,
-                              ),
-                              color:
-                                  ((_todaySummary['total_profit'] as num? ??
-                                          0) >=
-                                      0)
-                                  ? AppColors.success
-                                  : AppColors.error,
-                              compact: true,
-                            ),
-                            _KpiCard(
-                              icon: Icons.receipt_long,
-                              label: salesLabel,
-                              value: '${_todaySummary['total_sales'] ?? 0}',
-                              color: AppColors.primary,
-                              compact: true,
-                            ),
-                            _KpiCard(
-                              icon: Icons.design_services_outlined,
-                              label: 'Service Sales',
-                              value:
-                                  '${(_saleTypeSummary['service_sales'] as num? ?? 0).toInt()}',
-                              color: AppColors.secondary,
-                              compact: true,
-                            ),
-                            _KpiCard(
-                              icon: Icons.inventory_2,
-                              label: 'Products',
-                              value: '${_todaySummary['total_products'] ?? 0}',
-                              color: AppColors.secondary,
-                              compact: true,
-                            ),
-                            _KpiCard(
-                              icon: Icons.warning_amber,
-                              label: 'Low Stock',
-                              value: '${_lowStockProducts.length}',
-                              color: _lowStockProducts.isNotEmpty
-                                  ? AppColors.warning
-                                  : AppColors.success,
-                              compact: true,
-                            ),
-                          ],
-                        )
-                      : Row(
-                          children: [
-                            Expanded(
-                              child: _KpiCard(
+                  TrainingAnchor(
+                    id: 'dashboard.kpis',
+                    child: isMobile
+                        ? GridView.count(
+                            crossAxisCount: 2,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 1.48,
+                            children: [
+                              _KpiCard(
                                 icon: Icons.attach_money,
                                 label: revenueLabel,
                                 value:
@@ -873,11 +821,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   isCurrency: true,
                                 ),
                                 color: AppColors.success,
+                                compact: true,
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _KpiCard(
+                              _KpiCard(
                                 icon: Icons.monetization_on,
                                 label: profitLabel,
                                 value:
@@ -892,268 +838,175 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         0)
                                     ? AppColors.success
                                     : AppColors.error,
+                                compact: true,
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _KpiCard(
+                              _KpiCard(
                                 icon: Icons.receipt_long,
                                 label: salesLabel,
                                 value: '${_todaySummary['total_sales'] ?? 0}',
                                 color: AppColors.primary,
+                                compact: true,
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _KpiCard(
+                              _KpiCard(
+                                icon: Icons.design_services_outlined,
+                                label: 'Service Sales',
+                                value:
+                                    '${(_saleTypeSummary['service_sales'] as num? ?? 0).toInt()}',
+                                color: AppColors.secondary,
+                                compact: true,
+                              ),
+                              _KpiCard(
                                 icon: Icons.inventory_2,
-                                label: 'Total Products',
+                                label: 'Products',
                                 value:
                                     '${_todaySummary['total_products'] ?? 0}',
                                 color: AppColors.secondary,
+                                compact: true,
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _KpiCard(
+                              _KpiCard(
                                 icon: Icons.warning_amber,
-                                label: 'Low Stock Items',
+                                label: 'Low Stock',
                                 value: '${_lowStockProducts.length}',
                                 color: _lowStockProducts.isNotEmpty
                                     ? AppColors.warning
                                     : AppColors.success,
+                                compact: true,
                               ),
-                            ),
-                          ],
-                        ),
-                ),
-
-                const SizedBox(height: 24),
-                _DashboardCard(
-                  title: 'Quick Actions',
-                  icon: Icons.bolt_outlined,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: _buildQuickActions(isMobile),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                _buildServiceSnapshot(isMobile),
-
-                if (_canSeeEmployeeSales) ...[
-                  const SizedBox(height: 32),
-                  _DashboardCard(
-                    title: 'Employee Sales Today',
-                    icon: Icons.badge_outlined,
-                    child: _employeeSales.isEmpty
-                        ? const EmptyStateWidget(
-                            icon: Icons.person_off_outlined,
-                            title: 'No activity yet',
-                            subtitle:
-                                'Daily sales by employee will appear here.',
+                            ],
                           )
-                        : Column(
-                            children: _employeeSales.take(5).map((employee) {
-                              final name =
-                                  (employee['cashier_name'] as String? ??
-                                          'Employee')
-                                      .trim();
-                              final displayName = name.isEmpty
-                                  ? 'Employee'
-                                  : name;
-                              final role = employee['cashier_role'] as String?;
-                              final roleColor = _roleColor(role);
-                              final initial = displayName
-                                  .substring(0, 1)
-                                  .toUpperCase();
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 10,
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: _KpiCard(
+                                  icon: Icons.attach_money,
+                                  label: revenueLabel,
+                                  value:
+                                      '${ShopSettings.currency}${(_todaySummary['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
+                                  compactValue: _formatCompact(
+                                    _todaySummary['total_revenue'] as num?,
+                                    isCurrency: true,
+                                  ),
+                                  color: AppColors.success,
                                 ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 38,
-                                      height: 38,
-                                      decoration: BoxDecoration(
-                                        color: roleColor.withValues(
-                                          alpha: 0.12,
-                                        ),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          initial,
-                                          style: TextStyle(
-                                            color: roleColor,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            displayName,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: roleColor.withValues(
-                                                alpha: 0.12,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                            ),
-                                            child: Text(
-                                              RolePermissions.label(role),
-                                              style: TextStyle(
-                                                color: roleColor,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          '${ShopSettings.currency}${(employee['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                            color: AppColors.success,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${(employee['total_sales'] as num? ?? 0).toInt()} sales',
-                                          style: const TextStyle(
-                                            color: AppColors.textSecondary,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _KpiCard(
+                                  icon: Icons.monetization_on,
+                                  label: profitLabel,
+                                  value:
+                                      '${ShopSettings.currency}${(_todaySummary['total_profit'] as num? ?? 0).toStringAsFixed(2)}',
+                                  compactValue: _formatCompact(
+                                    _todaySummary['total_profit'] as num?,
+                                    isCurrency: true,
+                                  ),
+                                  color:
+                                      ((_todaySummary['total_profit'] as num? ??
+                                              0) >=
+                                          0)
+                                      ? AppColors.success
+                                      : AppColors.error,
                                 ),
-                              );
-                            }).toList(),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _KpiCard(
+                                  icon: Icons.receipt_long,
+                                  label: salesLabel,
+                                  value: '${_todaySummary['total_sales'] ?? 0}',
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _KpiCard(
+                                  icon: Icons.inventory_2,
+                                  label: 'Total Products',
+                                  value:
+                                      '${_todaySummary['total_products'] ?? 0}',
+                                  color: AppColors.secondary,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _KpiCard(
+                                  icon: Icons.warning_amber,
+                                  label: 'Low Stock Items',
+                                  value: '${_lowStockProducts.length}',
+                                  color: _lowStockProducts.isNotEmpty
+                                      ? AppColors.warning
+                                      : AppColors.success,
+                                ),
+                              ),
+                            ],
                           ),
                   ),
-                ],
 
-                if (_canSeeEmployeeSales) ...[
                   const SizedBox(height: 24),
                   _DashboardCard(
-                    title: 'Cash Reconciliation Today',
-                    icon: Icons.lock_clock_outlined,
-                    child: _closedShifts.isEmpty
-                        ? const EmptyStateWidget(
-                            icon: Icons.lock_reset_outlined,
-                            title: 'No shifts closed',
-                            subtitle:
-                                'Reconciliation data appears after shift closure.',
-                          )
-                        : Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  20,
-                                  20,
-                                  12,
-                                ),
-                                child: Wrap(
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: [
-                                    _MiniStat(
-                                      label: 'Closed Shifts',
-                                      value:
-                                          '${(_closedShiftSummary['closed_shift_count'] as num? ?? 0).toInt()}',
-                                      color: AppColors.primary,
-                                    ),
-                                    _MiniStat(
-                                      label: 'Counted Cash',
-                                      value:
-                                          '${ShopSettings.currency}${((_closedShiftSummary['counted_cash_total'] as num?) ?? 0).toStringAsFixed(2)}',
-                                      compactValue: _formatCompact(
-                                        _closedShiftSummary['counted_cash_total']
-                                            as num?,
-                                        isCurrency: true,
-                                      ),
-                                      color: AppColors.success,
-                                    ),
-                                    _MiniStat(
-                                      label: 'Net Over/Short',
-                                      value:
-                                          '${ShopSettings.currency}${((_closedShiftSummary['net_difference'] as num?) ?? 0).toStringAsFixed(2)}',
-                                      compactValue: _formatCompact(
-                                        _closedShiftSummary['net_difference']
-                                            as num?,
-                                        isCurrency: true,
-                                      ),
-                                      color: _shiftDifferenceColor(
-                                        _closedShiftSummary['net_difference']
-                                            as num?,
-                                      ),
-                                    ),
-                                    _MiniStat(
-                                      label: 'Balanced',
-                                      value:
-                                          '${(_closedShiftSummary['balanced_shift_count'] as num? ?? 0).toInt()}',
-                                      color: AppColors.success,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Divider(height: 1),
-                              ..._closedShifts.map((shift) {
-                                final difference =
-                                    (shift['difference'] as num?)?.toDouble() ??
-                                    0;
-                                final tone = _shiftDifferenceColor(difference);
+                    title: 'Quick Actions',
+                    icon: Icons.bolt_outlined,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: _buildQuickActions(isMobile),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                  _buildServiceSnapshot(isMobile),
+
+                  if (_canSeeEmployeeSales) ...[
+                    const SizedBox(height: 32),
+                    _DashboardCard(
+                      title: 'Employee Sales Today',
+                      icon: Icons.badge_outlined,
+                      child: _employeeSales.isEmpty
+                          ? const EmptyStateWidget(
+                              icon: Icons.person_off_outlined,
+                              title: 'No activity yet',
+                              subtitle:
+                                  'Daily sales by employee will appear here.',
+                            )
+                          : Column(
+                              children: _employeeSales.take(5).map((employee) {
+                                final name =
+                                    (employee['cashier_name'] as String? ??
+                                            'Employee')
+                                        .trim();
+                                final displayName = name.isEmpty
+                                    ? 'Employee'
+                                    : name;
+                                final role =
+                                    employee['cashier_role'] as String?;
+                                final roleColor = _roleColor(role);
+                                final initial = displayName
+                                    .substring(0, 1)
+                                    .toUpperCase();
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 20,
-                                    vertical: 12,
+                                    vertical: 10,
                                   ),
                                   child: Row(
                                     children: [
                                       Container(
-                                        width: 40,
-                                        height: 40,
+                                        width: 38,
+                                        height: 38,
                                         decoration: BoxDecoration(
-                                          color: tone.withValues(alpha: 0.12),
+                                          color: roleColor.withValues(
+                                            alpha: 0.12,
+                                          ),
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
                                         ),
                                         child: Center(
-                                          child: Icon(
-                                            difference.abs() < 0.009
-                                                ? Icons.check_circle_outline
-                                                : difference > 0
-                                                ? Icons.arrow_upward_rounded
-                                                : Icons.arrow_downward_rounded,
-                                            color: tone,
+                                          child: Text(
+                                            initial,
+                                            style: TextStyle(
+                                              color: roleColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1164,19 +1017,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              shift['cashier_name']
-                                                      as String? ??
-                                                  'Cashier',
+                                              displayName,
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                             const SizedBox(height: 4),
-                                            Text(
-                                              'Closed ${_timeLabel(shift['closed_at'] as String?)} • Expected ${ShopSettings.currency}${((shift['expected_cash'] as num?) ?? 0).toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                color: AppColors.textSecondary,
-                                                fontSize: 12,
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: roleColor.withValues(
+                                                  alpha: 0.12,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                RolePermissions.label(role),
+                                                style: TextStyle(
+                                                  color: roleColor,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                               ),
                                             ),
                                           ],
@@ -1187,17 +1053,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                             CrossAxisAlignment.end,
                                         children: [
                                           Text(
-                                            '${ShopSettings.currency}${((shift['closing_cash_counted'] as num?) ?? 0).toStringAsFixed(2)}',
+                                            '${ShopSettings.currency}${(employee['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.success,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
                                             ),
                                           ),
                                           Text(
-                                            '${_shiftDifferenceLabel(difference)} ${ShopSettings.currency}${difference.abs().toStringAsFixed(2)}',
-                                            style: TextStyle(
-                                              color: tone,
+                                            '${(employee['total_sales'] as num? ?? 0).toInt()} sales',
+                                            style: const TextStyle(
+                                              color: AppColors.textSecondary,
                                               fontSize: 12,
-                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ],
@@ -1205,245 +1072,187 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                     ],
                                   ),
                                 );
-                              }),
-                            ],
-                          ),
-                  ),
-                ],
+                              }).toList(),
+                            ),
+                    ),
+                  ],
 
-                const SizedBox(height: 32),
-
-                // ── Two-column: Top Products + Low Stock ──
-                TrainingAnchor(
-                  id: 'dashboard.insights',
-                  child: isMobile
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Top products
-                            _DashboardCard(
-                              title: 'Top Selling Products',
-                              icon: Icons.trending_up,
-                              child: _topProducts.isEmpty
-                                  ? const EmptyStateWidget(
-                                      icon: Icons.analytics_outlined,
-                                      title: 'Calculating insights',
-                                      subtitle:
-                                          'Top products will appear once sales occur.',
-                                    )
-                                  : Column(
-                                      children: _topProducts.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final i = entry.key;
-                                        final p = entry.value;
-                                        return Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 20,
-                                            vertical: 10,
+                  if (_canSeeEmployeeSales) ...[
+                    const SizedBox(height: 24),
+                    _DashboardCard(
+                      title: 'Cash Reconciliation Today',
+                      icon: Icons.lock_clock_outlined,
+                      child: _closedShifts.isEmpty
+                          ? const EmptyStateWidget(
+                              icon: Icons.lock_reset_outlined,
+                              title: 'No shifts closed',
+                              subtitle:
+                                  'Reconciliation data appears after shift closure.',
+                            )
+                          : Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    20,
+                                    20,
+                                    12,
+                                  ),
+                                  child: Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      _MiniStat(
+                                        label: 'Closed Shifts',
+                                        value:
+                                            '${(_closedShiftSummary['closed_shift_count'] as num? ?? 0).toInt()}',
+                                        color: AppColors.primary,
+                                      ),
+                                      _MiniStat(
+                                        label: 'Counted Cash',
+                                        value:
+                                            '${ShopSettings.currency}${((_closedShiftSummary['counted_cash_total'] as num?) ?? 0).toStringAsFixed(2)}',
+                                        compactValue: _formatCompact(
+                                          _closedShiftSummary['counted_cash_total']
+                                              as num?,
+                                          isCurrency: true,
+                                        ),
+                                        color: AppColors.success,
+                                      ),
+                                      _MiniStat(
+                                        label: 'Net Over/Short',
+                                        value:
+                                            '${ShopSettings.currency}${((_closedShiftSummary['net_difference'] as num?) ?? 0).toStringAsFixed(2)}',
+                                        compactValue: _formatCompact(
+                                          _closedShiftSummary['net_difference']
+                                              as num?,
+                                          isCurrency: true,
+                                        ),
+                                        color: _shiftDifferenceColor(
+                                          _closedShiftSummary['net_difference']
+                                              as num?,
+                                        ),
+                                      ),
+                                      _MiniStat(
+                                        label: 'Balanced',
+                                        value:
+                                            '${(_closedShiftSummary['balanced_shift_count'] as num? ?? 0).toInt()}',
+                                        color: AppColors.success,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                ..._closedShifts.map((shift) {
+                                  final difference =
+                                      (shift['difference'] as num?)
+                                          ?.toDouble() ??
+                                      0;
+                                  final tone = _shiftDifferenceColor(
+                                    difference,
+                                  );
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 12,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: tone.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
-                                          child: Row(
+                                          child: Center(
+                                            child: Icon(
+                                              difference.abs() < 0.009
+                                                  ? Icons.check_circle_outline
+                                                  : difference > 0
+                                                  ? Icons.arrow_upward_rounded
+                                                  : Icons
+                                                        .arrow_downward_rounded,
+                                              color: tone,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
-                                              Container(
-                                                width: 28,
-                                                height: 28,
-                                                decoration: BoxDecoration(
-                                                  color: i == 0
-                                                      ? AppColors.warning
-                                                            .withValues(
-                                                              alpha: 0.2,
-                                                            )
-                                                      : i == 1
-                                                      ? AppColors.textSecondary
-                                                            .withValues(
-                                                              alpha: 0.15,
-                                                            )
-                                                      : AppColors
-                                                            .surfaceHighlight,
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                ),
-                                                child: Center(
-                                                  child: Text(
-                                                    '${i + 1}',
-                                                    style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 12,
-                                                      color: i == 0
-                                                          ? AppColors.warning
-                                                          : AppColors
-                                                                .textSecondary,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Text(
-                                                  p['name'] as String? ?? '',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
                                               Text(
-                                                '${UnitUtils.formatWithUnit(p['total_sold'] as num?, p['unit'] as String?)} sold',
+                                                shift['cashier_name']
+                                                        as String? ??
+                                                    'Cashier',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Closed ${_timeLabel(shift['closed_at'] as String?)} • Expected ${ShopSettings.currency}${((shift['expected_cash'] as num?) ?? 0).toStringAsFixed(2)}',
                                                 style: const TextStyle(
                                                   color:
                                                       AppColors.textSecondary,
                                                   fontSize: 12,
                                                 ),
                                               ),
-                                              const SizedBox(width: 16),
-                                              Text(
-                                                '${ShopSettings.currency}${(p['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: AppColors.success,
-                                                ),
-                                              ),
                                             ],
                                           ),
-                                        );
-                                      }).toList(),
-                                    ),
-                            ),
-                            const SizedBox(height: 24),
-                            // Low stock alerts
-                            _DashboardCard(
-                              title: 'Low Stock Alerts',
-                              icon: Icons.warning_amber_rounded,
-                              child: _lowStockProducts.isEmpty
-                                  ? Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.check_circle,
-                                            color: AppColors.success,
-                                            size: 20,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          const Text(
-                                            'All products well stocked!',
-                                            style: TextStyle(
-                                              color: AppColors.success,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                  : Column(
-                                      children: _lowStockProducts
-                                          .take(5)
-                                          .map(
-                                            (p) => Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 20,
-                                                    vertical: 10,
-                                                  ),
-                                              child: Row(
-                                                children: [
-                                                  Container(
-                                                    width: 8,
-                                                    height: 8,
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          ((p['stock'] as num? ??
-                                                                      0)
-                                                                  .toDouble()) ==
-                                                              0
-                                                          ? AppColors.error
-                                                          : AppColors.warning,
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Text(
-                                                      p['name'] as String? ??
-                                                          '',
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 10,
-                                                          vertical: 4,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          ((p['stock']
-                                                                          as num? ??
-                                                                      0)
-                                                                  .toDouble()) ==
-                                                              0
-                                                          ? AppColors.error
-                                                                .withValues(
-                                                                  alpha: 0.12,
-                                                                )
-                                                          : AppColors.warning
-                                                                .withValues(
-                                                                  alpha: 0.12,
-                                                                ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            6,
-                                                          ),
-                                                    ),
-                                                    child: Text(
-                                                      UnitUtils.formatWithUnit(
-                                                        p['stock'] as num?,
-                                                        UnitUtils.stockUnitForProduct(
-                                                          p,
-                                                        ),
-                                                      ),
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color:
-                                                            ((p['stock'] as num? ??
-                                                                        0)
-                                                                    .toDouble()) ==
-                                                                0
-                                                            ? AppColors.error
-                                                            : AppColors.warning,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
+                                        ),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              '${ShopSettings.currency}${((shift['closing_cash_counted'] as num?) ?? 0).toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
                                               ),
                                             ),
-                                          )
-                                          .toList(),
+                                            Text(
+                                              '${_shiftDifferenceLabel(difference)} ${ShopSettings.currency}${difference.abs().toStringAsFixed(2)}',
+                                              style: TextStyle(
+                                                color: tone,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
+                                  );
+                                }),
+                              ],
                             ),
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Top products
-                            Expanded(
-                              child: _DashboardCard(
+                    ),
+                  ],
+
+                  const SizedBox(height: 32),
+
+                  // ── Two-column: Top Products + Low Stock ──
+                  TrainingAnchor(
+                    id: 'dashboard.insights',
+                    child: isMobile
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Top products
+                              _DashboardCard(
                                 title: 'Top Selling Products',
                                 icon: Icons.trending_up,
                                 child: _topProducts.isEmpty
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(24),
-                                        child: Text(
-                                          'No sales data yet',
-                                          style: TextStyle(
-                                            color: AppColors.textSecondary,
-                                          ),
-                                        ),
+                                    ? const EmptyStateWidget(
+                                        icon: Icons.analytics_outlined,
+                                        title: 'Calculating insights',
+                                        subtitle:
+                                            'Top products will appear once sales occur.',
                                       )
                                     : Column(
                                         children: _topProducts.asMap().entries.map((
@@ -1527,11 +1336,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         }).toList(),
                                       ),
                               ),
-                            ),
-                            const SizedBox(width: 24),
-                            // Low stock alerts
-                            Expanded(
-                              child: _DashboardCard(
+                              const SizedBox(height: 24),
+                              // Low stock alerts
+                              _DashboardCard(
                                 title: 'Low Stock Alerts',
                                 icon: Icons.warning_amber_rounded,
                                 child: _lowStockProducts.isEmpty
@@ -1599,15 +1406,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                                           ),
                                                       decoration: BoxDecoration(
                                                         color:
-                                                            AppColors.surface,
+                                                            ((p['stock']
+                                                                            as num? ??
+                                                                        0)
+                                                                    .toDouble()) ==
+                                                                0
+                                                            ? AppColors.error
+                                                                  .withValues(
+                                                                    alpha: 0.12,
+                                                                  )
+                                                            : AppColors.warning
+                                                                  .withValues(
+                                                                    alpha: 0.12,
+                                                                  ),
                                                         borderRadius:
                                                             BorderRadius.circular(
-                                                              12,
+                                                              6,
                                                             ),
-                                                        border: Border.all(
-                                                          color:
-                                                              AppColors.border,
-                                                        ),
                                                       ),
                                                       child: Text(
                                                         UnitUtils.formatWithUnit(
@@ -1616,10 +1431,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                                             p,
                                                           ),
                                                         ),
-                                                        style: const TextStyle(
-                                                          fontSize: 11,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
                                                           fontWeight:
-                                                              FontWeight.bold,
+                                                              FontWeight.w600,
+                                                          color:
+                                                              ((p['stock'] as num? ??
+                                                                          0)
+                                                                      .toDouble()) ==
+                                                                  0
+                                                              ? AppColors.error
+                                                              : AppColors.warning,
                                                         ),
                                                       ),
                                                     ),
@@ -1630,114 +1452,335 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                             .toList(),
                                       ),
                               ),
-                            ),
-                          ],
-                        ),
-                ),
-
-                const SizedBox(height: 32),
-
-                _buildTopServicesCard(),
-
-                const SizedBox(height: 32),
-
-                if (!_isCashierView) _buildDailyBriefCard(),
-
-                // ── Recent Sales ──
-                TrainingAnchor(
-                  id: 'dashboard.recentSales',
-                  child: _DashboardCard(
-                    title: recentSalesTitle,
-                    icon: Icons.history,
-                    child: _recentSales.isEmpty
-                        ? EmptyStateWidget(
-                            icon: Icons.receipt_long_outlined,
-                            title: _isCashierView
-                                ? 'No sales yet'
-                                : 'Empty history',
-                            subtitle: _isCashierView
-                                ? 'Branch transactions will appear here after staff start selling.'
-                                : 'Recent shop transactions will be listed here.',
+                            ],
                           )
-                        : Column(
-                            children: _recentSales.map((sale) {
-                              final dt = DateTime.tryParse(
-                                sale['created_at'] as String? ?? '',
-                              );
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 10,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.success.withValues(
-                                          alpha: 0.1,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: const Icon(
-                                        Icons.receipt,
-                                        color: AppColors.success,
-                                        size: 18,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'Sale #${(sale['id'] as String).substring(0, 8)}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Top products
+                              Expanded(
+                                child: _DashboardCard(
+                                  title: 'Top Selling Products',
+                                  icon: Icons.trending_up,
+                                  child: _topProducts.isEmpty
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(24),
+                                          child: Text(
+                                            'No sales data yet',
+                                            style: TextStyle(
+                                              color: AppColors.textSecondary,
                                             ),
                                           ),
-                                          if (dt != null)
-                                            Text(
-                                              '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
-                                              style: const TextStyle(
-                                                color: AppColors.textSecondary,
-                                                fontSize: 11,
+                                        )
+                                      : Column(
+                                          children: _topProducts.asMap().entries.map((
+                                            entry,
+                                          ) {
+                                            final i = entry.key;
+                                            final p = entry.value;
+                                            return Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 20,
+                                                    vertical: 10,
+                                                  ),
+                                              child: Row(
+                                                children: [
+                                                  Container(
+                                                    width: 28,
+                                                    height: 28,
+                                                    decoration: BoxDecoration(
+                                                      color: i == 0
+                                                          ? AppColors.warning
+                                                                .withValues(
+                                                                  alpha: 0.2,
+                                                                )
+                                                          : i == 1
+                                                          ? AppColors
+                                                                .textSecondary
+                                                                .withValues(
+                                                                  alpha: 0.15,
+                                                                )
+                                                          : AppColors
+                                                                .surfaceHighlight,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
+                                                    ),
+                                                    child: Center(
+                                                      child: Text(
+                                                        '${i + 1}',
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 12,
+                                                          color: i == 0
+                                                              ? AppColors
+                                                                    .warning
+                                                              : AppColors
+                                                                    .textSecondary,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Text(
+                                                      p['name'] as String? ??
+                                                          '',
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '${UnitUtils.formatWithUnit(p['total_sold'] as num?, p['unit'] as String?)} sold',
+                                                    style: const TextStyle(
+                                                      color: AppColors
+                                                          .textSecondary,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 16),
+                                                  Text(
+                                                    '${ShopSettings.currency}${(p['total_revenue'] as num? ?? 0).toStringAsFixed(2)}',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: AppColors.success,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                          if (_canSeeEmployeeSales &&
-                                              (sale['cashier_name'] as String?)
-                                                      ?.isNotEmpty ==
-                                                  true)
-                                            Text(
-                                              sale['cashier_name'] as String,
-                                              style: const TextStyle(
-                                                color: AppColors.textSecondary,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                    Text(
-                                      '${ShopSettings.currency}${(sale['total_amount'] as num).toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.success,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
+                                            );
+                                          }).toList(),
+                                        ),
                                 ),
-                              );
-                            }).toList(),
+                              ),
+                              const SizedBox(width: 24),
+                              // Low stock alerts
+                              Expanded(
+                                child: _DashboardCard(
+                                  title: 'Low Stock Alerts',
+                                  icon: Icons.warning_amber_rounded,
+                                  child: _lowStockProducts.isEmpty
+                                      ? Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.check_circle,
+                                                color: AppColors.success,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Text(
+                                                'All products well stocked!',
+                                                style: TextStyle(
+                                                  color: AppColors.success,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : Column(
+                                          children: _lowStockProducts
+                                              .take(5)
+                                              .map(
+                                                (p) => Padding(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 20,
+                                                        vertical: 10,
+                                                      ),
+                                                  child: Row(
+                                                    children: [
+                                                      Container(
+                                                        width: 8,
+                                                        height: 8,
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              ((p['stock'] as num? ??
+                                                                          0)
+                                                                      .toDouble()) ==
+                                                                  0
+                                                              ? AppColors.error
+                                                              : AppColors.warning,
+                                                          shape:
+                                                              BoxShape.circle,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Expanded(
+                                                        child: Text(
+                                                          p['name']
+                                                                  as String? ??
+                                                              '',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 10,
+                                                              vertical: 4,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              AppColors.surface,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                12,
+                                                              ),
+                                                          border: Border.all(
+                                                            color: AppColors
+                                                                .border,
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          UnitUtils.formatWithUnit(
+                                                            p['stock'] as num?,
+                                                            UnitUtils.stockUnitForProduct(
+                                                              p,
+                                                            ),
+                                                          ),
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                ),
+                              ),
+                            ],
                           ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 32),
+
+                  _buildTopServicesCard(),
+
+                  const SizedBox(height: 32),
+
+                  if (!_isCashierView) _buildDailyBriefCard(),
+
+                  // ── Recent Sales ──
+                  TrainingAnchor(
+                    id: 'dashboard.recentSales',
+                    child: _DashboardCard(
+                      title: recentSalesTitle,
+                      icon: Icons.history,
+                      child: _recentSales.isEmpty
+                          ? EmptyStateWidget(
+                              icon: Icons.receipt_long_outlined,
+                              title: _isCashierView
+                                  ? 'No sales yet'
+                                  : 'Empty history',
+                              subtitle: _isCashierView
+                                  ? 'Branch transactions will appear here after staff start selling.'
+                                  : 'Recent shop transactions will be listed here.',
+                            )
+                          : Column(
+                              children: _recentSales.map((sale) {
+                                final dt = DateTime.tryParse(
+                                  sale['created_at'] as String? ?? '',
+                                );
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 10,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.success.withValues(
+                                            alpha: 0.1,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.receipt,
+                                          color: AppColors.success,
+                                          size: 18,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Sale #${(sale['id'] as String).substring(0, 8)}',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            if (dt != null)
+                                              Text(
+                                                '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+                                                style: const TextStyle(
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            if (_canSeeEmployeeSales &&
+                                                (sale['cashier_name']
+                                                            as String?)
+                                                        ?.isNotEmpty ==
+                                                    true)
+                                              Text(
+                                                sale['cashier_name'] as String,
+                                                style: const TextStyle(
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        '${ShopSettings.currency}${(sale['total_amount'] as num).toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.success,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1785,16 +1828,20 @@ class _KpiCardState extends State<_KpiCard> {
       child: Container(
         padding: EdgeInsets.all(widget.compact ? 12 : 20),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              widget.color.withValues(alpha: 0.13),
+              AppColors.premiumPanelSoft,
+              AppColors.premiumPanel,
+            ],
+          ),
           borderRadius: BorderRadius.circular(widget.compact ? 14 : 22),
-          border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          border: Border.all(
+            color: widget.color.withValues(alpha: widget.compact ? 0.22 : 0.28),
+          ),
+          boxShadow: widget.compact ? null : AppColors.premiumShadow(0.22),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1898,9 +1945,9 @@ class _MiniStatState extends State<_MiniStat> {
         width: widget.compact ? null : 170,
         padding: EdgeInsets.all(widget.compact ? 10 : 14),
         decoration: BoxDecoration(
-          color: AppColors.surfaceHighlight,
+          color: AppColors.premiumPanelSoft.withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(widget.compact ? 12 : 14),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: AppColors.premiumStroke),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1951,7 +1998,7 @@ class _DashboardAction extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).width < 800;
 
     return Material(
-      color: AppColors.surfaceHighlight,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -1963,7 +2010,15 @@ class _DashboardAction extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withValues(alpha: 0.12),
+                AppColors.premiumPanelSoft,
+              ],
+            ),
+            border: Border.all(color: color.withValues(alpha: 0.24)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -2011,9 +2066,10 @@ class _DashboardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        gradient: AppColors.premiumGradient,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.premiumStroke),
+        boxShadow: AppColors.premiumShadow(0.18),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

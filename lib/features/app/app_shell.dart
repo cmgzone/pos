@@ -1280,92 +1280,128 @@ class AppShellState extends ConsumerState<AppShell> {
                   minHeight: MediaQuery.of(context).size.height,
                 ),
                 child: IntrinsicHeight(
-                  child: TrainingAnchor(
-                    id: 'shell.navigation',
-                    child: NavigationRail(
-                      backgroundColor: AppColors.surface,
-                      indicatorColor: Colors.transparent,
-                      selectedIndex: _allowedDestinations.indexWhere(
-                        (d) => d.index == currentIndex,
-                      ),
-                      onDestinationSelected: (i) =>
-                          _selectIndex(_allowedDestinations[i].index),
-                      labelType: NavigationRailLabelType.all,
-                      leading: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Column(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: Image.asset(
-                                'assets/images/logo.png',
-                                width: 48,
-                                height: 48,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          AppColors.primary,
-                                          AppColors.primaryLight,
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: const Icon(
-                                      Icons.point_of_sale_rounded,
-                                      color: Colors.white,
-                                      size: 24,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            _BranchPill(
-                              compact: true,
-                              onTap: () => _selectIndex(13),
-                            ),
-                            const SizedBox(height: 10),
-                            IconButton(
-                              tooltip: 'Notifications',
-                              onPressed: () => _showNotifications(
-                                syncState,
-                                pikiInsights: pikiInsights,
-                              ),
-                              icon: _buildNotificationIcon(
-                                notifications,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: AppColors.premiumGradient,
+                      border: Border(
+                        right: BorderSide(
+                          color: AppColors.premiumStroke.withValues(
+                            alpha: 0.78,
+                          ),
                         ),
                       ),
-                      destinations: _allowedDestinations
-                          .map(
-                            (destination) => NavigationRailDestination(
-                              icon: BeautifulIcon(
-                                destination.item.icon,
-                                color: AppColors.textSecondary,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 28,
+                          offset: const Offset(12, 0),
+                        ),
+                      ],
+                    ),
+                    child: TrainingAnchor(
+                      id: 'shell.navigation',
+                      child: NavigationRail(
+                        minWidth: 104,
+                        backgroundColor: Colors.transparent,
+                        indicatorColor: AppColors.primary.withValues(
+                          alpha: 0.14,
+                        ),
+                        selectedIndex: _allowedDestinations.indexWhere(
+                          (d) => d.index == currentIndex,
+                        ),
+                        onDestinationSelected: (i) =>
+                            _selectIndex(_allowedDestinations[i].index),
+                        labelType: NavigationRailLabelType.all,
+                        leading: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          child: Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  gradient: AppColors.brandGradient,
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.28,
+                                      ),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(15),
+                                  child: Image.asset(
+                                    'assets/images/logo.png',
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.16,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.point_of_sale_rounded,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
                               ),
-                              selectedIcon: BeautifulIcon(
-                                destination.item.selectedIcon,
-                                color: AppColors.primary,
-                                withBackground: true,
+                              const SizedBox(height: 12),
+                              _BranchPill(
+                                compact: true,
+                                onTap: () => _selectIndex(13),
                               ),
-                              label: Text(destination.item.label),
-                            ),
-                          )
-                          .toList(),
+                              const SizedBox(height: 10),
+                              IconButton(
+                                tooltip: 'Notifications',
+                                onPressed: () => _showNotifications(
+                                  syncState,
+                                  pikiInsights: pikiInsights,
+                                ),
+                                icon: _buildNotificationIcon(
+                                  notifications,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        destinations: _allowedDestinations
+                            .map(
+                              (destination) => NavigationRailDestination(
+                                icon: BeautifulIcon(
+                                  destination.item.icon,
+                                  color: AppColors.textSecondary,
+                                ),
+                                selectedIcon: BeautifulIcon(
+                                  destination.item.selectedIcon,
+                                  color: AppColors.primary,
+                                  withBackground: true,
+                                ),
+                                label: Text(destination.item.label),
+                              ),
+                            )
+                            .toList(),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          if (isWide) const VerticalDivider(width: 1, color: AppColors.border),
           Expanded(
             child: ColoredBox(
               color: AppColors.background,
@@ -1378,8 +1414,8 @@ class AppShellState extends ConsumerState<AppShell> {
           ? TrainingAnchor(
               id: 'shell.navigation',
               child: NavigationBar(
-                backgroundColor: AppColors.surface,
-                indicatorColor: Colors.transparent,
+                backgroundColor: AppColors.premiumPanel,
+                indicatorColor: AppColors.primary.withValues(alpha: 0.14),
                 selectedIndex: mobileSelectedIndex >= 0
                     ? mobileSelectedIndex
                     : 0,
@@ -1417,19 +1453,22 @@ class AppShellState extends ConsumerState<AppShell> {
     final syncState = ref.watch(syncControllerProvider);
 
     return Drawer(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.premiumPanel,
       child: SafeArea(
         child: Column(
           children: [
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primary, AppColors.primaryLight],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+              decoration: BoxDecoration(
+                gradient: AppColors.brandGradient,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.22),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
