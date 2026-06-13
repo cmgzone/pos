@@ -452,36 +452,104 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     if (_loading) {
       return _sectionShell(_loadingPanel());
     }
-    return _sectionShell(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _mobileHeaderBar(context),
-          const SizedBox(height: 14),
-          _countryAndBillingRow(compact: true),
-          const SizedBox(height: 12),
-          _planList(compact: true),
-          if (_message != null) ...[
-            const SizedBox(height: 14),
-            _messageCard(_message!),
-          ],
-          const SizedBox(height: 14),
-          _paymentMethodRail(compact: true),
-          const SizedBox(height: 12),
-          _embeddedActionPanel(),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 760;
+        return _sectionShell(
+          desktop
+              ? _embeddedDesktopLayout(context)
+              : _embeddedMobileLayout(context),
+          premium: desktop,
+        );
+      },
     );
   }
 
-  Widget _sectionShell(Widget child) {
+  Widget _embeddedMobileLayout(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _mobileHeaderBar(context),
+        const SizedBox(height: 14),
+        _countryAndBillingRow(compact: true),
+        const SizedBox(height: 12),
+        _planList(compact: true),
+        if (_message != null) ...[
+          const SizedBox(height: 14),
+          _messageCard(_message!),
+        ],
+        const SizedBox(height: 14),
+        _paymentMethodRail(compact: true),
+        const SizedBox(height: 12),
+        _embeddedActionPanel(),
+      ],
+    );
+  }
+
+  Widget _embeddedDesktopLayout(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _premiumHeader(context)),
+            const SizedBox(width: 18),
+            SizedBox(width: 230, child: _countryPill()),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: _headlineBlock(context)),
+            const SizedBox(width: 18),
+            SizedBox(width: 220, child: _billingToggle()),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _planList(forceGrid: true),
+        if (_message != null) ...[
+          const SizedBox(height: 14),
+          _messageCard(_message!),
+        ],
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _paymentMethodRail()),
+            const SizedBox(width: 16),
+            SizedBox(width: 280, child: _sellingModeSelector()),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _embeddedActionPanel(),
+      ],
+    );
+  }
+
+  Widget _sectionShell(Widget child, {bool premium = false}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(premium ? 24 : 18),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        color: premium
+            ? const Color(0xFF080A12).withValues(alpha: 0.96)
+            : AppColors.surface,
+        borderRadius: BorderRadius.circular(premium ? 28 : 14),
+        border: Border.all(
+          color: premium
+              ? Colors.white.withValues(alpha: 0.14)
+              : AppColors.border,
+        ),
+        boxShadow: premium
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.38),
+                  blurRadius: 30,
+                  offset: const Offset(0, 16),
+                ),
+              ]
+            : null,
       ),
       child: child,
     );
@@ -1227,7 +1295,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     );
   }
 
-  Widget _planList({bool compact = false}) {
+  Widget _planList({bool compact = false, bool forceGrid = false}) {
     final catalog = _catalog;
     final market = _selectedMarket();
     final billingPeriod = _selectedBillingPeriod;
@@ -1250,8 +1318,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final canGrid =
-            !compact && widget.fullPage && constraints.maxWidth >= 720;
+        final canGrid = forceGrid || (!compact && constraints.maxWidth >= 720);
         if (!canGrid) {
           return Column(
             children: plans.map((plan) {
@@ -1267,6 +1334,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         const gap = 14.0;
         final cardWidth =
             (constraints.maxWidth - (gap * (columns - 1))) / columns;
+        final cardHeight = columns >= 4 ? 410.0 : 386.0;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -1274,6 +1342,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
             final selected = plan.code == _selectedPlanCode;
             return SizedBox(
               width: cardWidth,
+              height: cardHeight,
               child: _planCard(plan, market, billingPeriod, selected),
             );
           }).toList(),
@@ -1436,6 +1505,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                   ),
                 ),
               ),
+              const Spacer(),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
@@ -1774,7 +1844,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         (isFree || market.paymentActive) &&
         !_busy &&
         !(isCurrent && isFree);
-    final desktop = widget.fullPage && MediaQuery.sizeOf(context).width >= 900;
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
 
     final summary = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),

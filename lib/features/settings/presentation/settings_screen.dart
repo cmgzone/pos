@@ -2007,11 +2007,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String title,
     required IconData icon,
     required Widget child,
+    double maxWidth = 840,
   }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            _SettingsMiniPage(title: title, icon: icon, child: child),
+        builder: (_) => _SettingsMiniPage(
+          title: title,
+          icon: icon,
+          maxWidth: maxWidth,
+          child: child,
+        ),
       ),
     );
   }
@@ -2649,6 +2654,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => _openSettingsMiniPage(
                       title: 'Subscription',
                       icon: Icons.workspace_premium_outlined,
+                      maxWidth: 1180,
                       child: const SubscriptionPlansSection(),
                     ),
                   ),
@@ -3387,11 +3393,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 class _SettingsMiniPage extends StatelessWidget {
   final String title;
   final IconData icon;
+  final double maxWidth;
   final Widget child;
 
   const _SettingsMiniPage({
     required this.title,
     required this.icon,
+    this.maxWidth = 840,
     required this.child,
   });
 
@@ -3413,7 +3421,7 @@ class _SettingsMiniPage extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 840),
+            constraints: BoxConstraints(maxWidth: maxWidth),
             child: child,
           ),
         ),
