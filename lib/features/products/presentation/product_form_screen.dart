@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/openrouter_service.dart';
+import '../../../core/services/product_image_upload_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
@@ -53,6 +54,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   bool _useUnitConversion = false;
   bool _isLoading = false;
   bool _isEnhancingImage = false;
+  bool _isUploadingImage = false;
   bool _isTotalCostMode = false;
   bool _trackStock = true;
   bool _hasVariants = false;
@@ -269,7 +271,38 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     final savedFile = await File(
       picked.path,
     ).copy('${imagesDir.path}/$fileName');
-    setState(() => _imagePath = savedFile.path);
+    setState(() {
+      _imagePath = savedFile.path;
+      _isUploadingImage = true;
+    });
+
+    try {
+      final hostedUrl = await ProductImageUploadService.uploadProductImage(
+        imagePath: savedFile.path,
+        productId: widget.product?['id'] as String?,
+        productName: _nameController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _imagePath = hostedUrl);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image hosted with Bunny for your online catalog.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Saved locally. ${AppErrorMessage.from(e, fallback: 'Could not upload this image to Bunny.')}',
+          ),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
   }
 
   Future<void> _enhanceImage() async {
@@ -318,6 +351,121 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     }
   }
 
+  File _imageFileForPath(String path) {
+    return path.startsWith('file:')
+        ? File.fromUri(Uri.parse(path))
+        : File(path);
+  }
+
+  bool _hasDisplayableProductImage() {
+    final imagePath = _imagePath?.trim() ?? '';
+    if (imagePath.isEmpty) return false;
+    if (ProductImageUploadService.isRemoteImage(imagePath)) return true;
+    try {
+      return _imageFileForPath(imagePath).existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Widget _buildProductImagePreview(String imagePath) {
+    if (ProductImageUploadService.isRemoteImage(imagePath)) {
+      return Image.network(
+        imagePath,
+        width: double.infinity,
+        height: 220,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildImageFallback(),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildImageFallback(isLoading: true);
+        },
+      );
+    }
+
+    return Image.file(
+      _imageFileForPath(imagePath),
+      width: double.infinity,
+      height: 220,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _buildImageFallback(),
+    );
+  }
+
+  Widget _buildImageFallback({bool isLoading = false}) {
+    return Container(
+      width: double.infinity,
+      height: 220,
+      color: AppColors.surfaceHighlight,
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isLoading)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            const Icon(
+              Icons.image_not_supported_outlined,
+              color: AppColors.textSecondary,
+              size: 34,
+            ),
+          const SizedBox(height: 8),
+          Text(
+            isLoading ? 'Loading image...' : 'Image preview unavailable',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageHostingStatus() {
+    final isHosted = ProductImageUploadService.isRemoteImage(_imagePath);
+    if (!_isUploadingImage && !isHosted) {
+      return const SizedBox.shrink();
+    }
+
+    final color = _isUploadingImage ? AppColors.primary : AppColors.success;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          if (_isUploadingImage)
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: color),
+            )
+          else
+            Icon(Icons.cloud_done_outlined, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _isUploadingImage
+                  ? 'Uploading to Bunny...'
+                  : 'Hosted image ready for your web catalog.',
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _toggleConversion(bool enabled) {
     setState(() {
       _useUnitConversion = enabled;
@@ -354,22 +502,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
   Widget _buildImagePicker() {
     final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
+    final hasImage = _hasDisplayableProductImage();
+    final imagePath = _imagePath?.trim() ?? '';
 
     return Column(
       children: [
-        if (_imagePath != null &&
-            _imagePath!.isNotEmpty &&
-            File(_imagePath!).existsSync()) ...[
+        if (hasImage) ...[
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: Stack(
               children: [
-                Image.file(
-                  File(_imagePath!),
-                  width: double.infinity,
-                  height: 220,
-                  fit: BoxFit.cover,
-                ),
+                _buildProductImagePreview(imagePath),
                 Positioned(
                   top: 8,
                   right: 8,
@@ -383,18 +526,24 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         size: 20,
                       ),
                       tooltip: 'Remove image',
-                      onPressed: () => setState(() => _imagePath = null),
+                      onPressed: _isUploadingImage
+                          ? null
+                          : () => setState(() => _imagePath = null),
                     ),
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          _buildImageHostingStatus(),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _isEnhancingImage || _isLoading ? null : _enhanceImage,
+              onPressed: _isEnhancingImage || _isUploadingImage || _isLoading
+                  ? null
+                  : _enhanceImage,
               icon: _isEnhancingImage
                   ? const SizedBox(
                       width: 16,
@@ -420,7 +569,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.gallery),
+                  onPressed: _isUploadingImage
+                      ? null
+                      : () => _pickImage(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library_outlined, size: 18),
                   label: const Text('Gallery'),
                   style: OutlinedButton.styleFrom(
@@ -436,7 +587,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.camera),
+                  onPressed: _isUploadingImage
+                      ? null
+                      : () => _pickImage(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt_outlined, size: 18),
                   label: const Text('Camera'),
                   style: OutlinedButton.styleFrom(
@@ -455,7 +608,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.gallery),
+                  onPressed: _isUploadingImage
+                      ? null
+                      : () => _pickImage(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library_outlined, size: 18),
                   label: const Text('Gallery'),
                   style: OutlinedButton.styleFrom(
@@ -470,7 +625,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               const SizedBox(width: 16),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.camera),
+                  onPressed: _isUploadingImage
+                      ? null
+                      : () => _pickImage(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt_outlined, size: 18),
                   label: const Text('Camera'),
                   style: OutlinedButton.styleFrom(
@@ -721,7 +878,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           TrainingAnchor(
             id: 'productForm.save',
             child: FilledButton.icon(
-              onPressed: _isLoading || _isEnhancingImage ? null : _save,
+              onPressed: _isLoading || _isEnhancingImage || _isUploadingImage
+                  ? null
+                  : _save,
               icon: _isLoading
                   ? const SizedBox(
                       width: 16,
@@ -1605,7 +1764,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       if (_hasVariants) ...[
                         const SizedBox(height: 16),
                         FilledButton.icon(
-                          onPressed: _isLoading || _isEnhancingImage
+                          onPressed:
+                              _isLoading ||
+                                  _isEnhancingImage ||
+                                  _isUploadingImage
                               ? null
                               : () => _save(openVariants: true),
                           icon: const Icon(Icons.tune_outlined, size: 18),

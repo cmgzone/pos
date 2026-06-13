@@ -12,6 +12,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/etims_service.dart';
 import '../../../core/services/pos_payment_service.dart';
+import '../../../core/services/product_image_upload_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
@@ -5351,6 +5352,40 @@ class _ProductCardState extends State<_ProductCard> {
   bool _isHovered = false;
   bool _isPressed = false;
 
+  Widget _buildProductImage(String imagePath, bool isOutOfStock) {
+    if (ProductImageUploadService.isRemoteImage(imagePath)) {
+      return Image.network(
+        imagePath,
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (context, error, stackTrace) => Center(
+          child: _ProductImagePlaceholder(
+            categoryName: widget.categoryName,
+            isOutOfStock: isOutOfStock,
+          ),
+        ),
+      );
+    }
+
+    return Image.file(
+      File(imagePath),
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (context, error, stackTrace) => Center(
+        child: _ProductImagePlaceholder(
+          categoryName: widget.categoryName,
+          isOutOfStock: isOutOfStock,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
@@ -5475,26 +5510,9 @@ class _ProductCardState extends State<_ProductCard> {
                                 child: hasImage
                                     ? ClipRRect(
                                         borderRadius: BorderRadius.circular(16),
-                                        child: Image.file(
-                                          File(imagePath),
-                                          width: double.infinity,
-                                          height: double.infinity,
-                                          fit: BoxFit
-                                              .cover, // Better for modern cards
-                                          alignment: Alignment.center,
-                                          filterQuality: FilterQuality.high,
-                                          errorBuilder:
-                                              (
-                                                context,
-                                                error,
-                                                stackTrace,
-                                              ) => Center(
-                                                child: _ProductImagePlaceholder(
-                                                  categoryName:
-                                                      widget.categoryName,
-                                                  isOutOfStock: isOutOfStock,
-                                                ),
-                                              ),
+                                        child: _buildProductImage(
+                                          imagePath,
+                                          isOutOfStock,
                                         ),
                                       )
                                     : Center(

@@ -76,6 +76,26 @@ const config = {
     '',
   serpApiBaseUrl:
     process.env.SERPAPI_BASE_URL?.trim() || 'https://google.serper.dev/search',
+  bunnyStorageZone: process.env.BUNNY_STORAGE_ZONE?.trim() || '',
+  bunnyStorageAccessKey:
+    process.env.BUNNY_STORAGE_ACCESS_KEY?.trim() ||
+    process.env.BUNNY_STORAGE_PASSWORD?.trim() ||
+    '',
+  bunnyStorageRegion: process.env.BUNNY_STORAGE_REGION?.trim() || '',
+  bunnyStorageEndpoint: buildBunnyStorageEndpoint({
+    endpoint: process.env.BUNNY_STORAGE_ENDPOINT,
+    region: process.env.BUNNY_STORAGE_REGION,
+  }),
+  bunnyCdnBaseUrl:
+    trimTrailingUrl(process.env.BUNNY_CDN_BASE_URL) ||
+    trimTrailingUrl(process.env.BUNNY_PULL_ZONE_URL) ||
+    trimTrailingUrl(process.env.BUNNY_CDN_URL) ||
+    '',
+  bunnyUploadPath: trimSlashes(process.env.BUNNY_UPLOAD_PATH || 'product-images'),
+  bunnyMaxImageBytes: positiveNumberEnv(
+    process.env.BUNNY_MAX_IMAGE_BYTES,
+    5 * 1024 * 1024,
+  ),
 };
 
 config.allowedOrigins = parseOriginList(
@@ -126,6 +146,38 @@ function parseOriginList(value) {
     .split(',')
     .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+}
+
+function trimTrailingUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function trimSlashes(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '');
+}
+
+function positiveNumberEnv(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function buildBunnyStorageEndpoint({ endpoint, region }) {
+  const customEndpoint = trimTrailingUrl(endpoint);
+  if (customEndpoint) {
+    return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(customEndpoint)
+      ? customEndpoint
+      : `https://${customEndpoint}`;
+  }
+
+  const cleanRegion = String(region || '').trim().replace(/^\.+|\.+$/g, '');
+  if (!cleanRegion || cleanRegion.toLowerCase() === 'storage') {
+    return 'https://storage.bunnycdn.com';
+  }
+
+  return `https://${cleanRegion}.storage.bunnycdn.com`;
 }
 
 module.exports = { config };

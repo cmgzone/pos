@@ -2868,6 +2868,205 @@ async function requestOpenRouterProductImage({ fetchImpl, aiConfig, imageDataUrl
   throw createHttpError(502, lastError);
 }
 
+function ensureBunnyImageStorageConfigured() {
+  if (
+    !config.bunnyStorageZone ||
+    !config.bunnyStorageAccessKey ||
+    !config.bunnyCdnBaseUrl
+  ) {
+    throw createHttpError(
+      503,
+      'Bunny image storage is not configured yet. Set BUNNY_STORAGE_ZONE, BUNNY_STORAGE_ACCESS_KEY, and BUNNY_CDN_BASE_URL on the backend.',
+    );
+  }
+}
+
+function parseImageDataUrlForUpload(value) {
+  const text = normalizeOptionalText(value);
+  if (!text) {
+    throw createHttpError(400, 'A product image is required');
+  }
+
+  const match = text.match(
+    /^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i,
+  );
+  if (!match) {
+    throw createHttpError(
+      400,
+      'Use a base64 PNG, JPG, WebP, or GIF image data URL',
+    );
+  }
+
+  const mimeType =
+    match[1].toLowerCase() === 'image/jpg'
+      ? 'image/jpeg'
+      : match[1].toLowerCase();
+  const base64 = match[2].replace(/\s/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
+    throw createHttpError(400, 'The product image data is not valid base64');
+  }
+
+  const bytes = Buffer.from(base64, 'base64');
+  if (bytes.length === 0) {
+    throw createHttpError(400, 'The product image is empty');
+  }
+  if (bytes.length > config.bunnyMaxImageBytes) {
+    const limitMb = Math.max(
+      1,
+      Math.floor(config.bunnyMaxImageBytes / 1024 / 1024),
+    );
+    throw createHttpError(
+      413,
+      `The product image is too large. Use an image below ${limitMb} MB.`,
+    );
+  }
+
+  return {
+    bytes,
+    mimeType,
+    extension: extensionForImageMimeType(mimeType),
+  };
+}
+
+function extensionForImageMimeType(mimeType) {
+  switch (String(mimeType || '').toLowerCase()) {
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    default:
+      return 'jpg';
+  }
+}
+
+function sanitizeStoragePathSegment(value, fallback = 'item') {
+  const text = normalizeOptionalText(value) || fallback;
+  const safe = text
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return safe || fallback;
+}
+
+function joinStoragePath(segments) {
+  return segments
+    .map((segment) => normalizeOptionalText(segment))
+    .filter(Boolean)
+    .map((segment) => String(segment).replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean)
+    .join('/');
+}
+
+function encodeStoragePath(pathValue) {
+  return String(pathValue || '')
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function bunnyPublicUrlForPath(storagePath) {
+  return `${config.bunnyCdnBaseUrl}/${encodeStoragePath(storagePath)}`;
+}
+
+async function uploadProductImageToBunny({
+  fetchImpl,
+  businessContext,
+  branchId,
+  productId,
+  productName,
+  image,
+}) {
+  ensureBunnyImageStorageConfigured();
+
+  const uploadRoot = joinStoragePath([config.bunnyUploadPath]);
+  const cleanBusinessId = sanitizeStoragePathSegment(
+    businessContext.businessId,
+    'business',
+  );
+  const cleanBranchId = sanitizeStoragePathSegment(branchId, 'shared');
+  const cleanProductLabel = sanitizeStoragePathSegment(
+    productId || productName,
+    'product',
+  );
+  const fileName = `${Date.now()}-${crypto.randomUUID()}-${cleanProductLabel}.${image.extension}`;
+  const storagePath = joinStoragePath([
+    uploadRoot,
+    cleanBusinessId,
+    cleanBranchId,
+    fileName,
+  ]);
+  const uploadUrl =
+    `${config.bunnyStorageEndpoint}/${encodeURIComponent(config.bunnyStorageZone)}/${encodeStoragePath(storagePath)}`;
+
+  const response = await fetchImpl(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      AccessKey: config.bunnyStorageAccessKey,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: image.bytes,
+  });
+
+  if (!response.ok) {
+    let responseText = '';
+    try {
+      responseText = await response.text();
+    } catch (_) {
+      responseText = '';
+    }
+    console.error('Bunny product image upload failed', {
+      status: response.status,
+      body: responseText.slice(0, 500),
+    });
+    throw createHttpError(
+      502,
+      'Could not upload the product image to Bunny. Check the backend Bunny Storage credentials.',
+    );
+  }
+
+  return {
+    imageUrl: bunnyPublicUrlForPath(storagePath),
+    storagePath,
+    contentType: image.mimeType,
+    size: image.bytes.length,
+  };
+}
+
+app.post('/api/files/product-images', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.products);
+    if (!hasBusinessFeature(businessContext, FEATURE_KEYS.products)) {
+      throw createHttpError(403, 'This employee cannot manage products');
+    }
+
+    const image = parseImageDataUrlForUpload(req.body?.imageDataUrl);
+    const branchId = normalizeOptionalText(
+      req.query?.branchId ?? req.body?.branchId ?? req.headers['x-branch-id'],
+    );
+    const fetch = (await import('node-fetch')).default;
+    const result = await uploadProductImageToBunny({
+      fetchImpl: fetch,
+      businessContext,
+      branchId,
+      productId: req.body?.productId,
+      productName: req.body?.productName,
+      image,
+    });
+
+    res.status(201).json({
+      ok: true,
+      data: result,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/ai/product-image/enhance', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
