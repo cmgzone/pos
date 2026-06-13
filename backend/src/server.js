@@ -3520,6 +3520,7 @@ app.get('/catalog/:businessId', async (req, res, next) => {
 
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
+      branchId: req.query?.branchId,
     });
     res
       .status(200)
@@ -6583,6 +6584,10 @@ function normalizePublicCatalogProduct(row) {
 function renderPublicCatalogPage(catalog) {
   const businessName = catalog.business.name || 'Catalog';
   const productCount = catalog.products.length;
+  const categoryCount = catalog.categories.length;
+  const branchName = catalog.business.selectedBranch?.name || 'Main store';
+  const branchCount = catalog.business.branches?.length || 1;
+  const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
   const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
   const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
   const updated = catalog.updatedAt
@@ -7022,16 +7027,538 @@ function renderPublicCatalogPage(catalog) {
       }
     }
   </style>
+  <style>
+    :root {
+      --store-bg: #f5f3f8;
+      --store-ink: #17151f;
+      --store-muted: #6f687b;
+      --store-line: #e8e2ee;
+      --store-card: #ffffff;
+      --store-soft: #fbf9fd;
+      --store-primary: #ff2a6d;
+      --store-accent: #7c3cff;
+      --store-shadow: 0 24px 70px rgba(23, 21, 31, 0.12);
+      --store-shadow-soft: 0 12px 32px rgba(23, 21, 31, 0.08);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      padding-bottom: 104px;
+      background:
+        radial-gradient(circle at top left, rgba(255, 42, 109, 0.13), transparent 32rem),
+        radial-gradient(circle at 90% 8%, rgba(124, 60, 255, 0.12), transparent 28rem),
+        var(--store-bg);
+      color: var(--store-ink);
+    }
+    .wrap {
+      width: min(1180px, calc(100% - 32px));
+    }
+    .site-header {
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(12, 7, 16, 0.97), rgba(38, 10, 36, 0.95)),
+        radial-gradient(circle at 75% 15%, rgba(255, 42, 109, 0.42), transparent 22rem);
+      border-bottom: 0;
+    }
+    .site-header:before,
+    .site-header:after {
+      content: "";
+      position: absolute;
+      width: 360px;
+      height: 360px;
+      border-radius: 999px;
+      pointer-events: none;
+    }
+    .site-header:before {
+      right: -110px;
+      top: -120px;
+      background: radial-gradient(circle, rgba(255, 42, 109, 0.35), transparent 65%);
+    }
+    .site-header:after {
+      left: -160px;
+      bottom: -190px;
+      background: radial-gradient(circle, rgba(124, 60, 255, 0.28), transparent 65%);
+    }
+    .topbar {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 0;
+    }
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+    .logo-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
+      box-shadow: 0 14px 36px rgba(255, 42, 109, 0.35);
+    }
+    .brand-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .header-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.88);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 330px;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      align-items: center;
+      gap: 36px;
+      padding: 34px 0 52px;
+    }
+    .store {
+      gap: 18px;
+    }
+    .eyebrow {
+      width: fit-content;
+      margin: 0;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.11);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.84);
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    h1 {
+      max-width: 820px;
+      font-size: clamp(38px, 7vw, 78px);
+      line-height: 0.92;
+      letter-spacing: -0.07em;
+    }
+    .meta {
+      max-width: 650px;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: clamp(15px, 2vw, 18px);
+      line-height: 1.6;
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .primary-link,
+    .secondary-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      font-weight: 900;
+      text-decoration: none;
+    }
+    .primary-link {
+      color: #fff;
+      background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
+      box-shadow: 0 18px 40px rgba(255, 42, 109, 0.32);
+    }
+    .secondary-link {
+      color: rgba(255, 255, 255, 0.88);
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .hero-card {
+      padding: 20px;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.11);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(18px);
+    }
+    .hero-card h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.03em;
+    }
+    .hero-card p {
+      margin: 8px 0 18px;
+      color: rgba(255, 255, 255, 0.68);
+      line-height: 1.5;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .stat strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+    }
+    .stat span {
+      display: block;
+      margin-top: 5px;
+      color: rgba(255, 255, 255, 0.62);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .shop-bar {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      background: rgba(245, 243, 248, 0.86);
+      border-bottom: 1px solid rgba(232, 226, 238, 0.86);
+      backdrop-filter: blur(18px);
+    }
+    .toolbar {
+      padding: 16px 0;
+    }
+    input,
+    select,
+    .order-form textarea {
+      border-radius: 16px;
+      border-color: var(--store-line);
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(255, 42, 109, 0.52);
+      box-shadow: 0 0 0 4px rgba(255, 42, 109, 0.10);
+    }
+    .category-pills {
+      display: flex;
+      gap: 9px;
+      padding: 0 0 16px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .category-pills::-webkit-scrollbar { display: none; }
+    .category-chip {
+      border: 1px solid var(--store-line);
+      background: var(--store-card);
+      color: var(--store-muted);
+      border-radius: 999px;
+      padding: 9px 14px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(23, 21, 31, 0.04);
+    }
+    .category-chip.active {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
+      box-shadow: 0 12px 28px rgba(255, 42, 109, 0.22);
+    }
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 34px 0 0;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 42px);
+      letter-spacing: -0.05em;
+    }
+    .section-head p {
+      margin: 7px 0 0;
+      color: var(--store-muted);
+    }
+    .grid {
+      grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+      gap: 20px;
+      padding: 24px 0 56px;
+    }
+    .card {
+      border-color: var(--store-line);
+      border-radius: 26px;
+      box-shadow: var(--store-shadow-soft);
+      transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    }
+    .card:hover {
+      border-color: rgba(255, 42, 109, 0.42);
+      box-shadow: var(--store-shadow);
+      transform: translateY(-4px);
+    }
+    .photo {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.92), transparent 28%),
+        linear-gradient(135deg, #fff0f5, #eee9ff);
+      font-weight: 900;
+    }
+    .photo:after {
+      content: "";
+      position: absolute;
+      inset: auto 18px 16px;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(23, 21, 31, 0.08);
+      filter: blur(7px);
+    }
+    .photo img {
+      position: relative;
+      z-index: 1;
+    }
+    .image-placeholder {
+      position: relative;
+      z-index: 1;
+      width: 74px;
+      height: 74px;
+      border-radius: 24px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
+      box-shadow: 0 18px 40px rgba(255, 42, 109, 0.24);
+    }
+    .body {
+      padding: 16px;
+      gap: 11px;
+    }
+    .name {
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }
+    .product-meta {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      align-items: center;
+      min-height: 25px;
+    }
+    .brand,
+    .category {
+      border-radius: 999px;
+      background: var(--store-soft);
+      border: 1px solid var(--store-line);
+      padding: 5px 8px;
+      font-weight: 800;
+    }
+    .variants {
+      min-height: 34px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .price {
+      font-size: 21px;
+      letter-spacing: -0.04em;
+    }
+    .badge.unavailable {
+      color: var(--danger);
+      background: rgba(201, 42, 42, 0.10);
+    }
+    .order-actions {
+      gap: 10px;
+    }
+    .variant-select {
+      border-radius: 13px;
+    }
+    .add-button {
+      background: linear-gradient(135deg, var(--store-ink), #30283a);
+      box-shadow: 0 10px 20px rgba(23, 21, 31, 0.14);
+    }
+    .cart-toggle {
+      right: 22px;
+      bottom: 22px;
+      min-height: 54px;
+      padding: 0 20px;
+      background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
+      box-shadow: 0 18px 40px rgba(236, 34, 87, 0.34);
+    }
+    .cart-panel {
+      right: 22px;
+      bottom: 92px;
+      width: min(450px, calc(100vw - 32px));
+      max-height: min(720px, calc(100vh - 128px));
+      border-radius: 28px;
+      box-shadow: var(--store-shadow);
+    }
+    .cart-head,
+    .cart-foot,
+    .cart-lines,
+    .order-form {
+      padding-left: 18px;
+      padding-right: 18px;
+    }
+    .cart-head h2 {
+      font-size: 20px;
+      letter-spacing: -0.03em;
+    }
+    .choice-row label,
+    .track-order,
+    .tracking-result,
+    .success,
+    .error {
+      border-radius: 16px;
+    }
+    .submit-order {
+      min-height: 50px;
+      background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
+    }
+    .whatsapp-order {
+      min-height: 48px;
+      border-radius: 16px;
+    }
+    .tracking-panel {
+      margin-bottom: 56px;
+      padding: 22px;
+      border-radius: 26px;
+      box-shadow: var(--store-shadow);
+    }
+    .track-order {
+      background: linear-gradient(135deg, var(--store-ink), #30283a);
+    }
+    .powered {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 720px) {
+      body { padding-bottom: 92px; }
+      .topbar { align-items: flex-start; }
+      .header-pill.secondary-mobile { display: none; }
+      .hero {
+        grid-template-columns: 1fr;
+        min-height: auto;
+        padding: 22px 0 34px;
+        gap: 24px;
+      }
+      h1 { font-size: clamp(38px, 12vw, 54px); }
+      .section-head {
+        display: block;
+        padding-top: 26px;
+      }
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 13px;
+      }
+      .body {
+        padding: 12px;
+        gap: 9px;
+      }
+      .name { font-size: 15px; }
+      .price { font-size: 17px; }
+      .product-meta,
+      .variants { display: none; }
+      .price-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .order-actions { grid-template-columns: 1fr; }
+      .add-button { width: 100%; }
+      .cart-panel {
+        right: 16px;
+        left: 16px;
+        width: auto;
+        border-radius: 24px;
+      }
+    }
+    @media (max-width: 420px) {
+      .wrap { width: min(100% - 24px, 1180px); }
+      .grid { gap: 10px; }
+      .photo { aspect-ratio: 1 / 0.92; }
+      .category-pills { padding-bottom: 12px; }
+      .header-pill { padding: 0 11px; }
+    }
+  </style>
 </head>
 <body>
-  <header>
+  <header class="site-header">
+    <div class="wrap topbar">
+      <div class="brand-lockup">
+        <span class="logo-mark">${escapeHtml(storeInitial)}</span>
+        <span class="brand-name">${escapeHtml(businessName)}</span>
+      </div>
+      <div class="top-actions">
+        <span class="header-pill secondary-mobile">${escapeHtml(branchName)}</span>
+        <a class="header-pill" href="#track">Track order</a>
+      </div>
+    </div>
     <div class="wrap hero">
       <div class="store">
+        <p class="eyebrow">Online catalog</p>
         <h1>${escapeHtml(businessName)}</h1>
-        <p class="meta">${productCount} product${productCount === 1 ? '' : 's'}${updated ? ` - Updated ${escapeHtml(updated)}` : ''}</p>
+        <p class="meta">Shop products, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.</p>
+        <div class="hero-actions">
+          <a class="primary-link" href="#products">Start shopping</a>
+          <a class="secondary-link" href="#track">Track an order</a>
+        </div>
       </div>
+      <aside class="hero-card" aria-label="Store information">
+        <h2>Storefront ready</h2>
+        <p>${productCount} product${productCount === 1 ? '' : 's'} available${updated ? ` - updated ${escapeHtml(updated)}` : ''}.</p>
+        <div class="stat-grid">
+          <div class="stat">
+            <strong>${productCount}</strong>
+            <span>Products</span>
+          </div>
+          <div class="stat">
+            <strong>${categoryCount}</strong>
+            <span>Categories</span>
+          </div>
+          <div class="stat">
+            <strong>${escapeHtml(branchName)}</strong>
+            <span>Branch</span>
+          </div>
+          <div class="stat">
+            <strong>${branchCount}</strong>
+            <span>Locations</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </header>
+  <section class="shop-bar">
+    <div class="wrap">
       <div class="toolbar">
-        <input id="search" type="search" placeholder="Search products" autocomplete="off" />
+        <input id="search" type="search" placeholder="Search products, brands, categories" autocomplete="off" />
         <select id="category">
           <option value="">All categories</option>
           ${catalog.categories
@@ -7039,12 +7566,24 @@ function renderPublicCatalogPage(catalog) {
             .join('')}
         </select>
       </div>
+      <div id="category-pills" class="category-pills" aria-label="Shop by category">
+        <button class="category-chip active" type="button" data-category-chip="">All</button>
+        ${catalog.categories
+          .map((category) => `<button class="category-chip" type="button" data-category-chip="${escapeHtml(category)}">${escapeHtml(category)}</button>`)
+          .join('')}
+      </div>
     </div>
-  </header>
+  </section>
   <main class="wrap">
-    <section id="grid" class="grid"></section>
+    <section id="products" class="section-head">
+      <div>
+        <h2>Featured products</h2>
+        <p id="product-count-label">${productCount} product${productCount === 1 ? '' : 's'} ready to order.</p>
+      </div>
+    </section>
+    <section id="grid" class="grid" aria-live="polite"></section>
     <p id="empty" class="empty">No products match your search.</p>
-    <section class="tracking-panel" aria-label="Track order">
+    <section id="track" class="tracking-panel" aria-label="Track order">
       <h2>Track your order</h2>
       <p class="notice">Enter the order number and phone number you used at checkout.</p>
       <form id="tracking-form" class="tracking-form">
@@ -7101,7 +7640,10 @@ function renderPublicCatalogPage(catalog) {
   </aside>
   <button id="cart-toggle" class="cart-toggle" type="button">Order (0)</button>
   <footer>
-    <div class="wrap">Powered by Piki POS</div>
+    <div class="wrap powered">
+      <span>Powered by Piki POS</span>
+      <span>${escapeHtml(businessName)} online catalog</span>
+    </div>
   </footer>
   <script id="catalog-data" type="application/json">${safeCatalogJson}</script>
   <script>
@@ -7112,6 +7654,8 @@ function renderPublicCatalogPage(catalog) {
     const empty = document.getElementById('empty');
     const search = document.getElementById('search');
     const category = document.getElementById('category');
+    const categoryPills = document.getElementById('category-pills');
+    const productCountLabel = document.getElementById('product-count-label');
     const cartPanel = document.getElementById('cart-panel');
     const cartToggle = document.getElementById('cart-toggle');
     const closeCart = document.getElementById('close-cart');
@@ -7161,6 +7705,16 @@ function renderPublicCatalogPage(catalog) {
         '"': '&quot;',
         "'": '&#39;',
       })[char]);
+    }
+
+    function initials(value) {
+      return String(value || 'P')
+        .trim()
+        .split(/\\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join('') || 'P';
     }
 
     function productById(id) {
@@ -7245,7 +7799,18 @@ function renderPublicCatalogPage(catalog) {
       const q = search.value.trim().toLowerCase();
       const cat = category.value;
       const products = catalog.products.filter((product) => productMatches(product, q, cat));
+      if (productCountLabel) {
+        productCountLabel.textContent = products.length + ' product' + (products.length === 1 ? '' : 's') + (cat ? ' in ' + cat : '') + ' ready to order.';
+      }
+      if (categoryPills) {
+        categoryPills.querySelectorAll('[data-category-chip]').forEach((chip) => {
+          chip.classList.toggle('active', chip.getAttribute('data-category-chip') === cat);
+        });
+      }
       grid.innerHTML = products.map((product) => {
+        const productVariants = product.variants || [];
+        const hasVariants = productVariants.length > 0;
+        const firstAvailableVariant = productVariants.find((variant) => variant.available) || productVariants[0];
         const variants = product.variants && product.variants.length
           ? '<div class="variants">' + product.variants.map((variant) => {
               const name = escapeText(variant.name);
@@ -7263,29 +7828,33 @@ function renderPublicCatalogPage(catalog) {
                   ? variant.name + ' - ' + formatMoney(variantPrice)
                   : variant.name;
                 const unavailableLabel = variant.available ? '' : ' (unavailable)';
-                return '<option value="' + escapeText(variant.id) + '" ' + (variant.available ? '' : 'disabled') + '>' + escapeText(label + unavailableLabel) + '</option>';
+                const selected = firstAvailableVariant && firstAvailableVariant.id === variant.id ? 'selected' : '';
+                return '<option value="' + escapeText(variant.id) + '" ' + selected + ' ' + (variant.available ? '' : 'disabled') + '>' + escapeText(label + unavailableLabel) + '</option>';
               }).join('') +
             '</select>'
           : '<span></span>';
         const isAvailable = product.availability === 'Available';
+        const pricePrefix = hasVariants ? 'From ' : '';
         return '<article class="card" data-card-product-id="' + escapeText(product.id) + '" data-available="' + (isAvailable ? 'true' : 'false') + '">' +
           '<div class="photo">' +
             (product.imageUrl
               ? '<img src="' + escapeText(product.imageUrl) + '" alt="' + escapeText(product.name) + '" loading="lazy" />'
-              : '<span>No image</span>') +
+              : '<span class="image-placeholder">' + escapeText(initials(product.name)) + '</span>') +
           '</div>' +
           '<div class="body">' +
             '<h2 class="name">' + escapeText(product.name) + '</h2>' +
-            (product.brand ? '<div class="brand">' + escapeText(product.brand) + '</div>' : '') +
-            (product.category ? '<div class="category">' + escapeText(product.category) + '</div>' : '') +
+            '<div class="product-meta">' +
+              (product.brand ? '<div class="brand">' + escapeText(product.brand) + '</div>' : '') +
+              (product.category ? '<div class="category">' + escapeText(product.category) + '</div>' : '') +
+            '</div>' +
             variants +
             '<div class="price-row">' +
-              '<div class="price">' + formatMoney(Number(product.price || 0)) + '</div>' +
-              '<span class="badge">' + escapeText(product.availability) + '</span>' +
+              '<div class="price">' + pricePrefix + formatMoney(Number(product.price || 0)) + '</div>' +
+              '<span class="badge ' + (isAvailable ? '' : 'unavailable') + '">' + escapeText(product.availability) + '</span>' +
             '</div>' +
             '<div class="order-actions">' +
               variantSelect +
-              '<button class="add-button" data-product-id="' + escapeText(product.id) + '" type="button" ' + (isAvailable ? '' : 'disabled') + '>Add</button>' +
+              '<button class="add-button" data-product-id="' + escapeText(product.id) + '" type="button" ' + (isAvailable ? '' : 'disabled') + '>Add to cart</button>' +
             '</div>' +
           '</div>' +
         '</article>';
@@ -7300,6 +7869,7 @@ function renderPublicCatalogPage(catalog) {
         fulfillmentMethod: (new FormData(orderForm).get('fulfillmentMethod') || 'delivery'),
         deliveryAddress: document.getElementById('delivery-address').value.trim(),
         note: document.getElementById('order-note').value.trim(),
+        branchId: catalog.business.selectedBranch ? catalog.business.selectedBranch.id : null,
         items: Array.from(cart.values()).map((item) => ({
           productId: item.product.id,
           variantId: item.variant ? item.variant.id : null,
@@ -7428,6 +7998,14 @@ function renderPublicCatalogPage(catalog) {
 
     search.addEventListener('input', render);
     category.addEventListener('change', render);
+    if (categoryPills) {
+      categoryPills.addEventListener('click', (event) => {
+        const chip = event.target.closest('[data-category-chip]');
+        if (!chip) return;
+        category.value = chip.getAttribute('data-category-chip') || '';
+        render();
+      });
+    }
     trackingForm.addEventListener('submit', submitTracking);
     grid.addEventListener('click', (event) => {
       const button = event.target.closest('[data-product-id]');

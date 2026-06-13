@@ -70,7 +70,7 @@ class CatalogShareService {
   }
 
   static String buildMessage(CatalogShareInfo info) {
-    return 'Hello, you can view ${info.businessName} product catalog here:\n${info.url}';
+    return 'Hello, you can shop ${info.businessName} online here:\n${info.url}\n\nBrowse products, add to cart, and send your order for confirmation.';
   }
 
   static Future<void> openCatalog(CatalogShareInfo info) async {
