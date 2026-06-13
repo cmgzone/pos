@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS businesses (
   country_code text NOT NULL DEFAULT 'GLOBAL',
   currency text,
   selling_mode text NOT NULL DEFAULT 'combo',
+  catalog_logo_url text,
+  catalog_cover_url text,
+  catalog_primary_color text,
+  catalog_tagline text,
+  catalog_description text,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
@@ -21,6 +26,11 @@ ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subdomain_released_at timestampt
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS country_code text NOT NULL DEFAULT 'GLOBAL';
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS currency text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS selling_mode text NOT NULL DEFAULT 'combo';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_logo_url text;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_cover_url text;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_primary_color text;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_tagline text;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_description text;
 
 DO $$
 BEGIN

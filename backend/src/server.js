@@ -3072,7 +3072,7 @@ function ensureBunnyImageStorageConfigured() {
 function parseImageDataUrlForUpload(value) {
   const text = normalizeOptionalText(value);
   if (!text) {
-    throw createHttpError(400, 'A product image is required');
+    throw createHttpError(400, 'An image is required');
   }
 
   const match = text.match(
@@ -3091,12 +3091,12 @@ function parseImageDataUrlForUpload(value) {
       : match[1].toLowerCase();
   const base64 = match[2].replace(/\s/g, '');
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
-    throw createHttpError(400, 'The product image data is not valid base64');
+    throw createHttpError(400, 'The image data is not valid base64');
   }
 
   const bytes = Buffer.from(base64, 'base64');
   if (bytes.length === 0) {
-    throw createHttpError(400, 'The product image is empty');
+    throw createHttpError(400, 'The image is empty');
   }
   if (bytes.length > config.bunnyMaxImageBytes) {
     const limitMb = Math.max(
@@ -3105,7 +3105,7 @@ function parseImageDataUrlForUpload(value) {
     );
     throw createHttpError(
       413,
-      `The product image is too large. Use an image below ${limitMb} MB.`,
+      `The image is too large. Use an image below ${limitMb} MB.`,
     );
   }
 
@@ -3224,6 +3224,65 @@ async function uploadProductImageToBunny({
   };
 }
 
+async function uploadStorefrontImageToBunny({
+  fetchImpl,
+  businessContext,
+  kind,
+  image,
+}) {
+  ensureBunnyImageStorageConfigured();
+
+  const cleanKind = normalizeStorefrontImageKind(kind);
+  const uploadRoot = joinStoragePath([config.bunnyUploadPath]);
+  const cleanBusinessId = sanitizeStoragePathSegment(
+    businessContext.businessId,
+    'business',
+  );
+  const fileName = `${Date.now()}-${crypto.randomUUID()}-${cleanKind}.${image.extension}`;
+  const storagePath = joinStoragePath([
+    uploadRoot,
+    cleanBusinessId,
+    'storefront',
+    fileName,
+  ]);
+  const uploadUrl =
+    `${config.bunnyStorageEndpoint}/${encodeURIComponent(config.bunnyStorageZone)}/${encodeStoragePath(storagePath)}`;
+
+  const response = await fetchImpl(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      AccessKey: config.bunnyStorageAccessKey,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: image.bytes,
+  });
+
+  if (!response.ok) {
+    let responseText = '';
+    try {
+      responseText = await response.text();
+    } catch (_) {
+      responseText = '';
+    }
+    console.error('Bunny storefront image upload failed', {
+      status: response.status,
+      body: responseText.slice(0, 500),
+    });
+    throw createHttpError(
+      502,
+      'Could not upload the storefront image to Bunny. Check the backend Bunny Storage credentials.',
+    );
+  }
+
+  return {
+    imageUrl: bunnyPublicUrlForPath(storagePath),
+    storagePath,
+    contentType: image.mimeType,
+    size: image.bytes.length,
+    kind: cleanKind,
+  };
+}
+
 app.post('/api/files/product-images', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -3243,6 +3302,29 @@ app.post('/api/files/product-images', async (req, res, next) => {
       branchId,
       productId: req.body?.productId,
       productName: req.body?.productName,
+      image,
+    });
+
+    res.status(201).json({
+      ok: true,
+      data: result,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/files/storefront-images', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+
+    const image = parseImageDataUrlForUpload(req.body?.imageDataUrl);
+    const fetch = (await import('node-fetch')).default;
+    const result = await uploadStorefrontImageToBunny({
+      fetchImpl: fetch,
+      businessContext,
+      kind: req.body?.kind,
       image,
     });
 
@@ -3837,6 +3919,37 @@ app.get('/api/catalog/storefront', async (req, res, next) => {
   }
 });
 
+app.get('/api/catalog/brand', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const brand = await loadStorefrontBrand(businessContext.businessId);
+    res.json({ ok: true, data: brand });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/brand', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const brand = await saveStorefrontBrand(
+      businessContext.businessId,
+      req.body || {},
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'catalog_brand',
+      tables: ['businesses'],
+    });
+    res.json({ ok: true, data: brand });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/api/catalog/orders', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -4061,6 +4174,7 @@ Promise.all([
   ensureEtimsSchema(),
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),
+  ensureStorefrontBrandSchema(),
 ])
   .then(() =>
     startPikiProactiveWorker({
@@ -5496,6 +5610,153 @@ async function ensureSyncStockEffectSchema(target = query) {
   );
 }
 
+async function ensureStorefrontBrandSchema(target = query) {
+  await runDbQuery(
+    target,
+    'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_logo_url text',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_cover_url text',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_primary_color text',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_tagline text',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_description text',
+  );
+}
+
+async function loadStorefrontBrand(businessId) {
+  await ensureStorefrontBrandSchema(query);
+  const result = await query(
+    `SELECT
+       id,
+       name,
+       catalog_logo_url,
+       catalog_cover_url,
+       catalog_primary_color,
+       catalog_tagline,
+       catalog_description,
+       updated_at
+     FROM businesses
+     WHERE id = $1 AND deleted_at IS NULL
+     LIMIT 1`,
+    [businessId],
+  );
+  if (!result.rows.length) {
+    throw createHttpError(404, 'Business was not found');
+  }
+  return normalizeStorefrontBrandRow(result.rows[0]);
+}
+
+async function saveStorefrontBrand(businessId, input) {
+  await ensureStorefrontBrandSchema(query);
+  const logoUrl = normalizeStorefrontImageUrl(
+    input.logoUrl ?? input.logo_url,
+    'logo URL',
+  );
+  const coverUrl = normalizeStorefrontImageUrl(
+    input.coverUrl ?? input.cover_url,
+    'cover photo URL',
+  );
+  const primaryColor = normalizeStorefrontColor(
+    input.primaryColor ?? input.primary_color,
+  );
+  const tagline = limitText(input.tagline, 80);
+  const description = limitText(input.description, 260);
+
+  const result = await query(
+    `UPDATE businesses
+     SET catalog_logo_url = $2,
+         catalog_cover_url = $3,
+         catalog_primary_color = $4,
+         catalog_tagline = $5,
+         catalog_description = $6,
+         updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING
+       id,
+       name,
+       catalog_logo_url,
+       catalog_cover_url,
+       catalog_primary_color,
+       catalog_tagline,
+       catalog_description,
+       updated_at`,
+    [businessId, logoUrl, coverUrl, primaryColor, tagline, description],
+  );
+  if (!result.rows.length) {
+    throw createHttpError(404, 'Business was not found');
+  }
+  return normalizeStorefrontBrandRow(result.rows[0]);
+}
+
+function normalizeStorefrontBrandRow(row) {
+  return {
+    businessId: row.id,
+    businessName: normalizeOptionalText(row.name) || 'Store',
+    logoUrl: safePublicImageUrl(row.catalog_logo_url),
+    coverUrl: safePublicImageUrl(row.catalog_cover_url),
+    primaryColor: normalizeStorefrontColor(row.catalog_primary_color, {
+      fallback: '#ff2a6d',
+      throwOnInvalid: false,
+    }),
+    tagline: normalizeOptionalText(row.catalog_tagline) || 'Online catalog',
+    description:
+      normalizeOptionalText(row.catalog_description) ||
+      'Shop products, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.',
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function normalizeStorefrontImageUrl(value, label = 'image URL') {
+  const clean = normalizeOptionalText(value);
+  if (!clean) {
+    return null;
+  }
+  const safe = safePublicImageUrl(clean);
+  if (!safe) {
+    throw createHttpError(400, `Use a valid http or https ${label}.`);
+  }
+  if (safe.length > 2048) {
+    throw createHttpError(400, `The ${label} is too long.`);
+  }
+  return safe;
+}
+
+function normalizeStorefrontColor(
+  value,
+  { fallback = '#ff2a6d', throwOnInvalid = true } = {},
+) {
+  const clean = normalizeOptionalText(value);
+  if (!clean) {
+    return fallback;
+  }
+  const withHash = clean.startsWith('#') ? clean : `#${clean}`;
+  if (/^#[0-9a-f]{6}$/i.test(withHash)) {
+    return withHash.toLowerCase();
+  }
+  if (throwOnInvalid) {
+    throw createHttpError(400, 'Use a valid 6-digit brand color, like #ff2a6d.');
+  }
+  return fallback;
+}
+
+function normalizeStorefrontImageKind(value) {
+  const clean = normalizeOptionalText(value)?.toLowerCase();
+  if (clean === 'logo' || clean === 'cover') {
+    return clean;
+  }
+  throw createHttpError(400, 'Image kind must be logo or cover.');
+}
+
 async function applySaleItemStockEffect(
   client,
   saleItem,
@@ -6256,6 +6517,7 @@ async function loadPublicCatalog(
   { currencyOverride, branchId: requestedBranchId } = {},
 ) {
   await ensureCatalogSubdomainSchema(query);
+  await ensureStorefrontBrandSchema(query);
   const cacheKey = await buildCatalogCacheKey(businessId, {
     currencyOverride,
     branchId: requestedBranchId,
@@ -6267,6 +6529,8 @@ async function loadPublicCatalog(
   const businessResult = await query(
     `
     SELECT b.id, b.name, b.country_code, b.currency, b.updated_at,
+           b.catalog_logo_url, b.catalog_cover_url, b.catalog_primary_color,
+           b.catalog_tagline, b.catalog_description,
            cs.whatsapp_number
     FROM businesses b
     LEFT JOIN business_communication_settings cs
@@ -6385,6 +6649,7 @@ async function loadPublicCatalog(
       name: business.name,
       countryCode: business.country_code || 'GLOBAL',
       whatsappNumber: normalizeOptionalText(business.whatsapp_number),
+      brand: normalizeStorefrontBrandRow(business),
       branches,
       selectedBranch,
     },
@@ -7209,6 +7474,17 @@ function renderPublicCatalogPage(catalog) {
   const productCount = catalog.products.length;
   const branchName = catalog.business.selectedBranch?.name || 'Main store';
   const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
+  const brand = catalog.business.brand || {};
+  const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
+    fallback: '#ff2a6d',
+    throwOnInvalid: false,
+  });
+  const logoUrl = safePublicImageUrl(brand.logoUrl);
+  const coverUrl = safePublicImageUrl(brand.coverUrl);
+  const tagline = normalizeOptionalText(brand.tagline) || 'Online catalog';
+  const description =
+    normalizeOptionalText(brand.description) ||
+    'Shop products, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.';
   const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
   const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
 
@@ -7218,9 +7494,10 @@ function renderPublicCatalogPage(catalog) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(businessName)} Catalog</title>
-  <meta name="description" content="Browse ${escapeHtml(businessName)} products and prices." />
+  <meta name="description" content="${escapeHtml(description)}" />
   <meta property="og:title" content="${escapeHtml(businessName)} Catalog" />
-  <meta property="og:description" content="${productCount} product${productCount === 1 ? '' : 's'} available." />
+  <meta property="og:description" content="${escapeHtml(description)}" />
+  ${coverUrl ? `<meta property="og:image" content="${escapeHtml(coverUrl)}" />` : ''}
   <style>
     :root {
       color-scheme: light;
@@ -7649,7 +7926,7 @@ function renderPublicCatalogPage(catalog) {
       --store-line: #e8e2ee;
       --store-card: #ffffff;
       --store-soft: #fbf9fd;
-      --store-primary: #ff2a6d;
+      --store-primary: ${escapeHtml(primaryColor)};
       --store-accent: #7c3cff;
       --store-shadow: 0 24px 70px rgba(23, 21, 31, 0.12);
       --store-shadow-soft: 0 12px 32px rgba(23, 21, 31, 0.08);
@@ -7671,8 +7948,11 @@ function renderPublicCatalogPage(catalog) {
       overflow: hidden;
       color: #fff;
       background:
+        ${coverUrl ? `linear-gradient(135deg, rgba(12, 7, 16, 0.82), rgba(38, 10, 36, 0.76)), url("${escapeHtml(coverUrl)}"),` : ''}
         linear-gradient(135deg, rgba(12, 7, 16, 0.97), rgba(38, 10, 36, 0.95)),
         radial-gradient(circle at 75% 15%, rgba(255, 42, 109, 0.42), transparent 22rem);
+      background-size: cover;
+      background-position: center;
       border-bottom: 0;
     }
     .site-header:before,
@@ -7720,6 +8000,13 @@ function renderPublicCatalogPage(catalog) {
       flex: 0 0 auto;
       background: linear-gradient(135deg, var(--store-primary), var(--store-accent));
       box-shadow: 0 14px 36px rgba(255, 42, 109, 0.35);
+      overflow: hidden;
+    }
+    .logo-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
     .brand-name {
       overflow: hidden;
@@ -8083,7 +8370,7 @@ function renderPublicCatalogPage(catalog) {
   <header class="site-header">
     <div class="wrap topbar">
       <div class="brand-lockup">
-        <span class="logo-mark">${escapeHtml(storeInitial)}</span>
+        <span class="logo-mark">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(businessName)} logo" />` : escapeHtml(storeInitial)}</span>
         <span class="brand-name">${escapeHtml(businessName)}</span>
       </div>
       <div class="top-actions">
@@ -8093,9 +8380,9 @@ function renderPublicCatalogPage(catalog) {
     </div>
     <div class="wrap hero">
       <div class="store">
-        <p class="eyebrow">Online catalog</p>
+        <p class="eyebrow">${escapeHtml(tagline)}</p>
         <h1>${escapeHtml(businessName)}</h1>
-        <p class="meta">Shop products, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.</p>
+        <p class="meta">${escapeHtml(description)}</p>
         <div class="hero-actions">
           <a class="primary-link" href="#products">Start shopping</a>
           <a class="secondary-link" href="#track">Track an order</a>
