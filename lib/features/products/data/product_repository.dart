@@ -52,12 +52,14 @@ class ProductRepository {
     return DatabaseService.rawQuery('''
       SELECT
         p.*,
-        (
-          SELECT COUNT(*)
-          FROM product_variants pv
-          WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
-        ) AS active_variant_count
+        COALESCE(vc.active_variant_count, 0) AS active_variant_count
       FROM $_table p
+      LEFT JOIN (
+        SELECT product_id, COUNT(*) AS active_variant_count
+        FROM product_variants
+        WHERE deleted_at IS NULL
+        GROUP BY product_id
+      ) vc ON vc.product_id = p.id
       WHERE p.deleted_at IS NULL
         AND COALESCE(p.branch_id, ?) = ?
         $categoryClause
@@ -254,6 +256,94 @@ class ProductRepository {
           'barcode = ? AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
       whereArgs: [barcode, ..._currentBranchArgs],
     );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  /// Look up a barcode in a single roundtrip: variant first, then simple product.
+  /// Returns a unified row with `result_type` of `'variant'` or `'product'`.
+  static Future<Map<String, dynamic>?> lookupBarcode(String barcode) async {
+    final results = await DatabaseService.rawQuery('''
+      SELECT
+        'variant' AS result_type,
+        pv.id AS variant_id,
+        p.id AS id,
+        p.name AS name,
+        p.price AS price,
+        p.cost AS cost,
+        p.stock AS stock,
+        p.low_stock AS low_stock,
+        p.unit AS unit,
+        p.stock_unit AS stock_unit,
+        p.sale_unit AS sale_unit,
+        p.sale_to_stock_factor AS sale_to_stock_factor,
+        p.purchase_unit AS purchase_unit,
+        p.purchase_to_stock_factor AS purchase_to_stock_factor,
+        p.sku AS sku,
+        p.barcode AS barcode,
+        p.image_url AS image_url,
+        p.brand AS brand,
+        p.category_id AS category_id,
+        p.track_stock AS track_stock,
+        p.has_variants AS has_variants,
+        pv.name AS variant_name,
+        pv.sku AS variant_sku,
+        pv.barcode AS variant_barcode,
+        pv.price AS variant_price,
+        pv.cost AS variant_cost,
+        pv.stock AS variant_stock,
+        pv.low_stock AS variant_low_stock
+      FROM product_variants pv
+      JOIN products p ON p.id = pv.product_id
+      WHERE pv.barcode = ?
+        AND pv.deleted_at IS NULL
+        AND COALESCE(pv.branch_id, ?) = ?
+        AND p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+
+      UNION ALL
+
+      SELECT
+        'product' AS result_type,
+        NULL AS variant_id,
+        p.id AS id,
+        p.name AS name,
+        p.price AS price,
+        p.cost AS cost,
+        p.stock AS stock,
+        p.low_stock AS low_stock,
+        p.unit AS unit,
+        p.stock_unit AS stock_unit,
+        p.sale_unit AS sale_unit,
+        p.sale_to_stock_factor AS sale_to_stock_factor,
+        p.purchase_unit AS purchase_unit,
+        p.purchase_to_stock_factor AS purchase_to_stock_factor,
+        p.sku AS sku,
+        p.barcode AS barcode,
+        p.image_url AS image_url,
+        p.brand AS brand,
+        p.category_id AS category_id,
+        p.track_stock AS track_stock,
+        p.has_variants AS has_variants,
+        NULL AS variant_name,
+        NULL AS variant_sku,
+        NULL AS variant_barcode,
+        NULL AS variant_price,
+        NULL AS variant_cost,
+        NULL AS variant_stock,
+        NULL AS variant_low_stock
+      FROM products p
+      WHERE p.barcode = ?
+        AND p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+      ORDER BY result_type ASC
+      LIMIT 1
+      ''', [
+        barcode,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        barcode,
+        ..._currentBranchArgs,
+      ]);
     return results.isNotEmpty ? results.first : null;
   }
 

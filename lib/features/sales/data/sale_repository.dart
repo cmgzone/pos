@@ -669,17 +669,18 @@ class SaleRepository {
       SELECT
         si.product_id,
         si.variant_id,
+        NULL as service_order_id,
+        NULL as service_id,
+        NULL as service_name,
         COALESCE(SUM(-si.quantity), 0) as refunded_quantity
       FROM $_salesTable r
       JOIN $_itemsTable si ON si.sale_id = r.id
       WHERE r.refund_for_sale_id = ?
       GROUP BY si.product_id, si.variant_id
-      ''',
-      [saleId],
-    );
-    final refundedServiceRows = await DatabaseService.rawQuery(
-      '''
+      UNION ALL
       SELECT
+        NULL as product_id,
+        NULL as variant_id,
         ssi.service_order_id,
         ssi.service_id,
         ssi.service_name,
@@ -689,27 +690,24 @@ class SaleRepository {
       WHERE r.refund_for_sale_id = ?
       GROUP BY ssi.service_order_id, ssi.service_id, ssi.service_name
       ''',
-      [saleId],
+      [saleId, saleId],
     );
 
     final refundedByProduct = <String, double>{};
-    for (final row in refundedRows) {
-      refundedByProduct[_productRefundKey(
-        productId: row['product_id'] as String?,
-        variantId: row['variant_id'] as String?,
-      )] = _money(
-        row['refunded_quantity'] as num?,
-      );
-    }
     final refundedByService = <String, double>{};
-    for (final row in refundedServiceRows) {
-      refundedByService[_serviceRefundKey(
-        serviceOrderId: row['service_order_id'] as String?,
-        serviceId: row['service_id'] as String?,
-        serviceName: row['service_name'] as String?,
-      )] = _money(
-        row['refunded_quantity'] as num?,
-      );
+    for (final row in refundedRows) {
+      if (row['product_id'] != null) {
+        refundedByProduct[_productRefundKey(
+          productId: row['product_id'] as String?,
+          variantId: row['variant_id'] as String?,
+        )] = _money(row['refunded_quantity'] as num?);
+      } else {
+        refundedByService[_serviceRefundKey(
+          serviceOrderId: row['service_order_id'] as String?,
+          serviceId: row['service_id'] as String?,
+          serviceName: row['service_name'] as String?,
+        )] = _money(row['refunded_quantity'] as num?);
+      }
     }
 
     return items

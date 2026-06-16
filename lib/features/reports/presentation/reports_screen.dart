@@ -136,7 +136,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               labelPadding: const EdgeInsets.symmetric(horizontal: 8),
               indicatorColor: AppColors.primary,
               labelColor: AppColors.primary,
-              unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              unselectedLabelColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
               tabs: [
                 const _ReportTab(
                   icon: Icon(Icons.badge_outlined),
@@ -751,7 +753,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -766,7 +770,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                   Text(
                                     '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} $unit sold',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -799,7 +805,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,7 +822,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                   Text(
                                     '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} sold - ${_displayMoney(revenue)}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -840,14 +850,18 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Theme.of(context).colorScheme.outline),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
                           ),
                           child: Text(
                             _isFilteredToEmployee
                                 ? 'No closed shifts were recorded for $_selectedCashierName on ${_displayDate(_selectedDate)}.'
                                 : 'No closed shifts were recorded on ${_displayDate(_selectedDate)}.',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         )
@@ -862,7 +876,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Theme.of(context).colorScheme.outline),
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -902,7 +918,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           Text(
                                             'Closed ${_displayTime(shift['closed_at'] as String?)} • Expected ${_displayMoney(shift['expected_cash'])}',
                                             style: TextStyle(
-                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
@@ -988,12 +1006,16 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Theme.of(context).colorScheme.outline),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
                           ),
                           child: Text(
                             'No sales were recorded for $_selectedCashierName on ${_displayDate(_selectedDate)}.',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         )
@@ -1010,7 +1032,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Theme.of(context).colorScheme.outline),
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1069,12 +1093,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                 Container(
                                                   width: 8,
                                                   height: 8,
-                                                  decoration:
-                                                      BoxDecoration(
-                                                        color:
-                                                            AppColors.success,
-                                                        shape: BoxShape.circle,
-                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.success,
+                                                    shape: BoxShape.circle,
+                                                  ),
                                                 ),
                                                 SizedBox(width: 4),
                                                 Text(
@@ -1095,7 +1117,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                   as String?,
                                             ),
                                             style: TextStyle(
-                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
@@ -1119,7 +1143,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         Text(
                                           '${(cashier['total_sales'] as num? ?? 0).toInt()} sales',
                                           style: TextStyle(
-                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
                                           ),
                                         ),
@@ -1180,7 +1206,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         value: _displayMoney(
                                           cashier['service_revenue'],
                                         ),
-                                        color: Theme.of(context).colorScheme.secondary,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.secondary,
                                       ),
                                     ),
                                     SizedBox(width: 12),
@@ -1189,7 +1217,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         label: 'Service Sales',
                                         value:
                                             '${(cashier['service_sales'] as num? ?? 0).toInt()}',
-                                        color: Theme.of(context).colorScheme.secondary,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.secondary,
                                       ),
                                     ),
                                   ],
@@ -1202,7 +1232,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                     Text(
                                       'Shift: ${_displayTime(cashier['first_sale_at'] as String?)} - ${_displayTime(cashier['last_sale_at'] as String?)}',
                                       style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -1344,7 +1376,9 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Theme.of(context).colorScheme.outline),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -1366,7 +1400,9 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                                   fontSize: 13,
                                   color: rank <= 3
                                       ? AppColors.primary
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
@@ -1387,7 +1423,9 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                                 Text(
                                   '${qtySold % 1 == 0 ? qtySold.toInt() : qtySold.toStringAsFixed(2)} ${p['sale_unit'] ?? 'pcs'} sold · $txns transactions',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1517,7 +1555,9 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
               ),
               Text(
                 '${_debtors.length} customers',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               SizedBox(width: 8),
               IconButton(icon: Icon(Icons.refresh), onPressed: _load),
@@ -1543,7 +1583,9 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -1585,7 +1627,9 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                                 Text(
                                   d['phone'] as String,
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1606,7 +1650,9 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                             Text(
                               '$openSales open ${openSales == 1 ? 'sale' : 'sales'}',
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -1623,9 +1669,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                         backgroundColor: AppColors.warning.withValues(
                           alpha: 0.1,
                         ),
-                        valueColor: AlwaysStoppedAnimation(
-                          AppColors.warning,
-                        ),
+                        valueColor: AlwaysStoppedAnimation(AppColors.warning),
                         minHeight: 5,
                       ),
                     ),
@@ -1781,7 +1825,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1793,7 +1839,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                           Text(
                             'Total Outstanding Kopesha',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 13,
                             ),
                           ),
@@ -1819,10 +1867,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                           '$totalCount open sales',
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        IconButton(
-                          icon: Icon(Icons.refresh),
-                          onPressed: _load,
-                        ),
+                        IconButton(icon: Icon(Icons.refresh), onPressed: _load),
                       ],
                     ),
                   ],
@@ -1869,7 +1914,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                                 Text(
                                   '${b.count} ${b.count == 1 ? 'sale' : 'sales'}',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1927,7 +1974,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -1947,9 +1996,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               Text(
                                 s['customer_name'] as String? ??
                                     'Unknown Customer',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                               SizedBox(height: 4),
                               Text(
@@ -2113,7 +2160,9 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Theme.of(context).colorScheme.outline),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2242,7 +2291,9 @@ class _Chip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+            color: selected
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             fontSize: 13,
           ),
@@ -2402,6 +2453,8 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
     final amountPaid = (_zReport['amount_paid'] as num? ?? 0).toDouble();
     final balanceDue = (_zReport['balance_due'] as num? ?? 0).toDouble();
     final reconciliation = amountPaid - totalSales;
+    final paymentBreakdown =
+        _zReport['payment_breakdown'] as Map<String, dynamic>? ?? {};
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -2414,7 +2467,9 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
           SizedBox(height: 8),
           Text(
             'Z-report, VAT-ready summary, KRA eTIMS status, and accountant export counts.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           SizedBox(height: 16),
           Wrap(
@@ -2457,20 +2512,27 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
                 icon: Icons.point_of_sale_outlined,
                 subtitle: '${_zReport['sale_count'] ?? 0} receipts',
               ),
-              _SummaryMetricCard(
-                label: 'M-Pesa Collections',
-                value: _money(_zReport['mpesa_sales']),
-                color: AppColors.success,
-                icon: Icons.phone_android_outlined,
-                subtitle: 'Till/Paybill receipts',
-              ),
-              _SummaryMetricCard(
-                label: 'Cash Collections',
-                value: _money(_zReport['cash_sales']),
-                color: AppColors.primary,
-                icon: Icons.payments_outlined,
-                subtitle: 'Counter cash receipts',
-              ),
+              ...paymentBreakdown.entries.map((e) {
+                final rawName = e.key;
+                final name = rawName
+                    .replaceAll('_', ' ')
+                    .split(' ')
+                    .map(
+                      (w) => w.isNotEmpty
+                          ? '${w[0].toUpperCase()}${w.substring(1)}'
+                          : '',
+                    )
+                    .join(' ');
+                final isMpesa = rawName.toLowerCase().contains('mpesa');
+                return _SummaryMetricCard(
+                  label: '$name Collections',
+                  value: _money(e.value),
+                  color: isMpesa ? AppColors.success : AppColors.primary,
+                  icon: isMpesa
+                      ? Icons.phone_android_outlined
+                      : Icons.payments_outlined,
+                );
+              }),
               _SummaryMetricCard(
                 label: 'Till Reconciliation',
                 value: _money(reconciliation),
@@ -2712,7 +2774,9 @@ class _SalesTrendPanel extends StatelessWidget {
                           child: Text(
                             row['label']?.toString() ?? '',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 11,
                             ),
                           ),
@@ -2791,10 +2855,7 @@ class _RankedMetricPanel extends StatelessWidget {
               SizedBox(width: 8),
               Text(
                 title,
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
               ),
             ],
           ),
@@ -2923,7 +2984,10 @@ class _LegendDot extends StatelessWidget {
         SizedBox(width: 6),
         Text(
           label,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+          ),
         ),
       ],
     );
@@ -3008,7 +3072,9 @@ class _EmptyState extends StatelessWidget {
           Icon(
             icon,
             size: 64,
-            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
           ),
           SizedBox(height: 16),
           Text(
@@ -3206,7 +3272,9 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                     Text(
                                       '$saleCount sales · $_days day period',
                                       style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -3227,7 +3295,9 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                   Text(
                                     'Revenue',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                       fontSize: 11,
                                     ),
                                   ),
@@ -3335,23 +3405,19 @@ class _BranchComparisonSummary extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.compare_arrows_rounded,
-                color: AppColors.primary,
-              ),
+              Icon(Icons.compare_arrows_rounded, color: AppColors.primary),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Branch Snapshot - ${days}d',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ),
               Text(
                 '${branches.length} branches',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),

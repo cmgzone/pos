@@ -31,13 +31,16 @@
             <nav class="nav-menu" id="navMenu">
                 <a href="#features" class="nav-link">Features</a>
                 <a href="#simulator" class="nav-link">Demo</a>
-                <a href="#architecture" class="nav-link">Reliability</a>
+                <a href="#downloads" class="nav-link">Downloads</a>
                 <a href="#pricing" class="nav-link">Pricing</a>
-                <a href="#calculator" class="nav-link">Impact Calculator</a>
+                <a href="#calculator" class="nav-link">Impact</a>
                 <a href="#faq" class="nav-link">FAQs</a>
             </nav>
 
             <div class="header-actions">
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle light or dark theme">
+                    <i class="fa-solid fa-sun"></i>
+                </button>
                 <a href="#contact" class="btn btn-primary btn-sm">Get Started</a>
                 <button class="mobile-menu-toggle" id="menuToggle" aria-label="Toggle navigation">
                     <i class="fa-solid fa-bars"></i>
@@ -51,22 +54,22 @@
         <section class="hero-section" id="hero">
             <div class="section-container hero-grid">
                 <div class="hero-content">
-                    <div class="badge neon-pulse-badge">
+                    <div class="badge neon-pulse-badge reveal">
                         <i class="fa-solid fa-cloud-sun"></i> Offline-ready POS with cloud sync
                     </div>
-                    <h1>Piki POS for shops, services, and growing local businesses</h1>
-                    <p class="hero-lead">Run sales from a fast Piki POS app, keep working when the internet drops, track products and services, manage Kopesha customer credit, and keep business records backed up through secure cloud sync.</p>
+                    <h1 class="reveal stagger-1">Piki POS for shops, services, and growing local businesses</h1>
+                    <p class="hero-lead reveal stagger-2">Run sales from a fast Piki POS app, keep working when the internet drops, track products and services, manage Kopesha customer credit, and keep business records backed up through secure cloud sync.</p>
                     
-                    <div class="hero-actions-group">
-                        <a href="#simulator" class="btn btn-primary btn-lg">
-                            <i class="fa-solid fa-circle-play"></i> Try Checkout Demo
+                    <div class="hero-actions-group reveal stagger-3">
+                        <a href="#downloads" class="btn btn-primary btn-lg">
+                            <i class="fa-solid fa-download"></i> Download Piki POS
                         </a>
-                        <a href="#contact" class="btn btn-secondary btn-lg">
-                            Request Setup <i class="fa-solid fa-arrow-right"></i>
+                        <a href="#simulator" class="btn btn-secondary btn-lg">
+                            <i class="fa-solid fa-circle-play"></i> Try Demo
                         </a>
                     </div>
 
-                    <div class="hero-features-list">
+                    <div class="hero-features-list reveal stagger-4">
                         <div class="h-feature-item">
                             <i class="fa-solid fa-wifi-slash"></i>
                             <span>Offline checkout</span>
@@ -82,7 +85,7 @@
                     </div>
                 </div>
 
-                <div class="hero-visual">
+                <div class="hero-visual reveal-right">
                     <div class="mockup-wrapper glass-card">
                         <div class="mockup-header">
                             <span class="dot red"></span>
@@ -95,8 +98,10 @@
                             </span>
                         </div>
                         <div class="mockup-body">
-                            <!-- Hero dashboard image generated earlier will load here -->
-                            <img src="assets/hero_dashboard.png" alt="Piki POS Dashboard Mockup" class="mockup-img" onerror="this.src='https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&q=80&w=1200'">
+                            <!-- Dark-mode marketing hero -->
+                            <img src="assets/piki-hero-dark.png" alt="Piki POS marketing preview - dark" class="mockup-img hero-img-dark" onerror="this.src='assets/hero_dashboard.png'">
+                            <!-- Light-mode marketing hero -->
+                            <img src="assets/piki-hero-light.png" alt="Piki POS marketing preview - light" class="mockup-img hero-img-light" onerror="this.src='assets/hero_dashboard.png'">
                             <div class="visual-glow-overlay"></div>
                         </div>
                     </div>
@@ -107,21 +112,92 @@
         <!-- Stats Section -->
         <section class="stats-section">
             <div class="section-container stats-grid">
-                <div class="stat-card glass-card">
+                <div class="stat-card glass-card reveal-scale stagger-1">
                     <h3>Offline</h3>
                     <p>Sell without waiting for internet</p>
                 </div>
-                <div class="stat-card glass-card">
+                <div class="stat-card glass-card reveal-scale stagger-2">
                     <h3>Retail + Services</h3>
                     <p>Products, service jobs, and mixed sales</p>
                 </div>
-                <div class="stat-card glass-card">
+                <div class="stat-card glass-card reveal-scale stagger-3">
                     <h3>Kopesha</h3>
                     <p>Customer credit and due dates</p>
                 </div>
-                <div class="stat-card glass-card">
+                <div class="stat-card glass-card reveal-scale stagger-4">
                     <h3>Reports</h3>
                     <p>Sales, stock, shifts, and eTIMS exports</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Downloads Section -->
+        <section class="downloads-section" id="downloads">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge highlight-badge reveal">Get the app</div>
+                    <h2 class="reveal stagger-1">Install Piki POS on your device</h2>
+                    <p class="reveal stagger-2">Download the latest version for Windows or Android. Pick the right installer for your hardware, install once, and start selling in minutes.</p>
+                </div>
+
+                <div class="downloads-grid">
+                    <!-- Windows Download Card -->
+                    <article class="download-card glass-card reveal-left stagger-1" data-os="windows">
+                        <div class="download-platform-header">
+                            <div class="platform-icon windows-gradient">
+                                <i class="fa-brands fa-windows"></i>
+                            </div>
+                            <div class="platform-meta">
+                                <h3>Windows</h3>
+                                <span class="platform-chip">PC / Tablet</span>
+                            </div>
+                        </div>
+                        <p class="download-description">Run Piki POS on Windows 10 or 11 desktops, laptops, or tablets at your counter. Works with barcode scanners, receipt printers, and cash drawers.</p>
+                        <ul class="download-specs">
+                            <li><i class="fa-solid fa-check"></i> Windows 10 version 1903+</li>
+                            <li><i class="fa-solid fa-check"></i> 64-bit installer</li>
+                            <li><i class="fa-solid fa-check"></i> Offline-ready from first launch</li>
+                        </ul>
+                        <div class="download-actions">
+                            <a href="downloads/piki-pos-windows-setup.exe" class="btn btn-primary btn-block download-link" download>
+                                <i class="fa-solid fa-download"></i> Download for Windows
+                            </a>
+                            <span class="download-meta" id="windowsMeta">v1.0.0 &bull; ~45 MB</span>
+                        </div>
+                    </article>
+
+                    <!-- Android Download Card -->
+                    <article class="download-card glass-card reveal-right stagger-2" data-os="android">
+                        <div class="download-platform-header">
+                            <div class="platform-icon android-gradient">
+                                <i class="fa-brands fa-android"></i>
+                            </div>
+                            <div class="platform-meta">
+                                <h3>Android</h3>
+                                <span class="platform-chip">Phone / Tablet</span>
+                            </div>
+                        </div>
+                        <p class="download-description">Turn any Android phone or tablet into a mobile POS. Sell on the shop floor, at markets, or in the field and sync when you are back online.</p>
+                        <ul class="download-specs">
+                            <li><i class="fa-solid fa-check"></i> Android 8.0 (API 26)+</li>
+                            <li><i class="fa-solid fa-check"></i> APK direct download</li>
+                            <li><i class="fa-solid fa-check"></i> Works with Bluetooth printers</li>
+                        </ul>
+                        <div class="download-actions">
+                            <a href="downloads/piki-pos-android.apk" class="btn btn-primary btn-block download-link" download>
+                                <i class="fa-solid fa-download"></i> Download APK
+                            </a>
+                            <span class="download-meta" id="androidMeta">v1.0.0 &bull; ~35 MB</span>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="download-help glass-card reveal">
+                    <div class="download-help-text">
+                        <h4>Not sure which version to choose?</h4>
+                        <p>Use Windows for a fixed checkout counter with a printer and scanner. Use Android if you need a portable device you can carry around the store or to customers.</p>
+                    </div>
+                    <a href="#contact" class="btn btn-secondary">Ask for Setup Help</a>
                 </div>
             </div>
         </section>
@@ -130,14 +206,14 @@
         <section class="features-section" id="features">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">Built for daily operations</div>
-                    <h2>Everything your cashier and manager need in one POS</h2>
-                    <p>Piki POS focuses on practical store work: quick checkout, accurate stock, clear customer balances, Excel sale imports, shift control, and cloud records your team can review later.</p>
+                    <div class="badge reveal">Built for daily operations</div>
+                    <h2 class="reveal stagger-1">Everything your cashier and manager need in one POS</h2>
+                    <p class="reveal stagger-2">Piki POS focuses on practical store work: quick checkout, accurate stock, clear customer balances, Excel sale imports, shift control, and cloud records your team can review later.</p>
                 </div>
 
                 <div class="features-grid">
                     <!-- Feature Card 1 -->
-                    <div class="feature-card glass-card">
+                    <div class="feature-card glass-card reveal stagger-1">
                         <div class="icon-box purple-gradient">
                             <i class="fa-solid fa-database"></i>
                         </div>
@@ -146,7 +222,7 @@
                     </div>
 
                     <!-- Feature Card 2 -->
-                    <div class="feature-card glass-card">
+                    <div class="feature-card glass-card reveal stagger-2">
                         <div class="icon-box cyan-gradient">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
                         </div>
@@ -155,7 +231,7 @@
                     </div>
 
                     <!-- Feature Card 3 -->
-                    <div class="feature-card glass-card">
+                    <div class="feature-card glass-card reveal stagger-3">
                         <div class="icon-box blue-gradient">
                             <i class="fa-solid fa-hand-holding-dollar"></i>
                         </div>
@@ -164,7 +240,7 @@
                     </div>
 
                     <!-- Feature Card 4 -->
-                    <div class="feature-card glass-card">
+                    <div class="feature-card glass-card reveal stagger-4">
                         <div class="icon-box green-gradient">
                             <i class="fa-solid fa-cash-register"></i>
                         </div>
@@ -173,7 +249,7 @@
                     </div>
 
                     <!-- Feature Card 5 -->
-                    <div class="feature-card glass-card">
+                    <div class="feature-card glass-card reveal stagger-5">
                         <div class="icon-box yellow-gradient">
                             <i class="fa-solid fa-gauge-high"></i>
                         </div>
@@ -182,7 +258,7 @@
                     </div>
 
                     <!-- Feature Card 6 -->
-                    <div class="feature-card glass-card">
+                    <div class="feature-card glass-card reveal stagger-6">
                         <div class="icon-box red-gradient">
                             <i class="fa-solid fa-shield-halved"></i>
                         </div>
@@ -197,12 +273,12 @@
         <section class="simulator-section" id="simulator">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge highlight-badge">Interactive demo</div>
-                    <h2>Try a simple checkout flow</h2>
-                    <p>Add items, switch between online and offline mode, choose a payment type, and see how a local-first sale can be queued before cloud sync. This is a browser demo, not a live payment terminal.</p>
+                    <div class="badge highlight-badge reveal">Interactive demo</div>
+                    <h2 class="reveal stagger-1">Try a simple checkout flow</h2>
+                    <p class="reveal stagger-2">Add items, switch between online and offline mode, choose a payment type, and see how a local-first sale can be queued before cloud sync. This is a browser demo, not a live payment terminal.</p>
                 </div>
 
-                <div class="simulator-layout glass-card">
+                <div class="simulator-layout glass-card reveal-scale">
                     <!-- Left Column: POS Selling UI -->
                     <div class="sim-pos-terminal">
                         <div class="terminal-header">
@@ -395,13 +471,13 @@
         <section class="architecture-section" id="architecture">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">How it works</div>
-                    <h2>Reliable checkout with secure cloud backup</h2>
-                    <p>Piki POS is designed for businesses that cannot afford to stop selling when the network is unstable.</p>
+                    <div class="badge reveal">How it works</div>
+                    <h2 class="reveal stagger-1">Reliable checkout with secure cloud backup</h2>
+                    <p class="reveal stagger-2">Piki POS is designed for businesses that cannot afford to stop selling when the network is unstable.</p>
                 </div>
 
-                <div class="architecture-layout glass-card">
-                    <div class="arch-step">
+                <div class="architecture-layout glass-card reveal-scale">
+                    <div class="arch-step reveal stagger-1">
                         <div class="step-icon">
                             <i class="fa-solid fa-mobile-screen-button"></i>
                         </div>
@@ -409,11 +485,11 @@
                         <p>Cashiers continue processing sales quickly, even when the internet is slow or temporarily unavailable.</p>
                     </div>
                     
-                    <div class="arch-connector">
+                    <div class="arch-connector reveal stagger-2">
                         <i class="fa-solid fa-arrows-left-right-to-line"></i>
                     </div>
 
-                    <div class="arch-step">
+                    <div class="arch-step reveal stagger-3">
                         <div class="step-icon">
                             <i class="fa-solid fa-server"></i>
                         </div>
@@ -421,11 +497,11 @@
                         <p>When the connection is available, approved devices sync business activity so records stay aligned across the team.</p>
                     </div>
 
-                    <div class="arch-connector">
+                    <div class="arch-connector reveal stagger-4">
                         <i class="fa-solid fa-arrows-left-right-to-line"></i>
                     </div>
 
-                    <div class="arch-step">
+                    <div class="arch-step reveal stagger-5">
                         <div class="step-icon text-cyan">
                             <i class="fa-solid fa-cloud-bolt"></i>
                         </div>
@@ -440,12 +516,12 @@
         <section class="pricing-section" id="pricing">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge highlight-badge">Flexible plans</div>
-                    <h2>Choose the right Piki POS plan for your business</h2>
-                    <p>Start with the tools your business needs today, then upgrade as you add more users, branches, service workflows, reports, or Piki AI support.</p>
+                    <div class="badge highlight-badge reveal">Flexible plans</div>
+                    <h2 class="reveal stagger-1">Choose the right Piki POS plan for your business</h2>
+                    <p class="reveal stagger-2">Plans are loaded live from Piki POS so you always see current pricing. Start with the tools your business needs today, then upgrade as you add more users, branches, service workflows, reports, or Piki AI support.</p>
                 </div>
 
-                <div class="pricing-toolbar">
+                <div class="pricing-toolbar reveal stagger-3">
                     <div class="pricing-market">
                         <label for="pricingMarket">Market</label>
                         <select id="pricingMarket" class="pricing-market-select" aria-label="Choose pricing market">
@@ -459,12 +535,27 @@
                 </div>
 
                 <div class="pricing-grid" id="pricingPlans">
-                    <article class="pricing-card glass-card pricing-card-loading">
+                    <article class="pricing-card glass-card pricing-card-loading reveal">
                         <div class="pricing-card-header">
-                            <span class="pricing-plan-code">Pricing</span>
-                            <h3>Loading plans</h3>
-                            <p>Fetching the latest available Piki POS plans.</p>
+                            <span class="pricing-plan-code shimmer" style="display:inline-block;width:80px;height:14px;border-radius:4px;"></span>
+                            <h3 class="shimmer" style="height:28px;border-radius:6px;margin-top:0.8rem;"></h3>
+                            <p class="shimmer" style="height:16px;border-radius:4px;"></p>
+                            <p class="shimmer" style="height:16px;border-radius:4px;width:70%;"></p>
                         </div>
+                        <div class="pricing-price-row">
+                            <span class="shimmer" style="width:120px;height:36px;border-radius:8px;"></span>
+                        </div>
+                        <div class="pricing-limits">
+                            <span class="shimmer" style="height:18px;border-radius:4px;"></span>
+                            <span class="shimmer" style="height:18px;border-radius:4px;"></span>
+                            <span class="shimmer" style="height:18px;border-radius:4px;"></span>
+                        </div>
+                        <ul class="pricing-feature-list">
+                            <li class="shimmer" style="height:16px;border-radius:4px;"></li>
+                            <li class="shimmer" style="height:16px;border-radius:4px;"></li>
+                            <li class="shimmer" style="height:16px;border-radius:4px;"></li>
+                        </ul>
+                        <span class="shimmer" style="width:100%;height:44px;border-radius:12px;"></span>
                     </article>
                 </div>
             </div>
@@ -474,13 +565,13 @@
         <section class="calculator-section" id="calculator">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge highlight-badge">Business continuity</div>
-                    <h2>Estimate sales protected during interruptions</h2>
-                    <p>Use the calculator to estimate how much revenue can stay moving when your checkout does not depend on a constant internet connection.</p>
+                    <div class="badge highlight-badge reveal">Business continuity</div>
+                    <h2 class="reveal stagger-1">Estimate sales protected during interruptions</h2>
+                    <p class="reveal stagger-2">Use the calculator to estimate how much revenue can stay moving when your checkout does not depend on a constant internet connection.</p>
                 </div>
 
                 <div class="calculator-grid">
-                    <div class="calc-inputs glass-card">
+                    <div class="calc-inputs glass-card reveal-left stagger-1">
                         <h3>Your Sales Pattern</h3>
                         <div class="range-group">
                             <div class="range-header">
@@ -507,16 +598,16 @@
                         </div>
                     </div>
 
-                    <div class="calc-outputs glass-card purple-glow">
+                    <div class="calc-outputs glass-card purple-glow reveal-right stagger-2">
                         <h3>Estimated Sales Protected</h3>
                         <div class="savings-container">
                             <div class="saving-item">
                                 <span>Monthly Revenue Kept Moving</span>
-                                <span class="savings-num text-gradient" id="monthlySavingsVal">KES 30,000</span>
+                                <span class="savings-num text-gradient count-up" id="monthlySavingsVal">KES 30,000</span>
                             </div>
                             <div class="saving-item">
                                 <span>Annual Revenue Kept Moving</span>
-                                <span class="savings-num accent-cyan-text" id="yearlySavingsVal">KES 360,000</span>
+                                <span class="savings-num accent-cyan-text count-up" id="yearlySavingsVal">KES 360,000</span>
                             </div>
                         </div>
                         <div class="savings-cta">
@@ -532,11 +623,11 @@
         <section class="testimonials-section">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">Best fit</div>
-                    <h2>Built for businesses that sell every day</h2>
+                    <div class="badge reveal">Best fit</div>
+                    <h2 class="reveal stagger-1">Built for businesses that sell every day</h2>
                 </div>
 
-                <div class="testimonial-slider-container">
+                <div class="testimonial-slider-container reveal stagger-2">
                     <div class="testimonial-slider" id="testimonialSlider">
                         <!-- Slide 1 -->
                         <div class="testimonial-slide active">
@@ -584,12 +675,12 @@
         <section class="faq-section" id="faq">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge">Frequently Asked Questions</div>
-                    <h2>Frequently Asked Questions</h2>
-                    <p>Clear answers about setup, offline selling, payments, and cloud sync.</p>
+                    <div class="badge reveal">Frequently Asked Questions</div>
+                    <h2 class="reveal stagger-1">Frequently Asked Questions</h2>
+                    <p class="reveal stagger-2">Clear answers about setup, offline selling, payments, and cloud sync.</p>
                 </div>
 
-                <div class="faq-accordion-list">
+                <div class="faq-accordion-list reveal stagger-3">
                     <div class="faq-item">
                         <div class="faq-question" onclick="toggleFaq(this)">
                             <span>Can Piki POS work when the internet is down?</span>
@@ -636,7 +727,7 @@
         <!-- Contact Section / Lead Capture -->
         <section class="contact-section" id="contact">
             <div class="section-container contact-grid">
-                <div class="contact-info">
+                <div class="contact-info reveal-left">
                     <h2>Set up Piki POS for your business</h2>
                     <p>Tell us about your shop or service business. We will help you choose the right setup for products, services, payment methods, credit tracking, cloud sync, and reporting.</p>
                     
@@ -656,7 +747,7 @@
                     </div>
                 </div>
 
-                <div class="contact-card-form glass-card">
+                <div class="contact-card-form glass-card reveal-right stagger-2">
                     <h3>Request Setup Help</h3>
                     <form id="contactForm" onsubmit="handleFormSubmit(event)">
                         <div class="form-group">
@@ -698,7 +789,7 @@
 
     <!-- Footer -->
     <footer>
-        <div class="section-container footer-grid">
+        <div class="section-container footer-grid reveal">
             <div class="footer-brand">
                 <a href="#" class="logo">
                     <img src="assets/logo.png" alt="Piki POS logo" class="logo-mark">
@@ -710,9 +801,9 @@
             <div class="footer-links">
                 <h4>Product</h4>
                 <a href="#features">Features</a>
+                <a href="#downloads">Downloads</a>
                 <a href="#simulator">Checkout Demo</a>
                 <a href="#pricing">Pricing</a>
-                <a href="#calculator">Impact Calculator</a>
                 <a href="#architecture">Reliability</a>
             </div>
 

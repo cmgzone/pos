@@ -71,8 +71,24 @@ class ReportRepository {
       FROM sales s
       WHERE ${clauses.join(' AND ')}
       ''', args);
+
+    final breakdownRows = await DatabaseService.rawQuery('''
+      SELECT payment_type, SUM(total_amount) as amount
+      FROM sales s
+      WHERE ${clauses.join(' AND ')}
+        AND payment_type NOT LIKE 'refund%'
+      GROUP BY payment_type
+    ''', args);
+
+    final paymentBreakdown = <String, double>{};
+    for (final row in breakdownRows) {
+      final type = row['payment_type'] as String? ?? 'unknown';
+      paymentBreakdown[type] = (row['amount'] as num).toDouble();
+    }
+
     return {
       'date': date,
+      'payment_breakdown': paymentBreakdown,
       ...Map<String, dynamic>.from(rows.isEmpty ? const {} : rows.first),
     };
   }

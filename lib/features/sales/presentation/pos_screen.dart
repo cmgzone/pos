@@ -1230,31 +1230,8 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   }
 
   Future<void> _handleBarcodeScan(String barcode) async {
-    final variant = await ProductVariantRepository.getByBarcode(barcode);
-    if (variant != null) {
-      final parentProduct = <String, dynamic>{
-        'id': variant['product_id'],
-        'name': variant['parent_product_name'],
-        'price': variant['price'],
-        'cost': variant['cost'],
-        'stock': variant['stock'],
-        'unit': variant['unit'],
-        'stock_unit': variant['stock_unit'],
-        'sale_unit': variant['sale_unit'],
-        'sale_to_stock_factor': variant['sale_to_stock_factor'],
-        'image_url': variant['image_url'],
-        'category_id': variant['category_id'],
-        'track_stock': variant['track_stock'],
-        'has_variants': variant['has_variants'],
-      };
-      _addProductToCart(parentProduct, variant: variant);
-      return;
-    }
-
-    final product = await ProductRepository.getByBarcode(barcode);
-    if (product != null) {
-      await _handleProductSelection(product);
-    } else {
+    final result = await ProductRepository.lookupBarcode(barcode);
+    if (result == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1274,7 +1251,41 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           ),
         );
       }
+      return;
     }
+
+    if (result['result_type'] == 'variant') {
+      final parentProduct = <String, dynamic>{
+        'id': result['id'],
+        'name': result['name'],
+        'price': result['price'],
+        'cost': result['cost'],
+        'stock': result['stock'],
+        'unit': result['unit'],
+        'stock_unit': result['stock_unit'],
+        'sale_unit': result['sale_unit'],
+        'sale_to_stock_factor': result['sale_to_stock_factor'],
+        'image_url': result['image_url'],
+        'category_id': result['category_id'],
+        'track_stock': result['track_stock'],
+        'has_variants': result['has_variants'],
+      };
+      final variant = <String, dynamic>{
+        'id': result['variant_id'],
+        'product_id': result['id'],
+        'name': result['variant_name'],
+        'sku': result['variant_sku'],
+        'barcode': result['variant_barcode'],
+        'price': result['variant_price'],
+        'cost': result['variant_cost'],
+        'stock': result['variant_stock'],
+        'low_stock': result['variant_low_stock'],
+      };
+      _addProductToCart(parentProduct, variant: variant);
+      return;
+    }
+
+    await _handleProductSelection(result);
   }
 
   Future<void> _openCameraScanner() async {

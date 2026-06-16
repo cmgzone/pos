@@ -526,6 +526,31 @@ class ShiftRepository {
       ],
     );
 
+    final paymentBreakdownStats = await executor.rawQuery(
+      '''
+      SELECT
+        payment_type,
+        COALESCE(SUM(total_amount), 0) AS amount
+      FROM sales
+      WHERE shift_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+        AND payment_type NOT LIKE 'refund%'
+        AND payment_type NOT IN ('cash', 'kopesha')
+      GROUP BY payment_type
+      ''',
+      [
+        shiftId,
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
+    );
+
+    final paymentBreakdown = <String, double>{};
+    for (final row in paymentBreakdownStats) {
+      paymentBreakdown[row['payment_type'] as String] = _money(row['amount']);
+    }
+
     final salesRow = salesStats.isEmpty
         ? const <String, Object?>{}
         : Map<String, Object?>.from(salesStats.first);
@@ -561,6 +586,7 @@ class ShiftRepository {
       'movement_count': _intValue(movementRow['movement_count']),
       'opening_cash': openingCash,
       'expected_cash': expectedCash,
+      'payment_breakdown': paymentBreakdown,
     };
   }
 

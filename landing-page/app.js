@@ -4,6 +4,82 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     // ----------------------------------------------------------------------
+    // 0. Light / Dark theme toggle
+    // ----------------------------------------------------------------------
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('piki-theme');
+
+    function applyTheme(theme) {
+        if (theme === 'light') {
+            document.body.classList.add('light-mode');
+        } else {
+            document.body.classList.remove('light-mode');
+        }
+        updateThemeIcon(theme);
+    }
+
+    function updateThemeIcon(theme) {
+        if (!themeToggle) return;
+        const icon = themeToggle.querySelector('i');
+        if (theme === 'light') {
+            icon.className = 'fa-solid fa-moon';
+        } else {
+            icon.className = 'fa-solid fa-sun';
+        }
+    }
+
+    if (savedTheme) {
+        applyTheme(savedTheme);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        applyTheme('light');
+    }
+
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            const isLight = document.body.classList.contains('light-mode');
+            const newTheme = isLight ? 'dark' : 'light';
+            applyTheme(newTheme);
+            localStorage.setItem('piki-theme', newTheme);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // 0b. Shared scroll reveal observer (used by static and dynamic content)
+    // ----------------------------------------------------------------------
+    const observedElements = new WeakSet();
+    let revealObserver = null;
+
+    function observeReveals(container) {
+        const targets = (container || document).querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
+        if (!revealObserver) {
+            // Fallback: immediately show elements on browsers without IntersectionObserver
+            targets.forEach((el) => el.classList.add('active'));
+            return;
+        }
+        targets.forEach((el) => {
+            if (!observedElements.has(el)) {
+                revealObserver.observe(el);
+                observedElements.add(el);
+            }
+        });
+    }
+
+    if ('IntersectionObserver' in window) {
+        revealObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, {
+            root: null,
+            rootMargin: '0px 0px -60px 0px',
+            threshold: 0.1
+        });
+    }
+
+    // ----------------------------------------------------------------------
     // 1. Header scroll interaction
     // ----------------------------------------------------------------------
     const header = document.getElementById('header');
@@ -42,6 +118,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ----------------------------------------------------------------------
+    // 2b. Download section OS detection and fallback
+    // ----------------------------------------------------------------------
+    const downloadCards = document.querySelectorAll('.download-card');
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isWindows = userAgent.includes('windows');
+    const isAndroid = userAgent.includes('android');
+
+    downloadCards.forEach((card) => {
+        const os = card.getAttribute('data-os');
+        const link = card.querySelector('.download-link');
+        const meta = card.querySelector('.download-meta');
+
+        // Highlight the card that matches the visitor's OS
+        if ((os === 'windows' && isWindows) || (os === 'android' && isAndroid)) {
+            card.classList.add('recommended');
+        }
+
+        // Warn if the file has not been uploaded yet
+        if (link) {
+            link.addEventListener('click', (event) => {
+                const href = link.getAttribute('href') || '';
+                if (href.includes('/downloads/') || href.startsWith('downloads/')) {
+                    // In a static file context the download may 404.
+                    // Let the browser handle it; log for debugging.
+                    logSyncConsole('system', `Download requested: ${href}`);
+                }
+            });
+        }
+    });
+
+    // ----------------------------------------------------------------------
     // 3. Business impact calculator logic
     // ----------------------------------------------------------------------
     const salesSlider = document.getElementById('monthlySales');
@@ -59,6 +166,29 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'KES ' + Math.round(amount).toLocaleString();
     }
 
+    function animateValue(element, start, end, duration = 500) {
+        if (!element) return;
+        const startTime = performance.now();
+        function step(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const easeProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+            const current = start + (end - start) * easeProgress;
+            element.textContent = formatCurrency(current);
+            if (progress < 1) {
+                requestAnimationFrame(step);
+            }
+        }
+        requestAnimationFrame(step);
+    }
+
+    let previousMonthly = 0;
+    let previousYearly = 0;
+
+    function parseKesValue(text) {
+        return Number(String(text).replace(/[^0-9.-]/g, '')) || 0;
+    }
+
     function calculateSavings() {
         const sales = parseFloat(salesSlider.value);
         const interruptedSalesShare = parseFloat(interruptionShareSlider.value) / 100;
@@ -71,8 +201,11 @@ document.addEventListener('DOMContentLoaded', () => {
         interruptionShareVal.textContent = Math.round(interruptedSalesShare * 100) + '%';
         offlineCaptureRateVal.textContent = Math.round(offlineCaptureRate * 100) + '%';
 
-        monthlySavingsVal.textContent = formatCurrency(monthlyProtectedSales);
-        yearlySavingsVal.textContent = formatCurrency(yearlyProtectedSales);
+        animateValue(monthlySavingsVal, previousMonthly, monthlyProtectedSales, 500);
+        animateValue(yearlySavingsVal, previousYearly, yearlyProtectedSales, 600);
+
+        previousMonthly = monthlyProtectedSales;
+        previousYearly = yearlyProtectedSales;
     }
 
     if (salesSlider) {
@@ -102,12 +235,17 @@ document.addEventListener('DOMContentLoaded', () => {
         settings: 'Settings',
         shifts: 'Shifts',
         services: 'Services',
-        agent: 'Piki AI',
+        agent: 'Piki AI assistant',
         stock_list: 'Stock list',
         transfers: 'Transfers',
         branches: 'Branches',
         audit_logs: 'Audit logs',
-        proactive_piki: 'Proactive Piki'
+        proactive_piki: 'Proactive Piki',
+        excel_import: 'Excel imports',
+        etims: 'KRA eTIMS',
+        mpesa: 'M-Pesa integration',
+        public_catalog: 'Public catalog',
+        customer_accounts: 'Customer accounts'
     };
 
     const sellingModeLabels = {
@@ -187,8 +325,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 .slice(0, 3);
             const isPopular = index === Math.min(2, plans.length - 1) && plan.code !== 'trial';
             const cta = plan.price ? 'Request This Plan' : 'Discuss Pricing';
+            const staggerClass = index < 6 ? `stagger-${index + 1}` : '';
             return `
-                <article class="pricing-card glass-card ${isPopular ? 'pricing-card-popular' : ''}">
+                <article class="pricing-card glass-card reveal ${staggerClass} ${isPopular ? 'pricing-card-popular' : ''}">
                     ${isPopular ? '<span class="pricing-popular-badge">Best fit</span>' : ''}
                     <div class="pricing-card-header">
                         <span class="pricing-plan-code">${escapeHtml(plan.code || 'plan')}</span>
@@ -228,6 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         });
+
+        observeReveals(pricingPlans);
     }
 
     async function loadPricingPlans(countryCode = 'KE') {
@@ -265,6 +406,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     loadPricingPlans();
+
+    // Observe static reveal elements now that the observer is ready
+    observeReveals(document);
 });
 
 function escapeHtml(value) {

@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 18;
+  static const int _databaseVersion = 19;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -1368,6 +1368,19 @@ class DatabaseService {
         'received_at',
       ],
       whereClause: 'deleted_at IS NULL',
+    );
+    // Optimization indexes added in v19
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'products',
+      indexName: 'idx_products_branch_deleted',
+      columns: ['branch_id', 'deleted_at'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_variants',
+      indexName: 'idx_product_variants_branch_deleted',
+      columns: ['branch_id', 'deleted_at'],
     );
   }
 

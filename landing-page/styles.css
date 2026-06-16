@@ -519,7 +519,31 @@ header.scrolled .header-container {
 .mockup-img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+}
+
+.hero-img-dark,
+.hero-img-light {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition: opacity 0.5s ease;
+}
+
+.hero-img-dark {
+    opacity: 1;
+}
+
+.hero-img-light {
+    opacity: 0;
+}
+
+body.light-mode .hero-img-dark {
+    opacity: 0;
+}
+
+body.light-mode .hero-img-light {
+    opacity: 1;
 }
 
 .visual-glow-overlay {
@@ -2090,6 +2114,1030 @@ footer {
 }
 
 /* ==========================================================================
+   Light Mode Theme
+   ========================================================================== */
+body.light-mode {
+    --bg-dark: #eceff5;
+    --bg-card: rgba(255, 255, 255, 0.78);
+    --bg-card-hover: rgba(255, 255, 255, 0.95);
+    --border-color: rgba(15, 23, 42, 0.1);
+    --border-color-hover: rgba(236, 72, 153, 0.5);
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --neon-cyan: #ec4899;
+    --neon-blue: #db2777;
+    --neon-purple: #c026d3;
+    --neon-purple-deep: #a21caf;
+    --neon-green: #059669;
+    --neon-red: #dc2626;
+    --neon-yellow: #d97706;
+    --gradient-primary: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+    --gradient-purple: linear-gradient(135deg, #c026d3 0%, #a21caf 100%);
+    --gradient-dark: linear-gradient(180deg, #e2e6f0 0%, #eceff5 60%, #f1f3f9 100%);
+    --card-shadow: 0 8px 24px -10px rgba(15, 23, 42, 0.18);
+}
+
+/* Body and backgrounds */
+body.light-mode {
+    background-color: var(--bg-dark);
+    background-image: var(--gradient-dark);
+    color: var(--text-primary);
+}
+
+/* Soften glow blobs in light mode */
+body.light-mode .glow-blob {
+    opacity: 0.14;
+    filter: blur(160px);
+}
+
+/* Header */
+body.light-mode header {
+    background: rgba(255, 255, 255, 0.85);
+    border-bottom-color: var(--border-color);
+    box-shadow: 0 4px 16px -8px rgba(15, 23, 42, 0.08);
+}
+
+body.light-mode header.scrolled {
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 4px 18px -6px rgba(15, 23, 42, 0.12);
+}
+
+body.light-mode .logo span {
+    color: var(--text-primary);
+}
+
+body.light-mode .logo span span {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .nav-link {
+    color: var(--text-secondary);
+}
+
+body.light-mode .nav-link:hover {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .nav-link::after {
+    background: var(--neon-cyan);
+}
+
+/* Theme toggle button */
+body.light-mode .theme-toggle {
+    background: rgba(15, 23, 42, 0.05);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+body.light-mode .theme-toggle:hover {
+    background: rgba(236, 72, 153, 0.1);
+    border-color: rgba(236, 72, 153, 0.35);
+    color: var(--neon-cyan);
+}
+
+/* Buttons */
+body.light-mode .btn-secondary {
+    background: rgba(15, 23, 42, 0.04);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.light-mode .btn-secondary:hover {
+    background: rgba(15, 23, 42, 0.08);
+    border-color: rgba(15, 23, 42, 0.15);
+}
+
+body.light-mode .btn-success {
+    color: #ffffff;
+}
+
+/* Glass card and surface */
+body.light-mode .glass-card {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+    box-shadow: 0 8px 24px -10px rgba(15, 23, 42, 0.1);
+}
+
+body.light-mode .glass-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-color-hover);
+    box-shadow: 0 18px 36px -14px rgba(15, 23, 42, 0.18);
+}
+
+/* Hero and stats */
+body.light-mode .hero-lead,
+body.light-mode p,
+body.light-mode .section-header p,
+body.light-mode .feature-card p,
+body.light-mode .pricing-card p,
+body.light-mode .testimonial-slide .quote,
+body.light-mode .contact-info p,
+body.light-mode .download-description,
+body.light-mode .savings-cta p,
+body.light-mode .c-method span,
+body.light-mode .range-header label,
+body.light-mode .faq-answer p,
+body.light-mode .contact-card-form label {
+    color: var(--text-secondary);
+}
+
+body.light-mode .stat-card p,
+body.light-mode .author-details p,
+body.light-mode .download-meta,
+body.light-mode .footer-bottom p,
+body.light-mode .text-muted {
+    color: var(--text-muted);
+}
+
+body.light-mode .h-feature-item {
+    color: var(--text-secondary);
+}
+
+body.light-mode .h-feature-item i,
+body.light-mode .contact-contact-methods .c-method i {
+    color: var(--neon-cyan);
+}
+
+/* Hero dashboard mockup - soften dark image in light mode */
+body.light-mode .mockup-wrapper {
+    background: #f8fafc;
+    border-color: var(--border-color);
+    box-shadow: 0 18px 40px -16px rgba(15, 23, 42, 0.22);
+}
+
+body.light-mode .mockup-header {
+    background: #eef1f7;
+    border-bottom-color: var(--border-color);
+}
+
+body.light-mode .mockup-title {
+    color: var(--text-secondary);
+}
+
+body.light-mode .status-indicator {
+    background: rgba(5, 150, 105, 0.12);
+    color: var(--neon-green);
+}
+
+body.light-mode .status-indicator.offline {
+    background: rgba(220, 38, 38, 0.12);
+    color: var(--neon-red);
+}
+
+body.light-mode .mockup-body {
+    background: #f8fafc;
+}
+
+body.light-mode .mockup-img {
+    filter: none;
+}
+
+body.light-mode .visual-glow-overlay {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(226, 230, 240, 0.85) 100%);
+}
+
+/* Stats */
+body.light-mode .stat-card {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+/* Features */
+body.light-mode .feature-card {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .icon-box {
+    box-shadow: 0 8px 18px -6px rgba(15, 23, 42, 0.15);
+}
+
+body.light-mode .feature-card h3,
+body.light-mode .download-platform-header h3,
+body.light-mode .pricing-card h3,
+body.light-mode .section-header h2,
+body.light-mode .section-header h3,
+body.light-mode h1, body.light-mode h2, body.light-mode h3, body.light-mode h4, body.light-mode h5 {
+    color: var(--text-primary);
+}
+
+/* Badges and chips */
+body.light-mode .badge {
+    background: rgba(15, 23, 42, 0.04);
+    border-color: var(--border-color);
+    color: var(--neon-cyan);
+}
+
+body.light-mode .neon-pulse-badge {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: rgba(236, 72, 153, 0.25);
+    color: var(--neon-cyan);
+}
+
+body.light-mode .highlight-badge {
+    color: var(--neon-purple);
+    border-color: rgba(192, 38, 211, 0.2);
+}
+
+body.light-mode .platform-chip {
+    background: rgba(15, 23, 42, 0.04);
+    border-color: var(--border-color);
+    color: var(--text-muted);
+}
+
+/* Text gradient: keep accent but ensure visibility */
+body.light-mode .text-gradient {
+    background: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-purple) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+body.light-mode .accent-cyan-text {
+    color: var(--neon-cyan);
+    text-shadow: none;
+}
+
+/* Simulator terminal area: keep a dark "screen" feel for the device */
+body.light-mode .simulator-layout {
+    background: #f5f7fb;
+    border-color: var(--border-color);
+}
+
+body.light-mode .sim-pos-terminal,
+body.light-mode .sim-monitor-terminal,
+body.light-mode .products-panel,
+body.light-mode .cart-panel,
+body.light-mode .console-logs,
+body.light-mode .form-control,
+body.light-mode .contact-card-form .form-control,
+body.light-mode .pricing-market-select {
+    background: #f5f7fb;
+    color: var(--text-primary);
+}
+
+body.light-mode .terminal-header {
+    background: #e8ecf3;
+    border-bottom-color: var(--border-color);
+}
+
+body.light-mode .products-panel h4,
+body.light-mode .cart-panel h4,
+body.light-mode .console-title,
+body.light-mode .payment-methods-title,
+body.light-mode .status-label {
+    color: var(--text-secondary);
+}
+
+body.light-mode .product-btn,
+body.light-mode .pay-method-btn,
+body.light-mode .slider-arrow {
+    background: rgba(15, 23, 42, 0.03);
+    border-color: rgba(15, 23, 42, 0.08);
+    color: var(--text-primary);
+}
+
+body.light-mode .product-btn:hover,
+body.light-mode .pay-method-btn:hover,
+body.light-mode .slider-arrow:hover {
+    background: rgba(236, 72, 153, 0.06);
+    border-color: rgba(236, 72, 153, 0.3);
+}
+
+body.light-mode .pay-method-btn.active {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+}
+
+body.light-mode .pay-method-btn.kopesha-theme.active {
+    background: rgba(192, 38, 211, 0.08);
+    border-color: var(--neon-purple);
+    color: var(--neon-purple);
+}
+
+body.light-mode .kopesha-extra-fields {
+    background: rgba(192, 38, 211, 0.05);
+    border-color: rgba(192, 38, 211, 0.18);
+}
+
+body.light-mode .kopesha-extra-fields .input-group label {
+    color: var(--neon-purple);
+}
+
+body.light-mode .cart-items-container {
+    background: rgba(15, 23, 42, 0.02);
+    border-color: rgba(15, 23, 42, 0.1);
+}
+
+body.light-mode .empty-cart-message,
+body.light-mode .empty-cart-message p {
+    color: var(--text-muted);
+}
+
+body.light-mode .cart-summary {
+    background: rgba(15, 23, 42, 0.02);
+    border-color: rgba(15, 23, 42, 0.06);
+}
+
+body.light-mode .summary-line {
+    color: var(--text-secondary);
+}
+
+body.light-mode .summary-line.total-line {
+    color: var(--text-primary);
+    border-top-color: rgba(15, 23, 42, 0.08);
+}
+
+body.light-mode .summary-line.total-line span:last-child {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .db-indicator {
+    background: rgba(15, 23, 42, 0.02);
+    border-color: rgba(15, 23, 42, 0.06);
+}
+
+body.light-mode .db-header {
+    color: var(--text-secondary);
+}
+
+body.light-mode .db-value {
+    color: var(--text-primary);
+}
+
+body.light-mode .badge-success {
+    background: rgba(5, 150, 105, 0.12) !important;
+    border-color: rgba(5, 150, 105, 0.3) !important;
+    color: var(--neon-green) !important;
+}
+
+body.light-mode .badge-pending {
+    background: rgba(217, 119, 6, 0.12) !important;
+    border-color: rgba(217, 119, 6, 0.3) !important;
+    color: var(--neon-yellow) !important;
+}
+
+body.light-mode .connection-badge.online {
+    background: rgba(5, 150, 105, 0.12);
+    color: var(--neon-green);
+    border-color: rgba(5, 150, 105, 0.3);
+}
+
+body.light-mode .connection-badge.offline {
+    background: rgba(220, 38, 38, 0.12);
+    color: var(--neon-red);
+    border-color: rgba(220, 38, 38, 0.3);
+}
+
+body.light-mode .console-logs {
+    background: #0f172a;
+    color: #38bdf8;
+    border-color: rgba(15, 23, 42, 0.1);
+}
+
+/* Console log lines retain accent colors */
+body.light-mode .log-line.system { color: #94a3b8; }
+body.light-mode .log-line.sqlite,
+body.light-mode .log-line.local { color: #f472b6; }
+body.light-mode .log-line.neon,
+body.light-mode .log-line.cloud { color: #e879f9; }
+body.light-mode .log-line.success { color: #34d399; }
+body.light-mode .log-line.error { color: #f87171; }
+
+/* Receipt: keep paper feel, but add subtle border */
+body.light-mode .receipt-preview-container {
+    background: #fafbfd;
+    color: #0f172a;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.22);
+}
+
+body.light-mode .receipt-header p,
+body.light-mode .receipt-footer p {
+    color: #475569;
+}
+
+body.light-mode .receipt-divider {
+    border-top-color: #cbd5e1;
+}
+
+body.light-mode .receipt-kopesha-info {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+/* Architecture */
+body.light-mode .architecture-layout {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .step-icon {
+    background: #f5f7fb;
+    border-color: var(--border-color);
+    color: var(--neon-cyan);
+    box-shadow: 0 8px 18px -6px rgba(15, 23, 42, 0.18);
+}
+
+body.light-mode .arch-step:hover .step-icon {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: var(--neon-cyan);
+}
+
+/* Pricing */
+body.light-mode .pricing-card {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .pricing-card-popular {
+    border-color: rgba(236, 72, 153, 0.35) !important;
+    box-shadow: 0 16px 36px -14px rgba(236, 72, 153, 0.2);
+}
+
+body.light-mode .pricing-popular-badge {
+    background: rgba(236, 72, 133, 0.1);
+    color: var(--neon-cyan);
+    border-color: rgba(236, 72, 153, 0.25);
+}
+
+body.light-mode .pricing-plan-code {
+    color: var(--neon-purple);
+}
+
+body.light-mode .pricing-price {
+    color: var(--text-primary);
+}
+
+body.light-mode .pricing-period {
+    color: var(--text-secondary);
+}
+
+body.light-mode .pricing-limits {
+    border-top-color: var(--border-color);
+    border-bottom-color: var(--border-color);
+}
+
+body.light-mode .pricing-limits span,
+body.light-mode .pricing-feature-list li {
+    color: var(--text-secondary);
+}
+
+body.light-mode .pricing-limits i {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .pricing-feature-list i {
+    color: var(--neon-green);
+}
+
+body.light-mode .pricing-modes span {
+    background: rgba(15, 23, 42, 0.04);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+body.light-mode .pricing-empty {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .pricing-source {
+    color: var(--text-secondary);
+}
+
+/* Calculator */
+body.light-mode .calc-inputs,
+body.light-mode .calc-outputs {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .calc-outputs {
+    border-color: rgba(192, 38, 211, 0.2) !important;
+}
+
+body.light-mode .range-value {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .purple-glow:hover {
+    box-shadow: 0 18px 36px -14px rgba(192, 38, 211, 0.25) !important;
+    border-color: var(--neon-purple) !important;
+}
+
+body.light-mode .savings-cta {
+    border-top-color: var(--border-color);
+}
+
+body.light-mode input[type=range]::-webkit-slider-runnable-track {
+    background: rgba(15, 23, 42, 0.12);
+}
+
+body.light-mode input[type=range]::-webkit-slider-thumb {
+    background: var(--neon-cyan);
+    box-shadow: 0 0 0 4px rgba(236, 72, 153, 0.18);
+}
+
+/* Testimonials */
+body.light-mode .testimonial-slider-container {
+    color: var(--text-primary);
+}
+
+body.light-mode .author-avatar {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: rgba(236, 72, 153, 0.25);
+    color: var(--neon-cyan);
+}
+
+body.light-mode .author-details h5 {
+    color: var(--text-primary);
+}
+
+body.light-mode .stars {
+    color: var(--neon-yellow);
+}
+
+/* FAQ */
+body.light-mode .faq-item {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .faq-item.active {
+    border-color: var(--border-color-hover);
+}
+
+body.light-mode .faq-question {
+    color: var(--text-primary);
+}
+
+body.light-mode .faq-question:hover {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .faq-question i {
+    color: var(--text-muted);
+}
+
+body.light-mode .faq-item.active .faq-question i {
+    color: var(--neon-cyan);
+}
+
+/* Contact */
+body.light-mode .contact-card-form {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .contact-card-form .form-control {
+    background: #eef1f7;
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+body.light-mode .contact-card-form .form-control:focus {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.15);
+}
+
+body.light-mode .form-error-message {
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.3);
+    color: #b91c1c;
+}
+
+body.light-mode .form-success-message h4 {
+    color: var(--text-primary);
+}
+
+body.light-mode .form-success-message p {
+    color: var(--text-secondary);
+}
+
+body.light-mode .text-success {
+    color: var(--neon-green);
+}
+
+body.light-mode .c-method {
+    color: var(--text-primary);
+}
+
+body.light-mode .contact-contact-methods .c-method i {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: rgba(236, 72, 153, 0.2);
+    color: var(--neon-cyan);
+}
+
+/* Footer */
+body.light-mode footer {
+    background: #e8ecf3;
+    border-top-color: var(--border-color);
+}
+
+body.light-mode .footer-brand p,
+body.light-mode .footer-links a {
+    color: var(--text-secondary);
+}
+
+body.light-mode .footer-links a:hover {
+    color: var(--neon-cyan);
+}
+
+body.light-mode .footer-links h4 {
+    color: var(--text-primary);
+}
+
+body.light-mode .social-links a {
+    background: rgba(15, 23, 42, 0.04);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+body.light-mode .social-links a:hover {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+}
+
+body.light-mode .footer-bottom {
+    border-top-color: var(--border-color);
+}
+
+/* Downloads */
+body.light-mode .download-card {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .download-help {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .download-card.recommended {
+    border-color: rgba(236, 72, 153, 0.4);
+    box-shadow: 0 12px 32px -10px rgba(236, 72, 153, 0.2);
+}
+
+/* Shimmer for skeleton in light mode */
+body.light-mode .shimmer {
+    background: linear-gradient(90deg,
+        rgba(15, 23, 42, 0.05) 25%,
+        rgba(15, 23, 42, 0.1) 50%,
+        rgba(15, 23, 42, 0.05) 75%);
+    background-size: 200% 100%;
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+}
+
+.theme-toggle:hover {
+    background: rgba(255, 42, 133, 0.1);
+    border-color: rgba(255, 42, 133, 0.3);
+    color: var(--neon-cyan);
+}
+
+body.light-mode .theme-toggle {
+    background: rgba(15, 23, 42, 0.05);
+}
+
+/* ==========================================================================
+   Downloads Section
+   ========================================================================== */
+.downloads-section {
+    padding: 7rem 0;
+}
+
+.downloads-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.download-card {
+    padding: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 420px;
+}
+
+.download-platform-header {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.platform-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    color: #fff;
+    box-shadow: 0 10px 25px -8px rgba(0, 0, 0, 0.3);
+}
+
+.platform-icon.windows-gradient {
+    background: linear-gradient(135deg, #0078d4 0%, #00a4ef 100%);
+}
+
+.platform-icon.android-gradient {
+    background: linear-gradient(135deg, #3ddc84 0%, #2e7d32 100%);
+}
+
+.platform-meta h3 {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.platform-chip {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+}
+
+body.light-mode .platform-chip {
+    background: rgba(15, 23, 42, 0.04);
+}
+
+.download-description {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    margin-bottom: 1.5rem;
+}
+
+.download-specs {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    flex: 1;
+}
+
+.download-specs li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.download-specs i {
+    color: var(--neon-green);
+    font-size: 0.85rem;
+}
+
+.download-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.download-link {
+    text-decoration: none;
+}
+
+.download-meta {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.download-help {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+    padding: 2rem 2.5rem;
+}
+
+.download-help-text h4 {
+    font-size: 1.15rem;
+    margin-bottom: 0.4rem;
+}
+
+.download-help-text p {
+    font-size: 0.9rem;
+    max-width: 600px;
+}
+
+.download-card.recommended {
+    border-color: rgba(255, 42, 133, 0.45);
+    box-shadow: 0 0 30px rgba(255, 42, 133, 0.12);
+}
+
+/* ==========================================================================
+   Animations & Micro-interactions
+   ========================================================================== */
+
+/* Scroll reveal base */
+.reveal {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+}
+
+.reveal.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.reveal-left {
+    opacity: 0;
+    transform: translateX(-48px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+}
+
+.reveal-left.active {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.reveal-right {
+    opacity: 0;
+    transform: translateX(48px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+}
+
+.reveal-right.active {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.reveal-scale {
+    opacity: 0;
+    transform: scale(0.92);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+}
+
+.reveal-scale.active {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Stagger children delays */
+.stagger-1 { transition-delay: 0.08s; }
+.stagger-2 { transition-delay: 0.16s; }
+.stagger-3 { transition-delay: 0.24s; }
+.stagger-4 { transition-delay: 0.32s; }
+.stagger-5 { transition-delay: 0.40s; }
+.stagger-6 { transition-delay: 0.48s; }
+
+/* Floating animation for hero visual */
+@keyframes gentleFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+}
+
+.hero-visual .mockup-wrapper {
+    animation: gentleFloat 6s ease-in-out infinite;
+}
+
+/* Subtle pulse for recommended cards */
+@keyframes recommendedPulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 42, 133, 0.2); }
+    70% { box-shadow: 0 0 0 12px rgba(255, 42, 133, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 42, 133, 0); }
+}
+
+.download-card.recommended {
+    animation: recommendedPulse 2.5s infinite;
+}
+
+body.light-mode .download-card.recommended {
+    animation: recommendedPulse 2.5s infinite;
+}
+
+/* Icon hover bounce */
+.feature-card:hover .icon-box i,
+.download-card:hover .platform-icon i {
+    animation: iconPop 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes iconPop {
+    0% { transform: scale(1) rotate(0); }
+    40% { transform: scale(1.15) rotate(-8deg); }
+    100% { transform: scale(1) rotate(0); }
+}
+
+/* Button shine effect */
+.btn-primary {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.5s ease;
+}
+
+.btn-primary:hover::after {
+    left: 150%;
+    transition: left 0.7s ease;
+}
+
+/* Loading shimmer for dynamic pricing */
+.shimmer {
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.03) 25%,
+        rgba(255, 255, 255, 0.08) 50%,
+        rgba(255, 255, 255, 0.03) 75%);
+    background-size: 200% 100%;
+    animation: shimmerSweep 1.5s infinite;
+    border-radius: 8px;
+}
+
+body.light-mode .shimmer {
+    background: linear-gradient(90deg,
+        rgba(15, 23, 42, 0.03) 25%,
+        rgba(15, 23, 42, 0.08) 50%,
+        rgba(15, 23, 42, 0.03) 75%);
+    background-size: 200% 100%;
+}
+
+@keyframes shimmerSweep {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.pricing-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 2rem;
+}
+
+.pricing-skeleton .sk-line {
+    height: 16px;
+    width: 100%;
+}
+
+.pricing-skeleton .sk-line.short { width: 60%; }
+
+/* Smooth section entrance timing */
+section {
+    overflow-x: hidden;
+}
+
+/* Theme toggle spin animation */
+.theme-toggle i {
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.theme-toggle:active i {
+    transform: rotate(180deg) scale(0.85);
+}
+
+/* FAQ smooth icon rotation already handled */
+
+/* Count-up numbers style */
+.count-up {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
    Responsive Queries
    ========================================================================== */
 @media (max-width: 1024px) {
@@ -2125,6 +3173,15 @@ footer {
 
     .pricing-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .downloads-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .download-help {
+        flex-direction: column;
+        text-align: center;
     }
     
     .simulator-layout {

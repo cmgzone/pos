@@ -1,5 +1,4 @@
 import 'dart:io';
-import '../../../core/theme/app_theme_extensions.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pos_app/core/constants/app_constants.dart';
 import 'package:pos_app/core/services/backup_service.dart';
 import 'package:pos_app/core/services/branch_service.dart';
-import 'package:pos_app/core/services/database_service.dart';
 import 'package:pos_app/core/services/cash_drawer_service.dart';
 import 'package:pos_app/core/services/etims_service.dart';
 import 'package:pos_app/core/services/license_service.dart';
@@ -77,6 +75,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _teamLoading = false;
   List<Map<String, dynamic>> _backups = [];
   List<Map<String, dynamic>> _teamMembers = [];
+  List<Map<String, dynamic>> _filteredTeamMembers = [];
+  late TextEditingController _teamSearchController;
 
   bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
   bool get _canManageOperationalSettings =>
@@ -125,6 +125,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _etimsEnabled = ShopSettings.etimsEnabled;
     _etimsAutoSubmit = ShopSettings.etimsAutoSubmit;
     _etimsSolutionType = ShopSettings.etimsSolutionType;
+    _teamSearchController = TextEditingController()
+      ..addListener(_filterTeamMembers);
 
     _loadBackups();
     _loadEtimsSettings();
@@ -163,6 +165,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _etimsVatNumberController.dispose();
     _etimsBranchCodeController.dispose();
     _etimsDeviceSerialController.dispose();
+    _teamSearchController.removeListener(_filterTeamMembers);
+    _teamSearchController.dispose();
     super.dispose();
   }
 
@@ -354,7 +358,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
     setState(() {
       _teamMembers = users;
+      _filteredTeamMembers = List.from(users);
       _teamLoading = false;
+    });
+  }
+
+  void _filterTeamMembers() {
+    final query = _teamSearchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      setState(() => _filteredTeamMembers = List.from(_teamMembers));
+      return;
+    }
+    setState(() {
+      _filteredTeamMembers = _teamMembers.where((user) {
+        final name = (user['name'] as String? ?? '').toLowerCase();
+        final email = (user['email'] as String? ?? '').toLowerCase();
+        final role = (user['role'] as String? ?? '').toLowerCase();
+        return name.contains(query) ||
+            email.contains(query) ||
+            role.contains(query);
+      }).toList();
     });
   }
 
@@ -613,8 +636,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text('Access for ${user['name'] as String? ?? 'Staff'}'),
-          content: SizedBox(
-            width: 720,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,30 +727,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
                   SizedBox(height: 10),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: UserAccessProfile.posModeProducts,
-                        icon: Icon(Icons.inventory_2_outlined),
-                        label: Text('Products Only'),
-                      ),
-                      ButtonSegment(
-                        value: UserAccessProfile.posModeBoth,
-                        icon: Icon(Icons.view_week_outlined),
-                        label: Text('Both'),
-                      ),
-                      ButtonSegment(
-                        value: UserAccessProfile.posModeServices,
-                        icon: Icon(Icons.design_services_outlined),
-                        label: Text('Services Only'),
-                      ),
-                    ],
-                    selected: {posMode},
-                    onSelectionChanged: (selection) {
-                      setDialogState(() => posMode = selection.first);
-                    },
-                    showSelectedIcon: false,
-                  ),
+                  _buildPosModeSelector(posMode, setDialogState),
                   SizedBox(height: 8),
                   Text(
                     'This controls what appears inside the POS screen for this account.',
@@ -982,232 +982,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       default:
         return 'Both';
     }
-  }
-
-  Widget _buildStaffBranchChips(Map<String, dynamic> user, String role) {
-    final normalizedRole = RolePermissions.normalizeRole(role);
-
-    // Admins always have full access
-    if (normalizedRole == RolePermissions.admin) {
-      return Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.verified_outlined,
-                  size: 12,
-                  color: AppColors.success,
-                ),
-                SizedBox(width: 4),
-                Text(
-                  'All branches',
-                  style: TextStyle(
-                    color: AppColors.success,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    final branchIds = UserAccessProfile.resolveAllowedBranchIds(
-      role: normalizedRole,
-      rawAllowedBranchIdsJson: user['allowed_branch_ids_json'] as String?,
-    );
-
-    // Empty list means unrestricted (all branches)
-    if (branchIds.isEmpty) {
-      return Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.business_outlined,
-                  size: 12,
-                  color: AppColors.primaryLight,
-                ),
-                SizedBox(width: 4),
-                Text(
-                  'All branches',
-                  style: TextStyle(
-                    color: AppColors.primaryLight,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Show individual branch chips
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _resolveBranchNames(branchIds),
-      builder: (context, snapshot) {
-        final branches = snapshot.data ?? [];
-        return Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final branch in branches)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.store_outlined,
-                      size: 12,
-                      color: AppColors.primary,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      branch['name'] as String? ?? branch['id'] as String,
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            if (branches.isEmpty)
-              for (final id in branchIds)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    id,
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildStaffFeatureAccessChips(Map<String, dynamic> user) {
-    final role = RolePermissions.normalizeRole(user['role'] as String?);
-    final features = UserAccessProfile.resolveFeatureAccess(
-      role: role,
-      rawFeatureAccessJson: user['feature_access_json'] as String?,
-    );
-
-    final List<Map<String, dynamic>> allFeaturesToDisplay = [
-      {'label': 'Dashboard', 'feature': UserAccessProfile.featureDashboard},
-      {'label': 'POS', 'feature': UserAccessProfile.featurePos},
-      {'label': 'Services', 'feature': UserAccessProfile.featureServices},
-      {'label': 'Products', 'feature': UserAccessProfile.featureProducts},
-      {'label': 'Categories', 'feature': UserAccessProfile.featureCategories},
-      {'label': 'Purchases', 'feature': UserAccessProfile.featurePurchases},
-      {'label': 'Sales', 'feature': UserAccessProfile.featureSales},
-      {'label': 'Kopesha', 'feature': UserAccessProfile.featureKopesha},
-      {'label': 'P&L', 'feature': UserAccessProfile.featureProfitLoss},
-      {'label': 'Reports', 'feature': UserAccessProfile.featureReports},
-      {'label': 'Shifts', 'feature': UserAccessProfile.featureShifts},
-      {'label': 'Piki AI', 'feature': UserAccessProfile.featureAgent},
-    ];
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: allFeaturesToDisplay.map((item) {
-        final label = item['label'] as String;
-        final feature = item['feature'] as String;
-        final hasAccess = features.contains(feature);
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: hasAccess
-                ? AppColors.success.withValues(alpha: 0.12)
-                : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: hasAccess
-                  ? AppColors.success.withValues(alpha: 0.24)
-                  : context.appBorder.withValues(alpha: 0.5),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                hasAccess
-                    ? Icons.check_circle_outline_rounded
-                    : Icons.block_rounded,
-                size: 11,
-                color: hasAccess ? AppColors.success : Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: hasAccess
-                      ? AppColors.success
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _resolveBranchNames(
-    List<String> branchIds,
-  ) async {
-    if (branchIds.isEmpty) {
-      return const [];
-    }
-    final placeholders = List.filled(branchIds.length, '?').join(', ');
-    return DatabaseService.rawQuery(
-      'SELECT id, name FROM branches WHERE id IN ($placeholders) AND deleted_at IS NULL ORDER BY name COLLATE NOCASE ASC',
-      branchIds,
-    );
   }
 
   Future<void> _showChangePasswordDialog() async {
@@ -3185,117 +2959,696 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildTeamCard() {
+    final colors = Theme.of(context).colorScheme;
     return _buildCard([
-      Wrap(
-        spacing: 12,
-        runSpacing: 12,
+      // Search + Add Member bar
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 560;
+          final searchField = TextField(
+            controller: _teamSearchController,
+            decoration: InputDecoration(
+              hintText: 'Search team members...',
+              prefixIcon: Icon(Icons.search, color: colors.onSurfaceVariant),
+              filled: true,
+              fillColor: colors.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colors.outline.withValues(alpha: 0.5)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colors.outline.withValues(alpha: 0.5)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colors.primary, width: 1.5),
+              ),
+            ),
+          );
+          final addButton = SizedBox(
+            width: isWide ? null : double.infinity,
+            child: FilledButton.icon(
+              onPressed: _showAddStaffDialog,
+              icon: const Icon(Icons.person_add_alt_1, size: 18),
+              label: const Text('Add Member'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          );
+          if (isWide) {
+            return Row(
+              children: [
+                Expanded(child: searchField),
+                const SizedBox(width: 16),
+                addButton,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              searchField,
+              const SizedBox(height: 12),
+              addButton,
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 20),
+      // Directory header
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          FilledButton.icon(
-            onPressed: _showAddStaffDialog,
-            icon: Icon(Icons.person_add_alt_1, size: 18),
-            label: Text('Add Staff'),
+          Text(
+            'Directory (${_filteredTeamMembers.length} Members)',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurfaceVariant,
+            ),
           ),
-          OutlinedButton.icon(
+          IconButton(
             onPressed: _teamLoading ? null : _loadTeamMembers,
-            icon: Icon(Icons.refresh, size: 18),
-            label: Text('Refresh'),
+            icon: _teamLoading
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: colors.primary),
+                  )
+                : const Icon(Icons.refresh, size: 20),
+            tooltip: 'Refresh',
+            color: colors.onSurfaceVariant,
           ),
         ],
       ),
-      SizedBox(height: 20),
-      if (_teamLoading)
-        Center(child: CircularProgressIndicator())
-      else if (_teamMembers.isEmpty)
-        Text(
-          'No staff accounts yet.',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      const SizedBox(height: 12),
+      if (_teamLoading && _filteredTeamMembers.isEmpty)
+        const Center(child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(),
+        ))
+      else if (_filteredTeamMembers.isEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 48),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.groups_outlined, size: 40, color: colors.onSurfaceVariant),
+              const SizedBox(height: 12),
+              Text(
+                _teamMembers.isEmpty ? 'No staff accounts yet.' : 'No members match your search.',
+                style: TextStyle(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
         )
       else
         Column(
-          children: _teamMembers.map((user) {
-            final userId = user['id'] as String? ?? '';
-            final selectedRole =
-                (user['role'] as String? ?? RolePermissions.cashier)
-                    .toUpperCase();
-            return Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    user['name'] as String? ?? 'User',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    user['email'] as String? ?? '',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    _buildStaffAccessSummary(user),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  _buildStaffBranchChips(user, selectedRole),
-                  SizedBox(height: 8),
-                  _buildStaffFeatureAccessChips(user),
-                  SizedBox(height: 14),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: 180,
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedRole,
-                          decoration: InputDecoration(labelText: 'Role'),
-                          items: RolePermissions.allRoles
-                              .map(
-                                (role) => DropdownMenuItem(
-                                  value: role,
-                                  child: Text(RolePermissions.label(role)),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            if (value != null && value != selectedRole) {
-                              _updateTeamRole(userId, value);
-                            }
-                          },
-                        ),
-                      ),
-                      Tooltip(
-                        message: selectedRole == RolePermissions.admin
-                            ? 'Admins always keep full access'
-                            : 'Edit feature, service, and POS access',
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showTeamAccessDialog(user),
-                          icon: Icon(Icons.tune, size: 18),
-                          label: Text('Access'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
+          children: _filteredTeamMembers.asMap().entries.map((entry) {
+            final index = entry.key;
+            final user = entry.value;
+            return _buildTeamMemberCard(user, index);
           }).toList(),
         ),
     ]);
+  }
+
+  Widget _buildTeamMemberCard(Map<String, dynamic> user, int index) {
+    final colors = Theme.of(context).colorScheme;
+    final userId = user['id'] as String? ?? '';
+    final name = user['name'] as String? ?? 'User';
+    final email = user['email'] as String? ?? '';
+    final selectedRole = (user['role'] as String? ?? RolePermissions.cashier).toUpperCase();
+    final normalizedRole = RolePermissions.normalizeRole(selectedRole);
+    final initials = name.trim().isNotEmpty
+        ? name.trim().split(' ').take(2).map((p) => p.isNotEmpty ? p[0].toUpperCase() : '').join('')
+        : '?';
+
+    return AnimatedOpacity(
+      opacity: 1,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.outline.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 480;
+            return Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Avatar
+                    Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: colors.primary.withValues(alpha: 0.12),
+                          foregroundColor: colors.primary,
+                          child: Text(
+                            initials,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: colors.primary,
+                            ),
+                          ),
+                        ),
+                        if (normalizedRole == RolePermissions.admin)
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: colors.surface,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: colors.outline.withValues(alpha: 0.5)),
+                              ),
+                              child: Icon(Icons.verified, size: 14, color: colors.primary),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 16),
+                    // Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 10,
+                            runSpacing: 6,
+                            children: [
+                              Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.onSurface,
+                                ),
+                              ),
+                              _buildRoleBadge(normalizedRole),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            email,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _buildStaffAccessSummary(user),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Divider(height: 1),
+                const SizedBox(height: 14),
+                // Actions
+                Flex(
+                  direction: isWide ? Axis.horizontal : Axis.vertical,
+                  crossAxisAlignment: isWide ? CrossAxisAlignment.center : CrossAxisAlignment.stretch,
+                  children: [
+                    // Role dropdown
+                    SizedBox(
+                      width: isWide ? 180 : double.infinity,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedRole,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Role',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        items: RolePermissions.allRoles
+                            .map((role) => DropdownMenuItem(
+                                  value: role,
+                                  child: Text(RolePermissions.label(role)),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null && value != selectedRole) {
+                            _updateTeamRole(userId, value);
+                          }
+                        },
+                      ),
+                    ),
+                    if (isWide) const SizedBox(width: 12) else const SizedBox(height: 10),
+                    if (isWide)
+                      Expanded(
+                        child: OverflowBar(
+                          alignment: MainAxisAlignment.end,
+                          spacing: 10,
+                          overflowSpacing: 10,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _showTeamAccessDialog(user),
+                              icon: const Icon(Icons.tune, size: 18),
+                              label: const Text('Edit Access'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                            FilledButton.icon(
+                              onPressed: () => _showTeamMemberProfileDialog(user),
+                              icon: const Icon(Icons.visibility_outlined, size: 18),
+                              label: const Text('View Profile'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _showTeamAccessDialog(user),
+                              icon: const Icon(Icons.tune, size: 18),
+                              label: const Text('Edit Access'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => _showTeamMemberProfileDialog(user),
+                              icon: const Icon(Icons.visibility_outlined, size: 18),
+                              label: const Text('View Profile'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleBadge(String role) {
+    final colors = Theme.of(context).colorScheme;
+    final label = RolePermissions.label(role);
+    Color bg;
+    Color fg;
+    switch (role.toUpperCase()) {
+      case RolePermissions.admin:
+        bg = colors.secondaryContainer;
+        fg = colors.onSecondaryContainer;
+        break;
+      case RolePermissions.manager:
+        bg = colors.tertiaryContainer;
+        fg = colors.onTertiaryContainer;
+        break;
+      default:
+        bg = colors.surfaceContainerHighest;
+        fg = colors.onSurfaceVariant;
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: fg,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showTeamMemberProfileDialog(Map<String, dynamic> user) async {
+    final colors = Theme.of(context).colorScheme;
+    final name = user['name'] as String? ?? 'User';
+    final email = user['email'] as String? ?? '';
+    final role = RolePermissions.normalizeRole(user['role'] as String?);
+    final initials = name.trim().isNotEmpty
+        ? name.trim().split(' ').take(2).map((p) => p.isNotEmpty ? p[0].toUpperCase() : '').join('')
+        : '?';
+
+    final allServices = await ServiceRepository.getServices();
+    final allBranches = await BranchService.getBranches(activeOnly: true);
+    if (!mounted) return;
+
+    final features = UserAccessProfile.resolveFeatureAccess(
+      role: role,
+      rawFeatureAccessJson: user['feature_access_json'] as String?,
+    );
+    final allowedServiceIds = UserAccessProfile.resolveAllowedServiceIds(
+      role: role,
+      rawAllowedServiceIdsJson: user['allowed_service_ids_json'] as String?,
+    );
+    final allowedBranchIds = UserAccessProfile.resolveAllowedBranchIds(
+      role: role,
+      rawAllowedBranchIdsJson: user['allowed_branch_ids_json'] as String?,
+    );
+    final posMode = UserAccessProfile.resolvePosMode(
+      role: role,
+      rawPosMode: user['pos_mode'] as String?,
+    );
+
+    final serviceNames = allowedServiceIds.isEmpty && role == RolePermissions.admin
+        ? const <String>[]
+        : allServices
+            .where((s) => allowedServiceIds.contains(s['id'] as String?))
+            .map((s) => s['name'] as String? ?? 'Service')
+            .toList();
+    final branchNames = allowedBranchIds.isEmpty && role == RolePermissions.admin
+        ? const <String>[]
+        : allBranches
+            .where((b) => allowedBranchIds.contains(b['id'] as String?))
+            .map((b) => b['name'] as String? ?? 'Branch')
+            .toList();
+
+    final featureDisplayList = [
+      UserAccessProfile.featureDashboard,
+      UserAccessProfile.featurePos,
+      UserAccessProfile.featureProducts,
+      UserAccessProfile.featureCategories,
+      UserAccessProfile.featurePurchases,
+      UserAccessProfile.featureSales,
+      UserAccessProfile.featureKopesha,
+      UserAccessProfile.featureProfitLoss,
+      UserAccessProfile.featureReports,
+      UserAccessProfile.featureShifts,
+      UserAccessProfile.featureServices,
+      UserAccessProfile.featureAgent,
+    ];
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: EdgeInsets.zero,
+        content: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    color: colors.primary.withValues(alpha: 0.08),
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 36,
+                          backgroundColor: colors.primary.withValues(alpha: 0.12),
+                          child: Text(
+                            initials,
+                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: colors.primary),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          name,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: colors.onSurface),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildRoleBadge(role),
+                        if (email.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            email,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildProfileSectionTitle(Icons.point_of_sale_outlined, 'POS Mode'),
+                        const SizedBox(height: 10),
+                        _buildProfileInfoChip(_labelForPosMode(posMode), colors),
+                        const SizedBox(height: 22),
+                        _buildProfileSectionTitle(Icons.business_outlined, 'Branches'),
+                        const SizedBox(height: 10),
+                        _buildNamedChips(
+                          names: branchNames,
+                          isUnrestricted: role == RolePermissions.admin || allowedBranchIds.isEmpty,
+                          unrestrictedLabel: 'All branches',
+                          emptyLabel: 'No branches assigned',
+                          colors: colors,
+                        ),
+                        const SizedBox(height: 22),
+                        _buildProfileSectionTitle(Icons.design_services_outlined, 'Services'),
+                        const SizedBox(height: 10),
+                        _buildNamedChips(
+                          names: serviceNames,
+                          isUnrestricted: role == RolePermissions.admin || allowedServiceIds.isEmpty,
+                          unrestrictedLabel: 'All services',
+                          emptyLabel: 'No services assigned',
+                          colors: colors,
+                        ),
+                        const SizedBox(height: 22),
+                        _buildProfileSectionTitle(Icons.widgets_outlined, 'Feature Access'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: featureDisplayList.map((feature) {
+                            final hasAccess = features.contains(feature);
+                            return _buildFeatureAccessChip(
+                              UserAccessProfile.featureLabel(feature),
+                              hasAccess,
+                              colors,
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileSectionTitle(IconData icon, String title) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: colors.primary),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: colors.onSurface),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileInfoChip(String label, ColorScheme colors) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.outline.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: colors.onSurface),
+      ),
+    );
+  }
+
+  Widget _buildNamedChips({
+    required List<String> names,
+    required bool isUnrestricted,
+    required String unrestrictedLabel,
+    required String emptyLabel,
+    required ColorScheme colors,
+  }) {
+    if (isUnrestricted) {
+      return _buildProfileInfoChip(unrestrictedLabel, colors);
+    }
+    if (names.isEmpty) {
+      return Text(
+        emptyLabel,
+        style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: names.map((name) => _buildProfileInfoChip(name, colors)).toList(),
+    );
+  }
+
+  Widget _buildFeatureAccessChip(String label, bool hasAccess, ColorScheme colors) {
+    final bgColor = hasAccess ? AppColors.success.withValues(alpha: 0.12) : colors.onSurfaceVariant.withValues(alpha: 0.08);
+    final fgColor = hasAccess ? AppColors.success : colors.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: fgColor.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            hasAccess ? Icons.check_circle_outline_rounded : Icons.block_rounded,
+            size: 14,
+            color: fgColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fgColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPosModeSelector(String posMode, void Function(void Function()) setDialogState) {
+    final colors = Theme.of(context).colorScheme;
+    final options = [
+      (
+        value: UserAccessProfile.posModeProducts,
+        label: 'Products Only',
+        icon: Icons.inventory_2_outlined,
+      ),
+      (
+        value: UserAccessProfile.posModeBoth,
+        label: 'Both',
+        icon: Icons.view_week_outlined,
+      ),
+      (
+        value: UserAccessProfile.posModeServices,
+        label: 'Services Only',
+        icon: Icons.design_services_outlined,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 420;
+        if (isWide) {
+          return SegmentedButton<String>(
+            segments: options
+                .map(
+                  (option) => ButtonSegment(
+                    value: option.value,
+                    icon: Icon(option.icon),
+                    label: Text(option.label),
+                  ),
+                )
+                .toList(),
+            selected: {posMode},
+            onSelectionChanged: (selection) {
+              setDialogState(() => posMode = selection.first);
+            },
+            showSelectedIcon: false,
+          );
+        }
+        return DropdownButtonFormField<String>(
+          isExpanded: true,
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          initialValue: posMode,
+          items: options
+              .map(
+                (option) => DropdownMenuItem(
+                  value: option.value,
+                  child: Row(
+                    children: [
+                      Icon(option.icon, size: 20, color: colors.onSurfaceVariant),
+                      const SizedBox(width: 12),
+                      Text(option.label),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (value) {
+            if (value != null) {
+              setDialogState(() => posMode = value);
+            }
+          },
+        );
+      },
+    );
   }
 
   Widget _buildBackupCard() {

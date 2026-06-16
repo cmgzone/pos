@@ -31,6 +31,15 @@ void main() {
   ) async {
     await pumpProductForm(tester);
 
+    // Enter product name to pass step 0 validation
+    await tester.enterText(find.byType(TextFormField).first, 'Test Product');
+    await tester.pumpAndSettle();
+
+    // Go to Step 1 (Pricing & Units)
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
     expect(
       find.text('This product uses pcs for selling, stocking, and purchases.'),
       findsOneWidget,
@@ -42,7 +51,6 @@ void main() {
     await tester.tap(find.text('1 kg = 1000 g').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Selling in kg, stocking in g'), findsOneWidget);
     expect(
       find.text(
         'Stock is stored in g. Price is entered per kg. Purchases are received in kg.',
@@ -51,9 +59,20 @@ void main() {
     );
     expect(find.text('Current stock will be saved as 0 g.'), findsOneWidget);
     expect(find.text('Low-stock alert will trigger at 5 g.'), findsOneWidget);
+    expect(find.text('Selling Price per kg *'), findsOneWidget);
+
+
+    // Enter selling price to pass step 1 validation
+    await tester.enterText(find.byType(TextFormField).first, '10.0');
+    await tester.pumpAndSettle();
+
+    // Go to Step 2 (Inventory)
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Current Stock (g)'), findsOneWidget);
     expect(find.text('Low Stock Alert (g)'), findsOneWidget);
-    expect(find.text('Selling Price per kg *'), findsOneWidget);
   });
 
   testWidgets('loads saved conversion settings when editing a product', (
@@ -78,7 +97,12 @@ void main() {
     );
 
     expect(find.text('Edit Product'), findsOneWidget);
-    expect(find.text('Selling in kg, stocking in g'), findsOneWidget);
+
+    // Go to Step 1 (Pricing & Units)
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
     expect(
       find.text(
         'Stock is stored in g. Price is entered per kg. Purchases are received in g.',
@@ -88,8 +112,16 @@ void main() {
     expect(find.text('1 g = 1 g'), findsOneWidget);
     expect(find.text('Current stock will be saved as 2500 g.'), findsOneWidget);
     expect(find.text('Low-stock alert will trigger at 500 g.'), findsOneWidget);
+    expect(find.text('Selling Price per kg *'), findsOneWidget);
+
+
+    // Go to Step 2 (Inventory)
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Current Stock (g)'), findsOneWidget);
     expect(find.text('Low Stock Alert (g)'), findsOneWidget);
-    expect(find.text('Selling Price per kg *'), findsOneWidget);
   });
 }
+

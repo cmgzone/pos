@@ -620,6 +620,17 @@ class _CurrentShiftCard extends StatelessWidget {
     final shiftSummary = summary ?? ShiftRepository.emptySummary();
     final openedAt = _formatDateTime(currentShift['opened_at'] as String?);
     final note = currentShift['note'] as String?;
+    final paymentBreakdown = (shiftSummary['payment_breakdown'] as Map<String, dynamic>?) ?? {};
+    final additionalStats = paymentBreakdown.entries.map((e) {
+      final label = e.key.isNotEmpty
+          ? e.key[0].toUpperCase() + e.key.substring(1).replaceAll('_', ' ') + ' sales'
+          : 'Other sales';
+      return _ShiftStatData(
+        label: label,
+        value: ShiftManagementScreen._currency(e.value),
+      );
+    });
+
     final statItems = [
       _ShiftStatData(label: 'Opened', value: openedAt),
       _ShiftStatData(
@@ -644,6 +655,14 @@ class _CurrentShiftCard extends StatelessWidget {
         ),
         accent: AppColors.error,
       ),
+      if (shiftSummary['kopesha_sales_total'] != null &&
+          (shiftSummary['kopesha_sales_total'] as num) > 0)
+        _ShiftStatData(
+          label: 'Kopesha sales',
+          value: ShiftManagementScreen._currency(
+              shiftSummary['kopesha_sales_total']),
+        ),
+      ...additionalStats,
       _ShiftStatData(
         label: 'Cash in',
         value: ShiftManagementScreen._currency(shiftSummary['cash_in_total']),
