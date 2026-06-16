@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/license_service.dart';
+import '../../../core/services/branch_service.dart';
 import '../../../core/services/etims_service.dart';
 import '../../../core/services/pos_payment_service.dart';
 import '../../../core/services/product_image_upload_service.dart';
@@ -51,6 +52,21 @@ final posRecentProductsProvider = StateProvider<List<Map<String, dynamic>>>(
   (ref) => const [],
 );
 
+final posTodayStatsProvider = FutureProvider<Map<String, dynamic>>(
+  (ref) => SaleRepository.getTodaySummary(
+    cashierId: SessionService.currentUserId,
+    branchId: BranchService.currentBranchId,
+  ),
+);
+
+final posRecentSalesProvider = FutureProvider<List<Map<String, dynamic>>>(
+  (ref) => SaleRepository.getAll(
+    cashierId: SessionService.currentUserId,
+    branchId: BranchService.currentBranchId,
+    startDate: DateTime.now().subtract(const Duration(days: 7)).toIso8601String().substring(0, 10),
+  ),
+);
+
 class PosScreen extends ConsumerWidget {
   const PosScreen({super.key});
 
@@ -79,10 +95,10 @@ class PosScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         leading: isMobile
             ? IconButton(
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu),
                 onPressed: () =>
                     AppShell.scaffoldKey.currentState?.openDrawer(),
               )
@@ -98,13 +114,13 @@ class PosScreen extends ConsumerWidget {
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.point_of_sale_rounded,
                 color: Colors.white,
                 size: 20,
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Flexible(
               child: Text(
                 ShopSettings.shopName,
@@ -115,22 +131,22 @@ class PosScreen extends ConsumerWidget {
         ),
         actions: [
           const _PikiPosVoiceAction(),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           if (canOpenShifts && !isMobile) ...[
             _ShiftStatusChip(shiftAsync: currentShiftAsync, compact: true),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
           ],
           if (!isMobile) ...[
             _LicenseIndicatorChip(state: syncState, compact: true),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             _SyncIndicatorChip(state: syncState, compact: true),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             _CashierAvatarButton(
               cashierName: cashierName,
               cashierRole: cashierRole,
             ),
           ],
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
         ],
       ),
       body: LayoutBuilder(
@@ -140,7 +156,7 @@ class PosScreen extends ConsumerWidget {
             return Row(
               children: [
                 Expanded(flex: 7, child: _ProductSide()),
-                Container(width: 1, color: AppColors.border),
+                Container(width: 1, color: Theme.of(context).colorScheme.outline),
                 SizedBox(
                   width: 380,
                   child: TrainingAnchor(id: 'pos.cart', child: _CartSide()),
@@ -164,12 +180,14 @@ class PosScreen extends ConsumerWidget {
                 onPressed: () => _showMobileCartSheet(context),
                 backgroundColor: cartCount > 0
                     ? AppColors.success
-                    : AppColors.surfaceHighlight,
+                    : (Theme.of(context).brightness == Brightness.dark
+                        ? AppColors.darkSurfaceHighlight
+                        : AppColors.surfaceHighlight),
                 foregroundColor: Colors.white,
                 icon: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    const Icon(Icons.shopping_cart_checkout_rounded),
+                    Icon(Icons.shopping_cart_checkout_rounded),
                     if (cartCount > 0)
                       Positioned(
                         right: -8,
@@ -185,7 +203,7 @@ class PosScreen extends ConsumerWidget {
                           ),
                           child: Text(
                             '$cartCount',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -211,8 +229,10 @@ class PosScreen extends ConsumerWidget {
       builder: (ctx) => SafeArea(
         child: Container(
           height: MediaQuery.of(ctx).size.height * 0.92,
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? AppColors.darkSurface
+                : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
           ),
           child: Column(
@@ -222,7 +242,7 @@ class PosScreen extends ConsumerWidget {
                 height: 4,
                 margin: const EdgeInsets.only(top: 10, bottom: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.border,
+                  color: Theme.of(context).colorScheme.outline,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -248,9 +268,17 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.border)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.darkSurface
+              : Theme.of(context).colorScheme.surface,
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkBorder
+                  : Theme.of(context).colorScheme.outline,
+            ),
+          ),
         ),
         child: Row(
           children: [
@@ -259,20 +287,20 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Current sale',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: 2),
                   Text(
                     '${ShopSettings.currency}${total.toStringAsFixed(2)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.success,
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
@@ -281,10 +309,10 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             FilledButton.icon(
               onPressed: onOpenCart,
-              icon: const Icon(Icons.shopping_cart_checkout_rounded),
+              icon: Icon(Icons.shopping_cart_checkout_rounded),
               label: Text('Review & Pay ($cartCount)'),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.success,
@@ -293,7 +321,7 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
                   horizontal: 16,
                   vertical: 14,
                 ),
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                textStyle: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
           ],
@@ -326,7 +354,7 @@ class _CashierAvatarButton extends StatelessWidget {
         backgroundColor: AppColors.primaryLight,
         child: Text(
           initial,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w800,
           ),
@@ -688,7 +716,7 @@ class _SyncIndicatorChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final config = _resolveIndicatorStyle(state);
+    final config = _resolveIndicatorStyle(context, state);
 
     if (compact) {
       return Tooltip(
@@ -713,7 +741,7 @@ class _SyncIndicatorChip extends StatelessWidget {
       child: Row(
         children: [
           Icon(config.icon, size: 16, color: config.color),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Text(
             config.label,
             style: TextStyle(color: config.color, fontSize: 12),
@@ -723,12 +751,12 @@ class _SyncIndicatorChip extends StatelessWidget {
     );
   }
 
-  _SyncIndicatorStyle _resolveIndicatorStyle(SyncState state) {
+  _SyncIndicatorStyle _resolveIndicatorStyle(BuildContext context, SyncState state) {
     switch (state.indicator) {
       case SyncIndicatorState.localOnly:
-        return const _SyncIndicatorStyle(
+        return _SyncIndicatorStyle(
           icon: Icons.cloud_off,
-          color: AppColors.textSecondary,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           label: 'Local Only',
         );
       case SyncIndicatorState.offline:
@@ -800,7 +828,7 @@ class _ShiftStatusChip extends StatelessWidget {
         child: IconButton(
           onPressed: () => AppShell.selectIndex(10),
           icon: shiftAsync.isLoading
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
@@ -817,7 +845,7 @@ class _ShiftStatusChip extends StatelessWidget {
     return TextButton.icon(
       onPressed: () => AppShell.selectIndex(10),
       icon: shiftAsync.isLoading
-          ? const SizedBox(
+          ? SizedBox(
               width: 14,
               height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
@@ -852,7 +880,7 @@ class _LicenseIndicatorChip extends StatelessWidget {
       LicenseAccessStatus.grace => AppColors.warning,
       LicenseAccessStatus.expired ||
       LicenseAccessStatus.invalid => AppColors.error,
-      LicenseAccessStatus.localOnly => AppColors.textSecondary,
+      LicenseAccessStatus.localOnly => Theme.of(context).colorScheme.onSurfaceVariant,
     };
     final icon = switch (license.accessStatus) {
       LicenseAccessStatus.active => Icons.verified_outlined,
@@ -890,7 +918,7 @@ class _LicenseIndicatorChip extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Text(label, style: TextStyle(color: color, fontSize: 12)),
         ],
       ),
@@ -1077,7 +1105,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
               color: Colors.white,
               size: 18,
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: Text(
                 success
@@ -1131,7 +1159,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     return showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Choose Variant - ${product['name']}'),
         content: SizedBox(
@@ -1139,14 +1167,14 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: variants.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => SizedBox(height: 10),
             itemBuilder: (context, index) {
               final variant = variants[index];
               final stock = (variant['stock'] as num? ?? 0).toDouble();
               final tracksStock = UnitUtils.tracksStock(product);
               final outOfStock = tracksStock && stock <= 0;
               return Material(
-                color: AppColors.surfaceHighlight,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(14),
                 child: ListTile(
                   enabled: !outOfStock,
@@ -1162,8 +1190,8 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         : UnitUtils.formatWithUnit(stock, UnitUtils.stockUnitForProduct(product))}',
                   ),
                   trailing: outOfStock
-                      ? const Icon(Icons.block_outlined, color: AppColors.error)
-                      : const Icon(Icons.chevron_right),
+                      ? Icon(Icons.block_outlined, color: AppColors.error)
+                      : Icon(Icons.chevron_right),
                   onTap: outOfStock
                       ? null
                       : () => Navigator.pop(dialogContext, variant),
@@ -1175,7 +1203,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
         ],
       ),
@@ -1232,8 +1260,8 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.error_outline, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
+                Icon(Icons.error_outline, color: Colors.white, size: 18),
+                SizedBox(width: 8),
                 Expanded(
                   child: Text('No product found with barcode: $barcode'),
                 ),
@@ -1269,13 +1297,13 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     final canUseServices = SessionService.canUseServicePos;
 
     if (!canUseProducts && !canUseServices) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
             'Your admin has not enabled POS product or service access for this account.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
       );
@@ -1305,7 +1333,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
         tooltip: 'Open services',
         onTap: _openServicesPage,
         compact: compact,
-        accent: AppColors.secondary,
+        accent: Theme.of(context).colorScheme.secondary,
       );
     }
 
@@ -1322,7 +1350,9 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
             searchQuery.trim().isEmpty && constraints.maxHeight >= 330;
 
         return Container(
-          color: AppColors.background,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.darkBackground
+              : Theme.of(context).scaffoldBackgroundColor,
           padding: EdgeInsets.all(productPadding),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1401,7 +1431,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       ],
                     ),
                     if (Platform.isWindows) ...[
-                      const SizedBox(height: 5),
+                      SizedBox(height: 5),
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 180),
                         switchInCurve: Curves.easeOutCubic,
@@ -1471,7 +1501,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       ],
                     ),
                   ),
-                  loading: () => const SizedBox(
+                  loading: () => SizedBox(
                     height: 40,
                     child: Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
@@ -1539,7 +1569,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       return GridView.builder(
                         gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: compact ? 180 : 220,
-                          childAspectRatio: compact ? 0.72 : 0.82,
+                          childAspectRatio: compact ? 0.82 : 0.95,
                           crossAxisSpacing: compact ? 12 : 16,
                           mainAxisSpacing: compact ? 12 : 16,
                         ),
@@ -1560,14 +1590,17 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       gridDelegate:
                           const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 220,
-                            childAspectRatio: 0.82,
+                            childAspectRatio: 0.95,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),
                       itemCount: 8,
                       itemBuilder: (_, _) => Container(
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceHighlight.withValues(
+                          color: (Theme.of(context).brightness == Brightness.dark
+                                  ? AppColors.darkSurfaceHighlight
+                                  : Theme.of(context).colorScheme.surfaceContainerHighest)
+                              .withValues(
                             alpha: 0.5,
                           ),
                           borderRadius: BorderRadius.circular(20),
@@ -1625,25 +1658,35 @@ class _PremiumSearchField extends StatelessWidget {
         final hasQuery = query.trim().isNotEmpty;
         final active = hasFocus || hasQuery;
 
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
         return AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           height: compact ? 42 : 46,
           decoration: BoxDecoration(
             color: active
-                ? AppColors.surface
-                : AppColors.surfaceHighlight.withValues(alpha: 0.72),
+                ? (isDark ? AppColors.darkSurfaceHighlight : AppColors.surface)
+                : (isDark
+                    ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.72)
+                    : AppColors.surfaceHighlight.withValues(alpha: 0.72)),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: active
-                  ? AppColors.secondary.withValues(alpha: 0.48)
-                  : AppColors.border.withValues(alpha: 0.74),
+                  ? (isDark
+                      ? AppColors.darkAccent.withValues(alpha: 0.48)
+                      : Theme.of(context).colorScheme.secondary.withValues(alpha: 0.48))
+                  : (isDark
+                      ? AppColors.darkBorder.withValues(alpha: 0.9)
+                      : AppColors.border.withValues(alpha: 0.74)),
               width: active ? 1.25 : 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: active
-                    ? AppColors.secondary.withValues(alpha: 0.12)
+                    ? (isDark
+                        ? AppColors.darkAccent.withValues(alpha: 0.12)
+                        : Theme.of(context).colorScheme.secondary.withValues(alpha: 0.12))
                     : Colors.black.withValues(alpha: 0.18),
                 blurRadius: active ? 20 : 12,
                 offset: const Offset(0, 8),
@@ -1660,7 +1703,7 @@ class _PremiumSearchField extends StatelessWidget {
                 margin: const EdgeInsets.only(left: 8, right: 8),
                 decoration: BoxDecoration(
                   color: active
-                      ? AppColors.secondary.withValues(alpha: 0.14)
+                      ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -1672,8 +1715,8 @@ class _PremiumSearchField extends StatelessWidget {
                     Icons.manage_search_rounded,
                     size: compact ? 18 : 19,
                     color: active
-                        ? AppColors.secondary
-                        : AppColors.textSecondary,
+                        ? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
+                        : (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
               ),
@@ -1686,13 +1729,17 @@ class _PremiumSearchField extends StatelessWidget {
                   onChanged: onChanged,
                   onSubmitted: onSubmitted,
                   textInputAction: TextInputAction.search,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: isDark
+                        ? AppColors.darkTextPrimary
+                        : Theme.of(context).colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
-                  cursorColor: AppColors.secondary,
+                  cursorColor: isDark
+                      ? AppColors.darkAccent
+                      : Theme.of(context).colorScheme.secondary,
                   cursorWidth: 1.6,
                   decoration: InputDecoration(
                     isCollapsed: true,
@@ -1704,7 +1751,9 @@ class _PremiumSearchField extends StatelessWidget {
                         ? 'Search or scan'
                         : 'Search or scan barcode',
                     hintStyle: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.72),
+                      color: isDark
+                          ? AppColors.darkTextMuted
+                          : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1721,7 +1770,7 @@ class _PremiumSearchField extends StatelessWidget {
                         onTap: onClear,
                         compact: compact,
                       )
-                    : const SizedBox(
+                    : SizedBox(
                         key: ValueKey('empty-search-action'),
                         width: 8,
                       ),
@@ -1757,16 +1806,24 @@ class _SearchClearButton extends StatelessWidget {
             width: compact ? 28 : 30,
             height: compact ? 28 : 30,
             decoration: BoxDecoration(
-              color: AppColors.surfaceHighlight.withValues(alpha: 0.92),
+              color: (Theme.of(context).brightness == Brightness.dark
+                      ? AppColors.darkSurface
+                      : Theme.of(context).colorScheme.surfaceContainerHighest)
+                  .withValues(alpha: 0.92),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: AppColors.border.withValues(alpha: 0.88),
+                color: (Theme.of(context).brightness == Brightness.dark
+                        ? AppColors.darkBorder
+                        : Theme.of(context).colorScheme.outline)
+                    .withValues(alpha: 0.88),
               ),
             ),
             child: Icon(
               Icons.close_rounded,
               size: compact ? 16 : 17,
-              color: AppColors.textSecondary,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkTextSecondary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -1782,7 +1839,10 @@ class _SearchStatusHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = ready ? AppColors.secondary : AppColors.textSecondary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = ready
+        ? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
+        : (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant);
 
     return Row(
       children: [
@@ -1792,20 +1852,23 @@ class _SearchStatusHint extends StatelessWidget {
           height: 6,
           decoration: BoxDecoration(
             color: ready
-                ? AppColors.secondary
-                : AppColors.textSecondary.withValues(alpha: 0.56),
+                ? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
+                : (isDark
+                    ? AppColors.darkTextMuted.withValues(alpha: 0.56)
+                    : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.56)),
             shape: BoxShape.circle,
             boxShadow: ready
                 ? [
                     BoxShadow(
-                      color: AppColors.secondary.withValues(alpha: 0.4),
+                      color: (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
+                          .withValues(alpha: 0.4),
                       blurRadius: 10,
                     ),
                   ]
                 : null,
           ),
         ),
-        const SizedBox(width: 7),
+        SizedBox(width: 7),
         Flexible(
           child: Text(
             ready
@@ -1814,7 +1877,9 @@ class _SearchStatusHint extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: color.withValues(alpha: ready ? 0.9 : 0.72),
+              color: isDark
+                  ? color.withValues(alpha: ready ? 1.0 : 0.85)
+                  : color.withValues(alpha: ready ? 0.9 : 0.72),
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
@@ -1854,6 +1919,7 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
     final active = _hovered || _pressed;
     final size = widget.compact ? 42.0 : 46.0;
     final iconSize = widget.compact ? 19.0 : 20.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Tooltip(
       message: widget.tooltip,
@@ -1882,12 +1948,16 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
                   width: size,
                   height: size,
                   decoration: BoxDecoration(
-                    color: AppColors.surface.withValues(alpha: 0.86),
+                    color: isDark
+                        ? AppColors.darkSurface.withValues(alpha: 0.86)
+                        : Theme.of(context).colorScheme.surface.withValues(alpha: 0.86),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: active
                           ? widget.accent.withValues(alpha: 0.5)
-                          : AppColors.border.withValues(alpha: 0.78),
+                          : (isDark
+                              ? AppColors.darkBorder.withValues(alpha: 0.78)
+                              : AppColors.border.withValues(alpha: 0.78)),
                     ),
                     boxShadow: active
                         ? [
@@ -1904,7 +1974,9 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
                     size: iconSize,
                     color: active
                         ? widget.accent
-                        : AppColors.textSecondary.withValues(alpha: 0.86),
+                        : (isDark
+                            ? AppColors.darkTextMuted
+                            : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.86)),
                   ),
                 ),
               ),
@@ -1923,13 +1995,20 @@ class _PosViewModeToggle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(posProductViewModeProvider);
     final compact = MediaQuery.sizeOf(context).width <= 520;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: compact ? 42 : 46,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.86),
+        color: isDark
+            ? AppColors.darkSurface.withValues(alpha: 0.86)
+            : Theme.of(context).colorScheme.surface.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.78)),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkBorder.withValues(alpha: 0.78)
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.78),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.16),
@@ -1992,13 +2071,18 @@ class _PosViewModeButton extends StatelessWidget {
           height: compact ? 34 : 38,
           decoration: BoxDecoration(
             color: selected
-                ? AppColors.primaryLight.withValues(alpha: 0.18)
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkAccent.withValues(alpha: 0.18)
+                    : AppColors.primaryLight.withValues(alpha: 0.18))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(11),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppColors.primaryLight.withValues(alpha: 0.18),
+                      color: (Theme.of(context).brightness == Brightness.dark
+                              ? AppColors.darkAccent
+                              : AppColors.primaryLight)
+                          .withValues(alpha: 0.18),
                       blurRadius: 14,
                       offset: const Offset(0, 6),
                     ),
@@ -2009,8 +2093,12 @@ class _PosViewModeButton extends StatelessWidget {
             icon,
             size: compact ? 17 : 18,
             color: selected
-                ? AppColors.primaryLight
-                : AppColors.textSecondary.withValues(alpha: 0.82),
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkAccent
+                    : AppColors.primaryLight)
+                : (Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkTextMuted
+                    : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.82)),
           ),
         ),
       ),
@@ -2030,23 +2118,23 @@ class _QuickPicksStrip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Quick picks',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: AppColors.textSecondary,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 12,
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         SizedBox(
           height: 56,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: products.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            separatorBuilder: (_, _) => SizedBox(width: 10),
             itemBuilder: (context, index) {
               final product = products[index];
               return _QuickPickChip(
@@ -2069,10 +2157,11 @@ class _QuickPickChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final name = product['name'] as String? ?? 'Product';
     final price = (product['price'] as num? ?? 0).toDouble();
     return Material(
-      color: AppColors.surface,
+      color: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -2082,7 +2171,9 @@ class _QuickPickChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Row(
             children: [
@@ -2090,16 +2181,16 @@ class _QuickPickChip extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.14),
+                  color: (isDark ? AppColors.darkAccent : AppColors.primary).withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.add_shopping_cart_rounded,
                   size: 18,
-                  color: AppColors.primaryLight,
+                  color: isDark ? AppColors.darkAccent : AppColors.primaryLight,
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -2109,18 +2200,19 @@ class _QuickPickChip extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
+                        color: isDark ? AppColors.darkTextPrimary : null,
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
                       '${ShopSettings.currency}${price.toStringAsFixed(2)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.success,
+                      style: TextStyle(
+                        color: isDark ? AppColors.darkAccentSoft : AppColors.success,
                         fontWeight: FontWeight.w900,
                         fontSize: 12,
                       ),
@@ -2155,6 +2247,7 @@ class _NoProductSearchResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
@@ -2164,23 +2257,28 @@ class _NoProductSearchResults extends StatelessWidget {
             Icon(
               Icons.manage_search_rounded,
               size: 58,
-              color: AppColors.textSecondary.withValues(alpha: 0.38),
+              color: isDark
+                  ? AppColors.darkTextMuted.withValues(alpha: 0.5)
+                  : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             Text(
               'No match for "$query"',
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? AppColors.darkTextPrimary : null,
+                  ),
             ),
-            const SizedBox(height: 8),
-            const Text(
+            SizedBox(height: 8),
+            Text(
               'Clear the search, create a product, or check services.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: 18),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 10,
@@ -2188,20 +2286,20 @@ class _NoProductSearchResults extends StatelessWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: onClearSearch,
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  label: const Text('Clear'),
+                  icon: Icon(Icons.close_rounded, size: 18),
+                  label: Text('Clear'),
                 ),
                 if (canManageProducts)
                   FilledButton.icon(
                     onPressed: onCreateProduct,
-                    icon: const Icon(Icons.add_box_outlined, size: 18),
-                    label: const Text('Create Product'),
+                    icon: Icon(Icons.add_box_outlined, size: 18),
+                    label: Text('Create Product'),
                   ),
                 if (canUseServices)
                   OutlinedButton.icon(
                     onPressed: onOpenServices,
-                    icon: const Icon(Icons.design_services_outlined, size: 18),
-                    label: const Text('Services'),
+                    icon: Icon(Icons.design_services_outlined, size: 18),
+                    label: Text('Services'),
                   ),
               ],
             ),
@@ -2264,8 +2362,10 @@ class _CompactProductTile extends StatelessWidget {
         ? 'Out of stock'
         : UnitUtils.formatWithUnit(saleStock, saleUnit);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Material(
-      color: AppColors.surface,
+      color: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: isOutOfStock ? null : onTap,
@@ -2276,7 +2376,9 @@ class _CompactProductTile extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(
+                color: isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline,
+              ),
             ),
             child: Row(
               children: [
@@ -2285,7 +2387,7 @@ class _CompactProductTile extends StatelessWidget {
                   isOutOfStock: isOutOfStock,
                   size: 42,
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2294,30 +2396,31 @@ class _CompactProductTile extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkTextPrimary : null,
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      SizedBox(height: 3),
                       Text(
                         categoryName ?? 'General',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       if (saleUnit != stockUnit) ...[
-                        const SizedBox(height: 3),
+                        SizedBox(height: 3),
                         Text(
                           'Stocked: ${UnitUtils.formatWithUnit(stock, stockUnit)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 10,
                           ),
                         ),
@@ -2325,19 +2428,19 @@ class _CompactProductTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       '${ShopSettings.currency}${price.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: AppColors.success,
+                      style: TextStyle(
+                        color: isDark ? AppColors.darkAccentSoft : AppColors.success,
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
@@ -2358,12 +2461,12 @@ class _CompactProductTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Icon(
                   Icons.add_circle_rounded,
                   color: isOutOfStock
-                      ? AppColors.textSecondary
-                      : AppColors.primaryLight,
+                      ? (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant)
+                      : (isDark ? AppColors.darkAccent : AppColors.primaryLight),
                 ),
               ],
             ),
@@ -2381,6 +2484,7 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -2393,34 +2497,43 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: AppColors.secondary.withValues(alpha: 0.14),
+                  color: (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
+                      .withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.design_services_outlined,
-                  color: AppColors.secondary,
+                  color: isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary,
                   size: 28,
                 ),
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               Text(
                 'Services are managed on the Services page',
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? AppColors.darkTextPrimary : null,
+                    ),
               ),
-              const SizedBox(height: 8),
-              const Text(
+              SizedBox(height: 8),
+              Text(
                 'Open Services to create orders, quick-sell jobs, and send service charges to the cart.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(
+                  color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               FilledButton.icon(
                 onPressed: onTap,
-                icon: const Icon(Icons.open_in_new, size: 18),
-                label: const Text('Open Services'),
+                icon: Icon(Icons.open_in_new, size: 18),
+                label: Text('Open Services'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: isDark ? AppColors.darkAccent : null,
+                ),
               ),
             ],
           ),
@@ -2472,8 +2585,10 @@ class _CartSide extends ConsumerWidget {
             MediaQuery.sizeOf(context).width <= 430 ||
             constraints.maxWidth <= 430;
 
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
         return Container(
-          color: AppColors.surface,
+          color: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
           child: Column(
             children: [
               Padding(
@@ -2489,7 +2604,7 @@ class _CartSide extends ConsumerWidget {
                           ),
                         ),
                         if (heldSalesAsync.isLoading)
-                          const SizedBox(
+                          SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
@@ -2504,7 +2619,7 @@ class _CartSide extends ConsumerWidget {
                               size: 18,
                               color: heldSaleCount > 0
                                   ? AppColors.primaryLight
-                                  : AppColors.textSecondary,
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                             label: Text(
                               heldSaleCount > 0
@@ -2513,15 +2628,15 @@ class _CartSide extends ConsumerWidget {
                             ),
                           ),
                         if (cart.isNotEmpty) ...[
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           TextButton.icon(
                             onPressed: () => _clearCurrentSale(ref),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.delete_outline,
                               size: 18,
                               color: AppColors.error,
                             ),
-                            label: const Text(
+                            label: Text(
                               'Clear',
                               style: TextStyle(color: AppColors.error),
                             ),
@@ -2529,7 +2644,7 @@ class _CartSide extends ConsumerWidget {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     Container(
                       width: double.infinity,
                       padding: EdgeInsets.all(isMobileCart ? 9 : 14),
@@ -2576,7 +2691,7 @@ class _CartSide extends ConsumerWidget {
                                   ),
                                 ),
                                 if (!isMobileCart) ...[
-                                  const SizedBox(height: 2),
+                                  SizedBox(height: 2),
                                   Text(
                                     hasOpenShift
                                         ? 'Expected cash: ${ShopSettings.currency}${((currentSummary?['expected_cash'] as num?) ?? 0).toStringAsFixed(2)}'
@@ -2627,7 +2742,7 @@ class _CartSide extends ConsumerWidget {
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1),
               Expanded(
                 child: cart.isEmpty
                     ? _buildEmptyCartState(
@@ -2640,8 +2755,8 @@ class _CartSide extends ConsumerWidget {
                         padding: EdgeInsets.all(isMobileCart ? 12 : 16),
                         itemCount: cart.length,
                         separatorBuilder: (_, _) => isMobileCart
-                            ? const SizedBox(height: 10)
-                            : const Divider(height: 24),
+                            ? SizedBox(height: 10)
+                            : Divider(height: 24),
                         itemBuilder: (context, index) {
                           final item = cart[index];
                           return _CartItemRow(item: item);
@@ -2651,9 +2766,9 @@ class _CartSide extends ConsumerWidget {
               if (cart.isNotEmpty)
                 Container(
                   padding: EdgeInsets.all(isMobileCart ? 10 : 24),
-                  decoration: const BoxDecoration(
-                    color: AppColors.surfaceHighlight,
-                    border: Border(top: BorderSide(color: AppColors.border)),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outline)),
                   ),
                   child: isMobileCart
                       ? Column(
@@ -2670,7 +2785,7 @@ class _CartSide extends ConsumerWidget {
                                     isPrimary: true,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                SizedBox(width: 8),
                                 Expanded(
                                   child: _CompactCartAmount(
                                     label: 'Profit',
@@ -2679,14 +2794,14 @@ class _CartSide extends ConsumerWidget {
                                     valueColor: AppColors.success,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                SizedBox(width: 8),
                                 SizedBox(
                                   height: 40,
                                   child: ElevatedButton.icon(
                                     onPressed: cashCheckoutBlocked
                                         ? () => _handleBlockedCheckout(context)
                                         : () => _processCheckout(context, ref),
-                                    icon: const Icon(Icons.payment, size: 16),
+                                    icon: Icon(Icons.payment, size: 16),
                                     label: FittedBox(
                                       fit: BoxFit.scaleDown,
                                       child: Text(
@@ -2698,7 +2813,7 @@ class _CartSide extends ConsumerWidget {
                                         horizontal: 12,
                                       ),
                                       backgroundColor: AppColors.success,
-                                      textStyle: const TextStyle(
+                                      textStyle: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -2708,14 +2823,14 @@ class _CartSide extends ConsumerWidget {
                               ],
                             ),
                             if (discount > 0 || tax > 0) ...[
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8),
                               Row(
                                 children: [
                                   Expanded(
                                     child: Text(
                                       'Subtotal ${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
                                       ),
                                       maxLines: 1,
@@ -2725,16 +2840,16 @@ class _CartSide extends ConsumerWidget {
                                   if (tax > 0)
                                     Text(
                                       'Tax ${ShopSettings.currency}${tax.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
                                       ),
                                     ),
                                   if (discount > 0) ...[
-                                    const SizedBox(width: 8),
+                                    SizedBox(width: 8),
                                     Text(
                                       '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: AppColors.error,
                                         fontSize: 11,
                                       ),
@@ -2743,7 +2858,7 @@ class _CartSide extends ConsumerWidget {
                                 ],
                               ),
                             ],
-                            const SizedBox(height: 8),
+                            SizedBox(height: 8),
                             Row(
                               children: [
                                 Expanded(
@@ -2753,7 +2868,7 @@ class _CartSide extends ConsumerWidget {
                                       ref,
                                       subtotal,
                                     ),
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.local_offer_outlined,
                                       size: 16,
                                     ),
@@ -2767,12 +2882,12 @@ class _CartSide extends ConsumerWidget {
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 8,
                                       ),
-                                      textStyle: const TextStyle(fontSize: 12),
+                                      textStyle: TextStyle(fontSize: 12),
                                     ),
                                   ),
                                 ),
                                 if (discount > 0) ...[
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: 8),
                                   IconButton(
                                     tooltip: 'Clear discount',
                                     onPressed: () =>
@@ -2780,7 +2895,7 @@ class _CartSide extends ConsumerWidget {
                                                 .read(discountProvider.notifier)
                                                 .state =
                                             0,
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.close,
                                       size: 18,
                                       color: AppColors.error,
@@ -2789,28 +2904,28 @@ class _CartSide extends ConsumerWidget {
                                 ],
                               ],
                             ),
-                            const SizedBox(height: 8),
+                            SizedBox(height: 8),
                             Row(
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () =>
                                         _holdCurrentSale(context, ref),
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.pause_circle_outline,
                                       size: 16,
                                     ),
-                                    label: const Text('Hold'),
+                                    label: Text('Hold'),
                                     style: OutlinedButton.styleFrom(
                                       visualDensity: VisualDensity.compact,
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 8,
                                       ),
-                                      textStyle: const TextStyle(fontSize: 12),
+                                      textStyle: TextStyle(fontSize: 12),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                SizedBox(width: 8),
                                 Expanded(
                                   child: TextButton.icon(
                                     onPressed: heldSalesAsync.isLoading
@@ -2819,7 +2934,7 @@ class _CartSide extends ConsumerWidget {
                                             context,
                                             ref,
                                           ),
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.layers_outlined,
                                       size: 16,
                                     ),
@@ -2833,7 +2948,7 @@ class _CartSide extends ConsumerWidget {
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 8,
                                       ),
-                                      textStyle: const TextStyle(fontSize: 12),
+                                      textStyle: TextStyle(fontSize: 12),
                                     ),
                                   ),
                                 ),
@@ -2848,14 +2963,14 @@ class _CartSide extends ConsumerWidget {
                               value:
                                   '${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
                             ),
-                            const SizedBox(height: 8),
+                            SizedBox(height: 8),
                             _SummaryRow(
                               title: 'Tax (${ShopSettings.taxRate}%)',
                               value:
                                   '${ShopSettings.currency}${tax.toStringAsFixed(2)}',
                             ),
                             if (discount > 0) ...[
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8),
                               _SummaryRow(
                                 title: 'Discount',
                                 value:
@@ -2863,7 +2978,7 @@ class _CartSide extends ConsumerWidget {
                                 isDiscount: true,
                               ),
                             ],
-                            const SizedBox(height: 12),
+                            SizedBox(height: 12),
                             Row(
                               children: [
                                 Expanded(
@@ -2873,7 +2988,7 @@ class _CartSide extends ConsumerWidget {
                                       ref,
                                       subtotal,
                                     ),
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.local_offer_outlined,
                                     ),
                                     label: Text(
@@ -2884,22 +2999,22 @@ class _CartSide extends ConsumerWidget {
                                   ),
                                 ),
                                 if (discount > 0) ...[
-                                  const SizedBox(width: 12),
+                                  SizedBox(width: 12),
                                   TextButton.icon(
                                     onPressed: () =>
                                         ref
                                                 .read(discountProvider.notifier)
                                                 .state =
                                             0,
-                                    icon: const Icon(Icons.close, size: 18),
-                                    label: const Text('Clear'),
+                                    icon: Icon(Icons.close, size: 18),
+                                    label: Text('Clear'),
                                   ),
                                 ],
                               ],
                             ),
-                            const SizedBox(height: 16),
-                            const Divider(),
-                            const SizedBox(height: 16),
+                            SizedBox(height: 16),
+                            Divider(),
+                            SizedBox(height: 16),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -2907,48 +3022,60 @@ class _CartSide extends ConsumerWidget {
                                   'Total',
                                   style: Theme.of(context).textTheme.titleLarge,
                                 ),
-                                Text(
-                                  '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineMedium
-                                      ?.copyWith(
-                                        color: AppColors.success,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                SizedBox(width: 12),
+                                Flexible(
+                                  child: Text(
+                                    '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                                    textAlign: TextAlign.end,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium
+                                        ?.copyWith(
+                                          color: AppColors.success,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
+                            SizedBox(height: 8),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                Text(
                                   'Total Profit',
                                   style: TextStyle(
-                                    color: AppColors.textSecondary,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                                Text(
-                                  '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    color: AppColors.success,
-                                    fontWeight: FontWeight.bold,
+                                SizedBox(width: 12),
+                                Flexible(
+                                  child: Text(
+                                    '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                                    textAlign: TextAlign.end,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: AppColors.success,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            SizedBox(height: 16),
                             Row(
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () =>
                                         _holdCurrentSale(context, ref),
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.pause_circle_outline,
                                     ),
-                                    label: const Text('Hold Sale'),
+                                    label: Text('Hold Sale'),
                                     style: OutlinedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 16,
@@ -2956,7 +3083,7 @@ class _CartSide extends ConsumerWidget {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                SizedBox(width: 12),
                                 Expanded(
                                   child: TextButton.icon(
                                     onPressed: heldSalesAsync.isLoading
@@ -2965,7 +3092,7 @@ class _CartSide extends ConsumerWidget {
                                             context,
                                             ref,
                                           ),
-                                    icon: const Icon(Icons.layers_outlined),
+                                    icon: Icon(Icons.layers_outlined),
                                     label: Text(
                                       heldSaleCount > 0
                                           ? 'Held Orders ($heldSaleCount)'
@@ -2981,11 +3108,11 @@ class _CartSide extends ConsumerWidget {
                               ],
                             ),
                             if (heldSaleCount > 0) ...[
-                              const SizedBox(height: 10),
+                              SizedBox(height: 10),
                               Text(
                                 'You have $heldSaleCount held sale${heldSaleCount == 1 ? '' : 's'} ready to resume.',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary.withValues(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                     alpha: 0.85,
                                   ),
                                   fontSize: 12,
@@ -2993,7 +3120,7 @@ class _CartSide extends ConsumerWidget {
                                 textAlign: TextAlign.center,
                               ),
                             ],
-                            const SizedBox(height: 16),
+                            SizedBox(height: 16),
                             Row(
                               children: [
                                 Expanded(
@@ -3001,12 +3128,12 @@ class _CartSide extends ConsumerWidget {
                                     onPressed: cashCheckoutBlocked
                                         ? () => _handleBlockedCheckout(context)
                                         : () => _processCheckout(context, ref),
-                                    icon: const Icon(Icons.payment),
+                                    icon: Icon(Icons.payment),
                                     label: Text(
                                       'Checkout • ${ShopSettings.currency}${total.toStringAsFixed(2)}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 16),
+                                      style: TextStyle(fontSize: 16),
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
@@ -3018,11 +3145,11 @@ class _CartSide extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
+                            SizedBox(height: 10),
                             Text(
                               'Select a payment method such as Cash, Kopesha, or Mobile Money during checkout.',
                               style: TextStyle(
-                                color: AppColors.textSecondary.withValues(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                   alpha: 0.8,
                                 ),
                                 fontSize: 12,
@@ -3045,44 +3172,291 @@ class _CartSide extends ConsumerWidget {
     required int heldSaleCount,
     required bool holdsLoading,
   }) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.shopping_basket_outlined,
-              size: 64,
-              color: AppColors.textSecondary.withValues(alpha: 0.3),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final todayStatsAsync = ref.watch(posTodayStatsProvider);
+    final recentSalesAsync = ref.watch(posRecentSalesProvider);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Empty cart headline
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
+                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isDark
+                    ? AppColors.darkBorder.withValues(alpha: 0.6)
+                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Your cart is empty',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(color: AppColors.textSecondary),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.shopping_basket_outlined,
+                  size: 48,
+                  color: isDark
+                      ? AppColors.darkTextMuted.withValues(alpha: 0.5)
+                      : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Your cart is empty',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Tap products to add them to your sale.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              heldSaleCount > 0
-                  ? 'Tap products to add them to your sale, or resume a held order below.'
-                  : 'Ready to sell! Tap products from the grid to add them here.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary),
+          ),
+          SizedBox(height: 20),
+          // Today's quick stats
+          Text(
+            'Today\'s Performance',
+            style: TextStyle(
+              color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
             ),
-            if (heldSaleCount > 0) ...[
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: () => _showHeldSalesDialog(context, ref),
-                icon: const Icon(Icons.layers_outlined),
-                label: Text('Resume Held Sale ($heldSaleCount)'),
+          ),
+          SizedBox(height: 10),
+          todayStatsAsync.when(
+            data: (stats) {
+              final salesCount = (stats['total_sales'] as num?)?.toInt() ?? 0;
+              final revenue = (stats['total_revenue'] as num?)?.toDouble() ?? 0.0;
+              final itemsSold = (stats['total_items'] as num?)?.toInt() ?? 0;
+              return Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      label: 'Today Sales',
+                      value: '$salesCount',
+                      icon: Icons.receipt_long_outlined,
+                      isDark: isDark,
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: _StatCard(
+                      label: 'Items Sold',
+                      value: '$itemsSold',
+                      icon: Icons.shopping_bag_outlined,
+                      accent: AppColors.success,
+                      isDark: isDark,
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: _StatCard(
+                      label: 'Revenue',
+                      value: '${ShopSettings.currency}${revenue.toStringAsFixed(0)}',
+                      icon: Icons.payments_outlined,
+                      accent: AppColors.darkAccentSoft,
+                      isDark: isDark,
+                    ),
+                  ),
+                ],
+              );
+            },
+            loading: () => Row(
+              children: [
+                Expanded(child: _StatCardSkeleton(isDark: isDark)),
+                SizedBox(width: 10),
+                Expanded(child: _StatCardSkeleton(isDark: isDark)),
+                SizedBox(width: 10),
+                Expanded(child: _StatCardSkeleton(isDark: isDark)),
+              ],
+            ),
+            error: (_, __) => Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    label: 'Today Sales',
+                    value: '—',
+                    icon: Icons.receipt_long_outlined,
+                    isDark: isDark,
+                  ),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Items Sold',
+                    value: '—',
+                    icon: Icons.shopping_bag_outlined,
+                    isDark: isDark,
+                  ),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Revenue',
+                    value: '—',
+                    icon: Icons.payments_outlined,
+                    isDark: isDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 24),
+          // Recent sales
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recent Sales',
+                style: TextStyle(
+                  color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              TextButton(
+                onPressed: () => AppShell.selectIndex(4),
+                child: Text(
+                  'View All',
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkAccent : null,
+                    fontSize: 12,
+                  ),
+                ),
               ),
             ],
+          ),
+          SizedBox(height: 10),
+          recentSalesAsync.when(
+            data: (sales) {
+              if (sales.isEmpty) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
+                        : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isDark
+                          ? AppColors.darkBorder.withValues(alpha: 0.5)
+                          : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    'No recent sales. Complete your first sale to see it here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                );
+              }
+              final recent = sales.take(5).toList();
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: recent.asMap().entries.map((entry) {
+                  final sale = entry.value;
+                  final total = (sale['total_amount'] as num? ?? 0).toDouble();
+                  final paymentType = sale['payment_type'] as String? ?? 'Cash';
+                  final createdAt = sale['created_at'] as String?;
+                  final productNames = sale['product_names'] as String?;
+                  final serviceNames = sale['service_names'] as String?;
+                  final itemsLabel = _formatRecentSaleItems(productNames, serviceNames);
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: entry.key == recent.length - 1 ? 0 : 8),
+                    child: _RecentSaleRow(
+                      paymentType: paymentType,
+                      total: '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                      time: _formatRecentSaleTime(createdAt),
+                      items: itemsLabel,
+                      isDark: isDark,
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+            loading: () => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(
+                3,
+                (index) => Padding(
+                  padding: EdgeInsets.only(bottom: index == 2 ? 0 : 8),
+                  child: _RecentSaleRowSkeleton(isDark: isDark),
+                ),
+              ),
+            ),
+            error: (_, __) => Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
+                    : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                'Could not load recent sales.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          if (heldSaleCount > 0) ...[
+            SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () => _showHeldSalesDialog(context, ref),
+              icon: Icon(Icons.layers_outlined),
+              label: Text('Resume Held Sale ($heldSaleCount)'),
+              style: FilledButton.styleFrom(
+                backgroundColor: isDark ? AppColors.darkAccent : null,
+                minimumSize: const Size(double.infinity, 44),
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
+  }
+
+  String _formatRecentSaleItems(String? products, String? services) {
+    final parts = <String>[
+      if (products != null && products.trim().isNotEmpty) products.trim(),
+      if (services != null && services.trim().isNotEmpty) services.trim(),
+    ];
+    if (parts.isEmpty) return 'Sale completed';
+    final combined = parts.join(', ');
+    if (combined.length <= 32) return combined;
+    return '${combined.substring(0, 32).trim()}...';
+  }
+
+  String _formatRecentSaleTime(String? createdAt) {
+    if (createdAt == null) return 'Earlier';
+    final parsed = DateTime.tryParse(createdAt);
+    if (parsed == null) return 'Earlier';
+    final local = parsed.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   Future<void> _showDiscountDialog(
@@ -3101,11 +3475,11 @@ class _CartSide extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Discount / Promotion'),
+          title: Text('Discount / Promotion'),
           content: SizedBox(
             width: 380,
             child: Column(
@@ -3128,7 +3502,7 @@ class _CartSide extends ConsumerWidget {
                   onSelectionChanged: (values) =>
                       setDialogState(() => mode = values.first),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 TextField(
                   controller: controller,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -3142,11 +3516,11 @@ class _CartSide extends ConsumerWidget {
                     suffixText: mode == 'percent' ? '%' : '',
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Text(
                   'Subtotal: ${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -3156,11 +3530,11 @@ class _CartSide extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, 0.0),
-              child: const Text('Clear'),
+              child: Text('Clear'),
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
@@ -3174,7 +3548,7 @@ class _CartSide extends ConsumerWidget {
                   computed.clamp(0, subtotal).toDouble(),
                 );
               },
-              child: const Text('Apply'),
+              child: Text('Apply'),
             ),
           ],
         ),
@@ -3200,9 +3574,9 @@ class _CartSide extends ConsumerWidget {
           constraints: const BoxConstraints(maxWidth: 700, maxHeight: 620),
           child: Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(dialogContext).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: Theme.of(dialogContext).colorScheme.outline),
             ),
             child: Consumer(
               builder: (context, ref, _) {
@@ -3222,11 +3596,11 @@ class _CartSide extends ConsumerWidget {
                                   'Held Orders',
                                   style: Theme.of(context).textTheme.titleLarge,
                                 ),
-                                const SizedBox(height: 4),
+                                SizedBox(height: 4),
                                 Text(
                                   'Resume or discard saved carts.',
                                   style: TextStyle(
-                                    color: AppColors.textSecondary.withValues(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                       alpha: 0.85,
                                     ),
                                     fontSize: 12,
@@ -3237,51 +3611,51 @@ class _CartSide extends ConsumerWidget {
                           ),
                           IconButton(
                             onPressed: () => Navigator.of(dialogContext).pop(),
-                            icon: const Icon(Icons.close),
+                            icon: Icon(Icons.close),
                           ),
                         ],
                       ),
                     ),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     Expanded(
                       child: heldSalesAsync.when(
                         loading: () =>
-                            const Center(child: CircularProgressIndicator()),
+                            Center(child: CircularProgressIndicator()),
                         error: (error, _) => Center(
                           child: Padding(
                             padding: const EdgeInsets.all(24),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.cloud_off_outlined,
                                   size: 40,
                                   color: AppColors.warning,
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: 12),
                                 Text(
                                   'Could not load held orders.',
                                   style: Theme.of(
                                     context,
                                   ).textTheme.titleMedium,
                                 ),
-                                const SizedBox(height: 8),
+                                SizedBox(height: 8),
                                 Text(
                                   AppErrorMessage.from(
                                     error,
                                     fallback: AppErrorMessage.loadFailed,
                                   ),
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
-                                const SizedBox(height: 16),
+                                SizedBox(height: 16),
                                 OutlinedButton.icon(
                                   onPressed: () =>
                                       ref.invalidate(heldSalesProvider),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('Try Again'),
+                                  icon: Icon(Icons.refresh),
+                                  label: Text('Try Again'),
                                 ),
                               ],
                             ),
@@ -3301,7 +3675,7 @@ class _CartSide extends ConsumerWidget {
                             padding: const EdgeInsets.all(20),
                             itemCount: heldSales.length,
                             separatorBuilder: (_, _) =>
-                                const SizedBox(height: 12),
+                                SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final hold = heldSales[index];
                               final holdId = hold['id'] as String? ?? '';
@@ -3519,7 +3893,7 @@ class _CartSide extends ConsumerWidget {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: const [
@@ -3532,7 +3906,7 @@ class _CartSide extends ConsumerWidget {
           controller: controller,
           autofocus: true,
           textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Hold name',
             helperText: 'Use a short name so you can find it quickly later.',
           ),
@@ -3541,12 +3915,12 @@ class _CartSide extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Save Hold'),
+            icon: Icon(Icons.save_outlined),
+            label: Text('Save Hold'),
           ),
         ],
       ),
@@ -3560,20 +3934,20 @@ class _CartSide extends ConsumerWidget {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Replace Current Cart?'),
-        content: const Text(
+        title: Text('Replace Current Cart?'),
+        content: Text(
           'Resuming a held sale will replace the items currently in the cart.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Keep Current Cart'),
+            child: Text('Keep Current Cart'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Replace Cart'),
+            child: Text('Replace Cart'),
           ),
         ],
       ),
@@ -3589,21 +3963,21 @@ class _CartSide extends ConsumerWidget {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Discard Held Sale?'),
+        title: Text('Discard Held Sale?'),
         content: Text(
           'Delete "$holdName" from held orders? This will not affect completed sales.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Discard'),
+            child: Text('Discard'),
           ),
         ],
       ),
@@ -3761,8 +4135,14 @@ class _CartSide extends ConsumerWidget {
           return;
         }
 
-        final cashCheckout = await _showCashCheckoutDialog(context, total);
-        if (!context.mounted || cashCheckout == null) return;
+        // Use cash tendered/change collected in the checkout dialog if present.
+        final dialogAmountTendered = checkoutResult['amountTendered'] as double?;
+        final dialogChangeGiven = checkoutResult['changeGiven'] as double?;
+        _CashCheckoutResult? cashCheckout;
+        if (dialogAmountTendered == null || dialogChangeGiven == null) {
+          cashCheckout = await _showCashCheckoutDialog(context, total);
+          if (!context.mounted || cashCheckout == null) return;
+        }
 
         await _completeSale(
           context,
@@ -3771,8 +4151,8 @@ class _CartSide extends ConsumerWidget {
           isCashDrawer: true,
           isCredit: false,
           shiftId: shift?['id'] as String?,
-          amountTendered: cashCheckout.amountTendered,
-          changeGiven: cashCheckout.changeGiven,
+          amountTendered: cashCheckout?.amountTendered ?? dialogAmountTendered ?? total,
+          changeGiven: cashCheckout?.changeGiven ?? dialogChangeGiven ?? 0.0,
           customerId: customer?['id'] as String?,
           customerName: customer?['name'] as String?,
         );
@@ -4016,6 +4396,8 @@ class _CartSide extends ConsumerWidget {
 
       _clearCurrentSale(ref);
       ref.invalidate(filteredProductsProvider);
+      ref.invalidate(posTodayStatsProvider);
+      ref.invalidate(posRecentSalesProvider);
       invalidateShiftProviders(ref);
 
       // ── Mark any linked service orders as paid ─────────────────────────
@@ -4110,7 +4492,7 @@ class _CartSide extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
@@ -4121,7 +4503,7 @@ class _CartSide extends ConsumerWidget {
               color: isKopesha ? AppColors.warning : AppColors.success,
               size: 32,
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Text(isKopesha ? 'Kopesha Saved' : 'Sale Complete'),
           ],
         ),
@@ -4138,32 +4520,32 @@ class _CartSide extends ConsumerWidget {
               ),
             ),
             if (hasAmountTendered) ...[
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Text(
                 'Received: ${ShopSettings.currency}${amountTendered.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Text(
                 'Change Returned: ${ShopSettings.currency}${changeGiven.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: changeGiven > 0
                       ? AppColors.primaryLight
-                      : AppColors.textSecondary,
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               'Sale ID: ${saleId.substring(0, 8)}...',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
               ),
             ),
             if (etimsResult != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 etimsResult.status == 'submitted'
                     ? 'KRA eTIMS submitted: ${etimsResult.controlUnitInvoiceNumber ?? etimsResult.invoiceNumber ?? 'received'}'
@@ -4178,34 +4560,34 @@ class _CartSide extends ConsumerWidget {
               if ((etimsResult.errorMessage ?? '').isNotEmpty)
                 Text(
                   etimsResult.errorMessage!,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
             ],
             if (customerName != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 'Customer: $customerName',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ],
             if (balanceDue > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 'Outstanding Kopesha: ${ShopSettings.currency}${balanceDue.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.warning,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ],
             if (dueDate != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 'Due date: $dueDate',
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
           ],
@@ -4213,7 +4595,7 @@ class _CartSide extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Done'),
+            child: Text('Done'),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -4244,8 +4626,8 @@ class _CartSide extends ConsumerWidget {
                 showTenderedBreakdown: hasAmountTendered,
               );
             },
-            icon: const Icon(Icons.receipt_long, size: 18),
-            label: const Text('Print Receipt'),
+            icon: Icon(Icons.receipt_long, size: 18),
+            label: Text('Print Receipt'),
           ),
         ],
       ),
@@ -4270,7 +4652,7 @@ class _CartSide extends ConsumerWidget {
           final changeGiven = hasEnoughCash ? tenderedAmount - total : 0.0;
 
           return AlertDialog(
-            backgroundColor: AppColors.surface,
+            backgroundColor: Theme.of(context).colorScheme.surface,
             insetPadding: EdgeInsets.symmetric(
               horizontal: isCompact ? 12 : 40,
               vertical: isCompact ? 12 : 24,
@@ -4293,7 +4675,7 @@ class _CartSide extends ConsumerWidget {
             ),
             actionsOverflowDirection: VerticalDirection.down,
             actionsOverflowButtonSpacing: 8,
-            title: const Row(
+            title: Row(
               children: [
                 Icon(Icons.payments_outlined, color: AppColors.success),
                 SizedBox(width: 12),
@@ -4329,14 +4711,14 @@ class _CartSide extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Total Due',
                               style: TextStyle(
-                                color: AppColors.textSecondary,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: 4),
                             Text(
                               '${ShopSettings.currency}${total.toStringAsFixed(2)}',
                               maxLines: 1,
@@ -4350,7 +4732,7 @@ class _CartSide extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: 16),
                       TextField(
                         controller: controller,
                         autofocus: true,
@@ -4373,7 +4755,7 @@ class _CartSide extends ConsumerWidget {
                           });
                         },
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
@@ -4384,11 +4766,11 @@ class _CartSide extends ConsumerWidget {
                               errorText = null;
                             });
                           },
-                          icon: const Icon(Icons.restart_alt),
-                          label: const Text('Use Exact Amount'),
+                          icon: Icon(Icons.restart_alt),
+                          label: Text('Use Exact Amount'),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
@@ -4408,7 +4790,7 @@ class _CartSide extends ConsumerWidget {
                                   ? AppColors.primaryLight
                                   : AppColors.warning,
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4424,12 +4806,12 @@ class _CartSide extends ConsumerWidget {
                                           : AppColors.warning,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
+                                  SizedBox(height: 2),
                                   Text(
                                     '${ShopSettings.currency}${(hasEnoughCash ? changeGiven : total - tenderedAmount).toStringAsFixed(2)}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -4450,7 +4832,7 @@ class _CartSide extends ConsumerWidget {
                 width: isCompact ? double.infinity : null,
                 child: TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
+                  child: Text('Cancel'),
                 ),
               ),
               SizedBox(
@@ -4478,11 +4860,11 @@ class _CartSide extends ConsumerWidget {
                       ),
                     );
                   },
-                  icon: const Icon(Icons.check_circle_outline),
+                  icon: Icon(Icons.check_circle_outline),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.success,
                   ),
-                  label: const Text(
+                  label: Text(
                     'Complete Sale',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -4568,9 +4950,9 @@ class _HeldSaleCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4584,12 +4966,12 @@ class _HeldSaleCard extends StatelessWidget {
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -4613,10 +4995,10 @@ class _HeldSaleCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Text(
                 '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: AppColors.success,
@@ -4624,21 +5006,21 @@ class _HeldSaleCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: FilledButton.icon(
                   onPressed: onResume,
-                  icon: const Icon(Icons.playlist_add_check_circle_outlined),
-                  label: const Text('Resume'),
+                  icon: Icon(Icons.playlist_add_check_circle_outlined),
+                  label: Text('Resume'),
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: onDiscard,
-                icon: const Icon(Icons.delete_outline, color: AppColors.error),
-                label: const Text(
+                icon: Icon(Icons.delete_outline, color: AppColors.error),
+                label: Text(
                   'Discard',
                   style: TextStyle(color: AppColors.error),
                 ),
@@ -4676,20 +5058,20 @@ class _HeldSaleMetaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppColors.textSecondary),
-          const SizedBox(width: 6),
+          Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -4747,7 +5129,7 @@ class _CartItemRow extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('Set Quantity (${UnitUtils.label(item.unit)})'),
         content: TextField(
@@ -4764,7 +5146,7 @@ class _CartItemRow extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -4788,14 +5170,14 @@ class _CartItemRow extends ConsumerWidget {
               }
               Navigator.pop(ctx);
             },
-            child: const Text('Save'),
+            child: Text('Save'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDetails() {
+  Widget _buildDetails(BuildContext context) {
     final itemName =
         item.variantName != null && item.variantName!.trim().isNotEmpty
         ? '${item.productName} - ${item.variantName!.trim()}'
@@ -4806,51 +5188,51 @@ class _CartItemRow extends ConsumerWidget {
       children: [
         Text(
           itemName,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 2),
+        SizedBox(height: 2),
         Text(
           item.isService
               ? '${ShopSettings.currency}${item.unitPrice.toStringAsFixed(2)} service charge'
               : '${ShopSettings.currency}${item.unitPrice.toStringAsFixed(2)} ${UnitUtils.priceLabel(item.unit)}',
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 2),
+        SizedBox(height: 2),
         if (!item.isService && item.tracksStock)
           Text(
             item.usesConversion
                 ? 'In stock: ${UnitUtils.formatWithUnit(item.maxStock, item.unit)} (${UnitUtils.formatWithUnit(item.stockOnHand, item.stockUnit)})'
                 : 'In stock: ${UnitUtils.formatWithUnit(item.maxStock, item.unit)}',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           )
         else if (!item.isService)
-          const Text(
+          Text(
             'No stock limit',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
           )
         else
           Text(
             item.serviceOrderId == null
                 ? 'Service line'
                 : 'Order #${item.serviceOrderId!.substring(0, 8)}',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
             ),
           ),
-        const SizedBox(height: 2),
+        SizedBox(height: 2),
         Text(
           'Profit: ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.success,
             fontSize: 11,
             fontWeight: FontWeight.w500,
@@ -4863,7 +5245,7 @@ class _CartItemRow extends ConsumerWidget {
   Widget _buildQuantityControls(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -4872,12 +5254,12 @@ class _CartItemRow extends ConsumerWidget {
           InkWell(
             onTap: () =>
                 ref.read(cartProvider.notifier).decrementQuantity(item.cartKey),
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.all(6),
               child: Icon(
                 Icons.remove,
                 size: 16,
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -4888,7 +5270,7 @@ class _CartItemRow extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Text(
                 UnitUtils.formatWithUnit(item.quantity, item.unit),
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
@@ -4905,12 +5287,12 @@ class _CartItemRow extends ConsumerWidget {
                   SnackBar(
                     content: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.warning_amber,
                           color: Colors.white,
                           size: 18,
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             item.isService
@@ -4931,7 +5313,7 @@ class _CartItemRow extends ConsumerWidget {
                 );
               }
             },
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.all(6),
               child: Icon(Icons.add, size: 16, color: AppColors.primaryLight),
             ),
@@ -4944,7 +5326,7 @@ class _CartItemRow extends ConsumerWidget {
   Widget _buildTotalText({TextAlign textAlign = TextAlign.right}) {
     return Text(
       '${ShopSettings.currency}${item.total.toStringAsFixed(2)}',
-      style: const TextStyle(
+      style: TextStyle(
         fontWeight: FontWeight.bold,
         color: AppColors.primaryLight,
       ),
@@ -4973,7 +5355,7 @@ class _CartItemRow extends ConsumerWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: (item.isService ? AppColors.secondary : AppColors.primary)
+            color: (item.isService ? Theme.of(context).colorScheme.secondary : AppColors.primary)
                 .withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(10),
           ),
@@ -4982,7 +5364,7 @@ class _CartItemRow extends ConsumerWidget {
                 ? Icons.design_services_rounded
                 : Icons.inventory_2_outlined,
             color: item.isService
-                ? AppColors.secondary
+                ? Theme.of(context).colorScheme.secondary
                 : AppColors.primaryLight,
             size: 20,
           ),
@@ -4991,10 +5373,10 @@ class _CartItemRow extends ConsumerWidget {
         return Row(
           children: [
             icon,
-            const SizedBox(width: 12),
-            Expanded(child: _buildDetails()),
+            SizedBox(width: 12),
+            Expanded(child: _buildDetails(context)),
             _buildQuantityControls(context, ref),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             SizedBox(width: 68, child: _buildTotalText()),
           ],
         );
@@ -5021,15 +5403,15 @@ class _MobileCartItemCard extends StatelessWidget {
         ? '${item.productName} - ${item.variantName!.trim()}'
         : item.productName;
     final accent = item.isService
-        ? AppColors.secondary
+        ? Theme.of(context).colorScheme.secondary
         : AppColors.primaryLight;
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5052,7 +5434,7 @@ class _MobileCartItemCard extends StatelessWidget {
                   size: 19,
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5061,20 +5443,20 @@ class _MobileCartItemCard extends StatelessWidget {
                       itemName,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 15,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    SizedBox(height: 5),
                     Text(
                       item.isService
                           ? 'Service line'
                           : '${ShopSettings.currency}${item.unitPrice.toStringAsFixed(2)} ${UnitUtils.priceLabel(item.unit)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -5084,7 +5466,7 @@ class _MobileCartItemCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -5126,13 +5508,13 @@ class _MobileCartItemCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.background,
+              color: Theme.of(context).scaffoldBackgroundColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
             ),
             child: Row(
               children: [
@@ -5140,8 +5522,8 @@ class _MobileCartItemCard extends StatelessWidget {
                   child: item.isService
                       ? Text(
                           UnitUtils.formatWithUnit(item.quantity, item.unit),
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w700,
                           ),
                         )
@@ -5155,7 +5537,7 @@ class _MobileCartItemCard extends StatelessWidget {
                                 item.quantity,
                                 item.unit,
                               ),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
@@ -5181,20 +5563,20 @@ class _CartMetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chipColor = color ?? AppColors.textSecondary;
+    final chipColor = color ?? Theme.of(context).colorScheme.onSurfaceVariant;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 13, color: chipColor),
-          const SizedBox(width: 5),
+          SizedBox(width: 5),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 220),
             child: Text(
@@ -5231,39 +5613,68 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // Resolve category color
     Color? accentColor;
     if (color != null) {
       try {
         accentColor = Color(int.parse(color!.replaceFirst('#', '0xFF')));
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('POS: failed to parse category color "$color": $e\n$st');
+      }
     }
-    final chipColor = accentColor ?? AppColors.primary;
+    final chipColor = accentColor ?? (isDark ? AppColors.darkAccent : AppColors.primary);
     final icon = CategoryIconUtils.iconFor(categoryName ?? title);
 
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: Material(
-        color: isSelected
-            ? chipColor
-            : AppColors.surfaceHighlight.withValues(alpha: 0.78),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(100),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(100),
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(100),
-              boxShadow: [
-                BoxShadow(
-                  color: (isSelected ? chipColor : Colors.black).withValues(
-                    alpha: isSelected ? 0.22 : 0.12,
-                  ),
-                  blurRadius: isSelected ? 20 : 14,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              gradient: isSelected
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        chipColor,
+                        isDark ? AppColors.darkAccentSoft : AppColors.primaryLight,
+                      ],
+                    )
+                  : null,
+              color: isSelected
+                  ? null
+                  : (isDark ? const Color(0xFF111827) : AppColors.surfaceHighlight.withValues(alpha: 0.78)),
+              border: Border.all(
+                color: isSelected
+                    ? chipColor.withValues(alpha: 0.5)
+                    : (isDark ? AppColors.darkSurfaceHighlight : AppColors.border.withValues(alpha: 0.78)),
+                width: isSelected ? 1.5 : 1,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: (isDark ? AppColors.darkAccent : chipColor).withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.12),
+                        blurRadius: isDark ? 16 : 14,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -5273,14 +5684,18 @@ class _CategoryChip extends StatelessWidget {
                   size: 14,
                   color: isSelected
                       ? Colors.white
-                      : (accentColor ?? AppColors.textSecondary),
+                      : (isDark
+                          ? AppColors.darkTextSecondary
+                          : (accentColor ?? Theme.of(context).colorScheme.onSurfaceVariant)),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text(
                   title,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : AppColors.textPrimary,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    color: isSelected
+                        ? Colors.white
+                        : (isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface),
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                     fontSize: 13,
                   ),
                 ),
@@ -5311,7 +5726,10 @@ class _ProductImagePlaceholder extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight.withValues(alpha: 0.8),
+        color: (Theme.of(context).brightness == Brightness.dark
+                ? AppColors.darkSurfaceHighlight
+                : Theme.of(context).colorScheme.surfaceContainerHighest)
+            .withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           if (size > 44)
@@ -5326,9 +5744,39 @@ class _ProductImagePlaceholder extends StatelessWidget {
         CategoryIconUtils.iconFor(categoryName),
         size: size <= 44 ? 22 : 32,
         color: isOutOfStock
-            ? AppColors.textSecondary.withValues(alpha: 0.4)
-            : AppColors.primaryLight.withValues(alpha: 0.9),
+            ? (Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkTextMuted
+                    : Theme.of(context).colorScheme.onSurfaceVariant)
+                .withValues(alpha: 0.4)
+            : (Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkAccent
+                    : AppColors.primaryLight)
+                .withValues(alpha: 0.9),
       ),
+    );
+  }
+}
+
+class _ProductCardIcon extends StatelessWidget {
+  final String? categoryName;
+  final bool isOutOfStock;
+
+  const _ProductCardIcon({
+    required this.categoryName,
+    required this.isOutOfStock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Icon(
+      CategoryIconUtils.iconFor(categoryName),
+      size: 42,
+      color: isOutOfStock
+          ? (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant)
+              .withValues(alpha: 0.35)
+          : (isDark ? AppColors.darkAccent : AppColors.primaryLight)
+              .withValues(alpha: 0.85),
     );
   }
 }
@@ -5455,19 +5903,17 @@ class _ProductCardState extends State<_ProductCard> {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
-                // Glassmorphism background
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.surface.withValues(alpha: 0.9),
-                    AppColors.surfaceHighlight.withValues(alpha: 0.7),
-                  ],
-                ),
+                // Premium dark glassmorphism card
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkSurface.withValues(alpha: 0.86)
+                    : AppColors.surface.withValues(alpha: 0.9),
                 boxShadow: [
                   if (_isHovered)
                     BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.15),
+                      color: (Theme.of(context).brightness == Brightness.dark
+                              ? AppColors.darkAccent
+                              : AppColors.primary)
+                          .withValues(alpha: 0.18),
                       blurRadius: 30,
                       offset: const Offset(0, 10),
                     )
@@ -5480,94 +5926,46 @@ class _ProductCardState extends State<_ProductCard> {
                 ],
                 border: Border.all(
                   color: _isHovered
-                      ? AppColors.primary.withValues(alpha: 0.3)
-                      : AppColors.border.withValues(alpha: 0.5),
+                      ? (Theme.of(context).brightness == Brightness.dark
+                              ? AppColors.darkAccent
+                              : AppColors.primary)
+                          .withValues(alpha: 0.35)
+                      : (Theme.of(context).brightness == Brightness.dark
+                              ? AppColors.darkBorder
+                              : AppColors.border)
+                          .withValues(alpha: 0.55),
                   width: 1.5,
                 ),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Image Section with Glass Badge
-                      Expanded(
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: hasImage
-                                      ? Colors.transparent
-                                      : AppColors.background.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: hasImage
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: _buildProductImage(
-                                          imagePath,
-                                          isOutOfStock,
-                                        ),
-                                      )
-                                    : Center(
-                                        child: _ProductImagePlaceholder(
-                                          categoryName: widget.categoryName,
-                                          isOutOfStock: isOutOfStock,
-                                        ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Stack(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Minimal visual area — square thumbnail so images never squeeze
+                        Expanded(
+                          child: Center(
+                            child: hasImage
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: SizedBox(
+                                      width: 110,
+                                      height: 110,
+                                      child: _buildProductImage(
+                                        imagePath,
+                                        isOutOfStock,
                                       ),
-                              ),
-                            ),
-                            // Glass badge
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(999),
-                                child: BackdropFilter(
-                                  filter: ui.ImageFilter.blur(
-                                    sigmaX: 10,
-                                    sigmaY: 10,
+                                    ),
+                                  )
+                                : _ProductCardIcon(
+                                    categoryName: widget.categoryName,
+                                    isOutOfStock: isOutOfStock,
                                   ),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: stockBadgeColor.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: stockBadgeColor.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                        width: 0.5,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      stockLabel,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: stockBadgeColor,
-                                        letterSpacing: 0,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
+                        SizedBox(height: 12),
                       // Text Section
                       if (product['brand'] != null &&
                           (product['brand'] as String).isNotEmpty)
@@ -5575,8 +5973,10 @@ class _ProductCardState extends State<_ProductCard> {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
                             (product['brand'] as String).toUpperCase(),
-                            style: const TextStyle(
-                              color: AppColors.primaryLight,
+                            style: TextStyle(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? AppColors.darkAccent
+                                  : AppColors.primaryLight,
                               fontWeight: FontWeight.w800,
                               fontSize: 10,
                               letterSpacing: 0,
@@ -5587,8 +5987,10 @@ class _ProductCardState extends State<_ProductCard> {
                         ),
                       Text(
                         displayName,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? AppColors.darkTextPrimary
+                              : Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                           height: 1.2,
@@ -5597,27 +5999,30 @@ class _ProductCardState extends State<_ProductCard> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              color:
-                                  AppColors.secondary, // Cyber mint for price
+                            style: TextStyle(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? AppColors.darkAccentSoft
+                                  : Theme.of(context).colorScheme.secondary,
                               fontWeight: FontWeight.w900,
                               fontSize: 18,
                               letterSpacing: 0,
                             ),
                           ),
-                          const SizedBox(width: 4),
+                          SizedBox(width: 4),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Text(
                               '/${UnitUtils.priceLabel(saleUnit)}',
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
+                              style: TextStyle(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? AppColors.darkTextSecondary
+                                    : Theme.of(context).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -5626,13 +6031,15 @@ class _ProductCardState extends State<_ProductCard> {
                         ],
                       ),
                       if (usesConversion) ...[
-                        const SizedBox(height: 4),
+                        SizedBox(height: 4),
                         Text(
                           'Stocked: ${UnitUtils.formatWithUnit(stock, stockUnit)}',
                           style: TextStyle(
-                            color: AppColors.textSecondary.withValues(
-                              alpha: 0.7,
-                            ),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? AppColors.darkTextMuted
+                                : Theme.of(context).colorScheme.onSurfaceVariant.withValues(
+                                    alpha: 0.7,
+                                  ),
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
                           ),
@@ -5640,6 +6047,44 @@ class _ProductCardState extends State<_ProductCard> {
                       ],
                     ],
                   ),
+                  // Stock badge
+                  Positioned(
+                      top: 0,
+                      right: 0,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: BackdropFilter(
+                          filter: ui.ImageFilter.blur(
+                            sigmaX: 10,
+                            sigmaY: 10,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: stockBadgeColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: stockBadgeColor.withValues(alpha: 0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              stockLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: stockBadgeColor,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -5666,12 +6111,18 @@ class _SummaryRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(color: AppColors.textSecondary)),
-        Text(
-          value,
-          style: TextStyle(
-            color: isDiscount ? AppColors.warning : AppColors.textPrimary,
-            fontWeight: FontWeight.w600,
+        Text(title, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isDiscount ? AppColors.warning : Theme.of(context).colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -5697,9 +6148,9 @@ class _CompactCartAmount extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5707,13 +6158,13 @@ class _CompactCartAmount extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 1),
+          SizedBox(height: 1),
           Text(
             value,
             maxLines: 1,
@@ -5722,6 +6173,271 @@ class _CompactCartAmount extends StatelessWidget {
               color: valueColor,
               fontSize: isPrimary ? 15 : 12,
               fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? accent;
+  final bool isDark;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.accent,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.55)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkBorder.withValues(alpha: 0.55)
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: accent ?? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary),
+          ),
+          SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCardSkeleton extends StatelessWidget {
+  final bool isDark;
+
+  const _StatCardSkeleton({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.35)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(width: 18, height: 18, color: Colors.transparent),
+          SizedBox(height: 8),
+          Container(
+            width: 40,
+            height: 16,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.2) : Colors.black12,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          SizedBox(height: 6),
+          Container(
+            width: 28,
+            height: 10,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.15) : Colors.black12,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentSaleRow extends StatelessWidget {
+  final String paymentType;
+  final String total;
+  final String time;
+  final String items;
+  final bool isDark;
+
+  const _RecentSaleRow({
+    required this.paymentType,
+    required this.total,
+    required this.time,
+    required this.items,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkBorder.withValues(alpha: 0.45)
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary)
+                  .withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.receipt_outlined,
+              size: 18,
+              color: isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  total,
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  items,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                time,
+                style: TextStyle(
+                  color: isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 3),
+              Text(
+                paymentType,
+                style: TextStyle(
+                  color: isDark ? AppColors.darkAccentSoft : Theme.of(context).colorScheme.primary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentSaleRowSkeleton extends StatelessWidget {
+  final bool isDark;
+
+  const _RecentSaleRowSkeleton({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.25)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.15) : Colors.black12,
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 60,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.2) : Colors.black12,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Container(
+                  width: 100,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.15) : Colors.black12,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

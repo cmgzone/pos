@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:uuid/uuid.dart';
 
@@ -497,7 +498,14 @@ class ServiceRepository {
             }
           }
         }
-      } catch (_) {}
+      } catch (e, st) {
+        developer.log(
+          'Failed to decode service field options',
+          error: e,
+          stackTrace: st,
+          name: 'ServiceRepository',
+        );
+      }
     }
 
     // Decode price_map_json → Map<String, double>
@@ -515,7 +523,14 @@ class ServiceRepository {
             }
           }
         }
-      } catch (_) {}
+      } catch (e, st) {
+        developer.log(
+          'Failed to decode service field price map',
+          error: e,
+          stackTrace: st,
+          name: 'ServiceRepository',
+        );
+      }
     }
 
     return {...row, 'options': options, 'price_map': priceMap};

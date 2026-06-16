@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_app/features/app/app_shell.dart';
+
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/customer_repository.dart';
@@ -128,7 +131,6 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -141,12 +143,12 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
               children: [
                 Text(
                   'Outstanding: ${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.warning,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -168,7 +170,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextField(
                   controller: amountController,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -177,17 +179,17 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   decoration: InputDecoration(
                     labelText: 'Amount received',
                     prefixText: '${ShopSettings.currency} ',
-                    prefixStyle: const TextStyle(
-                      color: AppColors.textPrimary,
+                    prefixStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
-                    prefixIcon: const Icon(Icons.payments_outlined),
+                    prefixIcon: Icon(Icons.payments_outlined),
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextField(
                   controller: noteController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Note (optional)',
                     prefixIcon: Icon(Icons.notes_outlined),
                   ),
@@ -198,7 +200,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             ElevatedButton.icon(
               onPressed: saving
@@ -245,7 +247,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                       }
                     },
               icon: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -253,8 +255,8 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('Save Payment'),
+                  : Icon(Icons.check_circle_outline, size: 18),
+              label: Text('Save Payment'),
             ),
           ],
         ),
@@ -398,7 +400,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             label,
             style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(color: color, fontWeight: FontWeight.w800),
@@ -425,7 +427,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       child: Row(
         children: [
           for (var i = 0; i < filters.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
+            if (i > 0) SizedBox(width: 8),
             filters[i],
           ],
         ],
@@ -461,9 +463,9 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,17 +480,17 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     Text(
                       'Outstanding',
                       style: TextStyle(
-                        color: AppColors.textSecondary.withValues(alpha: 0.9),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.warning,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
@@ -504,7 +506,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   color: AppColors.warning.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.account_balance_wallet_outlined,
                   color: AppColors.warning,
                   size: 22,
@@ -512,7 +514,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -522,7 +524,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   color: AppColors.primary,
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: _CompactStat(
                   label: 'Overdue',
@@ -530,7 +532,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   color: AppColors.error,
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: _CompactStat(
                   label: 'Risky',
@@ -558,16 +560,16 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
         decoration: BoxDecoration(
           color: selected
               ? AppColors.primary.withValues(alpha: 0.16)
-              : AppColors.surfaceHighlight,
+              : context.appSurfaceHighlight,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? AppColors.primaryLight : AppColors.border,
+            color: selected ? AppColors.primaryLight : context.appBorder,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? AppColors.primaryLight : AppColors.textSecondary,
+            color: selected ? AppColors.primaryLight : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
@@ -584,12 +586,12 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
     return Container(
       padding: EdgeInsets.all(isMobile ? 14 : 18),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(isMobile ? 16 : 18),
         border: Border.all(
           color: overdueCount > 0
               ? AppColors.error.withValues(alpha: 0.45)
-              : AppColors.border,
+              : context.appBorder,
         ),
       ),
       child: isMobile
@@ -635,7 +637,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 size: 22,
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -644,64 +646,64 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     c['name'] as String? ?? 'Customer',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     _contactLine(c),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             _RiskBadge(label: risk, color: riskColor),
           ],
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
         Text(
           'Outstanding',
           style: TextStyle(
-            color: AppColors.textSecondary.withValues(alpha: 0.9),
+            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 3),
+        SizedBox(height: 3),
         Text(
           '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.w900,
             color: AppColors.warning,
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         Row(
           children: [
             Icon(
               pastDue ? Icons.event_busy_outlined : Icons.event_available,
               size: 16,
-              color: pastDue ? AppColors.error : AppColors.textSecondary,
+              color: pastDue ? AppColors.error : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             Expanded(
               child: Text(
                 'Next due: ${_shortDate(nextDue)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: pastDue ? AppColors.error : AppColors.textSecondary,
+                  color: pastDue ? AppColors.error : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: pastDue ? FontWeight.w800 : FontWeight.w600,
                 ),
@@ -710,7 +712,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
           ],
         ),
         if (dueTodayCount > 0 || overdueCount > 0) ...[
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -725,7 +727,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             ],
           ),
         ],
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
             final tileWidth = (constraints.maxWidth - 8) / 2;
@@ -775,31 +777,31 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             );
           },
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () => _recordPayment(c),
-            icon: const Icon(Icons.payments_rounded, size: 18),
-            label: const Text('Record Payment'),
+            icon: Icon(Icons.payments_rounded, size: 18),
+            label: Text('Record Payment'),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _openStatement(c),
-                icon: const Icon(Icons.visibility_outlined, size: 18),
-                label: const Text('Statement'),
+                icon: Icon(Icons.visibility_outlined, size: 18),
+                label: Text('Statement'),
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _messageCustomer(c),
-                icon: const Icon(Icons.message_outlined, size: 18),
-                label: const Text('Message'),
+                icon: Icon(Icons.message_outlined, size: 18),
+                label: Text('Message'),
               ),
             ),
           ],
@@ -836,7 +838,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 color: riskColor,
               ),
             ),
-            const SizedBox(width: 14),
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -845,22 +847,22 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     c['name'] as String? ?? 'Customer',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     _contactLine(c),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -881,7 +883,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -889,17 +891,17 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   '${ShopSettings.currency}${_money(c['outstanding_balance']).toStringAsFixed(2)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     color: AppColors.warning,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 Text(
                   'Next due: ${_shortDate(nextDue)}',
                   style: TextStyle(
-                    color: pastDue ? AppColors.error : AppColors.textSecondary,
+                    color: pastDue ? AppColors.error : Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: pastDue ? FontWeight.w700 : FontWeight.w500,
                   ),
@@ -908,7 +910,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Row(
           children: [
             Expanded(
@@ -933,30 +935,30 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _openStatement(c),
-                icon: const Icon(Icons.visibility_outlined, size: 18),
-                label: const Text('View Statement'),
+                icon: Icon(Icons.visibility_outlined, size: 18),
+                label: Text('View Statement'),
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _messageCustomer(c),
-                icon: const Icon(Icons.message_outlined, size: 18),
-                label: const Text('Message'),
+                icon: Icon(Icons.message_outlined, size: 18),
+                label: Text('Message'),
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
                 onPressed: () => _recordPayment(c),
-                icon: const Icon(Icons.payments_rounded, size: 18),
-                label: const Text('Record Payment'),
+                icon: Icon(Icons.payments_rounded, size: 18),
+                label: Text('Record Payment'),
               ),
             ),
           ],
@@ -995,23 +997,29 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            backgroundColor: AppColors.surface,
-            title: const Text('Kopesha'),
+            leading: !Navigator.of(context).canPop() &&
+                    MediaQuery.of(context).size.width <= 800
+                ? IconButton(
+                    icon: Icon(Icons.menu),
+                    onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                  )
+                : null,
+            title: Text('Kopesha'),
             actions: [
               if (!isMobile) ...[
                 TrainingAnchor(
                   id: 'kopesha.createAccount',
                   child: FilledButton.icon(
                     onPressed: _openCreateAccountScreen,
-                    icon: const Icon(Icons.person_add_alt_1, size: 18),
-                    label: const Text('Create Account'),
+                    icon: Icon(Icons.person_add_alt_1, size: 18),
+                    label: Text('Create Account'),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
               ],
               IconButton(
                 onPressed: _load,
-                icon: const Icon(Icons.refresh),
+                icon: Icon(Icons.refresh),
                 tooltip: 'Refresh',
               ),
               SizedBox(width: isMobile ? 4 : 12),
@@ -1024,8 +1032,8 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     onPressed: _openCreateAccountScreen,
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
-                    icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('New Account'),
+                    icon: Icon(Icons.person_add_alt_1),
+                    label: Text('New Account'),
                   ),
                 )
               : null,
@@ -1034,7 +1042,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
               TrainingAnchor(
                 id: 'kopesha.search',
                 child: Container(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   padding: EdgeInsets.fromLTRB(
                     horizontalPadding,
                     0,
@@ -1051,9 +1059,9 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                           hintText: isMobile
                               ? 'Search customers...'
                               : 'Search customer name, phone, or email...',
-                          prefixIcon: const Icon(
+                          prefixIcon: Icon(
                             Icons.search,
-                            color: AppColors.textSecondary,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                           suffixIcon: _searchController.text.isEmpty
                               ? null
@@ -1062,7 +1070,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                                     _searchController.clear();
                                     _load();
                                   },
-                                  icon: const Icon(Icons.clear, size: 18),
+                                  icon: Icon(Icons.clear, size: 18),
                                 ),
                         ),
                       ),
@@ -1080,11 +1088,11 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                         ),
                       ),
                       if (!isMobile) ...[
-                        const SizedBox(height: 10),
+                        SizedBox(height: 10),
                         Text(
                           'Risk flag: 2+ overdue sales, overdue amount above ${ShopSettings.currency}250, overdue for 7+ days, or balance above ${ShopSettings.currency}750.',
                           style: TextStyle(
-                            color: AppColors.textSecondary.withValues(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                               alpha: 0.9,
                             ),
                             fontSize: 12,
@@ -1095,12 +1103,12 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   ),
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1),
               Expanded(
                 child: TrainingAnchor(
                   id: 'kopesha.list',
                   child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? Center(child: CircularProgressIndicator())
                       : _customers.isEmpty
                       ? Center(
                           child: Padding(
@@ -1109,7 +1117,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                               'No customers match this Kopesha filter right now.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: AppColors.textSecondary.withValues(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                   alpha: 0.9,
                                 ),
                               ),
@@ -1151,10 +1159,10 @@ class _Info extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
         ),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+        SizedBox(height: 4),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w700)),
       ],
     );
   }
@@ -1192,7 +1200,7 @@ class _CompactStat extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(
             label,
             maxLines: 1,
@@ -1233,7 +1241,7 @@ class _MetricPill extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 15, color: color),
-          const SizedBox(width: 7),
+          SizedBox(width: 7),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1248,7 +1256,7 @@ class _MetricPill extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   value,
                   maxLines: 1,
@@ -1302,14 +1310,14 @@ class _ChipButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.surfaceHighlight,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Text(
           label,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,
           ),
         ),

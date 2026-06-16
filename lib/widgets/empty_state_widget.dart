@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_colors.dart';
 import 'beautiful_icon.dart';
 
 class EmptyStateWidget extends StatelessWidget {
@@ -29,40 +28,40 @@ class EmptyStateWidget extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHighlight.withValues(alpha: 0.5),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               child: BeautifulIcon(
                 icon,
                 size: 48,
-                color: AppColors.textSecondary.withValues(alpha: 0.3),
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Text(
               subtitle,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
             if (onAction != null && actionLabel != null) ...[
-              const SizedBox(height: 24),
+              SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: onAction,
-                icon: const Icon(Icons.add),
+                icon: Icon(Icons.add),
                 label: Text(actionLabel!),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(

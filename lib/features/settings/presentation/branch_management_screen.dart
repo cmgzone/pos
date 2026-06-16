@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -45,7 +46,6 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           title: Text(branch == null ? 'Add Branch' : 'Edit Branch'),
           content: SizedBox(
             width: 420,
@@ -181,8 +181,14 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
         title: const Text('Branches'),
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
         actions: [
           FilledButton.icon(
             onPressed: () => _showBranchDialog(),
@@ -210,10 +216,10 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
                 final isCurrent = branch['id'] == BranchService.currentBranchId;
                 final isActive = (branch['is_active'] as num? ?? 1) == 1;
                 return ListTile(
-                  tileColor: AppColors.surface,
+                  tileColor: Theme.of(context).colorScheme.surface,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
-                    side: const BorderSide(color: AppColors.border),
+                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
                   ),
                   leading: Icon(
                     isCurrent ? Icons.store_rounded : Icons.store_outlined,

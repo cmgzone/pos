@@ -35,6 +35,26 @@ class RemoteSyncStatus {
   });
 }
 
+class SyncProgress {
+  final String message;
+  final double? value;
+  final String? table;
+  final int completedTables;
+  final int totalTables;
+  final int pulledCount;
+
+  const SyncProgress({
+    required this.message,
+    this.value,
+    this.table,
+    this.completedTables = 0,
+    this.totalTables = 0,
+    this.pulledCount = 0,
+  });
+}
+
+typedef SyncProgressCallback = void Function(SyncProgress progress);
+
 class SyncRunSummary {
   final int pushedCount;
   final int pulledCount;
@@ -59,6 +79,7 @@ class SyncRunSummary {
 
 class SyncService {
   static const _timeout = Duration(seconds: 20);
+  static const _pullTimeout = Duration(seconds: 90);
 
   static const List<String> _pushTableOrder = [
     'branches',
@@ -224,12 +245,18 @@ class SyncService {
     }
   }
 
-  static Future<SyncRunSummary> syncNow() async {
+  static Future<SyncRunSummary> syncNow({
+    SyncProgressCallback? onProgress,
+    bool forceFullPull = false,
+  }) async {
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isEmpty) {
       throw Exception('Cloud sync is not configured for this app build');
     }
 
+    onProgress?.call(
+      const SyncProgress(message: 'Preparing cloud sync...', value: 0.04),
+    );
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
     final license = await _ensureBusinessAccess(
       backendUrl: backendUrl,
@@ -238,7 +265,7 @@ class SyncService {
       allowReadOnly: true,
     );
     await _normalizeLocalSystemRowsForRole();
-    final initialCursor = _cursorForBusiness(license);
+    final initialCursor = forceFullPull ? '0' : _cursorForBusiness(license);
     final localSnapshot = await getLocalSnapshot();
 
     var pushedCount = 0;
@@ -249,6 +276,9 @@ class SyncService {
         localSnapshot.pendingCount > 0 && !license.allowsWrites;
 
     if (localSnapshot.pendingCount > 0 && license.allowsWrites) {
+      onProgress?.call(
+        const SyncProgress(message: 'Uploading local changes...', value: 0.14),
+      );
       final pushSummary = await _pushChanges(
         backendUrl: backendUrl,
         deviceId: deviceId,
@@ -260,13 +290,20 @@ class SyncService {
       issueMessages = pushSummary.issueMessages;
     }
 
+    onProgress?.call(
+      const SyncProgress(message: 'Downloading business data...', value: 0.30),
+    );
     final pullSummary = await _pullChanges(
       backendUrl: backendUrl,
       deviceId: deviceId,
       cursor: initialCursor,
       allowReadOnly: true,
+      onProgress: onProgress,
     );
 
+    onProgress?.call(
+      const SyncProgress(message: 'Finalizing downloaded data...', value: 0.94),
+    );
     await SyncSettingsService.setSyncCursor(pullSummary.nextCursor);
     await SyncSettingsService.setSyncScopeKey(pullSummary.scopeKey);
     await SyncSettingsService.setLastSyncAt(DateTime.now());
@@ -421,6 +458,7 @@ class SyncService {
     required String deviceId,
     required String cursor,
     bool allowReadOnly = false,
+    SyncProgressCallback? onProgress,
   }) async {
     final license = await _ensureBusinessAccess(
       backendUrl: backendUrl,
@@ -444,7 +482,7 @@ class SyncService {
             _buildUri(backendUrl, 'sync/pull', params),
             headers: _authHeaders(license),
           )
-          .timeout(_timeout);
+          .timeout(_pullTimeout);
 
       final body = _decodeJson(response);
       _throwIfRequestFailed(response, body);
@@ -484,10 +522,22 @@ class SyncService {
       }
 
       await DatabaseService.db.transaction((txn) async {
-        for (final table in _pullTableOrder) {
+        final totalTables = _pullTableOrder.length;
+        for (var tableIndex = 0; tableIndex < totalTables; tableIndex += 1) {
+          final table = _pullTableOrder[tableIndex];
           final rawRows = data[table] is List<dynamic>
               ? data[table] as List<dynamic>
               : [];
+          onProgress?.call(
+            SyncProgress(
+              message: _downloadMessageForTable(table, rawRows.length),
+              value: _pullProgressValue(tableIndex, totalTables),
+              table: table,
+              completedTables: tableIndex,
+              totalTables: totalTables,
+              pulledCount: pulledCount,
+            ),
+          );
           for (final rawRow in rawRows) {
             if (rawRow is! Map) {
               continue;
@@ -507,6 +557,16 @@ class SyncService {
               resolvedConflictCount += 1;
             }
           }
+          onProgress?.call(
+            SyncProgress(
+              message: _downloadMessageForTable(table, rawRows.length),
+              value: _pullProgressValue(tableIndex + 1, totalTables),
+              table: table,
+              completedTables: tableIndex + 1,
+              totalTables: totalTables,
+              pulledCount: pulledCount,
+            ),
+          );
         }
       });
 
@@ -548,6 +608,13 @@ class SyncService {
       normalizedRemote['password'] = localRow?['password'] ?? '';
     }
     if (localRow == null) {
+      // A fresh device does not need cloud tombstones for rows it never held.
+      // Skipping them also avoids legacy deleted rows whose parent/category
+      // was already purged from the server from breaking the entire restore.
+      if (_readString(normalizedRemote['deleted_at'])?.isNotEmpty == true) {
+        return const _ApplyOutcome(applied: false, resolvedConflict: false);
+      }
+
       // Before inserting, check for unique-key conflicts on non-PK columns
       // (e.g., users.email). If a local row already holds this unique value
       // under a different id, update it in-place to keep FK references intact.
@@ -659,6 +726,43 @@ class SyncService {
         'Failed applying remote change for table "$table"'
         '${rowId.isEmpty ? '' : ' with id "$rowId"'}: $error',
       );
+    }
+  }
+
+  static double _pullProgressValue(int completedTables, int totalTables) {
+    if (totalTables <= 0) {
+      return 0.90;
+    }
+    final fraction = completedTables / totalTables;
+    return 0.30 + (fraction * 0.60);
+  }
+
+  static String _downloadMessageForTable(String table, int rowCount) {
+    final countText = rowCount > 0 ? ' ($rowCount)' : '';
+    switch (table) {
+      case 'products':
+        return rowCount > 0
+            ? 'Downloading products$countText...'
+            : 'Checking products...';
+      case 'product_variants':
+        return rowCount > 0
+            ? 'Downloading product variants$countText...'
+            : 'Checking product variants...';
+      case 'categories':
+        return rowCount > 0
+            ? 'Downloading categories$countText...'
+            : 'Checking categories...';
+      case 'payment_methods':
+        return 'Downloading payment methods$countText...';
+      case 'users':
+        return 'Downloading team access$countText...';
+      case 'sales':
+        return 'Downloading sales history$countText...';
+      case 'stock_batches':
+      case 'stock_transfers':
+        return 'Downloading stock data$countText...';
+      default:
+        return 'Downloading business data$countText...';
     }
   }
 

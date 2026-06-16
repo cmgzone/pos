@@ -55,6 +55,10 @@ class AppShell extends ConsumerStatefulWidget {
     shellKey.currentState?._selectIndex(index);
   }
 
+  static void showNotificationsSheet(BuildContext context) {
+    shellKey.currentState?._showNotificationsSheet();
+  }
+
   @override
   ConsumerState<AppShell> createState() => AppShellState();
 }
@@ -65,6 +69,7 @@ class AppShellState extends ConsumerState<AppShell> {
   String _trainingPromptUserId = '';
   bool _subscriptionPromptShown = false;
   bool _setupPromptShown = false;
+  bool _desktopRailCollapsed = false;
   Set<String> _seenNotificationIds = const <String>{};
   Set<String> _deviceNotifiedIds = const <String>{};
   bool _deviceNotificationBusy = false;
@@ -253,7 +258,7 @@ class AppShellState extends ConsumerState<AppShell> {
     ),
   ];
 
-  static const _mobileBottomDefaults = [0, 11, 4, 5];
+  static const _mobileBottomDefaults = [5, 0, 1, 17];
   static const _fallbackNavigationIndex = 9;
   static const _posIndex = 0;
   static const _servicesIndex = 11;
@@ -389,6 +394,16 @@ class AppShellState extends ConsumerState<AppShell> {
       return;
     }
     setState(() => _selectedIndex = target);
+  }
+
+  void _showNotificationsSheet() {
+    final syncState = ref.read(syncControllerProvider);
+    final List<PikiProactiveInsight> pikiInsights =
+        _canLoadPikiNotifications(syncState)
+        ? ref.read(pikiProactiveInsightsProvider).valueOrNull ??
+              const <PikiProactiveInsight>[]
+        : const <PikiProactiveInsight>[];
+    _showNotifications(syncState, pikiInsights: pikiInsights);
   }
 
   bool _canLoadPikiNotifications(SyncState syncState) {
@@ -763,119 +778,124 @@ class AppShellState extends ConsumerState<AppShell> {
     );
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 520),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Notifications',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+      builder: (sheetContext) {
+        final sheetTheme = Theme.of(sheetContext);
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 520),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Notifications',
+                          style: sheetTheme.textTheme.titleLarge,
                         ),
                       ),
-                    ),
-                    if (notifications.isNotEmpty)
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(sheetContext);
-                          _selectIndex(9);
-                        },
-                        child: const Text('Open Settings'),
-                      ),
-                    if (_canLoadPikiNotifications(syncState) &&
-                        syncState.isOnline)
-                      IconButton(
-                        tooltip: 'Refresh Piki alerts',
-                        onPressed: () {
-                          Navigator.pop(sheetContext);
-                          _refreshPikiNotifications();
-                        },
-                        icon: const Icon(Icons.auto_awesome_outlined),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (notifications.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 36),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.notifications_none_rounded,
-                            size: 36,
-                            color: AppColors.success,
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            'You are all caught up.',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: notifications.length,
-                      separatorBuilder: (_, _) =>
-                          const Divider(color: AppColors.border, height: 1),
-                      itemBuilder: (context, index) {
-                        final notification = notifications[index];
-                        return ListTile(
-                          onTap: notification.destinationIndex == null
-                              ? null
-                              : () => _openNotification(
-                                  sheetContext,
-                                  notification,
-                                ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 0,
-                            vertical: 6,
-                          ),
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: notification.color.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(
-                              notification.icon,
-                              color: notification.color,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(
-                            notification.title,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: Text(notification.message),
-                          trailing: notification.destinationIndex == null
-                              ? null
-                              : const Icon(Icons.chevron_right_rounded),
-                        );
-                      },
-                    ),
+                      if (notifications.isNotEmpty)
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            _selectIndex(9);
+                          },
+                          child: const Text('Open Settings'),
+                        ),
+                      if (_canLoadPikiNotifications(syncState) &&
+                          syncState.isOnline)
+                        IconButton(
+                          tooltip: 'Refresh Piki alerts',
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            _refreshPikiNotifications();
+                          },
+                          icon: const Icon(Icons.auto_awesome_outlined),
+                        ),
+                    ],
                   ),
-              ],
+                  const SizedBox(height: 8),
+                  if (notifications.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 36),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.notifications_none_rounded,
+                              size: 36,
+                              color: AppColors.success,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'You are all caught up.',
+                              style: sheetTheme.textTheme.titleSmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: notifications.length,
+                        separatorBuilder: (_, _) => Divider(
+                          color: sheetTheme.colorScheme.outline,
+                          height: 1,
+                        ),
+                        itemBuilder: (context, index) {
+                          final notification = notifications[index];
+                          return ListTile(
+                            onTap: notification.destinationIndex == null
+                                ? null
+                                : () => _openNotification(
+                                    sheetContext,
+                                    notification,
+                                  ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 0,
+                              vertical: 6,
+                            ),
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: notification.color.withValues(
+                                  alpha: 0.12,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                notification.icon,
+                                color: notification.color,
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(
+                              notification.title,
+                              style: sheetTheme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(notification.message),
+                            trailing: notification.destinationIndex == null
+                                ? null
+                                : const Icon(Icons.chevron_right_rounded),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
     await _markNotificationsSeen(notifications);
   }
@@ -884,6 +904,7 @@ class AppShellState extends ConsumerState<AppShell> {
     List<_AppNotification> notifications, {
     Color? color,
   }) {
+    final theme = Theme.of(context);
     final count = _unseenNotificationCount(notifications);
     return Stack(
       clipBehavior: Clip.none,
@@ -904,13 +925,16 @@ class AppShellState extends ConsumerState<AppShell> {
               decoration: BoxDecoration(
                 color: AppColors.error,
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: AppColors.surface, width: 1.5),
+                border: Border.all(
+                  color: theme.colorScheme.surface,
+                  width: 1.5,
+                ),
               ),
               alignment: Alignment.center,
               child: Text(
                 count > 9 ? '9+' : '$count',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: theme.colorScheme.onPrimary,
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
                 ),
@@ -957,49 +981,54 @@ class AppShellState extends ConsumerState<AppShell> {
 
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        icon: const Icon(Icons.checklist_rounded, color: AppColors.primary),
-        title: const Text('Finish shop setup'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: checklist
-                .map(
-                  (item) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      item.done
-                          ? Icons.check_circle_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      color: item.done
-                          ? AppColors.success
-                          : AppColors.textSecondary,
+      builder: (ctx) {
+        final dialogTheme = Theme.of(ctx);
+        return AlertDialog(
+          icon: Icon(
+            Icons.checklist_rounded,
+            color: dialogTheme.colorScheme.primary,
+          ),
+          title: const Text('Finish shop setup'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: checklist
+                  .map(
+                    (item) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        item.done
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: item.done
+                            ? AppColors.success
+                            : dialogTheme.colorScheme.onSurfaceVariant,
+                      ),
+                      title: Text(item.title),
+                      subtitle: Text(item.subtitle),
                     ),
-                    title: Text(item.title),
-                    subtitle: Text(item.subtitle),
-                  ),
-                )
-                .toList(),
+                  )
+                  .toList(),
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'dismiss'),
-            child: const Text('Later'),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, 'orders'),
-            child: const Text('Open Orders'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'settings'),
-            child: const Text('Open Setup'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'dismiss'),
+              child: const Text('Later'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, 'orders'),
+              child: const Text('Open Orders'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'settings'),
+              child: const Text('Open Setup'),
+            ),
+          ],
+        );
+      },
     );
 
     if (!mounted) {
@@ -1132,96 +1161,100 @@ class AppShellState extends ConsumerState<AppShell> {
 
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: AppColors.surface,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.school_outlined,
-                        color: AppColors.primaryLight,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Training Hub',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
+      builder: (ctx) {
+        final dialogTheme = Theme.of(ctx);
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: dialogTheme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.school_outlined,
+                          color: dialogTheme.colorScheme.primary,
+                          size: 18,
                         ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: 'Later',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => Navigator.pop(ctx, 'later'),
-                      icon: const Icon(Icons.close, size: 18),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Guided tours only show modules for enabled features.',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                    height: 1.35,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Training Hub',
+                          style: dialogTheme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Later',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.pop(ctx, 'later'),
+                        icon: const Icon(Icons.close, size: 18),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, 'later'),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                      ),
-                      child: const Text('Later'),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Guided tours only show modules for enabled features.',
+                    style: dialogTheme.textTheme.bodySmall?.copyWith(
+                      height: 1.35,
                     ),
-                    const Spacer(),
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx, 'hub'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'later'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
+                        child: const Text('Later'),
                       ),
-                      child: const Text('Modules'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, 'tour'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                      const Spacer(),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx, 'hub'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        child: const Text('Modules'),
                       ),
-                      child: const Text('Start'),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, 'tour'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                        ),
+                        child: const Text('Start'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     if (!mounted || action == null) {
@@ -1261,7 +1294,11 @@ class AppShellState extends ConsumerState<AppShell> {
       pikiInsights: pikiInsights,
     );
     _queueDeviceNotifications(notifications);
-    final isWide = MediaQuery.of(context).size.width > 800;
+    final windowWidth = MediaQuery.of(context).size.width;
+    final isWide = windowWidth > 800;
+    final canExtendRail = windowWidth >= 1040;
+    final isExpandedRail = canExtendRail && !_desktopRailCollapsed;
+    final theme = Theme.of(context);
     final currentIndex = _currentIndex;
     final mobileBottomDestinations = _mobileBottomDestinations;
     final mobileSelectedIndex = mobileBottomDestinations.indexWhere(
@@ -1270,7 +1307,7 @@ class AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       key: AppShell.scaffoldKey,
-      backgroundColor: AppColors.background,
+      backgroundColor: theme.scaffoldBackgroundColor,
       drawer: !isWide ? _buildDrawer(context, currentIndex) : null,
       body: Row(
         children: [
@@ -1283,36 +1320,33 @@ class AppShellState extends ConsumerState<AppShell> {
                 child: IntrinsicHeight(
                   child: Container(
                     decoration: BoxDecoration(
-                      gradient: AppColors.premiumGradient,
+                      color: theme.colorScheme.surface,
                       border: Border(
                         right: BorderSide(
-                          color: AppColors.premiumStroke.withValues(
-                            alpha: 0.78,
+                          color: theme.colorScheme.outline.withValues(
+                            alpha: 0.8,
                           ),
                         ),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 28,
-                          offset: const Offset(12, 0),
-                        ),
-                      ],
                     ),
                     child: TrainingAnchor(
                       id: 'shell.navigation',
                       child: NavigationRail(
-                        minWidth: 104,
+                        minWidth: 76,
+                        minExtendedWidth: 220,
+                        extended: isExpandedRail,
                         backgroundColor: Colors.transparent,
-                        indicatorColor: AppColors.primary.withValues(
-                          alpha: 0.14,
+                        indicatorColor: theme.colorScheme.primary.withValues(
+                          alpha: 0.1,
                         ),
                         selectedIndex: _allowedDestinations.indexWhere(
                           (d) => d.index == currentIndex,
                         ),
                         onDestinationSelected: (i) =>
                             _selectIndex(_allowedDestinations[i].index),
-                        labelType: NavigationRailLabelType.all,
+                        labelType: isExpandedRail
+                            ? NavigationRailLabelType.none
+                            : NavigationRailLabelType.all,
                         leading: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 18),
                           child: Column(
@@ -1320,17 +1354,8 @@ class AppShellState extends ConsumerState<AppShell> {
                               Container(
                                 padding: const EdgeInsets.all(3),
                                 decoration: BoxDecoration(
-                                  gradient: AppColors.brandGradient,
-                                  borderRadius: BorderRadius.circular(18),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.28,
-                                      ),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
+                                  color: theme.colorScheme.primary,
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(15),
@@ -1344,9 +1369,7 @@ class AppShellState extends ConsumerState<AppShell> {
                                         width: 48,
                                         height: 48,
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.16,
-                                          ),
+                                          color: theme.colorScheme.primary,
                                           borderRadius: BorderRadius.circular(
                                             15,
                                           ),
@@ -1375,9 +1398,29 @@ class AppShellState extends ConsumerState<AppShell> {
                                 ),
                                 icon: _buildNotificationIcon(
                                   notifications,
-                                  color: AppColors.textSecondary,
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                              if (canExtendRail) ...[
+                                const SizedBox(height: 8),
+                                IconButton(
+                                  tooltip: isExpandedRail
+                                      ? 'Collapse sidebar'
+                                      : 'Expand sidebar',
+                                  onPressed: () {
+                                    setState(
+                                      () => _desktopRailCollapsed =
+                                          !_desktopRailCollapsed,
+                                    );
+                                  },
+                                  icon: Icon(
+                                    isExpandedRail
+                                        ? Icons.chevron_left_rounded
+                                        : Icons.chevron_right_rounded,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1386,12 +1429,15 @@ class AppShellState extends ConsumerState<AppShell> {
                               (destination) => NavigationRailDestination(
                                 icon: BeautifulIcon(
                                   destination.item.icon,
-                                  color: AppColors.textSecondary,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  hoverColor: theme.brightness == Brightness.dark
+                                      ? Colors.white
+                                      : theme.colorScheme.primary,
                                 ),
                                 selectedIcon: BeautifulIcon(
                                   destination.item.selectedIcon,
-                                  color: AppColors.primary,
-                                  withBackground: true,
+                                  color: theme.colorScheme.primary,
+                                  hoverColor: theme.colorScheme.primary,
                                 ),
                                 label: Text(destination.item.label),
                               ),
@@ -1405,7 +1451,7 @@ class AppShellState extends ConsumerState<AppShell> {
             ),
           Expanded(
             child: ColoredBox(
-              color: AppColors.background,
+              color: theme.scaffoldBackgroundColor,
               child: _buildScreenStack(currentIndex),
             ),
           ),
@@ -1415,14 +1461,16 @@ class AppShellState extends ConsumerState<AppShell> {
           ? TrainingAnchor(
               id: 'shell.navigation',
               child: NavigationBar(
-                backgroundColor: AppColors.premiumPanel,
-                indicatorColor: AppColors.primary.withValues(alpha: 0.14),
+                backgroundColor: theme.colorScheme.surface,
+                indicatorColor: theme.colorScheme.primary.withValues(
+                  alpha: 0.1,
+                ),
                 selectedIndex: mobileSelectedIndex >= 0
                     ? mobileSelectedIndex
-                    : 0,
+                    : mobileBottomDestinations.length,
                 onDestinationSelected: (i) {
                   if (i == mobileBottomDestinations.length) {
-                    _showNotifications(syncState, pikiInsights: pikiInsights);
+                    AppShell.scaffoldKey.currentState?.openDrawer();
                     return;
                   }
                   _selectIndex(mobileBottomDestinations[i].index);
@@ -1430,18 +1478,33 @@ class AppShellState extends ConsumerState<AppShell> {
                 destinations: [
                   ...mobileBottomDestinations.map(
                     (destination) => NavigationDestination(
-                      icon: BeautifulIcon(destination.item.icon),
+                      icon: BeautifulIcon(
+                        destination.item.icon,
+                        hoverColor: theme.brightness == Brightness.dark
+                            ? Colors.white
+                            : theme.colorScheme.primary,
+                      ),
                       selectedIcon: BeautifulIcon(
                         destination.item.selectedIcon,
-                        color: AppColors.primary,
-                        withBackground: true,
+                        color: theme.colorScheme.primary,
+                        hoverColor: theme.colorScheme.primary,
                       ),
                       label: destination.item.label,
                     ),
                   ),
                   NavigationDestination(
-                    icon: _buildNotificationIcon(notifications),
-                    label: 'Alerts',
+                    icon: BeautifulIcon(
+                      Icons.grid_view_rounded,
+                      hoverColor: theme.brightness == Brightness.dark
+                          ? Colors.white
+                          : theme.colorScheme.primary,
+                    ),
+                    selectedIcon: BeautifulIcon(
+                      Icons.grid_view_rounded,
+                      color: theme.colorScheme.primary,
+                      hoverColor: theme.colorScheme.primary,
+                    ),
+                    label: 'More',
                   ),
                 ],
               ),
@@ -1452,9 +1515,10 @@ class AppShellState extends ConsumerState<AppShell> {
 
   Widget _buildDrawer(BuildContext context, int currentIndex) {
     final syncState = ref.watch(syncControllerProvider);
+    final theme = Theme.of(context);
 
     return Drawer(
-      backgroundColor: AppColors.premiumPanel,
+      backgroundColor: theme.colorScheme.surface,
       child: SafeArea(
         child: Column(
           children: [
@@ -1462,14 +1526,10 @@ class AppShellState extends ConsumerState<AppShell> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                gradient: AppColors.brandGradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.22),
-                    blurRadius: 24,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
+                color: theme.colorScheme.surfaceContainerHighest,
+                border: Border(
+                  bottom: BorderSide(color: theme.colorScheme.outline),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1486,12 +1546,12 @@ class AppShellState extends ConsumerState<AppShell> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: theme.colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.point_of_sale_rounded,
-                            color: Colors.white,
+                            color: theme.colorScheme.primary,
                             size: 24,
                           ),
                         );
@@ -1501,8 +1561,8 @@ class AppShellState extends ConsumerState<AppShell> {
                   const SizedBox(height: 16),
                   Text(
                     ShopSettings.shopName,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1511,7 +1571,7 @@ class AppShellState extends ConsumerState<AppShell> {
                   Text(
                     '${SessionService.currentUserName} • ${RolePermissions.label(SessionService.currentUserRole)}',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.75),
+                      color: theme.colorScheme.onSurfaceVariant,
                       fontSize: 13,
                     ),
                   ),
@@ -1569,8 +1629,8 @@ class AppShellState extends ConsumerState<AppShell> {
                             padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
                             child: Text(
                               _sectionLabel(section),
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 1.2,
@@ -1601,7 +1661,9 @@ class AppShellState extends ConsumerState<AppShell> {
               child: Text(
                 'Piki POS v1.0.0',
                 style: TextStyle(
-                  color: AppColors.textSecondary.withValues(alpha: 0.5),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.5,
+                  ),
                   fontSize: 12,
                 ),
               ),
@@ -1688,10 +1750,13 @@ class AppShellState extends ConsumerState<AppShell> {
     required String label,
     required Color color,
   }) {
+    final surfaceTint = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.08);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
+        color: surfaceTint,
         borderRadius: BorderRadius.circular(100),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
@@ -1758,11 +1823,7 @@ class _SubscriptionPlansPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Subscription plans'),
-        backgroundColor: AppColors.surface,
-      ),
+      appBar: AppBar(title: const Text('Subscription plans')),
       body: SubscriptionPlansSection(
         fullPage: true,
         onOpenApp: () => Navigator.of(context).pop(),
@@ -1782,6 +1843,7 @@ class _BranchPill extends StatelessWidget {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: BranchService.getBranches(activeOnly: true),
       builder: (context, snapshot) {
+        final theme = Theme.of(context);
         final currentId = BranchService.currentBranchId;
         final branches = snapshot.data ?? const <Map<String, dynamic>>[];
         final current = branches.where((b) => b['id'] == currentId).firstOrNull;
@@ -1789,10 +1851,12 @@ class _BranchPill extends StatelessWidget {
             ? current!['name'] as String
             : 'Main Branch';
         return Material(
-          color: compact
-              ? AppColors.surfaceHighlight
-              : Colors.white.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(999),
+          color: theme.colorScheme.surfaceContainerHighest,
+          shape: StadiumBorder(
+            side: BorderSide(
+              color: theme.colorScheme.outline.withValues(alpha: 0.8),
+            ),
+          ),
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(999),
@@ -1807,7 +1871,7 @@ class _BranchPill extends StatelessWidget {
                   Icon(
                     Icons.store_mall_directory_rounded,
                     size: compact ? 13 : 15,
-                    color: compact ? AppColors.primary : Colors.white,
+                    color: theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 5),
                   Flexible(
@@ -1816,7 +1880,7 @@ class _BranchPill extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: compact ? AppColors.textPrimary : Colors.white,
+                        color: theme.colorScheme.onSurface,
                         fontSize: compact ? 10 : 12,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1863,11 +1927,12 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: isSelected
-            ? AppColors.primary.withValues(alpha: 0.12)
+            ? theme.colorScheme.primaryContainer
             : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
@@ -1880,8 +1945,11 @@ class _DrawerItem extends StatelessWidget {
                 BeautifulIcon(
                   isSelected ? selectedIcon : icon,
                   color: isSelected
-                      ? AppColors.primary
-                      : AppColors.textSecondary,
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                  hoverColor: theme.brightness == Brightness.dark
+                      ? Colors.white
+                      : theme.colorScheme.primary,
                   size: 22,
                 ),
                 const SizedBox(width: 16),
@@ -1890,8 +1958,8 @@ class _DrawerItem extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                     color: isSelected
-                        ? AppColors.primary
-                        : AppColors.textPrimary,
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface,
                     fontSize: 15,
                   ),
                 ),

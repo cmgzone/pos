@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
@@ -55,15 +56,21 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Stock List'),
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        title: Text('Stock List'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
         ],
       ),
       body: TrainingAnchor(
@@ -71,7 +78,7 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
         child: Column(
           children: [
             Container(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               padding: EdgeInsets.fromLTRB(
                 isMobile ? 16 : 24,
                 0,
@@ -85,11 +92,11 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
                 onChanged: (_) => _refresh(),
                 decoration: InputDecoration(
                   hintText: 'Search product, SKU, barcode, or batch...',
-                  prefixIcon: const Icon(Icons.search),
+                  prefixIcon: Icon(Icons.search),
                   suffixIcon: _searchController.text.trim().isEmpty
                       ? null
                       : IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
+                          icon: Icon(Icons.clear, size: 18),
                           onPressed: () {
                             _searchController.clear();
                             _refresh();
@@ -98,21 +105,21 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
                 ),
               ),
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
             Expanded(
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _stockFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return Center(child: CircularProgressIndicator());
                   }
 
                   final rows = snapshot.data ?? [];
                   if (rows.isEmpty) {
-                    return const Center(
+                    return Center(
                       child: Text(
                         'No tracked stock found.',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     );
                   }
@@ -120,7 +127,7 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
                   return ListView.separated(
                     padding: EdgeInsets.all(isMobile ? 12 : 20),
                     itemCount: rows.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => SizedBox(height: 10),
                     itemBuilder: (context, index) =>
                         _StockListCard(row: rows[index], isMobile: isMobile),
                   );
@@ -157,7 +164,7 @@ class _StockListCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: statusColor.withValues(alpha: 0.35)),
       ),
@@ -165,9 +172,10 @@ class _StockListCard extends StatelessWidget {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _titleRow(status, statusColor),
-                const SizedBox(height: 10),
+                _titleRow(context, status, statusColor),
+                SizedBox(height: 10),
                 _infoWrap(
+                  context,
                   stockUnit,
                   productStock,
                   remaining,
@@ -178,11 +186,12 @@ class _StockListCard extends StatelessWidget {
             )
           : Row(
               children: [
-                Expanded(flex: 3, child: _titleBlock(status, statusColor)),
-                const SizedBox(width: 18),
+                Expanded(flex: 3, child: _titleBlock(context, status, statusColor)),
+                SizedBox(width: 18),
                 Expanded(
                   flex: 5,
                   child: _infoWrap(
+                    context,
                     stockUnit,
                     productStock,
                     remaining,
@@ -195,16 +204,16 @@ class _StockListCard extends StatelessWidget {
     );
   }
 
-  Widget _titleRow(String status, Color statusColor) {
+  Widget _titleRow(BuildContext context, String status, Color statusColor) {
     return Row(
       children: [
-        Expanded(child: _titleBlock(status, statusColor)),
+        Expanded(child: _titleBlock(context, status, statusColor)),
         _StatusPill(label: status, color: statusColor),
       ],
     );
   }
 
-  Widget _titleBlock(String status, Color statusColor) {
+  Widget _titleBlock(BuildContext context, String status, Color statusColor) {
     final sku = (row['sku'] as String?)?.trim();
     final barcode = (row['barcode'] as String?)?.trim();
 
@@ -218,13 +227,13 @@ class _StockListCard extends StatelessWidget {
                 row['product_name'] as String? ?? 'Product',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800),
+                style: TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
             if (!isMobile) _StatusPill(label: status, color: statusColor),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: 4),
         Text(
           [
             if (sku != null && sku.isNotEmpty) 'SKU: $sku',
@@ -232,13 +241,14 @@ class _StockListCard extends StatelessWidget {
           ].join('  '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );
   }
 
   Widget _infoWrap(
+    BuildContext context,
     String stockUnit,
     double productStock,
     double? remaining,
@@ -262,7 +272,7 @@ class _StockListCard extends StatelessWidget {
             value: ((row['batch_number'] as String?)?.trim().isNotEmpty == true)
                 ? row['batch_number'] as String
                 : 'No batch',
-            color: AppColors.secondary,
+            color: Theme.of(context).colorScheme.secondary,
           ),
         if (hasBatch)
           _StockInfoChip(
@@ -275,7 +285,7 @@ class _StockListCard extends StatelessWidget {
           icon: Icons.event_outlined,
           label: 'Expiry',
           value: ExpiryUtils.format(row['expiry_date']),
-          color: _expiryColor(row['expiry_date']),
+          color: _expiryColor(context, row['expiry_date']),
         ),
         _StockInfoChip(
           icon: Icons.local_shipping_outlined,
@@ -283,7 +293,7 @@ class _StockListCard extends StatelessWidget {
           value: (row['supplier_name'] as String?)?.trim().isNotEmpty == true
               ? row['supplier_name'] as String
               : 'Unknown',
-          color: AppColors.textSecondary,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
         _StockInfoChip(
           icon: Icons.payments_outlined,
@@ -324,12 +334,12 @@ class _StockListCard extends StatelessWidget {
     };
   }
 
-  Color _expiryColor(Object? value) {
+  Color _expiryColor(BuildContext context, Object? value) {
     return switch (ExpiryUtils.statusFor(value)) {
       ExpiryStatus.expired => AppColors.error,
       ExpiryStatus.expiringSoon => AppColors.warning,
       ExpiryStatus.ok => AppColors.success,
-      ExpiryStatus.unknown => AppColors.textSecondary,
+      ExpiryStatus.unknown => Theme.of(context).colorScheme.onSurfaceVariant,
     };
   }
 }
@@ -360,7 +370,7 @@ class _StockInfoChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Flexible(
             child: Text(
               '$label: $value',

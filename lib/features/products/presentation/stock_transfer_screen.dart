@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/branch_service.dart';
 import '../../../core/services/sync_controller.dart';
@@ -73,15 +74,14 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            backgroundColor: AppColors.surface,
-            title: const Text('Request Stock Transfer'),
+            title: Text('Request Stock Transfer'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<Map<String, dynamic>>(
                     initialValue: selectedBranch,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'To branch',
                       prefixIcon: Icon(Icons.store_mall_directory_outlined),
                     ),
@@ -99,10 +99,10 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                             () => selectedBranch = value ?? selectedBranch,
                           ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   DropdownButtonFormField<Map<String, dynamic>>(
                     initialValue: selectedProduct,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Product',
                       prefixIcon: Icon(Icons.inventory_2_outlined),
                     ),
@@ -122,22 +122,22 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                             () => selectedProduct = value ?? selectedProduct,
                           ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   TextField(
                     controller: quantityController,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Quantity',
                       prefixIcon: Icon(Icons.numbers_outlined),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   TextField(
                     controller: noteController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Note',
                       prefixIcon: Icon(Icons.notes_outlined),
                     ),
@@ -148,7 +148,7 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
             actions: [
               TextButton(
                 onPressed: saving ? null : () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text('Cancel'),
               ),
               FilledButton.icon(
                 onPressed: saving
@@ -184,13 +184,13 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                         }
                       },
                 icon: saving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.send_outlined),
-                label: const Text('Request'),
+                    : Icon(Icons.send_outlined),
+                label: Text('Request'),
               ),
             ],
           );
@@ -291,20 +291,26 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Stock Transfers'),
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        title: Text('Stock Transfers'),
         actions: [
           IconButton(
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
               onPressed: _requestTransfer,
-              icon: const Icon(Icons.swap_horiz_rounded),
-              label: const Text('Request'),
+              icon: Icon(Icons.swap_horiz_rounded),
+              label: Text('Request'),
             ),
           ),
         ],
@@ -312,7 +318,7 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
       body: TrainingAnchor(
         id: 'transfers.workspace',
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(child: CircularProgressIndicator())
             : _loadError != null
             ? Center(
                 child: Padding(
@@ -320,38 +326,38 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.sync_problem_rounded,
                         color: AppColors.warning,
                         size: 42,
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                       Text(
                         _loadError!,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _load,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Retry'),
+                        icon: Icon(Icons.refresh_rounded),
+                        label: Text('Retry'),
                       ),
                     ],
                   ),
                 ),
               )
             : _transfers.isEmpty
-            ? const Center(
+            ? Center(
                 child: Text(
                   'No stock transfers yet',
-                  style: TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               )
             : ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: _transfers.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final transfer = _transfers[index];
                   final outgoing =
@@ -362,12 +368,12 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                   final status = transfer['status'] as String? ?? 'requested';
                   final actions = _statusActions(transfer);
                   return Material(
-                    color: AppColors.surface,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -387,7 +393,7 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                                   : AppColors.success,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -395,17 +401,17 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                                 Text(
                                   transfer['product_name'] as String? ??
                                       'Product',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                SizedBox(height: 4),
                                 Text(
                                   '${outgoing ? 'To' : 'From'} ${outgoing ? transfer['to_branch_name'] : transfer['from_branch_name']}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -417,15 +423,15 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                             children: [
                               Text(
                                 '${quantity.toStringAsFixed(2)} ${transfer['unit'] ?? ''}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4),
                               Text(
                                 status.toUpperCase(),
-                                style: const TextStyle(
-                                  color: AppColors.textSecondary,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -433,7 +439,7 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                             ],
                           ),
                           if (actions.isNotEmpty) ...[
-                            const SizedBox(width: 4),
+                            SizedBox(width: 4),
                             PopupMenuButton<String>(
                               tooltip: 'Transfer actions',
                               itemBuilder: (_) => actions,

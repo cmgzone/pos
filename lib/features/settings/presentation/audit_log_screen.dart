@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/branch_service.dart';
@@ -58,16 +59,24 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final currentBranchLabel = _branchLabel(BranchService.currentBranchId);
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Audit Logs'),
-            const SizedBox(width: 10),
+            Text('Audit Logs'),
+            SizedBox(width: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -82,7 +91,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                     size: 12,
                     color: AppColors.primary,
                   ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: 4),
                   Text(
                     currentBranchLabel,
                     style: TextStyle(
@@ -99,7 +108,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actions: [
           Row(
             children: [
-              const Text('Current branch only', style: TextStyle(fontSize: 12)),
+              Text('Current branch only', style: TextStyle(fontSize: 12)),
               Switch(
                 value: _currentBranchOnly,
                 onChanged: (value) {
@@ -111,8 +120,8 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
               ),
             ],
           ),
-          IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
-          const SizedBox(width: 8),
+          IconButton(onPressed: _refresh, icon: Icon(Icons.refresh)),
+          SizedBox(width: 8),
         ],
       ),
       body: TrainingAnchor(
@@ -121,21 +130,21 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
           future: _logsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(child: CircularProgressIndicator());
             }
             final logs = snapshot.data ?? [];
             if (logs.isEmpty) {
-              return const Center(
+              return Center(
                 child: Text(
                   'No audit activity yet.',
-                  style: TextStyle(color: AppColors.textSecondary),
+                  style: theme.textTheme.bodyMedium,
                 ),
               );
             }
             return ListView.separated(
               padding: const EdgeInsets.all(20),
               itemCount: logs.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final log = logs[index];
                 final action = log['action'] as String? ?? 'change';
@@ -150,9 +159,9 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                 return Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
+                    color: colors.surface,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: colors.outline),
                   ),
                   child: Row(
                     children: [
@@ -165,18 +174,18 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                         ),
                         child: Icon(_iconFor(action), color: color, size: 20),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               '${action.toUpperCase()} ${log['entity_table'] ?? ''}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: 4),
                             Wrap(
                               spacing: 8,
                               runSpacing: 4,
@@ -184,18 +193,14 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                               children: [
                                 Text(
                                   log['user_name'] as String? ?? 'Unknown user',
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12,
-                                  ),
+                                  style: theme.textTheme.bodySmall,
                                 ),
                                 if ((log['user_role'] as String? ?? '')
                                     .trim()
                                     .isNotEmpty)
                                   Text(
                                     '(${log['user_role']})',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
+                                    style: theme.textTheme.bodySmall?.copyWith(
                                       fontSize: 11,
                                     ),
                                   ),
@@ -219,7 +224,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                         size: 10,
                                         color: AppColors.primaryLight,
                                       ),
-                                      const SizedBox(width: 3),
+                                      SizedBox(width: 3),
                                       Text(
                                         branchName,
                                         style: TextStyle(
@@ -238,8 +243,8 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                       ),
                       Text(
                         _formatDate(log['created_at']),
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
                         ),
                       ),

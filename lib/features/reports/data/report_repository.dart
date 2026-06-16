@@ -520,6 +520,7 @@ class ReportRepository {
         COALESCE(SUM(s.total_amount), 0) as total_revenue,
         COALESCE(SUM(s.tax), 0) as total_tax,
         COALESCE(SUM(s.discount), 0) as total_discount,
+        COUNT(DISTINCT CASE WHEN s.customer_id IS NOT NULL AND TRIM(s.customer_id) <> '' THEN s.customer_id END) as customer_count,
         SUM(CASE WHEN s.is_cash_drawer = 1 THEN s.total_amount ELSE 0 END) as cash_revenue,
         SUM(CASE WHEN s.balance_due > 0 THEN s.total_amount ELSE 0 END) as kopesha_revenue,
         COUNT(CASE WHEN s.is_cash_drawer = 1 THEN 1 END) as cash_count,
@@ -630,6 +631,72 @@ class ReportRepository {
     summary['top_services'] = topServices;
 
     return summary;
+  }
+
+  static Future<List<Map<String, dynamic>>> getDailySalesTrend({
+    DateTime? endingAt,
+    String? cashierId,
+    ReportBranchScope branchScope = ReportBranchScope.current,
+  }) async {
+    final end = endingAt ?? DateTime.now();
+    final start = end.subtract(const Duration(days: 6));
+    final startDate = _dateOnly(start);
+    final endDate = _dateOnly(end);
+    final normalizedCashierId = cashierId?.trim();
+    final clauses = <String>[
+      'DATE(s.created_at) BETWEEN ? AND ?',
+      's.refund_sale_id IS NULL',
+      's.deleted_at IS NULL',
+    ];
+    final args = <dynamic>[startDate, endDate];
+    _addBranchFilter(clauses, args, 's', branchScope);
+    if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
+      clauses.add('s.user_id = ?');
+      args.add(normalizedCashierId);
+    }
+
+    final rows = await DatabaseService.rawQuery('''
+      SELECT
+        DATE(s.created_at) as sale_date,
+        COUNT(*) as transactions,
+        COALESCE(SUM(s.total_amount), 0) as total_revenue,
+        COALESCE(SUM(
+          COALESCE((
+            SELECT SUM(si.quantity * (si.unit_price - si.unit_cost))
+            FROM sale_items si
+            WHERE si.sale_id = s.id
+          ), 0)
+          + COALESCE((
+            SELECT SUM(ssi.quantity * ssi.unit_price)
+            FROM service_sale_items ssi
+            WHERE ssi.sale_id = s.id
+          ), 0)
+        ), 0) as gross_profit
+      FROM sales s
+      WHERE ${clauses.join(' AND ')}
+      GROUP BY DATE(s.created_at)
+      ORDER BY sale_date ASC
+    ''', args);
+
+    final byDate = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      byDate[row['sale_date']?.toString() ?? ''] = Map<String, dynamic>.from(
+        row,
+      );
+    }
+
+    return List.generate(7, (index) {
+      final day = start.add(Duration(days: index));
+      final key = _dateOnly(day);
+      final row = byDate[key] ?? const <String, dynamic>{};
+      return {
+        'date': key,
+        'label': '${day.month}/${day.day}',
+        'transactions': row['transactions'] ?? 0,
+        'total_revenue': row['total_revenue'] ?? 0,
+        'gross_profit': row['gross_profit'] ?? 0,
+      };
+    });
   }
 
   static Future<List<Map<String, dynamic>>> getDailyCashierSummary({

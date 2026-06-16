@@ -613,7 +613,7 @@ class ReceiptService {
     await showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: 500,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
 import 'subscription_plans_section.dart';
 
@@ -21,7 +20,7 @@ class SubscriptionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SubscriptionPlansSection(
         fullPage: true,
         afterSignup: afterSignup,

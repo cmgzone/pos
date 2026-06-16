@@ -91,7 +91,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -107,15 +107,15 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                   children: [
                     Text(
                       'This variant sells in $_saleUnitLabel and stores stock in $_stockUnitLabel.',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 13,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     TextFormField(
                       controller: nameController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Variant Name',
                         hintText: 'e.g. Red / Large',
                       ),
@@ -124,7 +124,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                           ? 'Variant name is required'
                           : null,
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: priceController,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -149,7 +149,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: costController,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -174,7 +174,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: stockController,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -203,7 +203,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                       },
                       onChanged: (_) => setDialogState(() {}),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: lowStockController,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -231,29 +231,29 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: skuController,
-                      decoration: const InputDecoration(labelText: 'SKU'),
+                      decoration: InputDecoration(labelText: 'SKU'),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: barcodeController,
-                      decoration: const InputDecoration(labelText: 'Barcode'),
+                      decoration: InputDecoration(labelText: 'Barcode'),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextFormField(
                       controller: sortOrderController,
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Sort Order',
                       ),
                     ),
                     if (stockController.text.trim().isNotEmpty &&
                         double.tryParse(stockController.text) != null &&
                         _saleToStockFactor > 0) ...[
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -263,7 +263,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                         ),
                         child: Text(
                           'Approx. sellable quantity: ${UnitUtils.formatWithUnit((double.tryParse(stockController.text) ?? 0) / _saleToStockFactor, _saleUnit)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.primaryLight,
                             fontWeight: FontWeight.w600,
                           ),
@@ -278,7 +278,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
           actions: [
             TextButton(
               onPressed: _isSaving ? null : () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: _isSaving
@@ -287,20 +287,20 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                       if (!formKey.currentState!.validate()) {
                         return;
                       }
-                      final price = double.parse(priceController.text.trim());
+                      final price =
+                          double.tryParse(priceController.text.trim()) ?? 0;
                       final costText = costController.text.trim();
                       final payload = <String, dynamic>{
                         'name': nameController.text.trim(),
                         'price': price,
                         'cost': costText.isEmpty
                             ? null
-                            : double.parse(costText),
+                            : double.tryParse(costText),
                         'sku': _normalizedText(skuController.text),
                         'barcode': _normalizedText(barcodeController.text),
-                        'stock': double.parse(stockController.text.trim()),
-                        'low_stock': double.parse(
-                          lowStockController.text.trim(),
-                        ),
+                        'stock': double.tryParse(stockController.text.trim()) ?? 0,
+                        'low_stock':
+                            double.tryParse(lowStockController.text.trim()) ?? 0,
                         'sort_order':
                             int.tryParse(sortOrderController.text.trim()) ?? 0,
                       };
@@ -394,19 +394,19 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Variant'),
+        title: Text('Delete Variant'),
         content: Text('Delete "${variant['name']}" from $_productName?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text('Delete'),
           ),
         ],
       ),
@@ -472,9 +472,9 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context, _didChange),
           ),
           title: Text('Variants - $_productName'),
@@ -482,8 +482,8 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _isSaving ? null : _showVariantDialog,
           backgroundColor: AppColors.primary,
-          icon: const Icon(Icons.add),
-          label: const Text('Add Variant'),
+          icon: Icon(Icons.add),
+          label: Text('Add Variant'),
         ),
         body: Column(
           children: [
@@ -492,9 +492,9 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
               margin: const EdgeInsets.all(24),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,15 +503,15 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                     _productName,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Text(
                     'Manage sellable variants for this product. Parent stock stays synced from variant stock totals.',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 13,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Wrap(
                     spacing: 12,
                     runSpacing: 8,
@@ -536,7 +536,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
             ),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(child: CircularProgressIndicator())
                   : _variants.isEmpty
                   ? Center(
                       child: Padding(
@@ -547,24 +547,24 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                             Icon(
                               Icons.tune_outlined,
                               size: 56,
-                              color: AppColors.textSecondary.withValues(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                 alpha: 0.45,
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            const Text(
+                            SizedBox(height: 12),
+                            Text(
                               'No variants yet',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 16,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            SizedBox(height: 8),
                             Text(
                               'Add the real choices you sell for $_productName, such as size, color, or pack type.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: AppColors.textSecondary.withValues(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                   alpha: 0.85,
                                 ),
                               ),
@@ -578,7 +578,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
                         itemCount: _variants.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final variant = _variants[index];
                           final stock = (variant['stock'] as num? ?? 0)
@@ -596,9 +596,9 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                           return Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: AppColors.surface,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.border),
+                              border: Border.all(color: Theme.of(context).colorScheme.outline),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,19 +613,19 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                                         children: [
                                           Text(
                                             variant['name'] as String? ?? '',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.w700,
                                               fontSize: 16,
                                             ),
                                           ),
-                                          const SizedBox(height: 6),
+                                          SizedBox(height: 6),
                                           Wrap(
                                             spacing: 10,
                                             runSpacing: 8,
                                             children: [
                                               Text(
                                                 '${ShopSettings.currency}${((variant['price'] as num?) ?? 0).toStringAsFixed(2)} / $_saleUnitLabel',
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   color: AppColors.primaryLight,
                                                   fontWeight: FontWeight.w600,
                                                 ),
@@ -633,9 +633,9 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                                               if (variant['cost'] != null)
                                                 Text(
                                                   'Cost ${ShopSettings.currency}${(variant['cost'] as num).toStringAsFixed(2)} / $_stockUnitLabel',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     color:
-                                                        AppColors.textSecondary,
+                                                        Theme.of(context).colorScheme.onSurfaceVariant,
                                                   ),
                                                 ),
                                             ],
@@ -671,7 +671,7 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: 12),
                                 Wrap(
                                   spacing: 12,
                                   runSpacing: 8,
@@ -682,8 +682,8 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                                         false)
                                       Text(
                                         'SKU: ${variant['sku']}',
-                                        style: const TextStyle(
-                                          color: AppColors.textSecondary,
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     if ((variant['barcode'] as String?)
@@ -692,38 +692,38 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                                         false)
                                       Text(
                                         'Barcode: ${variant['barcode']}',
-                                        style: const TextStyle(
-                                          color: AppColors.textSecondary,
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     Text(
                                       'Low stock: ${UnitUtils.formatWithUnit(lowStock, _stockUnit)}',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 14),
+                                SizedBox(height: 14),
                                 Row(
                                   children: [
                                     OutlinedButton.icon(
                                       onPressed: _isSaving
                                           ? null
                                           : () => _showVariantDialog(variant),
-                                      icon: const Icon(Icons.edit_outlined),
-                                      label: const Text('Edit'),
+                                      icon: Icon(Icons.edit_outlined),
+                                      label: Text('Edit'),
                                     ),
-                                    const SizedBox(width: 10),
+                                    SizedBox(width: 10),
                                     OutlinedButton.icon(
                                       onPressed: _isSaving
                                           ? null
                                           : () => _deleteVariant(variant),
-                                      icon: const Icon(
+                                      icon: Icon(
                                         Icons.delete_outline,
                                         color: AppColors.error,
                                       ),
-                                      label: const Text(
+                                      label: Text(
                                         'Delete',
                                         style: TextStyle(
                                           color: AppColors.error,
@@ -762,16 +762,16 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: AppColors.primaryLight),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          SizedBox(width: 8),
+          Text(label, style: TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );

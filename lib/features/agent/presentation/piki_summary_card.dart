@@ -62,26 +62,26 @@ class _TodaySummaryCard extends StatelessWidget {
           value: '$currency${revenue.toStringAsFixed(2)}',
           color: AppColors.success,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         _MetricRow(
           icon: Icons.trending_up_rounded,
           label: 'Profit',
           value: '$currency${profit.toStringAsFixed(2)}',
           color: profit >= 0 ? AppColors.success : AppColors.error,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         _MetricRow(
           icon: Icons.receipt_long_rounded,
           label: 'Transactions',
           value: '$sales sales',
           color: AppColors.primary,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         _MetricRow(
           icon: Icons.percent_rounded,
           label: 'Margin',
           value: '${margin.toStringAsFixed(1)}%',
-          color: AppColors.secondary,
+          color: Theme.of(context).colorScheme.secondary,
         ),
       ],
     );
@@ -109,19 +109,19 @@ class _ProfitCard extends StatelessWidget {
           value: '$currency${profit.toStringAsFixed(2)}',
           color: profit >= 0 ? AppColors.success : AppColors.error,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         _MetricRow(
           icon: Icons.attach_money_rounded,
           label: 'Revenue',
           value: '$currency${revenue.toStringAsFixed(2)}',
           color: AppColors.success,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         _MetricRow(
           icon: Icons.percent_rounded,
           label: 'Profit Margin',
           value: '${margin.toStringAsFixed(1)}%',
-          color: AppColors.secondary,
+          color: Theme.of(context).colorScheme.secondary,
         ),
       ],
     );
@@ -139,11 +139,11 @@ class _ShiftCard extends StatelessWidget {
     final currency = ShopSettings.currency;
     final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     if (items.isEmpty) {
-      return const _MetricRow(
+      return _MetricRow(
         icon: Icons.timer_off_rounded,
         label: 'No closed shifts',
         value: '--',
-        color: AppColors.textSecondary,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       );
     }
     return Column(
@@ -160,22 +160,22 @@ class _ShiftCard extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.timer_rounded,
                 size: 18,
-                color: AppColors.secondary,
+                color: Theme.of(context).colorScheme.secondary,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   cashier,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -183,17 +183,17 @@ class _ShiftCard extends StatelessWidget {
               ),
               Text(
                 '$currency${total.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.success,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               if (cash > 0) ...[
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'Cash: $currency${cash.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                   ),
                 ),
@@ -273,7 +273,7 @@ class _SalesReportCard extends StatelessWidget {
           color: AppColors.primary,
         ),
         if (items.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           ...items.take(3).map((sale) {
             final amount = (sale['total_amount'] as num? ?? 0).toDouble();
             final date = sale['created_at'] as String? ?? '';
@@ -284,30 +284,30 @@ class _SalesReportCard extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.receipt_rounded,
                     size: 16,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Sale at $timeStr',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),
                   Text(
                     '$currency${amount.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -350,13 +350,13 @@ class _MetricRow extends StatelessWidget {
           ),
           child: Icon(icon, size: 16, color: color),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: 12),
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: AppColors.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -403,7 +403,7 @@ class _TopDebtorsCard extends StatelessWidget {
           value: '$currency${totalOwed.toStringAsFixed(2)}',
           color: AppColors.error,
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         ...items.take(5).map((debtor) {
           final name = debtor['name'] as String? ?? 'Customer';
           final balance = (debtor['balance'] as num? ?? 0).toDouble();
@@ -411,7 +411,7 @@ class _TopDebtorsCard extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 7),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: AppColors.error.withValues(alpha: 0.25),
@@ -429,7 +429,7 @@ class _TopDebtorsCard extends StatelessWidget {
                   child: Center(
                     child: Text(
                       name.substring(0, 1).toUpperCase(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.error,
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
@@ -437,13 +437,13 @@ class _TopDebtorsCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -451,7 +451,7 @@ class _TopDebtorsCard extends StatelessWidget {
                 ),
                 Text(
                   '$currency${balance.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.error,
                     fontWeight: FontWeight.w700,
                   ),
@@ -477,17 +477,17 @@ class _TopProductsCard extends StatelessWidget {
     final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
     if (items.isEmpty) {
-      return const _MetricRow(
+      return _MetricRow(
         icon: Icons.leaderboard_rounded,
         label: 'No sales data yet',
         value: '--',
-        color: AppColors.textSecondary,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       );
     }
 
     final rankColors = [
       AppColors.warning,
-      AppColors.textSecondary,
+      Theme.of(context).colorScheme.onSurfaceVariant,
       AppColors.primaryLight,
     ];
 
@@ -501,15 +501,15 @@ class _TopProductsCard extends StatelessWidget {
         final unit = p['sale_unit'] as String? ?? p['unit'] as String? ?? 'pcs';
         final rankColor = i < rankColors.length
             ? rankColors[i]
-            : AppColors.textSecondary;
+            : Theme.of(context).colorScheme.onSurfaceVariant;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 7),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Row(
             children: [
@@ -531,7 +531,7 @@ class _TopProductsCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,15 +540,15 @@ class _TopProductsCard extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
                     ),
                     Text(
                       '${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unit sold',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
@@ -557,7 +557,7 @@ class _TopProductsCard extends StatelessWidget {
               ),
               Text(
                 '$currency${revenue.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.success,
                   fontWeight: FontWeight.w700,
                 ),
@@ -600,7 +600,7 @@ class _ExpenseSummaryCard extends StatelessWidget {
           value: '$currency${total.toStringAsFixed(2)}',
           color: AppColors.warning,
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         ...items.take(5).map((expense) {
           final title = expense['title'] as String? ?? 'Expense';
           final amount = (expense['amount'] as num? ?? 0).toDouble();
@@ -609,18 +609,18 @@ class _ExpenseSummaryCard extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 7),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.receipt_rounded,
                   size: 16,
                   color: AppColors.warning,
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -629,7 +629,7 @@ class _ExpenseSummaryCard extends StatelessWidget {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -637,8 +637,8 @@ class _ExpenseSummaryCard extends StatelessWidget {
                       if (category.isNotEmpty)
                         Text(
                           category,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 11,
                           ),
                         ),
@@ -647,7 +647,7 @@ class _ExpenseSummaryCard extends StatelessWidget {
                 ),
                 Text(
                   '$currency${amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.warning,
                     fontWeight: FontWeight.w700,
                   ),
@@ -661,8 +661,8 @@ class _ExpenseSummaryCard extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               '+ ${items.length - 5} more expenses',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
               ),
             ),
@@ -684,11 +684,11 @@ class _PurchaseHistoryCard extends StatelessWidget {
     final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
     if (items.isEmpty) {
-      return const _MetricRow(
+      return _MetricRow(
         icon: Icons.local_shipping_rounded,
         label: 'No purchases recorded',
         value: '--',
-        color: AppColors.textSecondary,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       );
     }
 
@@ -712,18 +712,18 @@ class _PurchaseHistoryCard extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 7),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.local_shipping_rounded,
                 size: 16,
-                color: AppColors.secondary,
+                color: Theme.of(context).colorScheme.secondary,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -732,7 +732,7 @@ class _PurchaseHistoryCard extends StatelessWidget {
                       product,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -740,8 +740,8 @@ class _PurchaseHistoryCard extends StatelessWidget {
                     Text(
                       '${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unit'
                       '${supplier != null ? ' · $supplier' : ''} · $dateStr',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
@@ -751,8 +751,8 @@ class _PurchaseHistoryCard extends StatelessWidget {
               if (cost > 0)
                 Text(
                   '$currency${cost.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -777,11 +777,11 @@ class _CatalogOrdersCard extends StatelessWidget {
     final count = (data['count'] as num? ?? items.length).toInt();
 
     if (items.isEmpty) {
-      return const _MetricRow(
+      return _MetricRow(
         icon: Icons.assignment_outlined,
         label: 'Catalog orders',
         value: 'None',
-        color: AppColors.textSecondary,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       );
     }
 
@@ -793,14 +793,14 @@ class _CatalogOrdersCard extends StatelessWidget {
           value: '$count found',
           color: AppColors.primary,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         _MetricRow(
           icon: Icons.payments_outlined,
           label: 'Order value',
           value: '$currency${totalValue.toStringAsFixed(2)}',
           color: AppColors.success,
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         ...items.take(5).map((order) {
           final number = order['order_number']?.toString() ?? '';
           final customer = order['customer_name']?.toString() ?? 'Customer';
@@ -810,18 +810,18 @@ class _CatalogOrdersCard extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 7),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.receipt_long_rounded,
                   size: 16,
                   color: AppColors.primary,
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -830,15 +830,15 @@ class _CatalogOrdersCard extends StatelessWidget {
                         '#$number - $customer',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
                       Text(
                         status,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                         ),
                       ),
@@ -847,7 +847,7 @@ class _CatalogOrdersCard extends StatelessWidget {
                 ),
                 Text(
                   '$currency${subtotal.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.success,
                     fontWeight: FontWeight.w700,
                   ),

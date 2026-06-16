@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:uuid/uuid.dart';
 
 import 'database_service.dart';
@@ -25,7 +27,14 @@ class AuditLogService {
         'entity_table': entityTable,
         'entity_id': entityId,
       });
-    } catch (_) {}
+    } catch (e, st) {
+      developer.log(
+        'Failed to write audit log',
+        error: e,
+        stackTrace: st,
+        name: 'AuditLogService',
+      );
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getRecent({

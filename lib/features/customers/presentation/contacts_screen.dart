@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../purchases/data/purchase_repository.dart';
@@ -133,8 +135,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Customer Import Complete'),
+        title: Text('Customer Import Complete'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,25 +145,25 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.updated > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.updated} existing customer${importResult.updated == 1 ? '' : 's'} updated.',
               ),
             ],
             if (importResult.skipped > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
-                style: const TextStyle(color: AppColors.warning),
+                style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
+              SizedBox(height: 12),
+              Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               ...importResult.errors.map(
                 (error) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -175,7 +176,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: Text('Done'),
           ),
         ],
       ),
@@ -213,11 +214,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Edit Customer'),
+          title: Text('Edit Customer'),
           content: SizedBox(
             width: 460,
             child: Column(
@@ -225,26 +225,26 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Customer Name *',
                     prefixIcon: Icon(Icons.person_outline),
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Phone Number (WhatsApp / SMS)',
                     prefixIcon: Icon(Icons.phone_outlined),
                     helperText: 'Used for WhatsApp and SMS messaging',
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextField(
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Email Address',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
@@ -255,7 +255,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton.icon(
               onPressed: saving
@@ -297,7 +297,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                       }
                     },
               icon: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -305,8 +305,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.check, size: 18),
-              label: const Text('Save'),
+                  : Icon(Icons.check, size: 18),
+              label: Text('Save'),
             ),
           ],
         ),
@@ -353,11 +353,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Edit Supplier'),
+          title: Text('Edit Supplier'),
           content: SizedBox(
             width: 460,
             child: SingleChildScrollView(
@@ -366,44 +365,44 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                 children: [
                   TextField(
                     controller: nameController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Supplier Name *',
                       prefixIcon: Icon(Icons.storefront_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: phoneController,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Phone Number (WhatsApp / SMS)',
                       prefixIcon: Icon(Icons.phone_outlined),
                       helperText: 'Used for WhatsApp and SMS messaging',
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Email Address',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: addressController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Address',
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: noteController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Note',
                       prefixIcon: Icon(Icons.notes_outlined),
                     ),
@@ -415,7 +414,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton.icon(
               onPressed: saving
@@ -459,7 +458,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                       }
                     },
               icon: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -467,8 +466,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.check, size: 18),
-              label: const Text('Save'),
+                  : Icon(Icons.check, size: 18),
+              label: Text('Save'),
             ),
           ],
         ),
@@ -538,11 +537,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Create Supplier'),
+          title: Text('Create Supplier'),
           content: SizedBox(
             width: 460,
             child: SingleChildScrollView(
@@ -552,43 +550,43 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                   TextField(
                     controller: nameController,
                     autofocus: true,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Supplier Name *',
                       prefixIcon: Icon(Icons.storefront_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: phoneController,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Phone Number',
                       prefixIcon: Icon(Icons.phone_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: addressController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Address',
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: noteController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Note',
                       prefixIcon: Icon(Icons.notes_outlined),
                     ),
@@ -600,7 +598,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           actions: [
             TextButton(
               onPressed: isSaving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton.icon(
               onPressed: isSaving
@@ -643,7 +641,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                       }
                     },
               icon: isSaving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -651,8 +649,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.check, size: 18),
-              label: const Text('Save Supplier'),
+                  : Icon(Icons.check, size: 18),
+              label: Text('Save Supplier'),
             ),
           ],
         ),
@@ -715,8 +713,14 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Contacts'),
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        title: Text('Contacts'),
         actions: [
           if (_tabController.index == 0)
             IconButton(
@@ -725,26 +729,26 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                   ? null
                   : _importCustomersFromFile,
               icon: _isImportingCustomers
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.upload_file_outlined),
+                  : Icon(Icons.upload_file_outlined),
             ),
         ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppColors.primaryLight,
           labelColor: AppColors.primaryLight,
-          unselectedLabelColor: AppColors.textSecondary,
+          unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
           tabs: [
             Tab(
-              icon: const Icon(Icons.people_outline, size: 20),
+              icon: Icon(Icons.people_outline, size: 20),
               text: 'Customers (${_customers.length})',
             ),
             Tab(
-              icon: const Icon(Icons.storefront_outlined, size: 20),
+              icon: Icon(Icons.storefront_outlined, size: 20),
               text: 'Suppliers (${_suppliers.length})',
             ),
           ],
@@ -760,14 +764,14 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               onChanged: (_) => _load(),
               decoration: InputDecoration(
                 hintText: 'Search by name, phone, or email…',
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search,
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 suffixIcon: _searchController.text.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
+                        icon: Icon(Icons.clear, size: 18),
                         onPressed: () {
                           _searchController.clear();
                           _load();
@@ -780,7 +784,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           // Tab content
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(child: CircularProgressIndicator())
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -799,7 +803,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
             _showAddSupplierDialog();
           }
         },
-        icon: const Icon(Icons.person_add_alt_1),
+        icon: Icon(Icons.person_add_alt_1),
         label: Text(
           _tabController.index == 0 ? 'Add Customer' : 'Add Supplier',
         ),
@@ -823,7 +827,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: _customers.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
         final c = _customers[index];
         final balance = (c['balance'] as num?)?.toDouble() ?? 0;
@@ -836,7 +840,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           icon: Icons.person_outline_rounded,
           iconColor: hasPhone
               ? AppColors.primaryLight
-              : AppColors.textSecondary,
+              : Theme.of(context).colorScheme.onSurfaceVariant,
           trailing: balance > 0
               ? _BalanceBadge(
                   label: 'Balance',
@@ -867,7 +871,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: _suppliers.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
         final s = _suppliers[index];
         final totalSpend = (s['total_spend'] as num?)?.toDouble() ?? 0;
@@ -878,7 +882,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           contactLine: _contactLine(s),
           hasPhone: hasPhone,
           icon: Icons.storefront_outlined,
-          iconColor: hasPhone ? AppColors.success : AppColors.textSecondary,
+          iconColor: hasPhone ? AppColors.success : Theme.of(context).colorScheme.onSurfaceVariant,
           trailing: totalSpend > 0
               ? _BalanceBadge(
                   label: 'Total Spend',
@@ -917,17 +921,17 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               ),
               child: Icon(icon, size: 36, color: AppColors.primaryLight),
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             Text(
               title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.textSecondary.withValues(alpha: 0.9),
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                 fontSize: 13,
               ),
             ),
@@ -968,11 +972,11 @@ class _ContactCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(isMobile ? 14 : 16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: hasPhone
-              ? AppColors.border
+              ? context.appBorder
               : AppColors.warning.withValues(alpha: 0.35),
         ),
       ),
@@ -987,7 +991,7 @@ class _ContactCard extends StatelessWidget {
         Row(
           children: [
             _avatar(),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -996,12 +1000,12 @@ class _ContactCard extends StatelessWidget {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Row(
                     children: [
                       if (!hasPhone) ...[
@@ -1010,7 +1014,7 @@ class _ContactCard extends StatelessWidget {
                           size: 14,
                           color: AppColors.warning.withValues(alpha: 0.9),
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4),
                       ],
                       Expanded(
                         child: Text(
@@ -1019,7 +1023,7 @@ class _ContactCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: hasPhone
-                                ? AppColors.textSecondary
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
                                 : AppColors.warning,
                             fontSize: 12,
                             fontWeight: hasPhone
@@ -1035,23 +1039,23 @@ class _ContactCard extends StatelessWidget {
             ),
           ],
         ),
-        if (trailing != null) ...[const SizedBox(height: 12), trailing!],
-        const SizedBox(height: 12),
+        if (trailing != null) ...[SizedBox(height: 12), trailing!],
+        SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: onEdit,
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: const Text('Edit'),
+                icon: Icon(Icons.edit_outlined, size: 16),
+                label: Text('Edit'),
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: FilledButton.icon(
                 onPressed: onMessage,
-                icon: const Icon(Icons.message_outlined, size: 16),
-                label: const Text('Message'),
+                icon: Icon(Icons.message_outlined, size: 16),
+                label: Text('Message'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                 ),
@@ -1067,7 +1071,7 @@ class _ContactCard extends StatelessWidget {
     return Row(
       children: [
         _avatar(),
-        const SizedBox(width: 14),
+        SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1076,12 +1080,12 @@ class _ContactCard extends StatelessWidget {
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: 4),
               Row(
                 children: [
                   if (!hasPhone) ...[
@@ -1090,7 +1094,7 @@ class _ContactCard extends StatelessWidget {
                       size: 14,
                       color: AppColors.warning.withValues(alpha: 0.9),
                     ),
-                    const SizedBox(width: 4),
+                    SizedBox(width: 4),
                   ],
                   Expanded(
                     child: Text(
@@ -1099,7 +1103,7 @@ class _ContactCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: hasPhone
-                            ? AppColors.textSecondary
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
                             : AppColors.warning,
                         fontSize: 12,
                         fontWeight: hasPhone
@@ -1113,19 +1117,19 @@ class _ContactCard extends StatelessWidget {
             ],
           ),
         ),
-        if (trailing != null) ...[const SizedBox(width: 14), trailing!],
-        const SizedBox(width: 14),
+        if (trailing != null) ...[SizedBox(width: 14), trailing!],
+        SizedBox(width: 14),
         IconButton(
           onPressed: onEdit,
           tooltip: 'Edit',
-          icon: const Icon(Icons.edit_outlined, size: 20),
-          color: AppColors.textSecondary,
+          icon: Icon(Icons.edit_outlined, size: 20),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        const SizedBox(width: 4),
+        SizedBox(width: 4),
         IconButton(
           onPressed: onMessage,
           tooltip: 'WhatsApp / SMS',
-          icon: const Icon(Icons.message_outlined, size: 20),
+          icon: Icon(Icons.message_outlined, size: 20),
           color: AppColors.primaryLight,
         ),
       ],
@@ -1178,7 +1182,7 @@ class _BalanceBadge extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(
             value,
             style: TextStyle(

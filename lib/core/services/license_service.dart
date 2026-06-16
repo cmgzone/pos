@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -7,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/app_constants.dart';
 import 'shop_settings.dart';
+import 'sync_settings_service.dart';
 
 enum LicenseAccessStatus { localOnly, active, grace, expired, invalid }
 
@@ -486,6 +488,59 @@ class LicenseService {
     await _storeAccessResponse(body);
   }
 
+  static Future<LicenseSnapshot> updateBusinessProfile({
+    String? businessName,
+    String? currency,
+  }) async {
+    await init();
+    final snapshot = currentSnapshot;
+    final accessToken = snapshot.accessToken;
+    if (!snapshot.hasBinding ||
+        accessToken == null ||
+        accessToken.trim().isEmpty) {
+      return snapshot;
+    }
+
+    await SyncSettingsService.init();
+    final backendUrl = SyncSettingsService.backendUrl.trim();
+    if (backendUrl.isEmpty) {
+      return snapshot;
+    }
+
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final payload = <String, dynamic>{
+      'deviceId': deviceId,
+      if (businessName != null && businessName.trim().isNotEmpty)
+        'businessName': businessName.trim(),
+      if (currency != null)
+        'currency': ShopSettings.normalizeCurrency(currency),
+    };
+    if (payload.length == 1) {
+      return snapshot;
+    }
+
+    final client = http.Client();
+    try {
+      final response = await client
+          .put(
+            _buildUri(backendUrl, 'business/profile'),
+            headers: {
+              HttpHeaders.authorizationHeader: 'Bearer $accessToken',
+              HttpHeaders.contentTypeHeader: 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(_timeout);
+
+      final body = _decodeJson(response);
+      _throwIfRequestFailed(response, body);
+      await _storeAccessResponse(body);
+      return currentSnapshot;
+    } finally {
+      client.close();
+    }
+  }
+
   static Future<void> ensureWriteAccess({required String action}) async {
     await init();
     final snapshot = currentSnapshot;
@@ -730,7 +785,14 @@ class LicenseService {
       if (value is Map<String, dynamic>) {
         return value;
       }
-    } catch (_) {}
+    } catch (e, st) {
+      developer.log(
+        'Failed to decode license payload',
+        error: e,
+        stackTrace: st,
+        name: 'LicenseService',
+      );
+    }
     return null;
   }
 

@@ -119,4 +119,48 @@ void main() {
       await DatabaseService.overrideDatabasePathForTesting(null);
     },
   );
+
+  test(
+    'fresh pull skips deleted product tombstones with missing categories',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+
+      await DatabaseService.overrideDatabasePathForTesting(':memory:');
+      await DatabaseService.initialize();
+
+      await DatabaseService.db.transaction((txn) async {
+        await SyncService.applyRemoteRowForTesting(txn, 'products', {
+          'id': 'deleted-product-1',
+          'branch_id': DatabaseService.defaultBranchId,
+          'name': 'Deleted Speaker',
+          'price': 79.99,
+          'stock': 0.0,
+          'low_stock': 0.0,
+          'unit': 'pcs',
+          'stock_unit': 'pcs',
+          'sale_unit': 'pcs',
+          'sale_to_stock_factor': 1.0,
+          'purchase_unit': 'pcs',
+          'purchase_to_stock_factor': 1.0,
+          'category_id': 'missing-category',
+          'track_stock': 1,
+          'has_variants': 0,
+          'created_at': '2026-06-13T21:26:21.542Z',
+          'updated_at': '2026-06-14T00:24:30.165Z',
+          'deleted_at': '2026-06-14T00:24:30.165Z',
+          'sync_status': 'synced',
+        });
+      });
+
+      final product = await DatabaseService.queryById(
+        'products',
+        'deleted-product-1',
+      );
+      expect(product, isNull);
+
+      await DatabaseService.overrideDatabasePathForTesting(null);
+    },
+  );
 }

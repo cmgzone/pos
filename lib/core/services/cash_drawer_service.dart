@@ -112,7 +112,9 @@ class CashDrawerService {
         if (tempFile != null && await tempFile.exists()) {
           await tempFile.delete();
         }
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('CashDrawerService: failed to delete temp file: $e\n$st');
+      }
     }
   }
 

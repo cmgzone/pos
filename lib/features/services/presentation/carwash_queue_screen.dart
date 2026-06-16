@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../data/service_repository.dart';
 
 // ─── Queue Board Screen ───────────────────────────────────────────────────────
@@ -92,31 +93,31 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         title: Row(
           children: [
             Container(
               width: 32, height: 32,
               decoration: BoxDecoration(
-                color: AppColors.secondary.withValues(alpha: 0.15),
+                color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.car_repair, color: AppColors.secondary, size: 18),
+              child: Icon(Icons.car_repair, color: Theme.of(context).colorScheme.secondary, size: 18),
             ),
-            const SizedBox(width: 10),
-            const Text('Queue Board'),
+            SizedBox(width: 10),
+            Text('Queue Board'),
           ],
         ),
         actions: [
           // Bay count adjuster
           Row(
             children: [
-              const Text('Bays:', style: TextStyle(color: AppColors.textSecondary)),
-              const SizedBox(width: 6),
+              Text('Bays:', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              SizedBox(width: 6),
               IconButton(
-                icon: const Icon(Icons.remove_circle_outline, size: 20),
+                icon: Icon(Icons.remove_circle_outline, size: 20),
                 onPressed: _baysCount <= 1
                     ? null
                     : () async {
@@ -126,10 +127,10 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
               ),
               Text(
                 '$_baysCount',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
               IconButton(
-                icon: const Icon(Icons.add_circle_outline, size: 20),
+                icon: Icon(Icons.add_circle_outline, size: 20),
                 onPressed: _baysCount >= 20
                     ? null
                     : () async {
@@ -137,39 +138,39 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                         setState(() => _baysCount++);
                       },
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
             ],
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
             onPressed: _load,
             tooltip: 'Refresh',
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : Column(
               children: [
                 // ── Legend bar
                 Container(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                   child: Row(
                     children: [
                       _LegendDot('Booked', AppColors.primary),
-                      const SizedBox(width: 16),
+                      SizedBox(width: 16),
                       _LegendDot('Checked In', AppColors.warning),
-                      const SizedBox(width: 16),
+                      SizedBox(width: 16),
                       _LegendDot('In Progress', AppColors.primaryLight),
-                      const SizedBox(width: 16),
-                      _LegendDot('Ready', AppColors.secondary),
-                      const Spacer(),
+                      SizedBox(width: 16),
+                      _LegendDot('Ready', Theme.of(context).colorScheme.secondary),
+                      Spacer(),
                       Text(
                         '${_orders.length} active order${_orders.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 13,
                         ),
                       ),
@@ -230,7 +231,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
 
     final picked = await showModalBottomSheet<String?>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -242,23 +243,23 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
           children: [
             Text(
               'Assign Bay — ${order['service_name'] ?? ''}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(
               (order['customer_name'] as String?)?.isNotEmpty == true
                   ? order['customer_name'] as String
                   : 'Walk-in',
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             Wrap(
               spacing: 10,
               runSpacing: 10,
               children: [
                 // Clear bay option
                 ChoiceChip(
-                  label: const Text('No Bay'),
+                  label: Text('No Bay'),
                   selected: current == null || current.isEmpty,
                   onSelected: (_) => Navigator.pop(ctx, ''),
                 ),
@@ -270,7 +271,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                     )),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
           ],
         ),
       ),
@@ -306,11 +307,11 @@ class _BayCard extends StatelessWidget {
     final isEmpty = orders.isEmpty;
     final order = isEmpty ? null : orders.first;
     final status = order?['status'] as String? ?? '';
-    final statusColor = isEmpty ? AppColors.success : _statusColor(status);
+    final statusColor = isEmpty ? AppColors.success : _statusColor(context, status);
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isEmpty
@@ -337,7 +338,7 @@ class _BayCard extends StatelessWidget {
                   color: statusColor,
                   size: 18,
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'Bay $bayNumber',
                   style: TextStyle(
@@ -346,7 +347,7 @@ class _BayCard extends StatelessWidget {
                     color: statusColor,
                   ),
                 ),
-                const Spacer(),
+                Spacer(),
                 if (!isEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -370,7 +371,7 @@ class _BayCard extends StatelessWidget {
           // ── Body
           Expanded(
             child: isEmpty
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -394,23 +395,23 @@ class _BayCard extends StatelessWidget {
                       children: [
                         Text(
                           order!['service_name'] as String? ?? '—',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 15,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: 4),
                         Text(
                           (order['customer_name'] as String?)?.isNotEmpty ==
                                   true
                               ? order['customer_name'] as String
                               : 'Walk-in',
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 13),
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                         ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: 8),
                         // Elapsed time
                         _ElapsedTime(
                           checkedInAt: order['checked_in_at'] as String?,
@@ -419,11 +420,11 @@ class _BayCard extends StatelessWidget {
                                   as num?)
                               ?.toInt(),
                         ),
-                        const Spacer(),
+                        Spacer(),
                         // Price
                         Text(
                           (order['price'] as num? ?? 0).toStringAsFixed(2),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.success,
                             fontWeight: FontWeight.w700,
                             fontSize: 16,
@@ -446,12 +447,12 @@ class _BayCard extends StatelessWidget {
                         minimumSize: Size.zero,
                       ),
                       onPressed: () => onAdvance(order!),
-                      child: const Text('Next', style: TextStyle(fontSize: 12)),
+                      child: Text('Next', style: TextStyle(fontSize: 12)),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    icon: Icon(Icons.swap_horiz, size: 18),
                     tooltip: 'Move bay',
                     onPressed: () => onOrderTap(order!),
                     style: IconButton.styleFrom(
@@ -485,11 +486,11 @@ class _UnassignedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: orders.isEmpty
-              ? AppColors.border
+              ? context.appBorder
               : AppColors.warning.withValues(alpha: 0.4),
         ),
       ),
@@ -509,21 +510,21 @@ class _UnassignedCard extends StatelessWidget {
               children: [
                 Icon(Icons.pending_outlined,
                     color: orders.isEmpty
-                        ? AppColors.textSecondary
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
                         : AppColors.warning,
                     size: 18),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'Queue',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                     color: orders.isEmpty
-                        ? AppColors.textSecondary
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
                         : AppColors.warning,
                   ),
                 ),
-                const Spacer(),
+                Spacer(),
                 if (orders.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -534,7 +535,7 @@ class _UnassignedCard extends StatelessWidget {
                     ),
                     child: Text(
                       '${orders.length} waiting',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.warning,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -546,33 +547,33 @@ class _UnassignedCard extends StatelessWidget {
           ),
           Expanded(
             child: orders.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'No orders waiting',
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(10),
                     itemCount: orders.length,
-                    separatorBuilder: (context, idx) => const SizedBox(height: 6),
+                    separatorBuilder: (context, idx) => SizedBox(height: 6),
                     itemBuilder: (context, i) {
                       final o = orders[i];
                       final status = o['status'] as String? ?? 'booked';
                       return InkWell(
                         borderRadius: BorderRadius.circular(12),
                         onTap: () => onOrderTap(o),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: _statusColor(status)
-                                .withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: _statusColor(status)
-                                  .withValues(alpha: 0.2),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: _statusColor(context, status)
+                                  .withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: _statusColor(context, status)
+                                    .withValues(alpha: 0.2),
+                              ),
                             ),
-                          ),
                           child: Row(
                             children: [
                               Expanded(
@@ -582,7 +583,7 @@ class _UnassignedCard extends StatelessWidget {
                                   children: [
                                     Text(
                                       o['service_name'] as String? ?? '—',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13,
                                       ),
@@ -595,17 +596,17 @@ class _UnassignedCard extends StatelessWidget {
                                               true
                                           ? o['customer_name'] as String
                                           : 'Walk-in',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const Icon(Icons.arrow_forward_ios,
+                              Icon(Icons.arrow_forward_ios,
                                   size: 12,
-                                  color: AppColors.textSecondary),
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ],
                           ),
                         ),
@@ -648,7 +649,9 @@ class _ElapsedTimeState extends State<_ElapsedTime> {
     try {
       final start = DateTime.parse(raw).toLocal();
       if (mounted) setState(() => _elapsed = DateTime.now().difference(start));
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('CarwashQueueScreen: failed to parse elapsed time: $e\n$st');
+    }
   }
 
   @override
@@ -672,20 +675,20 @@ class _ElapsedTimeState extends State<_ElapsedTime> {
         Icon(
           Icons.timer_outlined,
           size: 13,
-          color: isOvertime ? AppColors.error : AppColors.textSecondary,
+          color: isOvertime ? AppColors.error : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        const SizedBox(width: 4),
+        SizedBox(width: 4),
         Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: isOvertime ? AppColors.error : AppColors.textSecondary,
+            color: isOvertime ? AppColors.error : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: isOvertime ? FontWeight.w700 : FontWeight.normal,
           ),
         ),
         if (isOvertime) ...[
-          const SizedBox(width: 4),
-          const Text(
+          SizedBox(width: 4),
+          Text(
             'OVERTIME',
             style: TextStyle(
               color: AppColors.error,
@@ -715,21 +718,21 @@ class _LegendDot extends StatelessWidget {
           width: 8, height: 8,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 5),
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        SizedBox(width: 5),
+        Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
       ],
     );
   }
 }
 
-Color _statusColor(String status) {
+Color _statusColor(BuildContext context, String status) {
   switch (status) {
     case 'booked':       return AppColors.primary;
     case 'checked_in':   return AppColors.warning;
     case 'in_progress':  return AppColors.primaryLight;
-    case 'ready':        return AppColors.secondary;
+    case 'ready':        return Theme.of(context).colorScheme.secondary;
     case 'completed':    return AppColors.success;
-    case 'paid':         return AppColors.textSecondary;
+    case 'paid':         return Theme.of(context).colorScheme.onSurfaceVariant;
     default:             return AppColors.error;
   }
 }

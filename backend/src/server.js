@@ -149,6 +149,7 @@ const CATALOG_CACHE_TABLES = new Set([
   'categories',
   'products',
   'product_variants',
+  'services',
   'stock_batches',
   'sale_items',
   'sales',
@@ -265,6 +266,71 @@ app.post('/api/license/refresh', async (req, res, next) => {
 });
 
 // ── SaaS Authentication ──────────────────────────────────────────────────────
+
+app.put('/api/business/profile', async (req, res, next) => {
+  try {
+    const accessToken = parseBearerToken(req.headers.authorization);
+    if (!accessToken) {
+      throw createHttpError(401, 'Authorization token is required');
+    }
+
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+
+    const businessName = normalizeOptionalText(
+      req.body?.businessName ?? req.body?.name,
+    );
+    const hasCurrency = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      'currency',
+    );
+    const currency = hasCurrency
+      ? normalizeBusinessCurrency(req.body?.currency)
+      : null;
+
+    if (!businessName && !currency) {
+      throw createHttpError(400, 'Business name or currency is required');
+    }
+
+    await query(
+      `
+      UPDATE businesses
+      SET
+        name = COALESCE($2, name),
+        currency = COALESCE($3, currency),
+        updated_at = NOW()
+      WHERE id = $1
+        AND deleted_at IS NULL
+      `,
+      [businessContext.businessId, businessName, currency],
+    );
+
+    await invalidateCatalogCache(businessContext.businessId);
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'business_profile',
+      tables: ['businesses'],
+    });
+
+    const access = await refreshBusinessAccess({
+      accessToken,
+      deviceId: req.body?.deviceId ?? req.query?.deviceId,
+    });
+
+    if (!access) {
+      throw createHttpError(401, 'Invalid business access token or device');
+    }
+
+    res.json({
+      ok: true,
+      serverTime: new Date().toISOString(),
+      ...access,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
 
 app.post('/api/auth/email-otp/request', authRateLimit, async (req, res, next) => {
   try {
@@ -1404,10 +1470,15 @@ function requirePlatformAdmin(req, res, next) {
       throw createHttpError(401, 'Admin token required');
     }
     const token = authHeader.split(' ')[1];
-    jwt.verify(token, config.platformJwtSecret);
+    const payload = jwt.verify(token, config.platformJwtSecret);
+    if (payload?.role !== 'superadmin') {
+      throw createHttpError(403, 'Insufficient platform admin privileges');
+    }
     next();
   } catch (error) {
-    next(createHttpError(401, 'Invalid or expired admin token'));
+    const status = error?.statusCode || error?.status || 401;
+    const message = error?.message || 'Invalid or expired admin token';
+    next(createHttpError(status, message));
   }
 }
 
@@ -2327,6 +2398,64 @@ app.put('/api/business/payment-gateways/:provider', async (req, res, next) => {
     next(normalizeRouteError(error));
   }
 });
+
+app.post(
+  '/api/business/payment-gateways/:provider/test-connection',
+  async (req, res, next) => {
+    try {
+      const businessContext = await requireBusinessContext(req);
+      const gateway = await loadBusinessPaymentGateway(
+        businessContext.businessId,
+        req.params.provider,
+        { includeSecrets: true },
+      );
+      if (!gateway?.isActive) {
+        return res.json({
+          ok: true,
+          data: {
+            success: false,
+            message: 'M-Pesa is not configured or inactive.',
+            gatewayActive: false,
+          },
+        });
+      }
+      const mpesaConfig = resolveMpesaGatewayConfig(gateway);
+      if (!mpesaConfig.consumerKey || !mpesaConfig.consumerSecret) {
+        return res.json({
+          ok: true,
+          data: {
+            success: false,
+            message: 'Consumer key and secret are required.',
+            gatewayActive: true,
+          },
+        });
+      }
+      const start = Date.now();
+      const token = await getMpesaAccessToken(mpesaConfig);
+      const elapsed = Date.now() - start;
+      res.json({
+        ok: true,
+        data: {
+          success: true,
+          message: `Connected to Safaricom Daraja API in ${elapsed}ms. Token obtained successfully.`,
+          gatewayActive: true,
+          latencyMs: elapsed,
+        },
+      });
+    } catch (error) {
+      const message =
+        error?.message || 'Connection test failed. Check your credentials.';
+      res.json({
+        ok: true,
+        data: {
+          success: false,
+          message,
+          gatewayActive: true,
+        },
+      });
+    }
+  },
+);
 
 app.get('/api/business/etims-settings', async (req, res, next) => {
   try {
@@ -4235,7 +4364,9 @@ function buildCorsOptions() {
   );
   return {
     origin(origin, callback) {
-      if (!origin) {
+      // Allow requests with no Origin header (mobile apps, server-to-server).
+      // Reject explicit null origins to reduce CSRF surface from file:// or redirects.
+      if (origin === undefined) {
         callback(null, true);
         return;
       }
@@ -6630,10 +6761,35 @@ async function loadPublicCatalog(
   const products = productsResult.rows.map((row) =>
     normalizePublicCatalogProduct(row),
   );
+  const servicesResult = await query(
+    `
+    SELECT
+      s.id,
+      COALESCE(s.branch_id, 'main_branch') AS branch_id,
+      s.name,
+      s.category,
+      s.description,
+      s.base_price,
+      s.duration_minutes,
+      s.updated_at
+    FROM services s
+    WHERE s.business_id = $1
+      AND s.deleted_at IS NULL
+      AND COALESCE(NULLIF(LOWER(s.is_active::text), ''), '1') NOT IN ('0', 'false', 'no', 'off')
+      AND COALESCE(s.branch_id, 'main_branch') = $2
+    ORDER BY s.category ASC NULLS LAST, s.name ASC
+    LIMIT 500
+    `,
+    [businessId, selectedBranch.id],
+  );
+  const serviceItems = servicesResult.rows.map((row) =>
+    normalizePublicCatalogService(row),
+  );
+  const catalogItems = [...products, ...serviceItems];
   const categories = [
     ...new Set(
-      products
-        .map((product) => product.category)
+      catalogItems
+        .map((item) => item.category)
         .filter((category) => category && category.trim()),
     ),
   ].sort((a, b) => a.localeCompare(b));
@@ -6658,10 +6814,10 @@ async function loadPublicCatalog(
     currencySymbol: currencyInfo.symbol,
     currencyLabel: currencyInfo.label,
     categories,
-    products,
-    updatedAt: products.reduce((latest, product) => {
-      if (!product.updatedAt) return latest;
-      if (!latest || product.updatedAt > latest) return product.updatedAt;
+    products: catalogItems,
+    updatedAt: catalogItems.reduce((latest, item) => {
+      if (!item.updatedAt) return latest;
+      if (!latest || item.updatedAt > latest) return item.updatedAt;
       return latest;
     }, toIsoString(business.updated_at)),
   };
@@ -6744,11 +6900,19 @@ async function createPublicCatalogOrder(businessId, payload) {
 
   const preparedItems = [];
   for (const rawItem of rawItems) {
+    const itemType = normalizePublicCatalogItemType(
+      rawItem?.itemType || rawItem?.item_type || rawItem?.type,
+    );
     const productId = normalizeOptionalText(rawItem?.productId || rawItem?.product_id);
+    const serviceId = normalizeOptionalText(rawItem?.serviceId || rawItem?.service_id);
     const variantId = normalizeOptionalText(rawItem?.variantId || rawItem?.variant_id);
     const quantity = Number(rawItem?.quantity);
-    if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
-      throw createHttpError(400, 'Each order item needs a product and quantity');
+    if (
+      (itemType === 'service' ? !(serviceId || productId) : !productId) ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0
+    ) {
+      throw createHttpError(400, 'Each order item needs an item and quantity');
     }
     if (quantity > 9999) {
       throw createHttpError(400, 'Order quantity is too high');
@@ -6756,7 +6920,9 @@ async function createPublicCatalogOrder(businessId, payload) {
 
     const item = await resolvePublicCatalogOrderItem({
       businessId,
+      itemType,
       productId,
+      serviceId,
       variantId,
       quantity,
       branchId: requestedBranchId,
@@ -6768,7 +6934,7 @@ async function createPublicCatalogOrder(businessId, payload) {
     ...new Set(preparedItems.map((item) => item.branchId).filter(Boolean)),
   ];
   if (orderBranchIds.length !== 1) {
-    throw createHttpError(400, 'Catalog orders must contain products from one branch');
+    throw createHttpError(400, 'Catalog orders must contain items from one branch');
   }
   const branchId = orderBranchIds[0];
 
@@ -6822,6 +6988,8 @@ async function createPublicCatalogOrder(businessId, payload) {
           id,
           order_id,
           business_id,
+          item_type,
+          service_id,
           product_id,
           variant_id,
           product_name,
@@ -6831,12 +6999,14 @@ async function createPublicCatalogOrder(businessId, payload) {
           line_total,
           created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `,
         [
           crypto.randomUUID(),
           orderId,
           businessId,
+          item.itemType,
+          item.serviceId,
           item.productId,
           item.variantId,
           item.productName,
@@ -6864,7 +7034,9 @@ async function createPublicCatalogOrder(businessId, payload) {
     subtotal,
     itemCount,
     items: preparedItems.map((item) => ({
+      itemType: item.itemType,
       productId: item.productId,
+      serviceId: item.serviceId,
       variantId: item.variantId,
       productName: item.productName,
       variantName: item.variantName,
@@ -7112,7 +7284,9 @@ function normalizePublicCatalogOrder(row, items) {
 function normalizePublicCatalogOrderItem(row) {
   return {
     id: row.id,
+    itemType: normalizePublicCatalogItemType(row.item_type),
     productId: row.product_id,
+    serviceId: row.service_id || '',
     variantId: row.variant_id,
     productName: row.product_name,
     variantName: row.variant_name || '',
@@ -7161,11 +7335,53 @@ function normalizeFulfillmentMethod(value) {
 
 async function resolvePublicCatalogOrderItem({
   businessId,
+  itemType = 'product',
   productId,
+  serviceId,
   variantId,
   quantity,
   branchId,
 }) {
+  if (itemType === 'service') {
+    const normalizedServiceId = normalizeServiceCatalogId(serviceId || productId);
+    const result = await query(
+      `
+      SELECT
+        s.id AS service_id,
+        COALESCE(s.branch_id, 'main_branch') AS branch_id,
+        s.name AS service_name,
+        s.base_price
+      FROM services s
+      WHERE s.business_id = $1
+        AND s.id = $2
+        AND s.deleted_at IS NULL
+        AND COALESCE(NULLIF(LOWER(s.is_active::text), ''), '1') NOT IN ('0', 'false', 'no', 'off')
+        AND ($3::text IS NULL OR COALESCE(s.branch_id, 'main_branch') = $3)
+      LIMIT 1
+      `,
+      [businessId, normalizedServiceId, branchId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw createHttpError(400, 'One of the selected services is no longer available');
+    }
+
+    const unitPrice = Number(row.base_price || 0);
+    const cleanQuantity = Math.round(quantity * 1000) / 1000;
+    return {
+      itemType: 'service',
+      branchId: row.branch_id,
+      productId: row.service_id,
+      serviceId: row.service_id,
+      variantId: null,
+      productName: String(row.service_name || '').trim(),
+      variantName: null,
+      quantity: cleanQuantity,
+      unitPrice,
+      lineTotal: Math.round(cleanQuantity * unitPrice * 100) / 100,
+    };
+  }
+
   const result = await query(
     `
     SELECT
@@ -7218,8 +7434,10 @@ async function resolvePublicCatalogOrderItem({
   const unitPrice = Number(variantId ? row.variant_price : row.product_price) || 0;
   const cleanQuantity = Math.round(quantity * 1000) / 1000;
   return {
+    itemType: 'product',
     branchId: row.branch_id,
     productId: row.product_id,
+    serviceId: null,
     variantId: row.variant_id || null,
     productName: String(row.product_name || '').trim(),
     variantName: row.variant_name ? String(row.variant_name).trim() : null,
@@ -7260,6 +7478,8 @@ async function ensurePublicCatalogOrderSchema(target = query) {
       id text PRIMARY KEY,
       order_id text NOT NULL REFERENCES public_catalog_orders(id) ON DELETE CASCADE,
       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      item_type text NOT NULL DEFAULT 'product',
+      service_id text,
       product_id text NOT NULL,
       variant_id text,
       product_name text NOT NULL,
@@ -7290,6 +7510,16 @@ async function ensurePublicCatalogOrderSchema(target = query) {
     target,
     `ALTER TABLE public_catalog_orders
      ADD COLUMN IF NOT EXISTS fulfilled_at timestamptz`,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_order_items
+     ADD COLUMN IF NOT EXISTS item_type text NOT NULL DEFAULT 'product'`,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_order_items
+     ADD COLUMN IF NOT EXISTS service_id text`,
   );
   await runDbQuery(
     target,
@@ -7436,6 +7666,22 @@ function shortOrderNumber(orderId) {
   return clean ? clean.slice(0, 8) : 'ORDER';
 }
 
+function normalizePublicCatalogItemType(value) {
+  return String(value || '').trim().toLowerCase() === 'service'
+    ? 'service'
+    : 'product';
+}
+
+function normalizeServiceCatalogId(value) {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) {
+    return null;
+  }
+  return normalized.startsWith('service:')
+    ? normalized.slice('service:'.length)
+    : normalized;
+}
+
 function normalizePublicCatalogProduct(row) {
   const trackStock = Number(row.track_stock ?? 1) !== 0;
   const variants = Array.isArray(row.variants)
@@ -7455,7 +7701,10 @@ function normalizePublicCatalogProduct(row) {
     : !trackStock || stock > 0;
 
   return {
+    type: 'product',
     id: row.id,
+    productId: row.id,
+    serviceId: null,
     name: String(row.name || '').trim(),
     price: Number(row.price || 0),
     brand: normalizeOptionalText(row.brand),
@@ -7465,6 +7714,34 @@ function normalizePublicCatalogProduct(row) {
     hasVariants,
     variants,
     availability: available ? 'Available' : 'Ask for availability',
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function normalizePublicCatalogService(row) {
+  const durationMinutes = Number(row.duration_minutes || 0);
+  const description = normalizeOptionalText(row.description);
+  const durationLabel = durationMinutes > 0
+    ? `${durationMinutes} min`
+    : null;
+
+  return {
+    type: 'service',
+    id: `service:${row.id}`,
+    productId: null,
+    serviceId: row.id,
+    name: String(row.name || '').trim(),
+    price: Number(row.base_price || 0),
+    brand: 'Service',
+    category: normalizeOptionalText(row.category) || 'Services',
+    unit: 'service',
+    imageUrl: null,
+    hasVariants: false,
+    variants: [],
+    availability: 'Available',
+    description,
+    durationMinutes: durationMinutes > 0 ? durationMinutes : null,
+    summary: durationLabel || description,
     updatedAt: toIsoString(row.updated_at),
   };
 }
@@ -7484,7 +7761,7 @@ function renderPublicCatalogPage(catalog) {
   const tagline = normalizeOptionalText(brand.tagline) || 'Online catalog';
   const description =
     normalizeOptionalText(brand.description) ||
-    'Shop products, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.';
+    'Shop products and services, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.';
   const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
   const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
 
@@ -8588,7 +8865,7 @@ function renderPublicCatalogPage(catalog) {
       submitOrder.disabled = items.length === 0;
 
       if (!items.length) {
-        cartLines.innerHTML = '<p class="notice">Your order is empty. Add products from the catalog.</p>';
+        cartLines.innerHTML = '<p class="notice">Your order is empty. Add products or services from the catalog.</p>';
         return;
       }
 
@@ -8623,7 +8900,7 @@ function renderPublicCatalogPage(catalog) {
     }
 
     function productMatches(product, q, cat) {
-      const haystack = [product.name, product.brand, product.category]
+      const haystack = [product.name, product.brand, product.category, product.type, product.description]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -8635,7 +8912,7 @@ function renderPublicCatalogPage(catalog) {
       const cat = category.value;
       const products = catalog.products.filter((product) => productMatches(product, q, cat));
       if (productCountLabel) {
-        productCountLabel.textContent = products.length + ' product' + (products.length === 1 ? '' : 's') + (cat ? ' in ' + cat : '') + ' ready to order.';
+        productCountLabel.textContent = products.length + ' item' + (products.length === 1 ? '' : 's') + (cat ? ' in ' + cat : '') + ' ready to order.';
       }
       if (categoryPills) {
         categoryPills.querySelectorAll('[data-category-chip]').forEach((chip) => {
@@ -8670,6 +8947,9 @@ function renderPublicCatalogPage(catalog) {
           : '<span></span>';
         const isAvailable = product.availability === 'Available';
         const pricePrefix = hasVariants ? 'From ' : '';
+        const serviceSummary = product.type === 'service' && (product.summary || product.description)
+          ? '<div class="variants">' + escapeText(product.summary || product.description) + '</div>'
+          : '';
         return '<article class="card" data-card-product-id="' + escapeText(product.id) + '" data-available="' + (isAvailable ? 'true' : 'false') + '">' +
           '<div class="photo">' +
             (product.imageUrl
@@ -8682,6 +8962,7 @@ function renderPublicCatalogPage(catalog) {
               (product.brand ? '<div class="brand">' + escapeText(product.brand) + '</div>' : '') +
               (product.category ? '<div class="category">' + escapeText(product.category) + '</div>' : '') +
             '</div>' +
+            serviceSummary +
             variants +
             '<div class="price-row">' +
               '<div class="price">' + pricePrefix + formatMoney(Number(product.price || 0)) + '</div>' +
@@ -8689,7 +8970,7 @@ function renderPublicCatalogPage(catalog) {
             '</div>' +
             '<div class="order-actions">' +
               variantSelect +
-              '<button class="add-button" data-product-id="' + escapeText(product.id) + '" type="button" ' + (isAvailable ? '' : 'disabled') + '>Add to cart</button>' +
+              '<button class="add-button" data-product-id="' + escapeText(product.id) + '" type="button" ' + (isAvailable ? '' : 'disabled') + '>' + (product.type === 'service' ? 'Book service' : 'Add to cart') + '</button>' +
             '</div>' +
           '</div>' +
         '</article>';
@@ -8705,11 +8986,16 @@ function renderPublicCatalogPage(catalog) {
         deliveryAddress: document.getElementById('delivery-address').value.trim(),
         note: document.getElementById('order-note').value.trim(),
         branchId: catalog.business.selectedBranch ? catalog.business.selectedBranch.id : null,
-        items: Array.from(cart.values()).map((item) => ({
-          productId: item.product.id,
-          variantId: item.variant ? item.variant.id : null,
-          quantity: item.quantity,
-        })),
+        items: Array.from(cart.values()).map((item) => {
+          const isService = item.product.type === 'service';
+          return {
+            itemType: isService ? 'service' : 'product',
+            productId: isService ? null : (item.product.productId || item.product.id),
+            serviceId: isService ? item.product.serviceId : null,
+            variantId: item.variant ? item.variant.id : null,
+            quantity: item.quantity,
+          };
+        }),
       };
     }
 
@@ -8792,7 +9078,7 @@ function renderPublicCatalogPage(catalog) {
       whatsappOrder.style.display = 'none';
       const payload = buildOrderPayload();
       if (!payload.items.length) {
-        errorBox.textContent = 'Add at least one product first.';
+        errorBox.textContent = 'Add at least one item first.';
         errorBox.style.display = 'block';
         return;
       }

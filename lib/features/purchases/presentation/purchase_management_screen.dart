@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
@@ -67,11 +68,10 @@ class _PurchaseManagementScreenState
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Create Supplier'),
+          title: Text('Create Supplier'),
           content: SizedBox(
             width: 520,
             child: SingleChildScrollView(
@@ -80,42 +80,42 @@ class _PurchaseManagementScreenState
                 children: [
                   TextField(
                     controller: nameController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Supplier Name',
                       prefixIcon: Icon(Icons.storefront_outlined),
                     ),
                     autofocus: true,
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: phoneController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Phone',
                       prefixIcon: Icon(Icons.phone_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: emailController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: addressController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Address',
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: noteController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Note',
                       prefixIcon: Icon(Icons.notes_outlined),
                     ),
@@ -127,7 +127,7 @@ class _PurchaseManagementScreenState
           actions: [
             TextButton(
               onPressed: isSaving ? null : () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton.icon(
               onPressed: isSaving
@@ -164,7 +164,7 @@ class _PurchaseManagementScreenState
                       }
                     },
               icon: isSaving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -172,9 +172,9 @@ class _PurchaseManagementScreenState
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.check, size: 18),
+                  : Icon(Icons.check, size: 18),
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-              label: const Text('Save Supplier'),
+              label: Text('Save Supplier'),
             ),
           ],
         ),
@@ -242,11 +242,10 @@ class _PurchaseManagementScreenState
           }
 
           return AlertDialog(
-            backgroundColor: AppColors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: const Text('New Purchase Invoice'),
+            title: Text('New Purchase Invoice'),
             content: SizedBox(
               width: 760,
               child: SingleChildScrollView(
@@ -259,7 +258,7 @@ class _PurchaseManagementScreenState
                             children: [
                               DropdownButtonFormField<String>(
                                 initialValue: selectedSupplierId,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: 'Supplier',
                                   prefixIcon: Icon(Icons.store_mall_directory),
                                 ),
@@ -277,7 +276,7 @@ class _PurchaseManagementScreenState
                                   );
                                 },
                               ),
-                              const SizedBox(height: 12),
+                              SizedBox(height: 12),
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: OutlinedButton.icon(
@@ -294,8 +293,8 @@ class _PurchaseManagementScreenState
                                                 selectedSupplierId = createdId,
                                           );
                                         },
-                                  icon: const Icon(Icons.add, size: 18),
-                                  label: const Text('New Supplier'),
+                                  icon: Icon(Icons.add, size: 18),
+                                  label: Text('New Supplier'),
                                 ),
                               ),
                             ],
@@ -305,7 +304,7 @@ class _PurchaseManagementScreenState
                               Expanded(
                                 child: DropdownButtonFormField<String>(
                                   initialValue: selectedSupplierId,
-                                  decoration: const InputDecoration(
+                                  decoration: InputDecoration(
                                     labelText: 'Supplier',
                                     prefixIcon: Icon(
                                       Icons.store_mall_directory,
@@ -328,7 +327,7 @@ class _PurchaseManagementScreenState
                                   },
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               OutlinedButton.icon(
                                 onPressed: isSaving
                                     ? null
@@ -342,23 +341,23 @@ class _PurchaseManagementScreenState
                                           () => selectedSupplierId = createdId,
                                         );
                                       },
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('New Supplier'),
+                                icon: Icon(Icons.add, size: 18),
+                                label: Text('New Supplier'),
                               ),
                             ],
                           ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     isCompact
                         ? Column(
                             children: [
                               TextField(
                                 controller: invoiceController,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: 'Invoice Number',
                                   prefixIcon: Icon(Icons.receipt_long_outlined),
                                 ),
                               ),
-                              const SizedBox(height: 12),
+                              SizedBox(height: 12),
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.symmetric(
@@ -366,12 +365,12 @@ class _PurchaseManagementScreenState
                                   vertical: 14,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.surfaceHighlight,
+                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Text(
                                   'Total: ${ShopSettings.currency}${totalAmount().toStringAsFixed(2)}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     color: AppColors.success,
                                   ),
@@ -384,7 +383,7 @@ class _PurchaseManagementScreenState
                               Expanded(
                                 child: TextField(
                                   controller: invoiceController,
-                                  decoration: const InputDecoration(
+                                  decoration: InputDecoration(
                                     labelText: 'Invoice Number',
                                     prefixIcon: Icon(
                                       Icons.receipt_long_outlined,
@@ -392,7 +391,7 @@ class _PurchaseManagementScreenState
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               Expanded(
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
@@ -400,12 +399,12 @@ class _PurchaseManagementScreenState
                                     vertical: 14,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.surfaceHighlight,
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(14),
                                   ),
                                   child: Text(
                                     'Total: ${ShopSettings.currency}${totalAmount().toStringAsFixed(2)}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.success,
                                     ),
@@ -414,24 +413,24 @@ class _PurchaseManagementScreenState
                               ),
                             ],
                           ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     TextField(
                       controller: noteController,
                       maxLines: 2,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Invoice Note',
                         prefixIcon: Icon(Icons.notes_outlined),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
+                    SizedBox(height: 18),
+                    Text(
                       'Products',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     ...List.generate(lines.length, (index) {
                       final line = lines[index];
                       final selectedProduct = line.productId == null
@@ -461,9 +460,9 @@ class _PurchaseManagementScreenState
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceHighlight,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: Theme.of(context).colorScheme.outline),
                         ),
                         child: Column(
                           children: [
@@ -472,7 +471,7 @@ class _PurchaseManagementScreenState
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     initialValue: line.productId,
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       labelText: 'Product',
                                       prefixIcon: Icon(
                                         Icons.inventory_2_outlined,
@@ -506,7 +505,7 @@ class _PurchaseManagementScreenState
                                     },
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                SizedBox(width: 10),
                                 if (lines.length > 1)
                                   IconButton(
                                     onPressed: isSaving
@@ -519,14 +518,14 @@ class _PurchaseManagementScreenState
                                               removed.dispose();
                                             });
                                           },
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.delete_outline,
                                       color: AppColors.error,
                                     ),
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            SizedBox(height: 12),
                             isCompact
                                 ? Column(
                                     children: [
@@ -538,7 +537,7 @@ class _PurchaseManagementScreenState
                                             ),
                                         decoration: InputDecoration(
                                           labelText: 'Quantity ($unitLabel)',
-                                          prefixIcon: const Icon(
+                                          prefixIcon: Icon(
                                             Icons.scale_outlined,
                                           ),
                                           helperText: purchaseUnit == stockUnit
@@ -547,14 +546,14 @@ class _PurchaseManagementScreenState
                                         ),
                                         onChanged: (_) => setDialogState(() {}),
                                       ),
-                                      const SizedBox(height: 12),
+                                      SizedBox(height: 12),
                                       TextField(
                                         controller: line.unitCostController,
                                         keyboardType:
                                             const TextInputType.numberWithOptions(
                                               decimal: true,
                                             ),
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           labelText: 'Unit Cost',
                                           prefixIcon: Icon(
                                             Icons.payments_outlined,
@@ -575,7 +574,7 @@ class _PurchaseManagementScreenState
                                               ),
                                           decoration: InputDecoration(
                                             labelText: 'Quantity ($unitLabel)',
-                                            prefixIcon: const Icon(
+                                            prefixIcon: Icon(
                                               Icons.scale_outlined,
                                             ),
                                             helperText:
@@ -587,7 +586,7 @@ class _PurchaseManagementScreenState
                                               setDialogState(() {}),
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
+                                      SizedBox(width: 12),
                                       Expanded(
                                         child: TextField(
                                           controller: line.unitCostController,
@@ -595,7 +594,7 @@ class _PurchaseManagementScreenState
                                               const TextInputType.numberWithOptions(
                                                 decimal: true,
                                               ),
-                                          decoration: const InputDecoration(
+                                          decoration: InputDecoration(
                                             labelText: 'Unit Cost',
                                             prefixIcon: Icon(
                                               Icons.payments_outlined,
@@ -607,11 +606,11 @@ class _PurchaseManagementScreenState
                                       ),
                                     ],
                                   ),
-                            const SizedBox(height: 10),
+                            SizedBox(height: 10),
                             TextField(
                               controller: line.batchNumberController,
                               textCapitalization: TextCapitalization.characters,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Batch Number',
                                 prefixIcon: Icon(Icons.numbers_outlined),
                                 helperText:
@@ -619,20 +618,20 @@ class _PurchaseManagementScreenState
                               ),
                               onChanged: (_) => setDialogState(() {}),
                             ),
-                            const SizedBox(height: 10),
+                            SizedBox(height: 10),
                             Container(
                               decoration: BoxDecoration(
-                                color: AppColors.surface,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.border),
+                                border: Border.all(color: Theme.of(context).colorScheme.outline),
                               ),
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 14,
                                   vertical: 2,
                                 ),
-                                leading: const Icon(Icons.event_outlined),
-                                title: const Text('Expiry Date'),
+                                leading: Icon(Icons.event_outlined),
+                                title: Text('Expiry Date'),
                                 subtitle: Text(
                                   line.expiryDate == null
                                       ? 'Optional for this batch'
@@ -647,9 +646,9 @@ class _PurchaseManagementScreenState
                                         onPressed: () => setDialogState(
                                           () => line.expiryDate = null,
                                         ),
-                                        icon: const Icon(
+                                        icon: Icon(
                                           Icons.close,
-                                          color: AppColors.textSecondary,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     IconButton(
@@ -671,7 +670,7 @@ class _PurchaseManagementScreenState
                                           );
                                         }
                                       },
-                                      icon: const Icon(
+                                      icon: Icon(
                                         Icons.calendar_month_outlined,
                                         color: AppColors.primary,
                                       ),
@@ -680,12 +679,12 @@ class _PurchaseManagementScreenState
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
+                            SizedBox(height: 10),
                             Align(
                               alignment: Alignment.centerRight,
                               child: Text(
                                 'Line Total: ${ShopSettings.currency}${(qty * unitCost).toStringAsFixed(2)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.primaryLight,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -703,8 +702,8 @@ class _PurchaseManagementScreenState
                                 lines.add(_PurchaseLineDraft());
                               });
                             },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add Product Line'),
+                      icon: Icon(Icons.add, size: 18),
+                      label: Text('Add Product Line'),
                     ),
                   ],
                 ),
@@ -713,7 +712,7 @@ class _PurchaseManagementScreenState
             actions: [
               TextButton(
                 onPressed: isSaving ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
+                child: Text('Cancel'),
               ),
               FilledButton.icon(
                 onPressed: isSaving
@@ -794,7 +793,7 @@ class _PurchaseManagementScreenState
                         }
                       },
                 icon: isSaving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
@@ -802,11 +801,11 @@ class _PurchaseManagementScreenState
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.check_circle_outline, size: 18),
+                    : Icon(Icons.check_circle_outline, size: 18),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                 ),
-                label: const Text('Save Purchase'),
+                label: Text('Save Purchase'),
               ),
             ],
           );
@@ -851,7 +850,6 @@ class _PurchaseManagementScreenState
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           (details['invoice_number'] as String?)?.trim().isNotEmpty == true
@@ -875,8 +873,8 @@ class _PurchaseManagementScreenState
                 ),
                 if ((details['note'] as String?)?.trim().isNotEmpty == true)
                   _detailRow('Note', details['note'] as String),
-                const SizedBox(height: 14),
-                const Divider(),
+                SizedBox(height: 14),
+                Divider(),
                 ...items.map((item) {
                   final quantity = (item['quantity_received'] as num? ?? 0)
                       .toDouble();
@@ -897,14 +895,14 @@ class _PurchaseManagementScreenState
                             ),
                             Text(
                               UnitUtils.formatWithUnit(quantity, unit),
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             ),
-                            const SizedBox(width: 20),
+                            SizedBox(width: 20),
                             Text(
                               '${ShopSettings.currency}${(quantity * unitCost).toStringAsFixed(2)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -931,7 +929,7 @@ class _PurchaseManagementScreenState
                                 ),
                                 child: Text(
                                   'Batch: ${item['batch_number']}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: AppColors.primaryLight,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -961,7 +959,7 @@ class _PurchaseManagementScreenState
                                 ),
                                 child: Text(
                                   'Expiry: ${ExpiryUtils.format(item['expiry_date'])}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: AppColors.warning,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -974,13 +972,13 @@ class _PurchaseManagementScreenState
                     ),
                   );
                 }),
-                const Divider(),
-                const SizedBox(height: 6),
+                Divider(),
+                SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerRight,
                   child: Text(
                     'Total: ${ShopSettings.currency}${((details['total_amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                       color: AppColors.success,
@@ -998,12 +996,12 @@ class _PurchaseManagementScreenState
                 Navigator.pop(ctx);
                 _showSupplierPaymentDialog(supplier);
               },
-              icon: const Icon(Icons.add_card_outlined),
-              label: const Text('Record Payment'),
+              icon: Icon(Icons.add_card_outlined),
+              label: Text('Record Payment'),
             ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text('Close'),
           ),
         ],
       ),
@@ -1020,13 +1018,13 @@ class _PurchaseManagementScreenState
             width: 90,
             child: Text(
               label,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -1053,9 +1051,15 @@ class _PurchaseManagementScreenState
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
         toolbarHeight: 50,
-        title: const Text(
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        title: Text(
           'Purchases & Suppliers',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
@@ -1065,7 +1069,7 @@ class _PurchaseManagementScreenState
             id: 'purchases.tabs',
             child: TabBar(
               controller: _tabController,
-              labelStyle: const TextStyle(
+              labelStyle: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
               ),
@@ -1082,7 +1086,7 @@ class _PurchaseManagementScreenState
             icon: Icons.refresh,
             tooltip: 'Refresh',
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
         ],
       ),
       body: Column(
@@ -1090,7 +1094,7 @@ class _PurchaseManagementScreenState
           TrainingAnchor(
             id: 'purchases.stats',
             child: Container(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
               child: Wrap(
                 spacing: 16,
@@ -1106,7 +1110,7 @@ class _PurchaseManagementScreenState
                     icon: Icons.store_mall_directory_outlined,
                     label: 'Suppliers',
                     value: '${_suppliers.length}',
-                    color: AppColors.secondary,
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
                   _PurchaseStatCard(
                     icon: Icons.payments_outlined,
@@ -1123,7 +1127,7 @@ class _PurchaseManagementScreenState
             child: TrainingAnchor(
               id: 'purchases.list',
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(child: CircularProgressIndicator())
                   : TabBarView(
                       controller: _tabController,
                       children: [_buildPurchasesTab(), _buildSuppliersTab()],
@@ -1171,7 +1175,7 @@ class _PurchaseManagementScreenState
     return ListView.separated(
       padding: const EdgeInsets.all(24),
       itemCount: _purchases.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
         final purchase = _purchases[index];
         final invoiceNumber = (purchase['invoice_number'] as String?)?.trim();
@@ -1183,9 +1187,9 @@ class _PurchaseManagementScreenState
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
             ),
             child: Row(
               children: [
@@ -1195,12 +1199,12 @@ class _PurchaseManagementScreenState
                     color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.inventory_2_outlined,
                     color: AppColors.primaryLight,
                   ),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1209,22 +1213,22 @@ class _PurchaseManagementScreenState
                         invoiceNumber?.isNotEmpty == true
                             ? invoiceNumber!
                             : 'Purchase Invoice',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         purchase['supplier_name'] as String? ??
                             'Unknown supplier',
-                        style: const TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         '${purchase['item_lines']} product lines',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
                         ),
                       ),
@@ -1236,34 +1240,34 @@ class _PurchaseManagementScreenState
                   children: [
                     Text(
                       '${ShopSettings.currency}${((purchase['total_amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: AppColors.success,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       _friendlyDate(purchase['created_at'] as String?),
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                       ),
                     ),
                     if (balanceDue > 0.009) ...[
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         'Due ${ShopSettings.currency}${balanceDue.toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.warning,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ] else ...[
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         status == 'paid' ? 'Paid' : status,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.success,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -1292,15 +1296,15 @@ class _PurchaseManagementScreenState
     return ListView.separated(
       padding: const EdgeInsets.all(24),
       itemCount: _suppliers.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
         final supplier = _suppliers[index];
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1310,7 +1314,7 @@ class _PurchaseManagementScreenState
                   Expanded(
                     child: Text(
                       supplier['name'] as String? ?? 'Supplier',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
                       ),
@@ -1327,7 +1331,7 @@ class _PurchaseManagementScreenState
                     ),
                     child: Text(
                       '${ShopSettings.currency}${((supplier['total_spend'] as num? ?? 0).toDouble()).toStringAsFixed(2)} spent',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.success,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
@@ -1336,35 +1340,35 @@ class _PurchaseManagementScreenState
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               if ((supplier['phone'] as String?)?.trim().isNotEmpty == true)
                 Text(
                   supplier['phone'] as String,
-                  style: const TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               if ((supplier['email'] as String?)?.trim().isNotEmpty == true)
                 Text(
                   supplier['email'] as String,
-                  style: const TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               if ((supplier['address'] as String?)?.trim().isNotEmpty == true)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     supplier['address'] as String,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
                 ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
                     child: Text(
                       '${supplier['purchase_count']} purchase invoices',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.primaryLight,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1372,8 +1376,8 @@ class _PurchaseManagementScreenState
                   ),
                   TextButton.icon(
                     onPressed: () => _showSupplierLedger(supplier),
-                    icon: const Icon(Icons.account_balance_wallet_outlined),
-                    label: const Text('Ledger'),
+                    icon: Icon(Icons.account_balance_wallet_outlined),
+                    label: Text('Ledger'),
                   ),
                 ],
               ),
@@ -1393,16 +1397,15 @@ class _PurchaseManagementScreenState
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
         title: Text('${supplier['name'] ?? 'Supplier'} Ledger'),
         content: SizedBox(
           width: 560,
           child: entries.isEmpty
-              ? const Text('No ledger entries yet.')
+              ? Text('No ledger entries yet.')
               : ListView.separated(
                   shrinkWrap: true,
                   itemCount: entries.length,
-                  separatorBuilder: (_, _) => const Divider(),
+                  separatorBuilder: (_, _) => Divider(),
                   itemBuilder: (context, index) {
                     final entry = entries[index];
                     final type = entry['entry_type'] as String? ?? '';
@@ -1448,7 +1451,7 @@ class _PurchaseManagementScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text('Close'),
           ),
         ],
       ),
@@ -1466,7 +1469,6 @@ class _PurchaseManagementScreenState
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           title: Text('Pay ${supplier['name'] ?? 'Supplier'}'),
           content: SizedBox(
             width: 420,
@@ -1481,10 +1483,10 @@ class _PurchaseManagementScreenState
                     prefixText: ShopSettings.currency,
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: method,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Payment method',
                   ),
                   items: const [
@@ -1498,16 +1500,16 @@ class _PurchaseManagementScreenState
                       : (value) =>
                             setDialogState(() => method = value ?? 'cash'),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: referenceController,
-                  decoration: const InputDecoration(labelText: 'Reference'),
+                  decoration: InputDecoration(labelText: 'Reference'),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: noteController,
                   maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Note'),
+                  decoration: InputDecoration(labelText: 'Note'),
                 ),
               ],
             ),
@@ -1515,7 +1517,7 @@ class _PurchaseManagementScreenState
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: saving
@@ -1619,29 +1621,29 @@ class _PurchaseStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),
-              const SizedBox(height: 2),
+              SizedBox(height: 2),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 15,
                 ),
@@ -1676,18 +1678,18 @@ class _EmptyState extends StatelessWidget {
             Icon(
               icon,
               size: 64,
-              color: AppColors.textSecondary.withValues(alpha: 0.35),
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),

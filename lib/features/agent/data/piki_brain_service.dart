@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -67,6 +68,16 @@ class PikiBrainService {
       );
       PikiAgentService.generateInsight(first).then((insight) {
         _ref.read(pikiInsightProvider.notifier).state = insight;
+      }, onError: (Object error, StackTrace stackTrace) {
+        developer.log(
+          'Piki insight generation failed',
+          error: error,
+          stackTrace: stackTrace,
+          name: 'PikiBrainService',
+        );
+        _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+          text: 'Insight unavailable: $error',
+        );
       });
     }
   }
@@ -679,6 +690,16 @@ class PikiBrainService {
         );
         PikiAgentService.generateInsight(result).then((insight) {
           _ref.read(pikiInsightProvider.notifier).state = insight;
+        }, onError: (Object error, StackTrace stackTrace) {
+          developer.log(
+            'Piki insight generation failed',
+            error: error,
+            stackTrace: stackTrace,
+            name: 'PikiBrainService',
+          );
+          _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+            text: 'Insight unavailable: $error',
+          );
         });
       } catch (e) {
         _messagesNotifier.addMessage(
@@ -1177,6 +1198,16 @@ Analyze these results. If you have fully answered the original request, return m
         );
         PikiAgentService.generateInsight(allResults.first).then((insight) {
           _ref.read(pikiInsightProvider.notifier).state = insight;
+        }, onError: (Object error, StackTrace stackTrace) {
+          developer.log(
+            'Piki insight generation failed',
+            error: error,
+            stackTrace: stackTrace,
+            name: 'PikiBrainService',
+          );
+          _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+            text: 'Insight unavailable: $error',
+          );
         });
       }
       _resetStatusAfterDelay(statusNotifier);

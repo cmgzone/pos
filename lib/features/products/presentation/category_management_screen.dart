@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../core/utils/error_messages.dart';
@@ -26,6 +27,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
   Future<void> _loadCategories() async {
     setState(() => _isLoading = true);
     _categories = await CategoryRepository.getAll();
+    if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
@@ -33,25 +35,31 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Category Management'),
+        leading: !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        title: Text('Category Management'),
         actions: [
           TrainingAnchor(
             id: 'categories.add',
             child: FilledButton.icon(
               onPressed: () => _showCategoryDialog(null),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Category'),
+              icon: Icon(Icons.add, size: 18),
+              label: Text('Add Category'),
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
         ],
       ),
       body: TrainingAnchor(
         id: 'categories.list',
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(child: CircularProgressIndicator())
             : _categories.isEmpty
             ? Center(
                 child: Column(
@@ -60,21 +68,21 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                     Icon(
                       Icons.category_outlined,
                       size: 64,
-                      color: AppColors.textSecondary.withValues(alpha: 0.4),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
+                    SizedBox(height: 16),
+                    Text(
                       'No categories yet',
                       style: TextStyle(
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextButton.icon(
                       onPressed: () => _showCategoryDialog(null),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Create your first category'),
+                      icon: Icon(Icons.add),
+                      label: Text('Create your first category'),
                     ),
                   ],
                 ),
@@ -85,7 +93,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(24),
                     itemCount: _categories.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final category = _categories[index];
                       final colorHex = category['color'] as String?;
@@ -96,9 +104,9 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                       return Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppColors.surface,
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: Theme.of(context).colorScheme.outline),
                         ),
                         child: Row(
                           children: [
@@ -117,23 +125,23 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                                 size: 22,
                               ),
                             ),
-                            const SizedBox(width: 16),
+                            SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     category['name'] as String,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 16,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  SizedBox(height: 4),
                                   Text(
                                     'ID: ${(category['id'] as String).substring(0, 8)}...',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 11,
                                     ),
                                   ),
@@ -153,17 +161,17 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 16),
+                            SizedBox(width: 16),
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.edit_outlined,
                                 size: 20,
-                                color: AppColors.textSecondary,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                               onPressed: () => _showCategoryDialog(category),
                             ),
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.delete_outline,
                                 size: 20,
                                 color: AppColors.error,
@@ -205,7 +213,6 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -216,24 +223,24 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Name',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 TextField(
                   controller: nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'e.g. Electronics',
                   ),
                 ),
-                const SizedBox(height: 20),
-                const Text(
+                SizedBox(height: 20),
+                Text(
                   'Color',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
@@ -277,7 +284,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () async {
@@ -309,16 +316,15 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Category'),
+        title: Text('Delete Category'),
         content: Text(
           'Delete "${category['name']}"? Products in this category won\'t be deleted.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () async {
@@ -355,7 +361,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               }
             },
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text('Delete'),
           ),
         ],
       ),

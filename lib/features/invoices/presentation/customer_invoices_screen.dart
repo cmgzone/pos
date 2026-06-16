@@ -91,22 +91,22 @@ class _CustomerInvoicesScreenState
 
     final isMobile = MediaQuery.sizeOf(context).width < 700;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         leading: isMobile
             ? IconButton(
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu),
                 onPressed: () =>
                     AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
-        title: const Text('Invoices'),
+        title: Text('Invoices'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded),
+            icon: Icon(Icons.refresh_rounded),
           ),
         ],
       ),
@@ -114,8 +114,8 @@ class _CustomerInvoicesScreenState
         onPressed: _createInvoice,
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Invoice'),
+        icon: Icon(Icons.add_rounded),
+        label: Text('New Invoice'),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -123,20 +123,20 @@ class _CustomerInvoicesScreenState
           padding: EdgeInsets.fromLTRB(16, 12, 16, isMobile ? 96 : 24),
           children: [
             _InvoiceStats(stats: _stats),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             TextField(
               controller: _searchController,
               onSubmitted: (_) => _load(),
               decoration: InputDecoration(
                 hintText: 'Search invoice, customer, phone...',
-                prefixIcon: const Icon(Icons.search_rounded),
+                prefixIcon: Icon(Icons.search_rounded),
                 suffixIcon: IconButton(
                   onPressed: _load,
-                  icon: const Icon(Icons.arrow_forward_rounded),
+                  icon: Icon(Icons.arrow_forward_rounded),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -164,9 +164,9 @@ class _CustomerInvoicesScreenState
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             if (_loading)
-              const Center(
+              Center(
                 child: Padding(
                   padding: EdgeInsets.all(32),
                   child: CircularProgressIndicator(),
@@ -267,9 +267,9 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         children: [
@@ -278,19 +278,19 @@ class _StatCard extends StatelessWidget {
             foregroundColor: color,
             child: Icon(icon),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: const TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
@@ -314,26 +314,26 @@ class _InvoiceListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = (invoice['display_status'] ?? invoice['status'] ?? 'draft')
         .toString();
-    final color = _statusColor(status);
+    final color = _statusColor(context, status);
     final balance = (invoice['balance_due'] as num? ?? 0).toDouble();
     final total = (invoice['total_amount'] as num? ?? 0).toDouble();
     return Card(
-      color: AppColors.surface,
+      color: Theme.of(context).colorScheme.surface,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: Theme.of(context).colorScheme.outline),
       ),
       child: ListTile(
         onTap: onTap,
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.14),
           foregroundColor: color,
-          child: const Icon(Icons.request_quote_outlined),
+          child: Icon(Icons.request_quote_outlined),
         ),
         title: Text(
           invoice['invoice_number'] as String? ?? 'Invoice',
-          style: const TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
           '${invoice['customer_name'] ?? 'Customer'}\n${_statusLabel(status)} - Balance ${ShopSettings.currency}${balance.toStringAsFixed(2)}',
@@ -345,11 +345,11 @@ class _InvoiceListTile extends StatelessWidget {
           children: [
             Text(
               '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
             Text(
               '${invoice['item_count'] ?? 0} items',
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -366,11 +366,11 @@ class _EmptyInvoices extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(
             Icons.request_quote_outlined,
@@ -386,7 +386,7 @@ class _EmptyInvoices extends StatelessWidget {
           Text(
             'Create product or service invoices before payment, then convert them to sales once paid.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -528,7 +528,7 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 700;
     return Dialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       insetPadding: EdgeInsets.all(isMobile ? 8 : 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: ConstrainedBox(
@@ -542,12 +542,12 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
               padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.request_quote_outlined,
                     color: AppColors.primary,
                   ),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Text(
                       'Create Invoice',
                       style: TextStyle(
@@ -558,12 +558,12 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: Icon(Icons.close_rounded),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
             Expanded(
               child: Form(
                 key: _formKey,
@@ -575,7 +575,7 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _customerName,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Customer name',
                               prefixIcon: Icon(Icons.person_outline),
                             ),
@@ -585,31 +585,31 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                                 : null,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         OutlinedButton.icon(
                           onPressed: _pickCustomer,
-                          icon: const Icon(Icons.search_rounded),
-                          label: const Text('Find'),
+                          icon: Icon(Icons.search_rounded),
+                          label: Text('Find'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: _phone,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Phone',
                               prefixIcon: Icon(Icons.phone_outlined),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: TextField(
                             controller: _email,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Email',
                               prefixIcon: Icon(Icons.email_outlined),
                             ),
@@ -617,23 +617,23 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: _kraPin,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Customer KRA PIN optional',
                               prefixIcon: Icon(Icons.badge_outlined),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             initialValue: _status,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Status',
                             ),
                             items: const [
@@ -652,19 +652,19 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
                       children: [
                         OutlinedButton.icon(
                           onPressed: () => _pickDate(due: false),
-                          icon: const Icon(Icons.event_outlined),
+                          icon: Icon(Icons.event_outlined),
                           label: Text('Issue: ${_shortDate(_issueDate)}'),
                         ),
                         OutlinedButton.icon(
                           onPressed: () => _pickDate(due: true),
-                          icon: const Icon(Icons.schedule_outlined),
+                          icon: Icon(Icons.schedule_outlined),
                           label: Text(
                             _dueDate == null
                                 ? 'Set due date'
@@ -673,15 +673,15 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                         ),
                         OutlinedButton.icon(
                           onPressed: () => setState(() => _dueDate = null),
-                          icon: const Icon(Icons.clear_rounded),
-                          label: const Text('No due date'),
+                          icon: Icon(Icons.clear_rounded),
+                          label: Text('No due date'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20),
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Invoice Items',
                             style: TextStyle(
@@ -712,17 +712,17 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                           ],
                           child: FilledButton.icon(
                             onPressed: null,
-                            icon: const Icon(Icons.add_rounded),
-                            label: const Text('Add Line'),
+                            icon: Icon(Icons.add_rounded),
+                            label: Text('Add Line'),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     if (_lines.isEmpty)
-                      const Text(
+                      Text(
                         'No items yet. Add a product, service, or custom charge.',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       )
                     else
                       ..._lines.asMap().entries.map(
@@ -733,27 +733,27 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                               setState(() => _lines.removeAt(entry.key)),
                         ),
                       ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     TextField(
                       controller: _discount,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Discount',
                         prefixIcon: Icon(Icons.discount_outlined),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextField(
                       controller: _note,
                       minLines: 2,
                       maxLines: 4,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Invoice note',
                         prefixIcon: Icon(Icons.note_alt_outlined),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    SizedBox(height: 18),
                     _InvoiceTotals(
                       subtotal: _subtotal,
                       tax: _tax,
@@ -764,26 +764,26 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                 ),
               ),
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   OutlinedButton(
                     onPressed: _saving ? null : () => Navigator.pop(context),
-                    child: const Text('Cancel'),
+                    child: Text('Cancel'),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   FilledButton.icon(
                     onPressed: _saving ? null : _save,
                     icon: _saving
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.save_outlined),
-                    label: const Text('Save Invoice'),
+                        : Icon(Icons.save_outlined),
+                    label: Text('Save Invoice'),
                   ),
                 ],
               ),
@@ -920,18 +920,18 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Convert invoice to sale?'),
-        content: const Text(
+        title: Text('Convert invoice to sale?'),
+        content: Text(
           'This will create a sale receipt and deduct product stock. Continue only after payment is complete.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Convert'),
+            child: Text('Convert'),
           ),
         ],
       ),
@@ -984,7 +984,7 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
   Widget build(BuildContext context) {
     final invoice = _invoice;
     return Dialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       insetPadding: const EdgeInsets.all(16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: ConstrainedBox(
@@ -993,14 +993,14 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
           maxHeight: MediaQuery.sizeOf(context).height * 0.9,
         ),
         child: _loading
-            ? const Center(
+            ? Center(
                 child: Padding(
                   padding: EdgeInsets.all(40),
                   child: CircularProgressIndicator(),
                 ),
               )
             : invoice == null
-            ? const Padding(
+            ? Padding(
                 padding: EdgeInsets.all(32),
                 child: Text('Invoice not found'),
               )
@@ -1010,15 +1010,15 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
                     padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.request_quote_outlined,
                           color: AppColors.primary,
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             invoice['invoice_number'] as String? ?? 'Invoice',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                             ),
@@ -1026,20 +1026,20 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded),
+                          icon: Icon(Icons.close_rounded),
                         ),
                       ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  Divider(height: 1),
                   Expanded(
                     child: ListView(
                       padding: const EdgeInsets.all(20),
                       children: [
                         _InvoiceHeader(invoice: invoice),
-                        const SizedBox(height: 16),
+                        SizedBox(height: 16),
                         ..._items.map((item) => _InvoiceItemRow(item: item)),
-                        const SizedBox(height: 16),
+                        SizedBox(height: 16),
                         _InvoiceTotals(
                           subtotal: (invoice['subtotal'] as num? ?? 0)
                               .toDouble(),
@@ -1055,18 +1055,18 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
                         ),
                         if ((invoice['note'] as String?)?.trim().isNotEmpty ==
                             true) ...[
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Text(
                             invoice['note'] as String,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
                       ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  Divider(height: 1),
                   Padding(
                     padding: const EdgeInsets.all(14),
                     child: Wrap(
@@ -1076,28 +1076,28 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
                       children: [
                         OutlinedButton.icon(
                           onPressed: _previewPdf,
-                          icon: const Icon(Icons.picture_as_pdf_outlined),
-                          label: const Text('PDF'),
+                          icon: Icon(Icons.picture_as_pdf_outlined),
+                          label: Text('PDF'),
                         ),
                         OutlinedButton.icon(
                           onPressed: _sendInvoice,
-                          icon: const Icon(Icons.send_outlined),
-                          label: const Text('Send'),
+                          icon: Icon(Icons.send_outlined),
+                          label: Text('Send'),
                         ),
                         OutlinedButton.icon(
                           onPressed: _recordPayment,
-                          icon: const Icon(Icons.payments_outlined),
-                          label: const Text('Payment'),
+                          icon: Icon(Icons.payments_outlined),
+                          label: Text('Payment'),
                         ),
                         FilledButton.icon(
                           onPressed: _convertToSale,
-                          icon: const Icon(Icons.point_of_sale_outlined),
-                          label: const Text('Convert to Sale'),
+                          icon: Icon(Icons.point_of_sale_outlined),
+                          label: Text('Convert to Sale'),
                         ),
                         TextButton.icon(
                           onPressed: _cancelInvoice,
-                          icon: const Icon(Icons.cancel_outlined),
-                          label: const Text('Cancel Invoice'),
+                          icon: Icon(Icons.cancel_outlined),
+                          label: Text('Cancel Invoice'),
                         ),
                       ],
                     ),
@@ -1120,9 +1120,9 @@ class _InvoiceHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1132,7 +1132,7 @@ class _InvoiceHeader extends StatelessWidget {
               Expanded(
                 child: Text(
                   invoice['customer_name'] as String? ?? 'Customer',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1141,7 +1141,7 @@ class _InvoiceHeader extends StatelessWidget {
               _StatusPill(status: status),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text('Issue: ${_shortRawDate(invoice['issue_date'] as String?)}'),
           Text('Due: ${_shortRawDate(invoice['due_date'] as String?)}'),
           if ((invoice['customer_phone'] as String?)?.isNotEmpty == true)
@@ -1174,7 +1174,7 @@ class _InvoiceItemRow extends StatelessWidget {
       ),
       trailing: Text(
         '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-        style: const TextStyle(fontWeight: FontWeight.w800),
+        style: TextStyle(fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -1202,16 +1202,16 @@ class _InvoiceTotals extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         children: [
           _totalRow('Subtotal', subtotal),
           _totalRow('Tax (${ShopSettings.taxRate}%)', tax),
           if (discount > 0) _totalRow('Discount', -discount),
-          const Divider(),
+          Divider(),
           _totalRow('Total', total, strong: true),
           if (paid != null) _totalRow('Paid', paid!),
           if (balance != null) _totalRow('Balance', balance!, strong: true),
@@ -1255,7 +1255,7 @@ class _EditableLineTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: AppColors.surfaceHighlight,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: ListTile(
         onTap: onTap,
         title: Text(line.description),
@@ -1267,11 +1267,11 @@ class _EditableLineTile extends StatelessWidget {
           children: [
             Text(
               '${ShopSettings.currency}${line.lineTotal.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
             IconButton(
               onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline),
+              icon: Icon(Icons.delete_outline),
             ),
           ],
         ),
@@ -1331,7 +1331,7 @@ class _LineEditorDialogState extends State<_LineEditorDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Invoice line'),
+      title: Text('Invoice line'),
       content: Form(
         key: _formKey,
         child: Column(
@@ -1339,23 +1339,23 @@ class _LineEditorDialogState extends State<_LineEditorDialog> {
           children: [
             TextFormField(
               controller: _description,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: InputDecoration(labelText: 'Description'),
               validator: (value) =>
                   value == null || value.trim().isEmpty ? 'Required' : null,
             ),
             TextFormField(
               controller: _quantity,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Quantity'),
+              decoration: InputDecoration(labelText: 'Quantity'),
             ),
             TextFormField(
               controller: _unit,
-              decoration: const InputDecoration(labelText: 'Unit'),
+              decoration: InputDecoration(labelText: 'Unit'),
             ),
             TextFormField(
               controller: _price,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Unit price'),
+              decoration: InputDecoration(labelText: 'Unit price'),
             ),
           ],
         ),
@@ -1363,9 +1363,9 @@ class _LineEditorDialogState extends State<_LineEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text('Cancel'),
         ),
-        FilledButton(onPressed: _save, child: const Text('Save')),
+        FilledButton(onPressed: _save, child: Text('Save')),
       ],
     );
   }
@@ -1393,14 +1393,14 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Record payment'),
+      title: Text('Record payment'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: _amount,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Amount'),
+            decoration: InputDecoration(labelText: 'Amount'),
           ),
           DropdownButtonFormField<String>(
             initialValue: _method,
@@ -1411,18 +1411,18 @@ class _PaymentDialogState extends State<_PaymentDialog> {
               DropdownMenuItem(value: 'bank', child: Text('Bank')),
             ],
             onChanged: (value) => setState(() => _method = value ?? 'cash'),
-            decoration: const InputDecoration(labelText: 'Method'),
+            decoration: InputDecoration(labelText: 'Method'),
           ),
           TextField(
             controller: _reference,
-            decoration: const InputDecoration(labelText: 'Reference optional'),
+            decoration: InputDecoration(labelText: 'Reference optional'),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text('Cancel'),
         ),
         FilledButton(
           onPressed: () {
@@ -1433,7 +1433,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
               ref: _reference.text,
             ));
           },
-          child: const Text('Save'),
+          child: Text('Save'),
         ),
       ],
     );
@@ -1447,7 +1447,7 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _statusColor(status);
+    final color = _statusColor(context, status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -1697,16 +1697,16 @@ class _SearchPickerDialogState extends State<_SearchPickerDialog> {
           children: [
             TextField(
               controller: _controller,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Search...',
                 prefixIcon: Icon(Icons.search_rounded),
               ),
               onSubmitted: (_) => _load(),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(child: CircularProgressIndicator())
                   : ListView.builder(
                       itemCount: _rows.length,
                       itemBuilder: (context, index) {
@@ -1725,7 +1725,7 @@ class _SearchPickerDialogState extends State<_SearchPickerDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
+          child: Text('Close'),
         ),
       ],
     );
@@ -1745,7 +1745,7 @@ String _formatQty(double value) => value == value.roundToDouble()
     ? value.toInt().toString()
     : value.toStringAsFixed(2);
 
-Color _statusColor(String status) {
+Color _statusColor(BuildContext context, String status) {
   switch (status) {
     case 'paid':
       return AppColors.success;
@@ -1754,11 +1754,11 @@ Color _statusColor(String status) {
     case 'overdue':
       return AppColors.error;
     case 'cancelled':
-      return AppColors.textSecondary;
+      return Theme.of(context).colorScheme.onSurfaceVariant;
     case 'sent':
       return AppColors.warning;
     default:
-      return AppColors.secondary;
+      return Theme.of(context).colorScheme.secondary;
   }
 }
 

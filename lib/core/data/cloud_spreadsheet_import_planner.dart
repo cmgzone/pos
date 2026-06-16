@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import '../services/openrouter_service.dart';
 import 'spreadsheet_import_reader.dart';
@@ -351,13 +352,20 @@ ${jsonEncode(payload)}
         if (parsed is Map) {
           return Map<String, dynamic>.from(parsed);
         }
-      } catch (_) {
+        } catch (_) {
         try {
           final parsed = jsonDecode(_repairCommonJsonIssues(candidate));
           if (parsed is Map) {
             return Map<String, dynamic>.from(parsed);
           }
-        } catch (_) {}
+        } catch (e, st) {
+          developer.log(
+            'Failed to parse JSON candidate: $candidate',
+            error: e,
+            stackTrace: st,
+            name: 'CloudSpreadsheetImportPlanner',
+          );
+        }
       }
     }
     return null;

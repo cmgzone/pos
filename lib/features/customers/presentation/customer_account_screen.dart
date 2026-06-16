@@ -64,7 +64,7 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text('Create Customer Account'),
         actions: [
           TrainingAnchor(
@@ -103,9 +103,9 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,7 +121,7 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
                           Text(
                             'Create a customer account for Kopesha credit sales.',
                             style: TextStyle(
-                              color: AppColors.textSecondary.withValues(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                 alpha: 0.9,
                               ),
                               fontSize: 13,

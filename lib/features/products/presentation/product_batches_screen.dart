@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
@@ -70,23 +71,23 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.product['name']} - Stock Batches'),
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : _buildContent(),
     );
   }
 
   Widget _buildContent() {
     if (_batches.isEmpty) {
-      return const Center(child: Text('No stock batches found.'));
+      return Center(child: Text('No stock batches found.'));
     }
 
     return ListView.separated(
       padding: const EdgeInsets.all(24),
       itemCount: _batches.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => SizedBox(height: 12),
       itemBuilder: (ctx, i) {
         final b = _batches[i];
         final unit = UnitUtils.stockUnitForProduct(widget.product);
@@ -97,15 +98,15 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
           ExpiryStatus.expired => AppColors.error,
           ExpiryStatus.expiringSoon => AppColors.warning,
           ExpiryStatus.ok => AppColors.success,
-          ExpiryStatus.unknown => AppColors.textSecondary,
+          ExpiryStatus.unknown => Theme.of(context).colorScheme.onSurfaceVariant,
         };
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isActive ? AppColors.primary : AppColors.border,
+              color: isActive ? AppColors.primary : ctx.appBorder,
             ),
           ),
           child: Row(
@@ -115,15 +116,15 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                 decoration: BoxDecoration(
                   color: isActive
                       ? AppColors.success.withValues(alpha: 0.1)
-                      : AppColors.textSecondary.withValues(alpha: 0.1),
+                      : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.inventory_2,
-                  color: isActive ? AppColors.success : AppColors.textSecondary,
+                  color: isActive ? AppColors.success : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,7 +140,7 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                             fontWeight: FontWeight.bold,
                             color: isActive
                                 ? AppColors.primaryLight
-                                : AppColors.textSecondary,
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         if ((b['expiry_date'] as String?)?.trim().isNotEmpty ==
@@ -164,22 +165,22 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     if ((b['batch_number'] as String?)?.trim().isNotEmpty ==
                         true)
                       Text(
                         'Batch No: ${b['batch_number']}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textPrimary,
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     Text(
                       'Received: ${_formatDate(b['received_at'])}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     if ((b['expiry_date'] as String?)?.trim().isNotEmpty ==
@@ -196,26 +197,26 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                         true)
                       Text(
                         'Supplier: ${b['supplier_name']}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     if ((b['invoice_number'] as String?)?.trim().isNotEmpty ==
                         true)
                       Text(
                         'Invoice: ${b['invoice_number']}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     if (!isActive && b['finished_at'] != null)
                       Text(
                         'Finished: ${_formatDate(b['finished_at'])}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                   ],
@@ -226,12 +227,12 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                 children: [
                   Text(
                     '${UnitUtils.formatQuantity(b['quantity_remaining'] as num?)} / ${UnitUtils.formatQuantity(b['quantity_received'] as num?)} ${UnitUtils.label(unit)} remaining',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     'Cost: ${ShopSettings.currency}${unitCost.toStringAsFixed(2)}/${UnitUtils.label(unit)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.warning,
                       fontWeight: FontWeight.w500,
                     ),

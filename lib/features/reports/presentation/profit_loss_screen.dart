@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
@@ -155,12 +156,12 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('Add Expense Category'),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Text('Add Expense Category'),
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Category Name',
               prefixIcon: Icon(Icons.label_outline),
             ),
@@ -168,7 +169,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: saving
@@ -199,7 +200,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                         setDialogState(() => saving = false);
                       }
                     },
-              child: const Text('Save'),
+              child: Text('Save'),
             ),
           ],
         ),
@@ -242,8 +243,8 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('Record Expense'),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Text('Record Expense'),
           content: SizedBox(
             width: 540,
             child: SingleChildScrollView(
@@ -253,15 +254,15 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                   TextField(
                     controller: titleController,
                     autofocus: true,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Expense Title',
                       prefixIcon: Icon(Icons.receipt_outlined),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: selectedCategoryId,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Category',
                       prefixIcon: Icon(Icons.label_outline),
                     ),
@@ -277,7 +278,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                       setDialogState(() => selectedCategoryId = value);
                     },
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   TextField(
                     controller: amountController,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -285,11 +286,11 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                     ),
                     decoration: InputDecoration(
                       labelText: 'Amount',
-                      prefixIcon: const Icon(Icons.payments_outlined),
+                      prefixIcon: Icon(Icons.payments_outlined),
                       prefixText: '${ShopSettings.currency} ',
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: OutlinedButton.icon(
@@ -308,15 +309,15 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                 setDialogState(() => selectedDate = picked);
                               }
                             },
-                      icon: const Icon(Icons.calendar_today),
+                      icon: Icon(Icons.calendar_today),
                       label: Text(_formatDateValue(selectedDate)),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   TextField(
                     controller: noteController,
                     maxLines: 2,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Note',
                       prefixIcon: Icon(Icons.notes_outlined),
                     ),
@@ -328,7 +329,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: saving
@@ -374,7 +375,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                         setDialogState(() => saving = false);
                       }
                     },
-              child: const Text('Save'),
+              child: Text('Save'),
             ),
           ],
         ),
@@ -460,8 +461,8 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Expense Import Complete'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Expense Import Complete'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,26 +472,26 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.categoriesCreated > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.categoriesCreated} expense categor${importResult.categoriesCreated == 1 ? 'y' : 'ies'} created.',
-                style: const TextStyle(color: AppColors.success),
+                style: TextStyle(color: AppColors.success),
               ),
             ],
             if (importResult.skipped > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
-                style: const TextStyle(color: AppColors.warning),
+                style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
+              SizedBox(height: 12),
+              Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               ...importResult.errors.map(
                 (error) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -503,7 +504,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: Text('Done'),
           ),
         ],
       ),
@@ -576,17 +577,17 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         toolbarHeight: 50,
         leading: isMobile
             ? IconButton(
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu),
                 onPressed: () =>
                     AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         automaticallyImplyLeading: false,
-        title: const Text(
+        title: Text(
           'Profit & Loss',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
@@ -600,7 +601,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: EdgeInsets.all(isMobile ? 16 : 24),
               child: Center(
@@ -616,9 +617,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           runSpacing: 8,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            const Text(
+                            Text(
                               'Period:',
-                              style: TextStyle(color: AppColors.textSecondary),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             _PeriodChip(
                               label: 'Today',
@@ -655,7 +656,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      SizedBox(height: 14),
                       _ExpenseActionsBar(
                         isMobile: isMobile,
                         isImporting: _isImportingExpenses,
@@ -663,7 +664,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                         onAddExpense: _showAddExpenseDialog,
                         onImportExpenses: _importExpensesFromFile,
                       ),
-                      const SizedBox(height: 24),
+                      SizedBox(height: 24),
                       TrainingAnchor(
                         id: 'pl.summary',
                         child: isMobile
@@ -692,7 +693,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                     .toList(),
                               ),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       _SectionCard(
                         title: 'Snapshot',
                         icon: Icons.analytics_outlined,
@@ -701,7 +702,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           runSpacing: 12,
                           children: [
                             _LegendDot(
-                              color: AppColors.secondary,
+                              color: Theme.of(context).colorScheme.secondary,
                               label: '$salesCount sales in period',
                             ),
                             _LegendDot(
@@ -719,7 +720,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       if (_categoryTotals.isNotEmpty)
                         _SectionCard(
                           title: 'Expense Categories',
@@ -736,22 +737,22 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                       child: Text(
                                         category['category_name'] as String? ??
                                             'Uncategorized',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
                                     Text(
                                       '${category['expense_count']} entries',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                     ),
-                                    const SizedBox(width: 16),
+                                    SizedBox(width: 16),
                                     Text(
                                       '${ShopSettings.currency}${((category['total_amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: AppColors.error,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -762,15 +763,15 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                             }).toList(),
                           ),
                         ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       _SectionCard(
                         title: 'Profit & Loss Report',
                         icon: Icons.stacked_line_chart_outlined,
                         child: _dailyData.isEmpty
-                            ? const Text(
+                            ? Text(
                                 'No profit or loss data for this date range',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               )
                             : Column(
@@ -793,10 +794,10 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 12,
                                     ),
-                                    decoration: const BoxDecoration(
+                                    decoration: BoxDecoration(
                                       border: Border(
                                         bottom: BorderSide(
-                                          color: AppColors.border,
+                                          color: Theme.of(context).colorScheme.outline,
                                           width: 0.5,
                                         ),
                                       ),
@@ -811,21 +812,21 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                                   day['sale_date'] as String? ??
                                                       '',
                                                 ),
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                               ),
                                             ),
                                             Text(
                                               '${day['sale_count'] ?? 0} sales',
-                                              style: const TextStyle(
-                                                color: AppColors.textSecondary,
+                                              style: TextStyle(
+                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                                                 fontSize: 12,
                                               ),
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 10),
+                                        SizedBox(height: 10),
                                         Wrap(
                                           spacing: 18,
                                           runSpacing: 8,
@@ -871,15 +872,15 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                 }).toList(),
                               ),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       _SectionCard(
                         title: 'Expenses Report',
                         icon: Icons.request_quote_outlined,
                         child: _dailyExpenseReport.isEmpty
-                            ? const Text(
+                            ? Text(
                                 'No expenses recorded for this date range',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               )
                             : _DailyExpenseReportList(
@@ -887,17 +888,17 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                 formatDate: _formatDate,
                               ),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       TrainingAnchor(
                         id: 'pl.expenses',
                         child: _SectionCard(
                           title: 'Expense Records',
                           icon: Icons.receipt_long_outlined,
                           child: _recentExpenses.isEmpty
-                              ? const Text(
+                              ? Text(
                                   'No expenses recorded yet',
                                   style: TextStyle(
-                                    color: AppColors.textSecondary,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 )
                               : Column(
@@ -916,16 +917,16 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                                 Text(
                                                   expense['title'] as String? ??
                                                       'Expense',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
-                                                const SizedBox(height: 4),
+                                                SizedBox(height: 4),
                                                 Text(
                                                   '${expense['category_name'] ?? 'Uncategorized'} - ${_formatDate(expense['incurred_on'] as String? ?? '')}',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     color:
-                                                        AppColors.textSecondary,
+                                                        Theme.of(context).colorScheme.onSurfaceVariant,
                                                     fontSize: 12,
                                                   ),
                                                 ),
@@ -934,7 +935,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                           ),
                                           Text(
                                             '${ShopSettings.currency}${((expense['amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               color: AppColors.error,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -968,7 +969,7 @@ class _PeriodChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.primary : AppColors.surfaceHighlight,
+      color: selected ? AppColors.primary : context.appSurfaceHighlight,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -978,7 +979,7 @@ class _PeriodChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.white : AppColors.textSecondary,
+              color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
@@ -1017,9 +1018,9 @@ class _DailyExpenseReportList extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 14),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surfaceHighlight,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
             children: [
@@ -1028,7 +1029,7 @@ class _DailyExpenseReportList extends StatelessWidget {
                   Expanded(
                     child: Text(
                       formatDate(entry.key),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
                       ),
@@ -1036,22 +1037,22 @@ class _DailyExpenseReportList extends StatelessWidget {
                   ),
                   Text(
                     '$entryCount entries',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12),
                   Text(
                     '${ShopSettings.currency}${dayTotal.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.error,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               Column(
                 children: entry.value.map((row) {
                   final amount = ((row['total_amount'] as num?) ?? 0)
@@ -1064,21 +1065,21 @@ class _DailyExpenseReportList extends StatelessWidget {
                         Expanded(
                           child: Text(
                             row['category_name'] as String? ?? 'Uncategorized',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
                         Text(
                           '$count',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        SizedBox(width: 16),
                         Text(
                           '${ShopSettings.currency}${amount.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.error,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1115,21 +1116,21 @@ class _ExpenseActionsBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final createCategoryButton = OutlinedButton.icon(
       onPressed: onCreateCategory,
-      icon: const Icon(Icons.label_outline, size: 18),
-      label: const Text('Create Expense Category'),
+      icon: Icon(Icons.label_outline, size: 18),
+      label: Text('Create Expense Category'),
     );
     final addExpenseButton = TrainingAnchor(
       id: 'pl.addExpense',
       child: FilledButton.icon(
         onPressed: onAddExpense,
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('Add Expense'),
+        icon: Icon(Icons.add, size: 18),
+        label: Text('Add Expense'),
         style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
       ),
     );
     final importExpensesButton = OutlinedButton.icon(
       onPressed: isImporting ? null : onImportExpenses,
-      icon: const Icon(Icons.upload_file_outlined, size: 18),
+      icon: Icon(Icons.upload_file_outlined, size: 18),
       label: Text(isImporting ? 'Importing...' : 'Import Expenses'),
     );
 
@@ -1138,9 +1139,9 @@ class _ExpenseActionsBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           addExpenseButton,
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           importExpensesButton,
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           createCategoryButton,
         ],
       );
@@ -1169,21 +1170,21 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             value,
             style: TextStyle(
@@ -1216,10 +1217,10 @@ class _LegendDot extends StatelessWidget {
             borderRadius: BorderRadius.circular(3),
           ),
         ),
-        const SizedBox(width: 6),
+        SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );
@@ -1236,13 +1237,13 @@ class _MiniMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return RichText(
       text: TextSpan(
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
         children: [
           TextSpan(text: '$label: '),
           TextSpan(
             text: value,
             style: TextStyle(
-              color: color ?? AppColors.textPrimary,
+              color: color ?? Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1268,9 +1269,9 @@ class _SectionCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1278,17 +1279,17 @@ class _SectionCard extends StatelessWidget {
           Row(
             children: [
               Icon(icon, color: AppColors.primaryLight, size: 18),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           child,
         ],
       ),

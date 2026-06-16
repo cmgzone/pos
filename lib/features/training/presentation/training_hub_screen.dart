@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/session_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../application/training_controller.dart';
 import '../data/training_models.dart';
 
@@ -26,20 +27,20 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Reset Training Progress'),
-        content: const Text(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Reset Training Progress'),
+        content: Text(
           'Reset the saved training progress for the current user only?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Reset'),
+            child: Text('Reset'),
           ),
         ],
       ),
@@ -67,16 +68,16 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Training Hub'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Training Hub'),
         actions: [
           if (training.completedModuleCount > 0)
             TextButton.icon(
               onPressed: _confirmResetProgress,
-              icon: const Icon(Icons.restart_alt, size: 18),
-              label: const Text('Reset Progress'),
+              icon: Icon(Icons.restart_alt, size: 18),
+              label: Text('Reset Progress'),
             ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -91,9 +92,9 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: Theme.of(context).colorScheme.outline),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,7 +108,7 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                             width: 56,
                             height: 56,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
+                              gradient: LinearGradient(
                                 colors: [
                                   AppColors.primary,
                                   AppColors.primaryLight,
@@ -115,14 +116,14 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                               ),
                               borderRadius: BorderRadius.circular(18),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.school_outlined,
                               color: Colors.white,
                               size: 28,
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          const Text(
+                          SizedBox(width: 6),
+                          Text(
                             'Train On The Live App',
                             style: TextStyle(
                               fontSize: 24,
@@ -131,16 +132,16 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                       Text(
                         'Each guide runs on top of the real screens, saves progress for ${SessionService.currentUserName}, and adapts to the current $roleLabel permissions.',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 14,
                           height: 1.45,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      SizedBox(height: 18),
                       Wrap(
                         spacing: 12,
                         runSpacing: 12,
@@ -163,7 +164,7 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       Wrap(
                         spacing: 12,
                         runSpacing: 12,
@@ -174,8 +175,8 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                                 : () => ref
                                       .read(trainingControllerProvider)
                                       .startFullTour(),
-                            icon: const Icon(Icons.play_circle_outline),
-                            label: const Text('Start Full Tour'),
+                            icon: Icon(Icons.play_circle_outline),
+                            label: Text('Start Full Tour'),
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.primary,
                             ),
@@ -183,20 +184,20 @@ class _TrainingHubScreenState extends ConsumerState<TrainingHubScreen> {
                           if (training.isActive)
                             OutlinedButton.icon(
                               onPressed: () => Navigator.pop(context),
-                              icon: const Icon(Icons.visibility_outlined),
-                              label: const Text('Resume Active Training'),
+                              icon: Icon(Icons.visibility_outlined),
+                              label: Text('Resume Active Training'),
                             ),
                         ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 28),
-                const Text(
+                SizedBox(height: 28),
+                Text(
                   'Modules',
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Wrap(
                   spacing: 16,
                   runSpacing: 16,
@@ -247,10 +248,10 @@ class _TrainingModuleCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isCompleted ? AppColors.success.withValues(alpha: 0.35) : AppColors.border,
+          color: isCompleted ? AppColors.success.withValues(alpha: 0.35) : context.appBorder,
         ),
       ),
       child: Column(
@@ -267,7 +268,7 @@ class _TrainingModuleCard extends StatelessWidget {
                 ),
                 child: Icon(module.icon, color: AppColors.primaryLight),
               ),
-              const Spacer(),
+              Spacer(),
               if (isCompleted)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -278,7 +279,7 @@ class _TrainingModuleCard extends StatelessWidget {
                     color: AppColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Completed',
                     style: TextStyle(
                       color: AppColors.success,
@@ -289,29 +290,29 @@ class _TrainingModuleCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             module.title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             module.description,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.4,
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Text(
             '$stepCount guided step${stepCount == 1 ? '' : 's'}',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -356,7 +357,7 @@ class _TrainingStat extends StatelessWidget {
               fontSize: 11,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(color: color, fontWeight: FontWeight.w800),

@@ -120,7 +120,7 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       title: Text('Message ${widget.customerName}'),
       content: SizedBox(
         width: 460,

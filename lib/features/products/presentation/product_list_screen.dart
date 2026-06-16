@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
@@ -61,11 +62,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         toolbarHeight: 50,
         leading: isMobile
             ? IconButton(
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu),
                 onPressed: () =>
                     AppShell.scaffoldKey.currentState?.openDrawer(),
               )
@@ -73,7 +74,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         automaticallyImplyLeading: false,
         title: Text(
           isMobile ? 'Products' : 'Product Management',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
         actions: [
           if (!isMobile)
@@ -83,7 +84,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               label: 'Catalog Orders',
               filled: false,
             ),
-          if (!isMobile) const SizedBox(width: 6),
+          if (!isMobile) SizedBox(width: 6),
           if (!isMobile)
             CompactHeaderButton(
               onPressed: _openStockList,
@@ -91,7 +92,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               label: 'Stock List',
               filled: false,
             ),
-          if (!isMobile) const SizedBox(width: 4),
+          if (!isMobile) SizedBox(width: 4),
           if (!isMobile)
             CompactHeaderIconButton(
               icon: Icons.local_shipping_outlined,
@@ -104,7 +105,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               tooltip: 'Manage Categories',
               onPressed: _openCategories,
             ),
-          if (!isMobile) const SizedBox(width: 4),
+          if (!isMobile) SizedBox(width: 4),
           if (!isMobile)
             CompactHeaderButton(
               onPressed: _isImporting ? null : _importProductsFromFile,
@@ -118,7 +119,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 ? IconButton(
                     tooltip: 'Add Product',
                     onPressed: _addProduct,
-                    icon: const Icon(Icons.add_circle_outline),
+                    icon: Icon(Icons.add_circle_outline),
                   )
                 : CompactHeaderButton(
                     onPressed: _addProduct,
@@ -174,7 +175,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       body: Column(
         children: [
           _buildSearchAndFilter(categoriesAsync, isMobile),
-          const Divider(height: 1),
+          Divider(height: 1),
 
           // Product table
           Expanded(
@@ -187,11 +188,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     return ListView.separated(
                       padding: EdgeInsets.all(isMobile ? 12 : 24),
                       itemCount: 8,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      separatorBuilder: (_, _) => SizedBox(height: 12),
                       itemBuilder: (_, _) => Container(
                         height: 100,
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceHighlight.withValues(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
                             alpha: 0.3,
                           ),
                           borderRadius: BorderRadius.circular(16),
@@ -229,7 +230,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   return ListView.separated(
                     padding: EdgeInsets.all(isMobile ? 12 : 24),
                     itemCount: products.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final product = products[index];
                       // Resolve category name for icon fallback
@@ -274,9 +275,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 horizontal: isMobile ? 12 : 24,
                 vertical: isMobile ? 8 : 12,
               ),
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                border: Border(top: BorderSide(color: AppColors.border)),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outline)),
               ),
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _productsFuture,
@@ -307,7 +308,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                       _StatChip(
                         icon: Icons.straighten,
                         label: '$unitTypes Unit Types',
-                        color: AppColors.secondary,
+                        color: Theme.of(context).colorScheme.secondary,
                       ),
                       if (lowStock > 0)
                         _StatChip(
@@ -347,9 +348,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   ) {
     final search = TextField(
       onChanged: _setSearchQuery,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         hintText: 'Search name, SKU, or barcode...',
-        prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
+        prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
         contentPadding: EdgeInsets.symmetric(vertical: 12),
       ),
     );
@@ -359,13 +360,13 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         child: DropdownButtonFormField<String?>(
           initialValue: _selectedCategory,
           isExpanded: true,
-          dropdownColor: AppColors.surface,
-          decoration: const InputDecoration(
+          dropdownColor: context.appSurface,
+          decoration: InputDecoration(
             labelText: 'Category',
             prefixIcon: Icon(Icons.category_outlined),
           ),
           items: [
-            const DropdownMenuItem(value: null, child: Text('All Categories')),
+            DropdownMenuItem(value: null, child: Text('All Categories')),
             ...items.map(
               (category) => DropdownMenuItem(
                 value: category['id'] as String,
@@ -376,7 +377,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           onChanged: _setSelectedCategory,
         ),
       ),
-      loading: () => const SizedBox(
+      loading: () => SizedBox(
         height: 48,
         child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       ),
@@ -386,7 +387,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     return TrainingAnchor(
       id: 'products.search',
       child: Container(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         padding: EdgeInsets.fromLTRB(
           isMobile ? 12 : 24,
           isMobile ? 12 : 0,
@@ -394,11 +395,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           12,
         ),
         child: isMobile
-            ? Column(children: [search, const SizedBox(height: 8), categories])
+            ? Column(children: [search, SizedBox(height: 8), categories])
             : Row(
                 children: [
                   Expanded(child: search),
-                  const SizedBox(width: 16),
+                  SizedBox(width: 16),
                   categories,
                 ],
               ),
@@ -559,8 +560,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Product Import Complete'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Product Import Complete'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -570,32 +571,32 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.updated > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.updated} existing product${importResult.updated == 1 ? '' : 's'} updated.',
               ),
             ],
             if (importResult.stockBatches > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.stockBatches} stock batch${importResult.stockBatches == 1 ? '' : 'es'} received for existing products.',
-                style: const TextStyle(color: AppColors.success),
+                style: TextStyle(color: AppColors.success),
               ),
             ],
             if (importResult.skipped > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
-                style: const TextStyle(color: AppColors.warning),
+                style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
+              SizedBox(height: 12),
+              Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               ...importResult.errors.map(
                 (error) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -608,7 +609,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: Text('Done'),
           ),
         ],
       ),
@@ -654,7 +655,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -667,12 +668,12 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 purchaseUnit == stockUnit
                     ? 'Log incoming stock in $purchaseUnitLabel so your inventory stays accurate.'
                     : 'Receive stock in $purchaseUnitLabel and it will be stored as $stockUnitLabel automatically.',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               TextField(
                 controller: qtyController,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -685,7 +686,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 ],
                 decoration: InputDecoration(
                   labelText: 'Quantity Received ($purchaseUnitLabel)',
-                  prefixIcon: const Icon(Icons.add_shopping_cart),
+                  prefixIcon: Icon(Icons.add_shopping_cart),
                 ),
                 autofocus: true,
                 onChanged: (_) => setState(() {}),
@@ -709,7 +710,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                     child: Text(
                       'Stored stock: ${UnitUtils.formatQuantity((double.tryParse(qtyController.text) ?? 0) * conversionFactor)} $stockUnitLabel',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.primaryLight,
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
@@ -717,18 +718,18 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               TextField(
                 controller: batchNumberController,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Batch Number',
                   prefixIcon: Icon(Icons.numbers_outlined),
                   helperText: 'Recommended for medicine stock tracking.',
                 ),
                 onChanged: (_) => setState(() {}),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               RadioGroup<bool>(
                 groupValue: isTotalCostMode,
                 onChanged: (val) {
@@ -741,7 +742,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                       child: RadioListTile<bool>(
                         title: Text(
                           'Per $purchaseUnitLabel Cost',
-                          style: const TextStyle(fontSize: 13),
+                          style: TextStyle(fontSize: 13),
                         ),
                         value: false,
                         contentPadding: EdgeInsets.zero,
@@ -750,7 +751,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                     Expanded(
                       child: RadioListTile<bool>(
-                        title: const Text(
+                        title: Text(
                           'Bulk Total Invoice',
                           style: TextStyle(
                             fontSize: 13,
@@ -774,7 +775,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   labelText: isTotalCostMode
                       ? 'Total Invoice Cost for this stock'
                       : 'Cost Per $purchaseUnitLabel',
-                  prefixIcon: const Icon(Icons.attach_money),
+                  prefixIcon: Icon(Icons.attach_money),
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -797,7 +798,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                     child: Text(
                       'Auto-Calculated Unit Cost: ${ShopSettings.currency}${((double.tryParse(costController.text) ?? 0) / ((double.tryParse(qtyController.text) ?? 1) == 0 ? 1 : (double.tryParse(qtyController.text) ?? 1))).toStringAsFixed(2)}/$purchaseUnitLabel',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.success,
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -805,20 +806,20 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 4,
                   ),
-                  leading: const Icon(Icons.event_outlined),
-                  title: const Text('Expiry Date'),
+                  leading: Icon(Icons.event_outlined),
+                  title: Text('Expiry Date'),
                   subtitle: Text(
                     expiryDate == null
                         ? 'Optional for this stock batch'
@@ -831,9 +832,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                         IconButton(
                           tooltip: 'Clear expiry date',
                           onPressed: () => setState(() => expiryDate = null),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.close,
-                            color: AppColors.textSecondary,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       IconButton(
@@ -851,7 +852,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                             setState(() => expiryDate = picked);
                           }
                         },
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.calendar_month_outlined,
                           color: AppColors.primary,
                         ),
@@ -865,7 +866,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () async {
@@ -902,7 +903,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 }
               },
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-              child: const Text('Save Stock'),
+              child: Text('Save Stock'),
             ),
           ],
         ),
@@ -950,16 +951,16 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Product'),
+        title: Text('Delete Product'),
         content: Text(
           'Are you sure you want to delete "${product['name']}"? This action cannot be undone.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () async {
@@ -976,7 +977,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               }
             },
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text('Delete'),
           ),
         ],
       ),
@@ -1016,9 +1017,9 @@ class _ProductRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.6)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1051,7 +1052,7 @@ class _ProductRow extends StatelessWidget {
                   clipBehavior: Clip.antiAlias,
                   child: _buildProductImage(product['image_url'] as String?),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
 
                 // Name + SKU
                 Expanded(
@@ -1065,7 +1066,7 @@ class _ProductRow extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 2),
                           child: Text(
                             (product['brand'] as String).toUpperCase(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.primary,
                               fontWeight: FontWeight.bold,
                               fontSize: 10,
@@ -1075,20 +1076,20 @@ class _ProductRow extends StatelessWidget {
                         ),
                       Text(
                         product['name'] as String? ?? '',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         'SKU: ${product['sku'] ?? 'N/A'} · Barcode: ${product['barcode'] ?? 'N/A'}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         hasVariants
                             ? 'Variants enabled - Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}'
@@ -1097,8 +1098,8 @@ class _ProductRow extends StatelessWidget {
                             : saleUnit == stockUnit
                             ? 'Unit: ${UnitUtils.label(saleUnit)}'
                             : 'Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
                         ),
                       ),
@@ -1113,7 +1114,7 @@ class _ProductRow extends StatelessWidget {
                     children: [
                       Text(
                         '${ShopSettings.currency}${(product['price'] as num? ?? 0).toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                           color: AppColors.primaryLight,
@@ -1121,23 +1122,23 @@ class _ProductRow extends StatelessWidget {
                       ),
                       Text(
                         UnitUtils.priceLabel(saleUnit),
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                         ),
                       ),
                       if (product['cost'] != null)
                         Text(
                           'Cost: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(saleUnit)}',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 11,
                           ),
                         ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 24),
+                SizedBox(width: 24),
 
                 // Stock badge
                 Container(
@@ -1176,11 +1177,11 @@ class _ProductRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
 
                 // Actions
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.history,
                     size: 20,
                     color: AppColors.primaryLight,
@@ -1189,7 +1190,7 @@ class _ProductRow extends StatelessWidget {
                   onPressed: tracksStock ? onViewBatches : null,
                 ),
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.add_box_outlined,
                     size: 20,
                     color: AppColors.primary,
@@ -1200,16 +1201,16 @@ class _ProductRow extends StatelessWidget {
                   onPressed: tracksStock ? onAdjustStock : null,
                 ),
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.edit_outlined,
                     size: 20,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   tooltip: 'Edit',
                   onPressed: onEdit,
                 ),
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.delete_outline,
                     size: 20,
                     color: AppColors.error,
@@ -1247,22 +1248,24 @@ class _ProductRow extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               child: _buildProductImage(product['image_url'] as String?),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     product['name'] as String? ?? '',
-                    style: const TextStyle(
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
                     ),
                   ),
                   Text(
                     'SKU: ${product['sku'] ?? 'N/A'}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -1275,8 +1278,8 @@ class _ProductRow extends StatelessWidget {
                         : saleUnit == stockUnit
                         ? 'Unit: ${UnitUtils.label(saleUnit)}'
                         : 'Sell: ${UnitUtils.label(saleUnit)} - Stock: ${UnitUtils.label(stockUnit)}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
@@ -1288,7 +1291,7 @@ class _ProductRow extends StatelessWidget {
               children: [
                 Text(
                   '${ShopSettings.currency}${(product['price'] as num? ?? 0).toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                     color: AppColors.primaryLight,
@@ -1296,16 +1299,16 @@ class _ProductRow extends StatelessWidget {
                 ),
                 Text(
                   UnitUtils.priceLabel(saleUnit),
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                   ),
                 ),
                 if (product['cost'] != null)
                   Text(
                     'C: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(saleUnit)}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
                     ),
                   ),
@@ -1313,7 +1316,7 @@ class _ProductRow extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1367,7 +1370,7 @@ class _ProductRow extends StatelessWidget {
                   enabled: tracksStock,
                   value: _MobileProductMenuAction.viewStock,
                   child: ListTile(
-                    leading: const Icon(Icons.history),
+                    leading: Icon(Icons.history),
                     title: Text(
                       hasVariants ? 'Manage Variants' : 'View Batches',
                     ),
@@ -1377,7 +1380,7 @@ class _ProductRow extends StatelessWidget {
                   enabled: tracksStock,
                   value: _MobileProductMenuAction.adjustStock,
                   child: ListTile(
-                    leading: const Icon(Icons.add_box_outlined),
+                    leading: Icon(Icons.add_box_outlined),
                     title: Text(
                       hasVariants ? 'Adjust Variant Stock' : 'Receive Stock',
                     ),
@@ -1404,10 +1407,10 @@ class _ProductRow extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -1497,7 +1500,7 @@ class _StatChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           Text(
             label,
             style: TextStyle(

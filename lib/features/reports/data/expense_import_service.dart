@@ -190,12 +190,13 @@ class ExpenseImportService {
     final categories = await ExpenseRepository.getCategories();
     return {
       for (final category in categories)
-        (category['name'] as String? ?? '')
-            .trim()
-            .toLowerCase(): _ExpenseCategoryMatch(
-          id: category['id'] as String,
-          name: category['name'] as String? ?? 'Expense',
-        ),
+        if (category['id'] != null)
+          (category['name'] as String? ?? '')
+              .trim()
+              .toLowerCase(): _ExpenseCategoryMatch(
+            id: category['id'] as String,
+            name: category['name'] as String? ?? 'Expense',
+          ),
     };
   }
 

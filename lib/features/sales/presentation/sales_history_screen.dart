@@ -8,6 +8,7 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/etims_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -127,6 +128,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           RolePermissions.normalizeRole(SessionService.currentUserRole) ==
           RolePermissions.admin,
     );
+    if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
@@ -173,11 +175,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         final isMobile = constraints.maxWidth < 720 || Platform.isWindows;
         return Scaffold(
           appBar: AppBar(
-            backgroundColor: AppColors.surface,
+            backgroundColor: Theme.of(context).colorScheme.surface,
             toolbarHeight: 50,
             title: Text(
               'Sales',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             actions: [
               CompactHeaderIconButton(
@@ -217,8 +219,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                   onPressed: _showRecordBookSaleDialog,
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  icon: const Icon(Icons.post_add_outlined),
-                  label: const Text('Record'),
+                  icon: Icon(Icons.post_add_outlined),
+                  label: Text('Record'),
                 )
               : null,
           body: Column(
@@ -238,12 +240,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                   isCashierView: _isCashierView,
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1),
               Expanded(
                 child: TrainingAnchor(
                   id: 'sales.list',
                   child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? Center(child: CircularProgressIndicator())
                       : visibleSales.isEmpty
                       ? _EmptySalesState(isCashierView: _isCashierView)
                       : ListView.separated(
@@ -382,8 +384,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Sales Import Complete'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Sales Import Complete'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,39 +395,39 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.productLines > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.productLines} product row${importResult.productLines == 1 ? '' : 's'} matched existing inventory and used POS stock rules.',
-                style: const TextStyle(color: AppColors.success),
+                style: TextStyle(color: AppColors.success),
               ),
             ],
             if (importResult.serviceLines > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.serviceLines} service row${importResult.serviceLines == 1 ? '' : 's'} imported as service sales.',
               ),
             ],
             if (importResult.summaryOnly > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.summaryOnly} summary-only row${importResult.summaryOnly == 1 ? '' : 's'} imported without item stock changes.',
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
             if (importResult.skipped > 0) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
-                style: const TextStyle(color: AppColors.warning),
+                style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
+              SizedBox(height: 12),
+              Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               ...importResult.errors.map(
                 (error) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -438,7 +440,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: Text('Done'),
           ),
         ],
       ),
@@ -762,7 +764,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           insetPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 24,
@@ -770,7 +772,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Add Manual Sale'),
+          title: Text('Add Manual Sale'),
           content: SizedBox(
             width: 460,
             child: SingleChildScrollView(
@@ -810,7 +812,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             });
                           },
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
@@ -834,7 +836,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       });
                     },
                     child: InputDecorator(
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Sale Date',
                         prefixIcon: Icon(Icons.calendar_month_outlined),
                       ),
@@ -843,7 +845,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   if (recordMode == 'product') ...[
                     if (savedCount > 0) ...[
                       Container(
@@ -861,18 +863,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         ),
                         child: Text(
                           '$savedCount record${savedCount == 1 ? '' : 's'} saved',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.success,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                     ],
                     if (products.isNotEmpty)
                       DropdownButtonFormField<String>(
                         initialValue: selectedProduct?['id'] as String?,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Product',
                           prefixIcon: Icon(Icons.inventory_2_outlined),
                         ),
@@ -908,12 +910,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         controller: manualProductNameController,
                         enabled: !isSaving,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Product Name',
                           prefixIcon: Icon(Icons.inventory_2_outlined),
                         ),
                       ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     _ManualSaleResponsiveRow(
                       children: [
                         TextField(
@@ -923,7 +925,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             decimal: true,
                           ),
                           onChanged: (_) => setDialogState(() {}),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Quantity',
                             prefixIcon: Icon(Icons.format_list_numbered),
                           ),
@@ -935,25 +937,25 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             decimal: true,
                           ),
                           onChanged: (_) => setDialogState(() {}),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Price',
                             prefixIcon: Icon(Icons.attach_money),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     InputDecorator(
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Sale Total',
                         prefixIcon: Icon(Icons.summarize_outlined),
                       ),
                       child: Text(
                         '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                   ],
                   if (recordMode == 'service' && services.isNotEmpty) ...[
                     if (savedCount > 0) ...[
@@ -972,17 +974,17 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         ),
                         child: Text(
                           '$savedCount record${savedCount == 1 ? '' : 's'} saved',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.success,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                     ],
                     DropdownButtonFormField<String>(
                       initialValue: selectedService?['id'] as String?,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Service',
                         prefixIcon: Icon(Icons.design_services_outlined),
                       ),
@@ -1021,10 +1023,25 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                     resetFieldControllers(fields);
                                   });
                                 },
+                                onError: (error) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        AppErrorMessage.from(
+                                          error,
+                                          fallback:
+                                              'Could not load service fields.',
+                                        ),
+                                      ),
+                                      backgroundColor: AppColors.error,
+                                    ),
+                                  );
+                                },
                               );
                             },
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     _ManualSaleResponsiveRow(
                       children: [
                         TextField(
@@ -1034,7 +1051,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             decimal: true,
                           ),
                           onChanged: (_) => setDialogState(() {}),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Quantity',
                             prefixIcon: Icon(Icons.format_list_numbered),
                           ),
@@ -1046,48 +1063,48 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             decimal: true,
                           ),
                           onChanged: (_) => setDialogState(() {}),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Price',
                             prefixIcon: Icon(Icons.attach_money),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     InputDecorator(
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Sale Total',
                         prefixIcon: Icon(Icons.summarize_outlined),
                       ),
                       child: Text(
                         '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
                       childrenPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.assignment_outlined),
-                      title: const Text('Service Details'),
-                      subtitle: const Text('Customer, staff, bay, notes'),
+                      leading: Icon(Icons.assignment_outlined),
+                      title: Text('Service Details'),
+                      subtitle: Text('Customer, staff, bay, notes'),
                       children: [
-                        const SizedBox(height: 8),
+                        SizedBox(height: 8),
                         TextField(
                           controller: customerNameController,
                           enabled: !isSaving,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Customer Name',
                             prefixIcon: Icon(Icons.person_outline),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: 12),
                         _ManualSaleResponsiveRow(
                           children: [
                             TextField(
                               controller: assignedStaffController,
                               enabled: !isSaving,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Assigned Staff',
                                 prefixIcon: Icon(Icons.people_alt_outlined),
                               ),
@@ -1095,7 +1112,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             TextField(
                               controller: bayController,
                               enabled: !isSaving,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Bay / Room',
                                 prefixIcon: Icon(
                                   Icons.room_preferences_outlined,
@@ -1104,18 +1121,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: 12),
                         TextField(
                           controller: noteController,
                           enabled: !isSaving,
                           maxLines: 2,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Note',
                             prefixIcon: Icon(Icons.notes_outlined),
                           ),
                         ),
                         if (currentFields.isNotEmpty) ...[
-                          const SizedBox(height: 14),
+                          SizedBox(height: 14),
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
@@ -1124,16 +1141,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          SizedBox(height: 10),
                           ...currentFields.map((field) {
                             final fieldId = field['id'] as String;
+                            final controller = fieldControllers[fieldId];
+                            if (controller == null) return const SizedBox.shrink();
                             return _ManualServiceFieldInput(
                               field: field,
-                              controller: fieldControllers[fieldId]!,
+                              controller: controller,
                               enabled: !isSaving,
                               onChanged: (value) {
                                 setDialogState(() {
-                                  fieldControllers[fieldId]!.text = value ?? '';
+                                  controller.text = value ?? '';
                                   final priceMap =
                                       field['price_map']
                                           as Map<String, double>?;
@@ -1149,11 +1168,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                   ],
                   DropdownButtonFormField<String>(
                     initialValue: selectedMethod['id'] as String,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Payment Method',
                       prefixIcon: Icon(Icons.payments_outlined),
                     ),
@@ -1177,7 +1196,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       });
                     },
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   if (recordMode == 'manual') ...[
                     TextField(
                       controller: totalController,
@@ -1185,12 +1204,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Total Amount',
                         prefixIcon: Icon(Icons.attach_money),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                   ],
                   TextField(
                     controller: taxController,
@@ -1198,7 +1217,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Tax Included',
                       prefixIcon: Icon(Icons.account_balance_outlined),
                     ),
@@ -1210,7 +1229,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           actions: [
             TextButton(
               onPressed: isSaving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             OutlinedButton.icon(
               onPressed: isSaving
@@ -1220,8 +1239,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       setDialogState: setDialogState,
                       keepOpen: true,
                     ),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Save & Add Another'),
+              icon: Icon(Icons.add, size: 18),
+              label: Text('Save & Add Another'),
             ),
             FilledButton(
               onPressed: isSaving
@@ -1232,7 +1251,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       keepOpen: false,
                     ),
               child: isSaving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -1240,7 +1259,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Save Sale'),
+                  : Text('Save Sale'),
             ),
           ],
         ),
@@ -1281,18 +1300,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.receipt, color: AppColors.primaryLight),
-            const SizedBox(width: 12),
-            const Text('Sale Details'),
-            const Spacer(),
+            Icon(Icons.receipt, color: AppColors.primaryLight),
+            SizedBox(width: 12),
+            Text('Sale Details'),
+            Spacer(),
             Text(
               '#${(sale['id'] as String).substring(0, 8)}',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
               ),
             ),
@@ -1308,13 +1327,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Date: ${_formatDate(sale['created_at'] as String? ?? '')}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
+                  Flexible(
+                    child: Text(
+                      'Date: ${_formatDate(sale['created_at'] as String? ?? '')}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
+                  SizedBox(width: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -1336,21 +1360,21 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 ],
               ),
               if ((sale['customer_name'] as String?)?.isNotEmpty == true) ...[
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 _DetailRow(
                   label: 'Customer',
                   value: sale['customer_name'] as String,
                 ),
               ],
               if ((sale['cashier_name'] as String?)?.isNotEmpty == true) ...[
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _DetailRow(
                   label: 'Cashier',
                   value: sale['cashier_name'] as String,
                 ),
               ],
               if ((sale['due_date'] as String?)?.isNotEmpty == true) ...[
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _DetailRow(
                   label: 'Due Date',
                   value: sale['due_date'] as String,
@@ -1359,8 +1383,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       : null,
                 ),
               ],
-              const SizedBox(height: 16),
-              const Divider(),
+              SizedBox(height: 16),
+              Divider(),
               // Items
               ...items.map(
                 (item) => Padding(
@@ -1374,15 +1398,15 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         color:
                             (item['line_type'] as String? ?? 'product') ==
                                 'service'
-                            ? AppColors.secondary
-                            : AppColors.textSecondary,
+                            ? Theme.of(context).colorScheme.secondary
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
                         size: 18,
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           item['product_name'] as String? ?? 'Unknown',
-                          style: const TextStyle(fontSize: 14),
+                          style: TextStyle(fontSize: 14),
                         ),
                       ),
                       Text(
@@ -1390,19 +1414,19 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           item['quantity'] as num?,
                           item['unit'] as String?,
                         ),
-                        style: const TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
-                      const SizedBox(width: 24),
+                      SizedBox(width: 24),
                       Text(
                         '${ShopSettings.currency}${((item['unit_price'] as num) * (item['quantity'] as num)).toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
                 ),
               ),
-              const Divider(),
-              const SizedBox(height: 8),
+              Divider(),
+              SizedBox(height: 8),
               _DetailRow(
                 label: 'Subtotal',
                 value:
@@ -1445,7 +1469,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       '${ShopSettings.currency}${changeGiven.toStringAsFixed(2)}',
                 ),
               ],
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               _DetailRow(
                 label: 'Profit',
                 value:
@@ -1454,20 +1478,26 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                     ? AppColors.success
                     : AppColors.error,
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Total',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    '${ShopSettings.currency}${(sale['total_amount'] as num).toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.success,
+                  SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      '${ShopSettings.currency}${(sale['total_amount'] as num).toStringAsFixed(2)}',
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
                     ),
                   ),
                 ],
@@ -1482,7 +1512,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Navigator.pop(ctx);
                 _showRefundDialog(sale);
               },
-              child: const Text(
+              child: Text(
                 'Return',
                 style: TextStyle(color: AppColors.error),
               ),
@@ -1493,14 +1523,14 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Navigator.pop(ctx);
                 _deleteSaleWithConfirmation(sale);
               },
-              child: const Text(
+              child: Text(
                 'Delete',
                 style: TextStyle(color: AppColors.error),
               ),
             ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text('Close'),
           ),
           if ((sale['etims_status'] as String?) != 'submitted')
             OutlinedButton.icon(
@@ -1508,16 +1538,16 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Navigator.pop(ctx);
                 _submitEtimsForSale(sale);
               },
-              icon: const Icon(Icons.account_balance_outlined, size: 18),
-              label: const Text('Submit eTIMS'),
+              icon: Icon(Icons.account_balance_outlined, size: 18),
+              label: Text('Submit eTIMS'),
             ),
           OutlinedButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
               _sendReceiptMessage(sale);
             },
-            icon: const Icon(Icons.send_outlined, size: 18),
-            label: const Text('Send Receipt'),
+            icon: Icon(Icons.send_outlined, size: 18),
+            label: Text('Send Receipt'),
           ),
           FilledButton(
             onPressed: () {
@@ -1553,7 +1583,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 showTenderedBreakdown: isCash,
               );
             },
-            child: const Text('Print'),
+            child: Text('Print'),
           ),
         ],
       ),
@@ -1663,21 +1693,21 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Sale?'),
+        title: Text('Delete Sale?'),
         content: Text(
           'Delete sale #${saleId.substring(0, 8)} from sales history and reports? Use Return instead when you need stock restored.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text('Delete'),
           ),
         ],
       ),
@@ -1749,11 +1779,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Return Items'),
+          title: Text('Return Items'),
           content: SizedBox(
             width: 520,
             child: Column(
@@ -1763,18 +1793,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Text(
                   'Choose the item quantities to return for sale #${(sale['id'] as String).substring(0, 8)}.',
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Text(
                   'Product stock will be restored automatically where applicable.',
-                  style: const TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 260),
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: refundableItems.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final item = refundableItems[index];
                       final controller =
@@ -1786,7 +1816,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceHighlight,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: isCompact
@@ -1795,33 +1825,33 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                 children: [
                                   Text(
                                     item['product_name'] as String? ?? 'Item',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  SizedBox(height: 4),
                                   Text(
                                     'Returnable: ${UnitUtils.formatWithUnit(refundableQuantity, unit)}',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
                                   Text(
                                     'Price: ${ShopSettings.currency}${(item['unit_price'] as num? ?? 0).toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
+                                  SizedBox(height: 12),
                                   TextField(
                                     controller: controller,
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       labelText: 'Return Qty',
                                     ),
                                   ),
@@ -1837,29 +1867,29 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                         Text(
                                           item['product_name'] as String? ??
                                               'Item',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
+                                        SizedBox(height: 4),
                                         Text(
                                           'Returnable: ${UnitUtils.formatWithUnit(refundableQuantity, unit)}',
-                                          style: const TextStyle(
-                                            color: AppColors.textSecondary,
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
                                           ),
                                         ),
                                         Text(
                                           'Price: ${ShopSettings.currency}${(item['unit_price'] as num? ?? 0).toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                            color: AppColors.textSecondary,
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  SizedBox(width: 12),
                                   SizedBox(
                                     width: 130,
                                     child: TextField(
@@ -1868,7 +1898,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                           const TextInputType.numberWithOptions(
                                             decimal: true,
                                           ),
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         labelText: 'Return Qty',
                                       ),
                                     ),
@@ -1879,11 +1909,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextField(
                   controller: noteController,
                   maxLines: 2,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Reason / note',
                     prefixIcon: Icon(Icons.notes_outlined),
                   ),
@@ -1894,7 +1924,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           actions: [
             TextButton(
               onPressed: isSaving ? null : () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: isSaving
@@ -2033,7 +2063,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 foregroundColor: Colors.white,
               ),
               child: isSaving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -2041,7 +2071,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Refund'),
+                  : Text('Refund'),
             ),
           ],
         ),
@@ -2195,7 +2225,7 @@ class _ManualSaleResponsiveRow extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) const SizedBox(height: 12),
+                if (index != children.length - 1) SizedBox(height: 12),
               ],
             ],
           );
@@ -2205,7 +2235,7 @@ class _ManualSaleResponsiveRow extends StatelessWidget {
           children: [
             for (var index = 0; index < children.length; index++) ...[
               Expanded(child: children[index]),
-              if (index != children.length - 1) const SizedBox(width: 12),
+              if (index != children.length - 1) SizedBox(width: 12),
             ],
           ],
         );
@@ -2307,7 +2337,7 @@ class _SalesHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: AppColors.surface,
+      color: Theme.of(context).colorScheme.surface,
       padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2325,22 +2355,22 @@ class _SalesHeader extends StatelessWidget {
                   : selectedFilter == 'month'
                   ? 'This month'
                   : 'All sales',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Text(
               '${ShopSettings.currency}${totalRevenue.toStringAsFixed(2)}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
           if (isMobile)
             Row(
@@ -2353,7 +2383,7 @@ class _SalesHeader extends StatelessWidget {
                     color: AppColors.primary,
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Expanded(
                   child: _MiniSalesMetric(
                     label: 'Tax',
@@ -2393,13 +2423,13 @@ class _SalesHeader extends StatelessWidget {
                 ),
               ],
             ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           _SalesFilterBar(
             selectedFilter: selectedFilter,
             onSelected: onFilterSelected,
             isMobile: isMobile,
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           _SaleTypeFilterBar(
             selectedType: selectedSaleType,
             onSelected: onSaleTypeSelected,
@@ -2439,7 +2469,7 @@ class _SalesFilterBar extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: filters.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          separatorBuilder: (_, _) => SizedBox(width: 8),
           itemBuilder: (context, index) {
             final filter = filters[index];
             return SizedBox(
@@ -2493,7 +2523,7 @@ class _CompactFilterButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : AppColors.textSecondary,
+              color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.w800,
             ),
@@ -2531,7 +2561,7 @@ class _SaleTypeFilterBar extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: filters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        separatorBuilder: (_, _) => SizedBox(width: 6),
         itemBuilder: (context, index) {
           final filter = filters[index];
           final selected = selectedType == filter.$1;
@@ -2563,7 +2593,7 @@ class _SaleTypeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected ? AppColors.secondary : AppColors.surfaceHighlight,
+      color: isSelected ? Theme.of(context).colorScheme.secondary : context.appSurfaceHighlight,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -2577,16 +2607,16 @@ class _SaleTypeChip extends StatelessWidget {
                 icon,
                 size: 14,
                 color: isSelected
-                    ? AppColors.background
-                    : AppColors.textSecondary,
+                    ? context.appBackground
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 5),
+              SizedBox(width: 5),
               Text(
                 label,
                 style: TextStyle(
                   color: isSelected
-                      ? AppColors.background
-                      : AppColors.textSecondary,
+                      ? context.appBackground
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2617,22 +2647,22 @@ class _MiniSalesMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         children: [
           Icon(icon, color: color, size: 16),
-          const SizedBox(width: 7),
+          SizedBox(width: 7),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
@@ -2641,8 +2671,8 @@ class _MiniSalesMetric extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -2671,21 +2701,21 @@ class _EmptySalesState extends StatelessWidget {
             Icon(
               Icons.receipt_long_outlined,
               size: 64,
-              color: AppColors.textSecondary.withValues(alpha: 0.4),
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
             ),
-            const SizedBox(height: 16),
-            const Text(
+            SizedBox(height: 16),
+            Text(
               'No sales found',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               isCashierView
                   ? 'Completed branch sales will appear here.'
                   : 'Complete a sale from POS or record an old sale.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 13,
               ),
             ),
@@ -2793,7 +2823,7 @@ class _SaleRow extends StatelessWidget {
         }
 
         return Material(
-          color: AppColors.surface,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           child: InkWell(
             onTap: onTap,
@@ -2802,7 +2832,7 @@ class _SaleRow extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Row(
                 children: [
@@ -2814,7 +2844,7 @@ class _SaleRow extends StatelessWidget {
                           (isRefund
                                   ? AppColors.error
                                   : isServiceSale
-                                  ? AppColors.secondary
+                                  ? Theme.of(context).colorScheme.secondary
                                   : AppColors.success)
                               .withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
@@ -2828,21 +2858,21 @@ class _SaleRow extends StatelessWidget {
                       color: isRefund
                           ? AppColors.error
                           : isServiceSale
-                          ? AppColors.secondary
+                          ? Theme.of(context).colorScheme.secondary
                           : AppColors.success,
                       size: 22,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Sale #${(sale['id'] as String).substring(0, 8)}',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: 4),
                         Text(
                           saleDisplayNames.isNotEmpty
                               ? '$saleTypeLabel - $saleDisplayNames'
@@ -2851,37 +2881,37 @@ class _SaleRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: isServiceSale
-                                ? AppColors.secondary
-                                : AppColors.textSecondary,
+                                ? Theme.of(context).colorScheme.secondary
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: 4),
                         Text(
                           dateStr,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
                         if ((sale['customer_name'] as String?)?.isNotEmpty ==
                             true) ...[
-                          const SizedBox(height: 4),
+                          SizedBox(height: 4),
                           Text(
                             sale['customer_name'] as String,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                         if (hasRefund) ...[
-                          const SizedBox(height: 4),
+                          SizedBox(height: 4),
                           Text(
                             refundState.isEmpty ? 'Refunded' : refundState,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.error,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -2909,7 +2939,7 @@ class _SaleRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 24),
+                  SizedBox(width: 24),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -2934,7 +2964,7 @@ class _SaleRow extends StatelessWidget {
                       if ((sale['balance_due'] as num? ?? 0) > 0)
                         Text(
                           'Due: ${ShopSettings.currency}${(sale['balance_due'] as num).toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: AppColors.warning,
@@ -2942,10 +2972,10 @@ class _SaleRow extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(
+                  SizedBox(width: 8),
+                  Icon(
                     Icons.chevron_right,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ],
               ),
@@ -2993,11 +3023,11 @@ class _MobileSaleRowCard extends StatelessWidget {
     final typeColor = isRefund
         ? AppColors.error
         : isServiceSale
-        ? AppColors.secondary
+        ? Theme.of(context).colorScheme.secondary
         : AppColors.success;
 
     return Material(
-      color: AppColors.surface,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -3006,7 +3036,7 @@ class _MobileSaleRowCard extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3031,7 +3061,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                       size: 21,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3042,12 +3072,12 @@ class _MobileSaleRowCard extends StatelessWidget {
                               : 'Sale #${(sale['id'] as String).substring(0, 8)}',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 15,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: 4),
                         Text(
                           saleTypeLabel,
                           style: TextStyle(
@@ -3059,7 +3089,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -3071,13 +3101,13 @@ class _MobileSaleRowCard extends StatelessWidget {
                           color: isRefund ? AppColors.error : AppColors.success,
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      SizedBox(height: 5),
                       _SaleBadge(label: badgeLabel, color: badgeColor),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -3155,19 +3185,19 @@ class _SaleInfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = color ?? AppColors.textSecondary;
+    final foreground = color ?? Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 13, color: foreground),
-          const SizedBox(width: 5),
+          SizedBox(width: 5),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 220),
             child: Text(
@@ -3211,7 +3241,7 @@ class _StatCard extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, color: color, size: 18),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3253,7 +3283,7 @@ class _FilterChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 6),
       child: Material(
-        color: isSelected ? AppColors.primary : AppColors.surfaceHighlight,
+        color: isSelected ? AppColors.primary : context.appSurfaceHighlight,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
@@ -3263,7 +3293,7 @@ class _FilterChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
               ),
@@ -3288,10 +3318,16 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary)),
-          Text(
-            value,
-            style: TextStyle(fontWeight: FontWeight.w500, color: valueColor),
+          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w500, color: valueColor),
+            ),
           ),
         ],
       ),

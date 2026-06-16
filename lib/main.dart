@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/navigation/app_navigator.dart';
+import 'core/providers/theme_provider.dart';
 import 'core/services/branch_service.dart';
 import 'core/services/database_service.dart';
 import 'core/services/license_service.dart';
@@ -24,15 +25,19 @@ void main() {
   runApp(const ProviderScope(child: PosApp()));
 }
 
-class PosApp extends StatelessWidget {
+class PosApp extends ConsumerWidget {
   const PosApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+
     return MaterialApp(
       navigatorKey: AppNavigator.navigatorKey,
       title: 'Piki POS',
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
       debugShowCheckedModeBanner: false,
       builder: (context, child) =>
           TrainingOverlayHost(child: child ?? const SizedBox.shrink()),

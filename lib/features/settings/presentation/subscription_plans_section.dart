@@ -39,6 +39,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   static const _panelColor = Color(0xFF17121F);
   static const _pink = Color(0xFFFF2A6D);
   static const _fuchsia = Color(0xFFC72DFF);
+  static const _mobileShellColor = Color(0xFF090B13);
 
   String? _selectedMarketKey;
   String? _selectedPlanCode;
@@ -128,7 +129,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         current = await SubscriptionService.fetchCurrent(
           countryCode: selectedMarket?.countryCode,
         );
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('SubscriptionPlansSection: fetchCurrent failed: $e\n$st');
+      }
 
       final plans = selectedMarket == null
           ? <SubscriptionPlanSummary>[]
@@ -534,19 +537,19 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       decoration: BoxDecoration(
         color: premium
             ? const Color(0xFF080A12).withValues(alpha: 0.96)
-            : AppColors.surface,
-        borderRadius: BorderRadius.circular(premium ? 28 : 14),
+            : _mobileShellColor,
+        borderRadius: BorderRadius.circular(premium ? 28 : 24),
         border: Border.all(
           color: premium
               ? Colors.white.withValues(alpha: 0.14)
-              : AppColors.border,
+              : Colors.white.withValues(alpha: 0.14),
         ),
-        boxShadow: premium
+        boxShadow: premium || Theme.of(context).brightness == Brightness.light
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.38),
-                  blurRadius: 30,
-                  offset: const Offset(0, 16),
+                  color: Colors.black.withValues(alpha: premium ? 0.38 : 0.18),
+                  blurRadius: premium ? 30 : 20,
+                  offset: Offset(0, premium ? 16 : 10),
                 ),
               ]
             : null,
@@ -604,54 +607,56 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _desktopSidebar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: _premiumHeader(context)),
-                      const SizedBox(width: 18),
-                      SizedBox(width: 230, child: _countryPill()),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _desktopSidebar(),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: _premiumHeader(context)),
+                        const SizedBox(width: 18),
+                        SizedBox(width: 230, child: _countryPill()),
+                      ],
+                    ),
+                    const SizedBox(height: 26),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(child: _headlineBlock(context)),
+                        const SizedBox(width: 18),
+                        SizedBox(width: 220, child: _billingToggle()),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _planList(),
+                    const SizedBox(height: 18),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _paymentMethodRail()),
+                        const SizedBox(width: 16),
+                        SizedBox(width: 280, child: _sellingModeSelector()),
+                      ],
+                    ),
+                    if (_message != null) ...[
+                      const SizedBox(height: 14),
+                      _messageCard(_message!),
                     ],
-                  ),
-                  const SizedBox(height: 26),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(child: _headlineBlock(context)),
-                      const SizedBox(width: 18),
-                      SizedBox(width: 220, child: _billingToggle()),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  _planList(),
-                  const SizedBox(height: 18),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _paymentMethodRail()),
-                      const SizedBox(width: 16),
-                      SizedBox(width: 280, child: _sellingModeSelector()),
-                    ],
-                  ),
-                  if (_message != null) ...[
-                    const SizedBox(height: 14),
-                    _messageCard(_message!),
+                    const SizedBox(height: 18),
+                    _footerContent(showSummary: true),
                   ],
-                  const SizedBox(height: 18),
-                  _footerContent(showSummary: true),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -797,7 +802,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return Container(
       constraints: const BoxConstraints(maxWidth: 430),
       decoration: BoxDecoration(
-        color: const Color(0xFF090B13),
+        color: _mobileShellColor,
         borderRadius: BorderRadius.circular(34),
         border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
         boxShadow: [

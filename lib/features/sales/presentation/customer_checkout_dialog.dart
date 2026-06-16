@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
@@ -201,7 +202,7 @@ class _CustomerCheckoutDialogState
         .toDouble();
 
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -216,22 +217,22 @@ class _CustomerCheckoutDialogState
               color: AppColors.primary.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.account_balance_wallet_outlined,
               color: AppColors.primaryLight,
             ),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Kopesha Checkout'),
-                const SizedBox(height: 4),
+                Text('Kopesha Checkout'),
+                SizedBox(height: 4),
                 Text(
                   'Assign this credit sale to a customer',
                   style: TextStyle(
-                    color: AppColors.textSecondary.withValues(alpha: 0.9),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                     fontSize: 13,
                   ),
                 ),
@@ -263,24 +264,24 @@ class _CustomerCheckoutDialogState
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.payments_outlined,
                             color: AppColors.primaryLight,
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Sale Total',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   fontSize: 12,
                                 ),
                               ),
                               Text(
                                 '${ShopSettings.currency}${widget.total.toStringAsFixed(2)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -290,12 +291,12 @@ class _CustomerCheckoutDialogState
                         ],
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
+                    SizedBox(height: 18),
+                    Text(
                       'Payment Method',
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     Consumer(
                       builder: (context, ref, child) {
                         final methodsAsync = ref.watch(
@@ -304,10 +305,10 @@ class _CustomerCheckoutDialogState
                         return methodsAsync.when(
                           data: (methods) {
                             if (methods.isEmpty) {
-                              return const Text(
+                              return Text(
                                 'No active payment methods.',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               );
                             }
@@ -350,12 +351,12 @@ class _CustomerCheckoutDialogState
                     ),
                     if (_selectedPaymentMethod?['name']?.toLowerCase() ==
                         'kopesha') ...[
-                      const SizedBox(height: 18),
-                      const Text(
+                      SizedBox(height: 18),
+                      Text(
                         'Kopesha Due Date',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -377,26 +378,26 @@ class _CustomerCheckoutDialogState
                           ),
                           OutlinedButton.icon(
                             onPressed: _pickCustomDueDate,
-                            icon: const Icon(Icons.event_outlined, size: 18),
+                            icon: Icon(Icons.event_outlined, size: 18),
                             label: Text(_dueDateLabel(_selectedDueDate)),
                           ),
                         ],
                       ),
                     ],
-                    const SizedBox(height: 18),
+                    SizedBox(height: 18),
                     TextField(
                       controller: _searchController,
                       onChanged: _loadCustomers,
                       decoration: InputDecoration(
                         hintText: 'Search customer by name, phone, or email',
-                        prefixIcon: const Icon(
+                        prefixIcon: Icon(
                           Icons.search,
-                          color: AppColors.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         suffixIcon: _searchController.text.isEmpty
                             ? null
                             : IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
+                                icon: Icon(Icons.clear, size: 18),
                                 onPressed: () {
                                   _searchController.clear();
                                   _loadCustomers();
@@ -404,10 +405,10 @@ class _CustomerCheckoutDialogState
                               ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Choose Customer (Optional unless Kopesha)',
                             style: TextStyle(fontWeight: FontWeight.w600),
@@ -415,46 +416,46 @@ class _CustomerCheckoutDialogState
                         ),
                         TextButton.icon(
                           onPressed: _openCreateAccountScreen,
-                          icon: const Icon(Icons.person_add_alt_1, size: 18),
-                          label: const Text('Add Customer'),
+                          icon: Icon(Icons.person_add_alt_1, size: 18),
+                          label: Text('Add Customer'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     if (_showCreateForm) ...[
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceHighlight,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: Theme.of(context).colorScheme.outline),
                         ),
                         child: Column(
                           children: [
                             TextField(
                               controller: _nameController,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Customer Name *',
                                 prefixIcon: Icon(Icons.person_outline),
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            SizedBox(height: 14),
                             Row(
                               children: [
                                 Expanded(
                                   child: TextField(
                                     controller: _phoneController,
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       labelText: 'Phone',
                                       prefixIcon: Icon(Icons.phone_outlined),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 14),
+                                SizedBox(width: 14),
                                 Expanded(
                                   child: TextField(
                                     controller: _emailController,
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       labelText: 'Email',
                                       prefixIcon: Icon(Icons.email_outlined),
                                     ),
@@ -462,13 +463,13 @@ class _CustomerCheckoutDialogState
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 14),
+                            SizedBox(height: 14),
                             SizedBox(
                               width: double.infinity,
                               child: FilledButton.icon(
                                 onPressed: _isCreating ? null : _createCustomer,
                                 icon: _isCreating
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 16,
                                         height: 16,
                                         child: CircularProgressIndicator(
@@ -476,17 +477,17 @@ class _CustomerCheckoutDialogState
                                           color: Colors.white,
                                         ),
                                       )
-                                    : const Icon(
+                                    : Icon(
                                         Icons.person_add_alt_1,
                                         size: 18,
                                       ),
-                                label: const Text('Create Customer'),
+                                label: Text('Create Customer'),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: 16),
                     ],
                     if (_selectedCustomer != null)
                       Container(
@@ -505,14 +506,14 @@ class _CustomerCheckoutDialogState
                           children: [
                             Text(
                               'Selected: ${_selectedCustomer!['name']}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            SizedBox(height: 6),
                             Text(
                               'Balance after this sale: ${ShopSettings.currency}${projectedBalance.toStringAsFixed(2)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.warning,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -524,16 +525,16 @@ class _CustomerCheckoutDialogState
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
                 ),
                 child: _isLoading
-                    ? const Center(
+                    ? Center(
                         child: Padding(
                           padding: EdgeInsets.all(24),
                           child: CircularProgressIndicator(),
@@ -549,17 +550,17 @@ class _CustomerCheckoutDialogState
                               Icon(
                                 Icons.people_outline,
                                 size: 40,
-                                color: AppColors.textSecondary.withValues(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                   alpha: 0.5,
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              const Text('No customers found'),
-                              const SizedBox(height: 6),
+                              SizedBox(height: 12),
+                              Text('No customers found'),
+                              SizedBox(height: 6),
                               Text(
                                 'Create one now to record this Kopesha sale.',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary.withValues(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
                                     alpha: 0.9,
                                   ),
                                   fontSize: 12,
@@ -574,7 +575,7 @@ class _CustomerCheckoutDialogState
                         shrinkWrap: true,
                         padding: const EdgeInsets.all(12),
                         itemCount: _customers.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final customer = _customers[index];
                           final isSelected =
@@ -585,7 +586,7 @@ class _CustomerCheckoutDialogState
                           return Material(
                             color: isSelected
                                 ? AppColors.primary.withValues(alpha: 0.12)
-                                : AppColors.surface,
+                                : context.appSurface,
                             borderRadius: BorderRadius.circular(14),
                             child: InkWell(
                               onTap: () =>
@@ -598,7 +599,7 @@ class _CustomerCheckoutDialogState
                                   border: Border.all(
                                     color: isSelected
                                         ? AppColors.primaryLight
-                                        : AppColors.border,
+                                        : context.appBorder,
                                     width: isSelected ? 1.4 : 1,
                                   ),
                                 ),
@@ -613,12 +614,12 @@ class _CustomerCheckoutDialogState
                                         ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         Icons.person,
                                         color: AppColors.primaryLight,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -627,11 +628,11 @@ class _CustomerCheckoutDialogState
                                           Text(
                                             customer['name'] as String? ??
                                                 'Unnamed Customer',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
-                                          const SizedBox(height: 4),
+                                          SizedBox(height: 4),
                                           Text(
                                             [
                                                   customer['phone'] as String?,
@@ -644,27 +645,27 @@ class _CustomerCheckoutDialogState
                                                 )
                                                 .join(' | ')
                                                 .ifEmpty('No contact added'),
-                                            style: const TextStyle(
-                                              color: AppColors.textSecondary,
+                                            style: TextStyle(
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.end,
                                       children: [
-                                        const Text(
+                                        Text(
                                           'Outstanding',
                                           style: TextStyle(
-                                            color: AppColors.textSecondary,
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                                             fontSize: 11,
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
+                                        SizedBox(height: 4),
                                         Text(
                                           '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
                                           style: TextStyle(
@@ -691,7 +692,7 @@ class _CustomerCheckoutDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text('Cancel'),
         ),
         ElevatedButton.icon(
           onPressed: () {
@@ -721,8 +722,8 @@ class _CustomerCheckoutDialogState
               'paymentMethod': _selectedPaymentMethod,
             });
           },
-          icon: const Icon(Icons.check_circle_outline, size: 18),
-          label: const Text('Complete Checkout'),
+          icon: Icon(Icons.check_circle_outline, size: 18),
+          label: Text('Complete Checkout'),
         ),
       ],
     );
@@ -754,16 +755,16 @@ class _DueDateChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? AppColors.warning.withValues(alpha: 0.16)
-              : AppColors.surfaceHighlight,
+              : context.appSurfaceHighlight,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? AppColors.warning : AppColors.border,
+            color: selected ? AppColors.warning : context.appBorder,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? AppColors.warning : AppColors.textSecondary,
+            color: selected ? AppColors.warning : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),

@@ -926,8 +926,12 @@ class SaleImportService {
     if (book.tables.isEmpty) {
       return const [];
     }
-    final firstSheet = book.tables.values.first;
-    return firstSheet.rows
+    final sheet = book.tables.values.firstWhere(
+      (table) =>
+          table.rows.any((row) => row.any((cell) => cell?.value != null)),
+      orElse: () => book.tables.values.first,
+    );
+    return sheet.rows
         .map(
           (row) =>
               row.map((cell) => cell?.value?.toString().trim() ?? '').toList(),
@@ -936,7 +940,11 @@ class SaleImportService {
   }
 
   static List<List<String>> _readCsvRows(Uint8List bytes) {
-    final content = utf8.decode(bytes, allowMalformed: true);
+    var content = utf8.decode(bytes, allowMalformed: true);
+    if (content.startsWith('\uFEFF')) {
+      content = content.substring(1);
+    }
+    final separator = _detectCsvSeparator(content);
     final rows = <List<String>>[];
     var row = <String>[];
     final buffer = StringBuffer();
@@ -956,7 +964,7 @@ class SaleImportService {
         continue;
       }
 
-      if (char == ',' && !inQuotes) {
+      if (char == separator && !inQuotes) {
         row.add(buffer.toString().trim());
         buffer.clear();
         continue;
@@ -981,6 +989,35 @@ class SaleImportService {
       rows.add(row);
     }
     return rows;
+  }
+
+  static String _detectCsvSeparator(String content) {
+    final firstLine = content.split('\n').firstWhere(
+          (line) => line.trim().isNotEmpty,
+          orElse: () => '',
+        );
+    if (firstLine.isEmpty) return ',';
+    final commas = _countUnquoted(firstLine, ',');
+    final semicolons = _countUnquoted(firstLine, ';');
+    return semicolons > commas ? ';' : ',';
+  }
+
+  static int _countUnquoted(String line, String separator) {
+    var count = 0;
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i += 1) {
+      final char = line[i];
+      if (char == '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          i += 1;
+          continue;
+        }
+        inQuotes = !inQuotes;
+      } else if (char == separator && !inQuotes) {
+        count += 1;
+      }
+    }
+    return count;
   }
 
   static Map<String, String> _rowMap(List<String> headers, List<String> row) {
@@ -1083,7 +1120,11 @@ class SaleImportService {
         if (first > 12) {
           return _safeDate(third, second, first);
         }
-        return _safeDate(third, first, second);
+        if (second > 12) {
+          return _safeDate(third, first, second);
+        }
+        // Ambiguous: prefer DD/MM/YYYY for the app's primary East-African market.
+        return _safeDate(third, second, first);
       }
     }
 

@@ -1042,11 +1042,13 @@ class SaleRepository {
     final profitWhere = <String>[
       's2.created_at LIKE ?',
       's2.deleted_at IS NULL',
+      's2.refund_sale_id IS NULL',
       'COALESCE(s2.branch_id, ?) = ?',
     ];
     final totalWhere = <String>[
       'created_at LIKE ?',
       'deleted_at IS NULL',
+      'refund_sale_id IS NULL',
       'COALESCE(branch_id, ?) = ?',
     ];
     final args = <dynamic>[
@@ -1068,6 +1070,22 @@ class SaleRepository {
     }
 
     final salesWhere = totalWhere.join(' AND ');
+    final itemsWhere = <String>[
+      's4.created_at LIKE ?',
+      's4.deleted_at IS NULL',
+      's4.refund_sale_id IS NULL',
+      'COALESCE(s4.branch_id, ?) = ?',
+    ];
+    final itemsArgs = <dynamic>[
+      '$today%',
+      DatabaseService.defaultBranchId,
+      effectiveBranchId,
+    ];
+    if (normalizedCashierId != null && normalizedCashierId.isNotEmpty) {
+      itemsWhere.add('s4.user_id = ?');
+      itemsArgs.add(normalizedCashierId);
+    }
+
     final results = await DatabaseService.rawQuery(
       '''
       SELECT 
@@ -1086,15 +1104,35 @@ class SaleRepository {
             SELECT SUM(ssi.quantity * ssi.unit_price)
             FROM $_serviceItemsTable ssi
             JOIN $_salesTable s3 ON ssi.sale_id = s3.id
-            WHERE ${normalizedCashierId != null && normalizedCashierId.isNotEmpty ? "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND COALESCE(s3.branch_id, ?) = ? AND s3.user_id = ?" : "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND COALESCE(s3.branch_id, ?) = ?"}
+            WHERE ${normalizedCashierId != null && normalizedCashierId.isNotEmpty ? "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND s3.refund_sale_id IS NULL AND COALESCE(s3.branch_id, ?) = ? AND s3.user_id = ?" : "s3.created_at LIKE ? AND s3.deleted_at IS NULL AND s3.refund_sale_id IS NULL AND COALESCE(s3.branch_id, ?) = ?"}
           ), 0)
           - COALESCE(SUM(discount), 0)
-        ) as total_profit
+        ) as total_profit,
+        (
+          COALESCE((
+            SELECT SUM(si.quantity)
+            FROM $_itemsTable si
+            JOIN $_salesTable s4 ON si.sale_id = s4.id
+            WHERE ${itemsWhere.join(' AND ')}
+          ), 0)
+          + COALESCE((
+            SELECT SUM(ssi.quantity)
+            FROM $_serviceItemsTable ssi
+            JOIN $_salesTable s5 ON ssi.sale_id = s5.id
+            WHERE ${normalizedCashierId != null && normalizedCashierId.isNotEmpty ? "s5.created_at LIKE ? AND s5.deleted_at IS NULL AND s5.refund_sale_id IS NULL AND COALESCE(s5.branch_id, ?) = ? AND s5.user_id = ?" : "s5.created_at LIKE ? AND s5.deleted_at IS NULL AND s5.refund_sale_id IS NULL AND COALESCE(s5.branch_id, ?) = ?"}
+          ), 0)
+        ) as total_items
       FROM $_salesTable 
       WHERE $salesWhere
     ''',
       [
         ...args,
+        ...itemsArgs,
+        '$today%',
+        DatabaseService.defaultBranchId,
+        effectiveBranchId,
+        if (normalizedCashierId != null && normalizedCashierId.isNotEmpty)
+          normalizedCashierId,
         '$today%',
         DatabaseService.defaultBranchId,
         effectiveBranchId,
@@ -1105,6 +1143,6 @@ class SaleRepository {
 
     return results.isNotEmpty
         ? results.first
-        : {'total_sales': 0, 'total_revenue': 0.0, 'total_profit': 0.0};
+        : {'total_sales': 0, 'total_revenue': 0.0, 'total_profit': 0.0, 'total_items': 0};
   }
 }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/messaging_service.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
 
 class CommunicationSettingsSection extends StatefulWidget {
@@ -96,9 +95,9 @@ class _CommunicationSettingsSectionState
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -109,17 +108,17 @@ class _CommunicationSettingsSectionState
                 child: TextField(
                   controller: _whatsappController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Business WhatsApp number',
                     prefixIcon: Icon(Icons.chat_outlined),
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: 16),
               Expanded(
                 child: TextField(
                   controller: _senderController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'SMS sender ID',
                     prefixIcon: Icon(Icons.sms_outlined),
                   ),
@@ -127,36 +126,36 @@ class _CommunicationSettingsSectionState
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _allowApiSend,
             onChanged: (value) => setState(() => _allowApiSend = value),
-            title: const Text('Allow API sending'),
+            title: Text('Allow API sending'),
           ),
           if (_message != null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               _message!,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: ElevatedButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.save_outlined),
-              label: const Text('Save Messaging'),
+                  : Icon(Icons.save_outlined),
+              label: Text('Save Messaging'),
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -192,7 +193,7 @@ class _StorefrontBrandSettingsSectionState
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
 
     final color = _brandColor;
@@ -200,13 +201,13 @@ class _StorefrontBrandSettingsSectionState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildPreview(color),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildCard([
-          const Text(
+          Text(
             'Images',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           _buildImageField(
             label: 'Logo URL',
             controller: _logoController,
@@ -215,7 +216,7 @@ class _StorefrontBrandSettingsSectionState
             uploading: _uploadingLogo,
             onUpload: () => _pickAndUploadImage('logo'),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           _buildImageField(
             label: 'Cover photo URL',
             controller: _coverController,
@@ -224,19 +225,19 @@ class _StorefrontBrandSettingsSectionState
             uploading: _uploadingCover,
             onUpload: () => _pickAndUploadImage('cover'),
           ),
-          const SizedBox(height: 8),
-          const Text(
+          SizedBox(height: 8),
+          Text(
             'Tip: use a wide cover photo and a square logo for the best catalog look.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
           ),
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildCard([
-          const Text(
+          Text(
             'Brand Style',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           TextField(
             controller: _colorController,
             onChanged: (_) => setState(() {}),
@@ -256,30 +257,30 @@ class _StorefrontBrandSettingsSectionState
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           TextField(
             controller: _taglineController,
             maxLength: 80,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Small headline',
               hintText: 'Online catalog',
               prefixIcon: Icon(Icons.short_text_outlined),
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           TextField(
             controller: _descriptionController,
             maxLength: 260,
             minLines: 3,
             maxLines: 5,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Store intro text',
               alignLabelWithHint: true,
               prefixIcon: Icon(Icons.notes_outlined),
             ),
           ),
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -287,23 +288,23 @@ class _StorefrontBrandSettingsSectionState
           children: [
             OutlinedButton.icon(
               onPressed: _copyStoreLink,
-              icon: const Icon(Icons.link_outlined),
-              label: const Text('Copy store link'),
+              icon: Icon(Icons.link_outlined),
+              label: Text('Copy store link'),
             ),
             OutlinedButton.icon(
               onPressed: _openStoreLink,
-              icon: const Icon(Icons.open_in_new_outlined),
-              label: const Text('Open store'),
+              icon: Icon(Icons.open_in_new_outlined),
+              label: Text('Open store'),
             ),
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.save_outlined),
+                  : Icon(Icons.save_outlined),
               label: Text(_saving ? 'Saving...' : 'Save storefront'),
             ),
           ],
@@ -323,7 +324,7 @@ class _StorefrontBrandSettingsSectionState
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
         image: _isRemoteUrl(cover)
             ? DecorationImage(
                 image: NetworkImage(cover),
@@ -339,7 +340,7 @@ class _StorefrontBrandSettingsSectionState
             : LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [color.withValues(alpha: 0.65), AppColors.surface],
+                colors: [color.withValues(alpha: 0.65), context.appSurface],
               ),
       ),
       child: Column(
@@ -369,7 +370,7 @@ class _StorefrontBrandSettingsSectionState
                           title.trim().isEmpty
                               ? 'P'
                               : title.trim()[0].toUpperCase(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w900,
                             fontSize: 20,
@@ -377,13 +378,13 @@ class _StorefrontBrandSettingsSectionState
                         ),
                       ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
                     fontSize: 18,
@@ -392,36 +393,36 @@ class _StorefrontBrandSettingsSectionState
               ),
             ],
           ),
-          const Spacer(),
+          Spacer(),
           Text(
             _taglineController.text.trim().isEmpty
                 ? 'Online catalog'
                 : _taglineController.text.trim(),
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white70,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.2,
               fontSize: 12,
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Text(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontSize: 34,
               fontWeight: FontWeight.w900,
               letterSpacing: -1.2,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             _descriptionController.text.trim(),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white70, height: 1.35),
+            style: TextStyle(color: Colors.white70, height: 1.35),
           ),
         ],
       ),
@@ -450,22 +451,22 @@ class _StorefrontBrandSettingsSectionState
                   ? null
                   : IconButton(
                       tooltip: 'Clear',
-                      icon: const Icon(Icons.close_outlined),
+                      icon: Icon(Icons.close_outlined),
                       onPressed: () => setState(controller.clear),
                     ),
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         OutlinedButton.icon(
           onPressed: uploading ? null : onUpload,
           icon: uploading
-              ? const SizedBox(
+              ? SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.upload_file_outlined),
+              : Icon(Icons.upload_file_outlined),
           label: Text(uploadLabel),
         ),
       ],
@@ -476,9 +477,9 @@ class _StorefrontBrandSettingsSectionState
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -489,7 +490,9 @@ class _StorefrontBrandSettingsSectionState
 
   Color get _brandColor {
     final clean = _normalizeColorInput(_colorController.text);
-    return Color(int.parse(clean.substring(1), radix: 16) + 0xFF000000);
+    final value = int.tryParse(clean.substring(1), radix: 16);
+    if (value == null) return Color(0xFFff2a6d);
+    return Color(value + 0xFF000000);
   }
 
   String _normalizeColorInput(String value) {

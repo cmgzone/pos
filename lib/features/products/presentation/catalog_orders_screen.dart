@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/catalog_order_service.dart';
 import '../../../core/services/branch_service.dart';
@@ -14,9 +15,9 @@ import '../../../widgets/empty_state_widget.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../customers/presentation/customer_message_dialog.dart';
 import '../../training/widgets/training_anchor.dart';
+import '../../services/data/service_repository.dart';
 import '../data/product_repository.dart';
 import '../data/product_variant_repository.dart';
-import 'catalog_publish_section.dart';
 
 class CatalogOrdersScreen extends ConsumerStatefulWidget {
   final VoidCallback? onOpenPos;
@@ -149,19 +150,18 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
       final replace = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('Replace current cart?'),
-          content: const Text(
+          title: Text('Replace current cart?'),
+          content: Text(
             'Loading this order will clear the items currently in checkout.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Replace'),
+              child: Text('Replace'),
             ),
           ],
         ),
@@ -194,15 +194,28 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
       ref.read(discountProvider.notifier).state = 0;
 
       for (final line in lines) {
+        if (line.isService) {
+          final added = cartNotifier.addService(
+            serviceOrderId: line.serviceOrderId!,
+            serviceId: line.serviceId!,
+            serviceName: line.serviceName!,
+            price: line.price!,
+          );
+          if (!added) {
+            throw Exception('${line.item.label} is already in checkout.');
+          }
+          continue;
+        }
+
         final added = cartNotifier.addProduct(
-          line.product,
+          line.product!,
           variant: line.variant,
         );
         if (!added) {
           throw Exception('Not enough stock for ${line.item.label}.');
         }
 
-        final cartKey = _cartKeyFor(line.product, line.variant);
+        final cartKey = _cartKeyFor(line.product!, line.variant);
         final quantitySet = cartNotifier.setQuantity(
           cartKey,
           line.item.quantity,
@@ -257,6 +270,45 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
   Future<List<_CheckoutLine>> _prepareCheckoutLines(CatalogOrder order) async {
     final lines = <_CheckoutLine>[];
     for (final item in order.items) {
+      if (item.isService) {
+        final serviceId = item.serviceId.trim().isNotEmpty
+            ? item.serviceId.trim()
+            : item.productId.trim().replaceFirst(RegExp(r'^service:'), '');
+        if (serviceId.isEmpty) {
+          throw Exception('${item.label} is not linked to a POS service.');
+        }
+        final service = await ServiceRepository.getServiceById(serviceId);
+        if (service == null) {
+          throw Exception('${item.label} is no longer in services.');
+        }
+        final quantity = item.quantity <= 0 ? 1.0 : item.quantity;
+        final price = item.lineTotal > 0
+            ? item.lineTotal
+            : item.unitPrice * quantity;
+        final orderId = await ServiceRepository.createOrder(
+          serviceId: serviceId,
+          serviceName: item.productName,
+          customerName: order.customerName,
+          entryMode: 'online_catalog',
+          status: 'ready',
+          price: price,
+          note:
+              'Catalog order #${order.orderNumber}${quantity == 1 ? '' : ' - ${_formatQty(quantity)} requested'}',
+        );
+        lines.add(
+          _CheckoutLine.service(
+            serviceOrderId: orderId,
+            serviceId: serviceId,
+            serviceName: quantity == 1
+                ? item.productName
+                : '${item.productName} x ${_formatQty(quantity)}',
+            price: price,
+            item: item,
+          ),
+        );
+        continue;
+      }
+
       if (item.productId.trim().isEmpty) {
         throw Exception('${item.label} is not linked to a POS product.');
       }
@@ -274,7 +326,9 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
         }
       }
 
-      lines.add(_CheckoutLine(product: product, variant: variant, item: item));
+      lines.add(
+        _CheckoutLine.product(product: product, variant: variant, item: item),
+      );
     }
     return lines;
   }
@@ -294,9 +348,17 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
         toolbarHeight: 50,
-        title: const Text(
+        leading:
+            !Navigator.of(context).canPop() &&
+                MediaQuery.of(context).size.width <= 800
+            ? IconButton(
+                icon: Icon(Icons.menu),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
+              )
+            : null,
+        title: Text(
           'Catalog Orders',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
@@ -306,17 +368,16 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
             onPressed: _refresh,
             icon: Icons.refresh_outlined,
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
         ],
       ),
       body: TrainingAnchor(
         id: 'orders.workspace',
         child: Column(
           children: [
-            const CatalogPublishSection(),
             Container(
               width: double.infinity,
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               padding: EdgeInsets.fromLTRB(
                 isMobile ? 16 : 24,
                 0,
@@ -350,13 +411,13 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
                 },
               ),
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
             Expanded(
               child: FutureBuilder<List<CatalogOrder>>(
                 future: _ordersFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
                     return Center(
@@ -368,7 +429,7 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
                             fallback: 'Could not load catalog orders.',
                           ),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.error),
+                          style: TextStyle(color: AppColors.error),
                         ),
                       ),
                     );
@@ -390,7 +451,7 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
                   return ListView.separated(
                     padding: EdgeInsets.all(isMobile ? 12 : 20),
                     itemCount: orders.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    separatorBuilder: (_, _) => SizedBox(height: 12),
                     itemBuilder: (context, index) => _CatalogOrderCard(
                       order: orders[index],
                       updating: _updating.contains(orders[index].id),
@@ -430,12 +491,12 @@ class _CatalogOrderCard extends StatelessWidget {
     final created = order.createdAt == null
         ? ''
         : DateFormat('MMM d, HH:mm').format(order.createdAt!.toLocal());
-    final statusColor = _statusColor(order.status);
+    final statusColor = _statusColor(context, order.status);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: statusColor.withValues(alpha: 0.35)),
       ),
@@ -453,18 +514,18 @@ class _CatalogOrderCard extends StatelessWidget {
                 children: [
                   Text(
                     '#${order.orderNumber} - ${order.customerName}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     [
                       order.phone,
                       created,
                     ].where((part) => part.isNotEmpty).join(' - '),
-                    style: const TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -479,15 +540,15 @@ class _CatalogOrderCard extends StatelessWidget {
             ],
           ),
           if (order.deliveryAddress.trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             _InfoLine(icon: Icons.place_outlined, text: order.deliveryAddress),
           ],
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           _InfoLine(
             icon: Icons.store_outlined,
             text: 'Branch: ${order.branchName}',
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           _InfoLine(
             icon: order.fulfillmentMethod == 'pickup'
                 ? Icons.storefront_outlined
@@ -497,10 +558,10 @@ class _CatalogOrderCard extends StatelessWidget {
                 : 'Delivery order',
           ),
           if (order.note.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             _InfoLine(icon: Icons.notes_outlined, text: order.note),
           ],
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           ...order.items.map(
             (item) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -509,36 +570,36 @@ class _CatalogOrderCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       '${_formatQty(item.quantity)} x ${item.label}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                   Text(
                     '${ShopSettings.currency}${item.lineTotal.toStringAsFixed(2)}',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ],
               ),
             ),
           ),
-          const Divider(height: 22),
+          Divider(height: 22),
           Row(
             children: [
               Expanded(
                 child: Text(
                   '${_formatQty(order.itemCount)} item${order.itemCount == 1 ? '' : 's'}',
-                  style: const TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
               Text(
                 '${ShopSettings.currency}${order.subtotal.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -547,12 +608,12 @@ class _CatalogOrderCard extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: updating ? null : onCheckout,
                   icon: updating
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.point_of_sale_outlined),
+                      : Icon(Icons.point_of_sale_outlined),
                   label: Text(
                     order.status == 'pending'
                         ? 'Accept & Checkout'
@@ -562,33 +623,33 @@ class _CatalogOrderCard extends StatelessWidget {
               if (order.status == 'pending')
                 OutlinedButton.icon(
                   onPressed: updating ? null : () => onStatus('accepted'),
-                  icon: const Icon(Icons.check_outlined),
-                  label: const Text('Accept Only'),
+                  icon: Icon(Icons.check_outlined),
+                  label: Text('Accept Only'),
                 ),
               if (order.status == 'accepted' ||
                   order.status == 'payment_requested')
                 OutlinedButton.icon(
                   onPressed: updating ? null : onPaymentRequest,
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Request Payment'),
+                  icon: Icon(Icons.payments_outlined),
+                  label: Text('Request Payment'),
                 ),
               if (order.status != 'fulfilled')
                 OutlinedButton.icon(
                   onPressed: updating ? null : () => onStatus('fulfilled'),
-                  icon: const Icon(Icons.done_all_outlined),
-                  label: const Text('Fulfill'),
+                  icon: Icon(Icons.done_all_outlined),
+                  label: Text('Fulfill'),
                 ),
               if (order.status != 'rejected' && order.status == 'pending')
                 TextButton.icon(
                   onPressed: updating ? null : () => onStatus('rejected'),
-                  icon: const Icon(Icons.block_outlined),
-                  label: const Text('Reject'),
+                  icon: Icon(Icons.block_outlined),
+                  label: Text('Reject'),
                 ),
               if (order.status != 'cancelled')
                 TextButton.icon(
                   onPressed: updating ? null : () => onStatus('cancelled'),
-                  icon: const Icon(Icons.cancel_outlined),
-                  label: const Text('Cancel'),
+                  icon: Icon(Icons.cancel_outlined),
+                  label: Text('Cancel'),
                 ),
             ],
           ),
@@ -609,12 +670,12 @@ class _InfoLine extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: AppColors.textSecondary),
-        const SizedBox(width: 8),
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
       ],
@@ -623,15 +684,33 @@ class _InfoLine extends StatelessWidget {
 }
 
 class _CheckoutLine {
-  final Map<String, dynamic> product;
+  final Map<String, dynamic>? product;
   final Map<String, dynamic>? variant;
+  final String? serviceOrderId;
+  final String? serviceId;
+  final String? serviceName;
+  final double? price;
   final CatalogOrderItem item;
 
-  const _CheckoutLine({
+  bool get isService => serviceOrderId != null;
+
+  const _CheckoutLine.product({
     required this.product,
     required this.variant,
     required this.item,
-  });
+  }) : serviceOrderId = null,
+       serviceId = null,
+       serviceName = null,
+       price = null;
+
+  const _CheckoutLine.service({
+    required this.serviceOrderId,
+    required this.serviceId,
+    required this.serviceName,
+    required this.price,
+    required this.item,
+  }) : product = null,
+       variant = null;
 }
 
 String _cartKeyFor(
@@ -664,12 +743,12 @@ String _statusLabel(String status) {
   }
 }
 
-Color _statusColor(String status) {
+Color _statusColor(BuildContext context, String status) {
   switch (status) {
     case 'accepted':
       return AppColors.primary;
     case 'payment_requested':
-      return AppColors.secondary;
+      return Theme.of(context).colorScheme.secondary;
     case 'fulfilled':
     case 'completed':
       return AppColors.success;

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/services/catalog_qr_poster_service.dart';
 import '../../../core/services/catalog_share_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 
 class CatalogPublishSection extends StatefulWidget {
   const CatalogPublishSection({super.key});
@@ -33,8 +34,8 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
           end: Alignment.bottomRight,
           colors: [
             AppColors.primary.withValues(alpha: 0.18),
-            AppColors.surfaceHighlight,
-            const Color(0xFF15101F),
+            context.appSurfaceHighlight,
+            Color(0xFF15101F),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
@@ -62,7 +63,7 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       colors: [AppColors.primary, Color(0xFFC72DFF)],
                     ),
                     borderRadius: BorderRadius.circular(18),
@@ -74,13 +75,13 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
                       ),
                     ],
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.shopping_bag_outlined,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 14),
-                const Expanded(
+                SizedBox(width: 14),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -118,13 +119,13 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
               FilledButton.icon(
                 onPressed: _preparing ? null : _shareCatalog,
                 icon: _preparing
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 15,
                         height: 15,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.link_outlined, size: 18),
-                label: const Text('Share Store Link'),
+                    : Icon(Icons.link_outlined, size: 18),
+                label: Text('Share Store Link'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
@@ -136,8 +137,8 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
               ),
               OutlinedButton.icon(
                 onPressed: _preparing ? null : _publishCatalogQr,
-                icon: const Icon(Icons.qr_code_2_outlined, size: 18),
-                label: const Text('QR Poster'),
+                icon: Icon(Icons.qr_code_2_outlined, size: 18),
+                label: Text('QR Poster'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
@@ -195,8 +196,8 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Share Online Storefront'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Share Online Storefront'),
         content: SizedBox(
           width: 520,
           child: Column(
@@ -214,15 +215,15 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.storefront_outlined,
                       color: AppColors.primary,
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         info.businessName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w900,
                         ),
@@ -231,36 +232,36 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               Text(
                 syncText,
                 style: TextStyle(
                   color: syncWarning == null
-                      ? AppColors.textSecondary
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
                       : AppColors.warning,
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               TextFormField(
                 initialValue: info.url,
                 readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Customer catalog link',
-                  prefixIcon: const Icon(Icons.link_outlined),
+                  prefixIcon: Icon(Icons.link_outlined),
                   suffixIcon: IconButton(
                     tooltip: 'Copy link',
-                    icon: const Icon(Icons.copy_outlined),
+                    icon: Icon(Icons.copy_outlined),
                     onPressed: () => _copyLink(ctx, info.url),
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               TextFormField(
                 initialValue: message,
                 readOnly: true,
                 minLines: 3,
                 maxLines: 4,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Message preview',
                   alignLabelWithHint: true,
                 ),
@@ -271,30 +272,30 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
+            child: Text('Close'),
           ),
           OutlinedButton.icon(
             onPressed: () => _copyLink(ctx, info.url),
-            icon: const Icon(Icons.copy_outlined),
-            label: const Text('Copy Link'),
+            icon: Icon(Icons.copy_outlined),
+            label: Text('Copy Link'),
           ),
           OutlinedButton.icon(
             onPressed: () => _openCatalogLink(ctx, info),
-            icon: const Icon(Icons.open_in_new_outlined),
-            label: const Text('Open'),
+            icon: Icon(Icons.open_in_new_outlined),
+            label: Text('Open'),
           ),
           OutlinedButton.icon(
             onPressed: () async {
               Navigator.of(ctx).pop();
               await _showCatalogQrDialog(info);
             },
-            icon: const Icon(Icons.qr_code_2_outlined),
-            label: const Text('QR Poster'),
+            icon: Icon(Icons.qr_code_2_outlined),
+            label: Text('QR Poster'),
           ),
           FilledButton.icon(
             onPressed: () => _openCatalogWhatsApp(ctx, info),
-            icon: const Icon(Icons.chat_outlined),
-            label: const Text('WhatsApp'),
+            icon: Icon(Icons.chat_outlined),
+            label: Text('WhatsApp'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
           ),
         ],
@@ -306,8 +307,8 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Row(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Row(
           children: [
             Icon(Icons.qr_code_2_outlined, color: AppColors.primary),
             SizedBox(width: 10),
@@ -321,11 +322,11 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   'Customers can scan this poster to open your catalog and place an order.',
-                  style: TextStyle(color: AppColors.textSecondary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Container(
                   height: 300,
                   padding: const EdgeInsets.all(8),
@@ -337,13 +338,13 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
                     future: CatalogQrPosterService.buildPreviewPng(info),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState != ConnectionState.done) {
-                        return const Center(
+                        return Center(
                           child: CircularProgressIndicator(strokeWidth: 2),
                         );
                       }
                       final preview = snapshot.data;
                       if (preview == null) {
-                        return const Center(
+                        return Center(
                           child: Text('QR poster is ready to share or print.'),
                         );
                       }
@@ -351,12 +352,12 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
                     },
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 SelectableText(
                   info.url,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                   ),
                 ),
@@ -367,22 +368,22 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
+            child: Text('Close'),
           ),
           OutlinedButton.icon(
             onPressed: () => _copyLink(ctx, info.url),
-            icon: const Icon(Icons.copy_outlined),
-            label: const Text('Copy Link'),
+            icon: Icon(Icons.copy_outlined),
+            label: Text('Copy Link'),
           ),
           OutlinedButton.icon(
             onPressed: () => _printCatalogQrPoster(ctx, info),
-            icon: const Icon(Icons.print_outlined),
-            label: const Text('Print'),
+            icon: Icon(Icons.print_outlined),
+            label: Text('Print'),
           ),
           FilledButton.icon(
             onPressed: () => _shareCatalogQrPoster(ctx, info),
-            icon: const Icon(Icons.ios_share_outlined),
-            label: const Text('Share Poster'),
+            icon: Icon(Icons.ios_share_outlined),
+            label: Text('Share Poster'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
           ),
         ],

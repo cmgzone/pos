@@ -353,7 +353,10 @@ class ProductImportService {
     }
 
     var stockBatchAdded = false;
-    final stockToAdd = SpreadsheetImportReader.readMoney(row, _stockAddKeys);
+    final stockToAdd = SpreadsheetImportReader.readMoney(row, [
+      ..._stockAddKeys,
+      ..._stockKeys,
+    ]);
     if (stockToAdd != null && stockToAdd > 0) {
       await ProductRepository.addStockBatch(
         productId: existing['id'] as String,
@@ -444,8 +447,9 @@ class ProductImportService {
     final categories = await CategoryRepository.getAll();
     return {
       for (final category in categories)
-        (category['name'] as String? ?? '').trim().toLowerCase():
-            category['id'] as String,
+        if (category['id'] != null)
+          (category['name'] as String? ?? '').trim().toLowerCase():
+              category['id'] as String,
     };
   }
 

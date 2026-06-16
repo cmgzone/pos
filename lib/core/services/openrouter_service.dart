@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -819,7 +820,14 @@ How to use Piki POS:
           };
         }
       }
-    } catch (_) {}
+    } catch (e, st) {
+      developer.log(
+        'Failed to parse planner response',
+        error: e,
+        stackTrace: st,
+        name: 'OpenRouterService',
+      );
+    }
     return null;
   }
 

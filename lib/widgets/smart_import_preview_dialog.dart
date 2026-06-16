@@ -12,7 +12,7 @@ Future<bool> showSmartImportPreviewDialog(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       title: Text(title),
       content: SizedBox(
         width: 620,
@@ -44,8 +44,8 @@ Future<bool> showSmartImportPreviewDialog(
                       .map(
                         (entry) => Chip(
                           label: Text('${entry.key} -> ${entry.value}'),
-                          backgroundColor: AppColors.surfaceHighlight,
-                          side: const BorderSide(color: AppColors.border),
+                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          side: BorderSide(color: Theme.of(context).colorScheme.outline),
                         ),
                       )
                       .toList(),
@@ -90,9 +90,9 @@ Future<bool> showSmartImportPreviewDialog(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceHighlight,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
                     child: Text(
                       row.entries

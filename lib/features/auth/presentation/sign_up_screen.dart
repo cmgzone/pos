@@ -9,6 +9,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../data/auth_password_service.dart';
@@ -436,10 +437,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       favorite: const ['KE', 'US', 'GB', 'CA', 'AU', 'ZA', 'NG', 'TZ', 'UG'],
       showPhoneCode: false,
       countryListTheme: CountryListThemeData(
-        backgroundColor: AppColors.surface,
-        textStyle: const TextStyle(color: AppColors.textPrimary),
-        searchTextStyle: const TextStyle(color: AppColors.textPrimary),
-        inputDecoration: const InputDecoration(
+        textStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        searchTextStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        inputDecoration: InputDecoration(
           labelText: 'Search country',
           prefixIcon: Icon(Icons.search),
         ),
@@ -603,6 +603,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'feature_access_json': user['feature_access_json'] as String?,
           'allowed_service_ids_json':
               user['allowed_service_ids_json'] as String?,
+          'allowed_branch_ids_json': user['allowed_branch_ids_json'] as String?,
           'pos_mode': (user['pos_mode'] as String?) ?? 'both',
           'service_order_scope':
               (user['service_order_scope'] as String?) ??
@@ -649,6 +650,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         (route) => false,
       );
     } catch (error) {
+      if (!mounted) return;
       setState(
         () => _error = AppErrorMessage.from(
           error,
@@ -664,14 +666,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Widget _buildSubscriptionChooser() {
     if (_isLoadingCatalog) {
-      return const Column(
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           LinearProgressIndicator(minHeight: 2),
           SizedBox(height: 12),
           Text(
             'Loading available countries...',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
           ),
         ],
       );
@@ -683,16 +685,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (catalog != null && catalog.markets.isEmpty) ...[
-            const Text(
+            Text(
               'No subscription markets are active.',
               style: TextStyle(color: AppColors.error, fontSize: 12),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
           OutlinedButton.icon(
             onPressed: _loadSubscriptionCatalog,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Load subscription plans'),
+            icon: Icon(Icons.refresh),
+            label: Text('Load subscription plans'),
           ),
         ],
       );
@@ -709,16 +711,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           'Country',
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         InkWell(
           onTap: _isLoading ? null : _selectCountry,
           borderRadius: BorderRadius.circular(12),
           child: InputDecorator(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               prefixIcon: _GradientIcon(Icons.public_outlined),
               suffixIcon: Icon(Icons.keyboard_arrow_down_rounded),
             ),
@@ -726,9 +728,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
               children: [
                 Text(
                   _selectedCountry.flagEmoji,
-                  style: const TextStyle(fontSize: 24),
+                  style: TextStyle(fontSize: 24),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     '${_selectedCountry.name} (${_selectedCountry.countryCode})',
@@ -740,27 +742,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ),
         if (market != null) ...[
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             SubscriptionService.currentPlatform == 'android'
                 ? 'Subscriptions are billed securely through Google Play.'
                 : '${market.providerLabel} will be selected first. You can switch payment method on the plans screen.',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
         ],
-        const SizedBox(height: 20),
-        const Text(
+        SizedBox(height: 20),
+        Text(
           'Display Currency',
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         DropdownButtonFormField<String>(
           key: ValueKey(_selectedCurrency),
           initialValue: _selectedCurrency,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             prefixIcon: _GradientIcon(Icons.currency_exchange_outlined),
           ),
           items: ShopSettings.currencyOptions
@@ -779,14 +781,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   }
                 },
         ),
-        const SizedBox(height: 20),
-        const Text(
+        SizedBox(height: 20),
+        Text(
           'Business Type',
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         if (modes.isEmpty)
-          const Text(
+          Text(
             'No business types are available for this country yet.',
             style: TextStyle(color: AppColors.error, fontSize: 12),
           )
@@ -805,13 +807,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
               );
             }).toList(),
           ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         Text(
           market == null || signupPlan == null
               ? 'Your plan will be selected after account creation.'
               : 'Your account starts with ${_sellingModeLabel(_selectedSellingMode)} on ${signupPlan.name}. You can adjust the plan after creating the account.',
-          style: const TextStyle(
-            color: AppColors.textSecondary,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 12,
             height: 1.4,
           ),
@@ -871,7 +873,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         final isComplete = index < _currentStep;
         final color = isActive || isComplete
             ? AppColors.primary
-            : AppColors.textSecondary;
+            : Theme.of(context).colorScheme.onSurfaceVariant;
         return Expanded(
           child: Row(
             children: [
@@ -887,12 +889,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             ? AppColors.primary
                             : isComplete
                             ? AppColors.success.withValues(alpha: 0.16)
-                            : AppColors.surfaceHighlight,
+                            : context.appSurfaceHighlight,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isActive || isComplete
                               ? color
-                              : AppColors.border,
+                              : context.appBorder,
                         ),
                       ),
                       child: Icon(
@@ -901,14 +903,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         color: isActive ? Colors.white : color,
                       ),
                     ),
-                    const SizedBox(height: 7),
+                    SizedBox(height: 7),
                     Text(
                       step.$1,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: isActive
-                            ? AppColors.textPrimary
-                            : AppColors.textSecondary,
+                            ? Theme.of(context).colorScheme.onSurface
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
                         fontWeight: isActive
                             ? FontWeight.w700
                             : FontWeight.w500,
@@ -923,7 +925,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   width: 28,
                   height: 2,
                   margin: const EdgeInsets.only(bottom: 22),
-                  color: isComplete ? AppColors.success : AppColors.border,
+                  color: isComplete ? AppColors.success : context.appBorder,
                 ),
             ],
           ),
@@ -942,11 +944,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         Text(
           description,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 13,
             height: 1.45,
           ),
@@ -964,68 +966,68 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'Tell us about your business',
           'We use this to prepare your POS, currency, billing method, and online catalog.',
         ),
-        const SizedBox(height: 24),
-        const Text(
+        SizedBox(height: 24),
+        Text(
           'Business Name',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-business-name'),
           controller: _businessNameController,
           autofocus: true,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Example: Amina Fashion',
             prefixIcon: _GradientIcon(Icons.storefront_outlined),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                AppColors.secondary.withValues(alpha: 0.09),
+                Theme.of(context).colorScheme.secondary.withValues(alpha: 0.09),
                 AppColors.primary.withValues(alpha: 0.08),
               ],
             ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: AppColors.secondary.withValues(alpha: 0.24),
+              color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.24),
             ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const _GradientIcon(Icons.language_rounded, size: 20),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Your online store link',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: 3),
                     SelectableText(
                       _storeLinkPreview,
-                      style: const TextStyle(
-                        color: AppColors.secondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.secondary,
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
+                    SizedBox(height: 4),
+                    Text(
                       'If this link is already used, Piki POS adds a short unique code automatically.',
                       style: TextStyle(
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                         height: 1.35,
                       ),
@@ -1036,7 +1038,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        SizedBox(height: 24),
         _buildSubscriptionChooser(),
       ],
     );
@@ -1052,60 +1054,60 @@ class _SignUpScreenState extends State<SignUpScreen> {
             'Create your owner account',
             'These details let you sign in and recover access to your business.',
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
         ],
-        const Text(
+        Text(
           'Full Name',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-full-name'),
           controller: _nameController,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Enter your full name',
             prefixIcon: _GradientIcon(Icons.person_outline),
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
+        SizedBox(height: 18),
+        Text(
           'Phone Number',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-phone'),
           controller: _phoneController,
           keyboardType: TextInputType.phone,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Enter your phone number',
             prefixIcon: _GradientIcon(Icons.phone_outlined),
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
+        SizedBox(height: 18),
+        Text(
           'Email',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-email'),
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Enter your email',
             prefixIcon: _GradientIcon(Icons.email_outlined),
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
+        SizedBox(height: 18),
+        Text(
           'Password',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-password'),
           controller: _passwordController,
@@ -1125,12 +1127,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
+        SizedBox(height: 18),
+        Text(
           'Confirm Password',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-confirm-password'),
           controller: _confirmPasswordController,
@@ -1167,7 +1169,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'Verify your email',
           'We sent a 6 digit code to $email. Enter it here to protect your business account.',
         ),
-        const SizedBox(height: 22),
+        SizedBox(height: 22),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -1178,14 +1180,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: Row(
             children: [
               const _GradientIcon(Icons.mail_outline_rounded, size: 20),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   expiryText == null
                       ? 'Check your inbox and spam folder for the Piki POS code.'
                       : 'Check your inbox and spam folder. $expiryText',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                     height: 1.35,
                   ),
@@ -1194,12 +1196,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        const Text(
+        SizedBox(height: 20),
+        Text(
           'Verification Code',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         TextField(
           key: const Key('signup-email-otp'),
           controller: _emailOtpController,
@@ -1208,17 +1210,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
           maxLength: 6,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _continueWizard(),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             counterText: '',
             hintText: 'Enter 6 digit code',
             prefixIcon: _GradientIcon(Icons.password_outlined),
           ),
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
         OutlinedButton.icon(
           onPressed: _isLoading ? null : _sendSignupOtp,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Resend code'),
+          icon: Icon(Icons.refresh_rounded),
+          label: Text('Resend code'),
         ),
       ],
     );
@@ -1247,7 +1249,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'Review and create your account',
           'Check the important details below. You can go back to make changes.',
         ),
-        const SizedBox(height: 22),
+        SizedBox(height: 22),
         _ReviewCard(
           title: 'Business',
           icon: Icons.storefront_outlined,
@@ -1266,7 +1268,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             _currentStep = 0;
           }),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         _ReviewCard(
           title: 'Owner account',
           icon: Icons.person_outline_rounded,
@@ -1285,25 +1287,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
             _currentStep = 1;
           }),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surfaceHighlight,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Row(
             children: [
               const _GradientIcon(Icons.credit_card_outlined, size: 20),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   SubscriptionService.currentPlatform == 'android'
                       ? 'Plan: ${plan?.name ?? 'Available plan'} • Billing: Google Play'
                       : 'Plan: ${plan?.name ?? 'Available plan'} • Billing: ${market?.providerLabel ?? 'Selected after signup'}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -1330,10 +1332,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Expanded(
             child: OutlinedButton(
               onPressed: _isLoading ? null : _previousWizardStep,
-              child: const Text('Back'),
+              child: Text('Back'),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
         ],
         Expanded(
           flex: 2,
@@ -1345,7 +1347,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ? _signUp
                 : _continueWizard,
             child: _isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
@@ -1362,6 +1364,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 520;
     final form = SingleChildScrollView(
       child: Container(
@@ -1369,15 +1373,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
         margin: EdgeInsets.all(compact ? 14 : 24),
         padding: EdgeInsets.all(compact ? 24 : 36),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: colors.outline),
           boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.08),
-              blurRadius: 40,
-              offset: const Offset(0, 16),
-            ),
+            ...context.appPanelShadow,
+            if (!context.isDarkMode)
+              BoxShadow(
+                color: colors.primary.withValues(alpha: 0.08),
+                blurRadius: 40,
+                offset: const Offset(0, 16),
+              ),
           ],
         ),
         child: Column(
@@ -1397,11 +1403,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     height: 72,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [AppColors.secondary, AppColors.primaryLight],
+                        colors: [Theme.of(context).colorScheme.secondary, AppColors.primaryLight],
                       ),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.person_add_alt_1_rounded,
                       size: 36,
                       color: Colors.white,
@@ -1410,21 +1416,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 },
               ),
             ),
-            const SizedBox(height: 28),
+            SizedBox(height: 28),
             Text(
               _isBusinessSetupFlow ? 'Set up Piki POS' : 'Create Staff Account',
               style: Theme.of(
                 context,
               ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               _isBusinessSetupFlow
                   ? 'A guided setup for your business and owner account'
                   : 'Create a new team member account',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: 18),
 
             if (_isBusinessSetupFlow)
               Container(
@@ -1437,7 +1443,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     color: AppColors.primary.withValues(alpha: 0.2),
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     _GradientIcon(Icons.cloud_outlined, size: 16),
                     SizedBox(width: 8),
@@ -1468,16 +1474,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.error_outline,
                       color: AppColors.error,
                       size: 18,
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _error!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.error,
                           fontSize: 13,
                         ),
@@ -1488,7 +1494,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
             if (_isBusinessSetupFlow) ...[
               _buildWizardProgress(),
-              const SizedBox(height: 28),
+              SizedBox(height: 28),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
                 child: switch (_currentStep) {
@@ -1498,15 +1504,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   _ => _buildReviewStep(),
                 },
               ),
-              const SizedBox(height: 28),
+              SizedBox(height: 28),
               _buildWizardActions(),
             ] else ...[
               _buildAccountStep(),
-              const SizedBox(height: 28),
+              SizedBox(height: 28),
               ElevatedButton(
                 onPressed: _isLoading ? null : _signUp,
                 child: _isLoading
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -1514,13 +1520,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           color: Colors.white,
                         ),
                       )
-                    : const Text('Create Account'),
+                    : Text('Create Account'),
               ),
             ],
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             TextButton(
               onPressed: _isLoading ? null : _goToSignIn,
-              child: const Text('Back to sign in'),
+              child: Text('Back to sign in'),
             ),
           ],
         ),
@@ -1536,7 +1542,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Expanded(
                   flex: 5,
                   child: Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       image: DecorationImage(
                         image: AssetImage('assets/images/pos_users.png'),
                         fit: BoxFit.cover,
@@ -1580,8 +1586,8 @@ class _GradientIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ShaderMask(
-      shaderCallback: (bounds) => const LinearGradient(
-        colors: [AppColors.secondary, AppColors.primaryLight],
+      shaderCallback: (bounds) => LinearGradient(
+        colors: [Theme.of(context).colorScheme.secondary, AppColors.primaryLight],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(bounds),
@@ -1608,29 +1614,29 @@ class _ReviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         children: [
           Row(
             children: [
               _GradientIcon(icon, size: 20),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              TextButton(onPressed: onEdit, child: const Text('Edit')),
+              TextButton(onPressed: onEdit, child: Text('Edit')),
             ],
           ),
-          const Divider(height: 22, color: AppColors.border),
+          Divider(height: 22, color: Theme.of(context).colorScheme.outline),
           ...rows.map(
             (row) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1641,8 +1647,8 @@ class _ReviewCard extends StatelessWidget {
                     width: 105,
                     child: Text(
                       row.$1,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                       ),
                     ),
@@ -1651,7 +1657,7 @@ class _ReviewCard extends StatelessWidget {
                     child: Text(
                       row.$2,
                       textAlign: TextAlign.right,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
                       ),

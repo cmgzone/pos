@@ -2257,7 +2257,9 @@ Example for "unga": ["flour", "maize", "baking"]
             if (fallbackRows.isNotEmpty) return fallbackRows.first;
           }
         }
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('PikiAgentService: product lookup failed: $e\n$st');
+      }
     }
 
     return null;
@@ -2445,7 +2447,9 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
             if (fallbackRows.isNotEmpty) return fallbackRows.first;
           }
         }
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('PikiAgentService: service lookup failed: $e\n$st');
+      }
     }
 
     return null;

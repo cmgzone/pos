@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../../core/theme/app_theme_extensions.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import 'package:pos_app/core/services/support_diagnostics_service.dart';
 import 'package:pos_app/core/services/sync_controller.dart';
 import 'package:pos_app/core/services/sync_settings_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
+import 'package:pos_app/core/providers/theme_provider.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
 import 'package:pos_app/features/auth/data/user_repository.dart';
 import 'package:pos_app/features/auth/presentation/login_screen.dart';
@@ -32,6 +34,7 @@ import 'package:pos_app/features/settings/presentation/audit_log_screen.dart';
 import 'package:pos_app/features/settings/presentation/branch_management_screen.dart';
 import 'package:pos_app/features/settings/presentation/payment_methods_section.dart';
 import 'package:pos_app/features/settings/presentation/communication_settings_section.dart';
+import 'package:pos_app/features/settings/presentation/storefront_brand_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -138,6 +141,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   void dispose() {
+    _nameController.removeListener(_markChanged);
+    _addressController.removeListener(_markChanged);
+    _phoneController.removeListener(_markChanged);
+    _emailController.removeListener(_markChanged);
+    _taxController.removeListener(_markChanged);
+    _currencyController.removeListener(_markChanged);
+    _footerController.removeListener(_markChanged);
+    _baysController.removeListener(_markChanged);
+    _cashDrawerPrinterPathController.removeListener(_markChanged);
     _nameController.dispose();
     _addressController.dispose();
     _phoneController.dispose();
@@ -168,7 +180,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ShopSettings.setTaxRate(
         double.tryParse(_taxController.text) ?? 8.0,
       );
-      await ShopSettings.setCurrency(_currencyController.text.trim());
+      final normalizedCurrency = ShopSettings.normalizeCurrency(
+        _currencyController.text,
+      );
+      await ShopSettings.setCurrency(normalizedCurrency);
       await ShopSettings.setReceiptFooter(_footerController.text.trim());
       await ShopSettings.setCarwashBaysCount(
         int.tryParse(_baysController.text) ?? 4,
@@ -178,25 +193,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _cashDrawerPrinterPathController.text,
       );
       await SyncSettingsService.setAutoSyncEnabled(_autoSyncEnabled);
+      Object? profileSyncError;
+      try {
+        await LicenseService.updateBusinessProfile(
+          businessName: _nameController.text.trim(),
+          currency: normalizedCurrency,
+        );
+      } catch (error) {
+        profileSyncError = error;
+        debugPrint(
+          '[Settings] Could not update cloud business profile: $error',
+        );
+      }
       await ref
           .read(syncControllerProvider.notifier)
-          .reloadConfiguration(triggerSync: _autoSyncEnabled);
+          .reloadConfiguration(
+            triggerSync: _autoSyncEnabled && profileSyncError == null,
+          );
 
       setState(() => _hasChanges = false);
       if (!mounted) {
         return;
       }
+      final cloudWarning = profileSyncError == null
+          ? null
+          : AppErrorMessage.from(
+              profileSyncError,
+              fallback:
+                  'Settings saved on this device, but the online business profile could not be updated.',
+            );
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.white, size: 18),
+              Icon(
+                cloudWarning == null
+                    ? Icons.check_circle
+                    : Icons.cloud_off_outlined,
+                color: Colors.white,
+                size: 18,
+              ),
               SizedBox(width: 8),
-              Text('Settings saved successfully'),
+              Expanded(
+                child: Text(cloudWarning ?? 'Settings saved successfully'),
+              ),
             ],
           ),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.success,
+          backgroundColor: cloudWarning == null
+              ? AppColors.success
+              : AppColors.warning,
         ),
       );
     } catch (e) {
@@ -324,11 +370,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Add Staff Account'),
+          title: Text('Add Staff Account'),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -336,27 +381,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Full name',
                     prefixIcon: Icon(Icons.person_outline),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Email',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: passwordController,
                   obscureText: !showPassword,
                   decoration: InputDecoration(
                     labelText: 'Temporary password',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    prefixIcon: Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       tooltip: showPassword ? 'Hide password' : 'Show password',
                       icon: Icon(
@@ -369,10 +414,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: role,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Role',
                     prefixIcon: Icon(Icons.verified_user_outlined),
                   ),
@@ -396,7 +441,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: saving
@@ -431,7 +476,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
                     },
               child: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -439,7 +484,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Create Staff Account'),
+                  : Text('Create Staff Account'),
             ),
           ],
         ),
@@ -503,18 +548,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Admin Access'),
-          content: const Text(
+          title: Text('Admin Access'),
+          content: Text(
             'Admin accounts always keep full feature access, full service visibility, and both POS modes.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
+              child: Text('Close'),
             ),
           ],
         ),
@@ -565,7 +609,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -592,7 +635,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         child: Text(
                           RolePermissions.label(role),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.primaryLight,
                             fontWeight: FontWeight.w700,
                           ),
@@ -604,14 +647,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceHighlight,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: Theme.of(context).colorScheme.outline),
                         ),
                         child: Text(
                           'Settings stays available for password and sign out',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -619,12 +662,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
-                  const Text(
+                  SizedBox(height: 18),
+                  Text(
                     'Feature Access',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -655,12 +698,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 18),
-                  const Text(
+                  SizedBox(height: 18),
+                  Text(
                     'POS Mode',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(
@@ -685,31 +728,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     },
                     showSelectedIcon: false,
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
+                  SizedBox(height: 8),
+                  Text(
                     'This controls what appears inside the POS screen for this account.',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  const Text(
+                  SizedBox(height: 18),
+                  Text(
                     'Service orders are shared across staff in the same business. Use service access below to control which service types this account can use.',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: allowAllServices,
-                    title: const Text(
+                    title: Text(
                       'Allow all services',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    subtitle: const Text(
+                    subtitle: Text(
                       'Turn this off to choose specific services this staff member can see.',
                     ),
                     onChanged: (value) {
@@ -717,11 +760,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     },
                   ),
                   if (!allowAllServices) ...[
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     if (services.isEmpty)
-                      const Text(
+                      Text(
                         'No services created yet.',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       )
                     else
                       Wrap(
@@ -747,15 +790,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         }).toList(),
                       ),
                   ],
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: allowAllBranches,
-                    title: const Text(
+                    title: Text(
                       'Allow all branches',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    subtitle: const Text(
+                    subtitle: Text(
                       'Turn this off to choose which branches this staff member can use.',
                     ),
                     onChanged: (value) {
@@ -763,11 +806,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     },
                   ),
                   if (!allowAllBranches) ...[
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     if (branches.isEmpty)
-                      const Text(
+                      Text(
                         'No branches created yet.',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       )
                     else
                       Wrap(
@@ -800,7 +843,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: saving
@@ -868,7 +911,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
                     },
               child: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -876,7 +919,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Save Access'),
+                  : Text('Save Access'),
             ),
           ],
         ),
@@ -964,7 +1007,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   size: 12,
                   color: AppColors.success,
                 ),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 Text(
                   'All branches',
                   style: TextStyle(
@@ -1005,7 +1048,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   size: 12,
                   color: AppColors.primaryLight,
                 ),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 Text(
                   'All branches',
                   style: TextStyle(
@@ -1045,7 +1088,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       size: 12,
                       color: AppColors.primary,
                     ),
-                    const SizedBox(width: 4),
+                    SizedBox(width: 4),
                     Text(
                       branch['name'] as String? ?? branch['id'] as String,
                       style: TextStyle(
@@ -1083,6 +1126,77 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _buildStaffFeatureAccessChips(Map<String, dynamic> user) {
+    final role = RolePermissions.normalizeRole(user['role'] as String?);
+    final features = UserAccessProfile.resolveFeatureAccess(
+      role: role,
+      rawFeatureAccessJson: user['feature_access_json'] as String?,
+    );
+
+    final List<Map<String, dynamic>> allFeaturesToDisplay = [
+      {'label': 'Dashboard', 'feature': UserAccessProfile.featureDashboard},
+      {'label': 'POS', 'feature': UserAccessProfile.featurePos},
+      {'label': 'Services', 'feature': UserAccessProfile.featureServices},
+      {'label': 'Products', 'feature': UserAccessProfile.featureProducts},
+      {'label': 'Categories', 'feature': UserAccessProfile.featureCategories},
+      {'label': 'Purchases', 'feature': UserAccessProfile.featurePurchases},
+      {'label': 'Sales', 'feature': UserAccessProfile.featureSales},
+      {'label': 'Kopesha', 'feature': UserAccessProfile.featureKopesha},
+      {'label': 'P&L', 'feature': UserAccessProfile.featureProfitLoss},
+      {'label': 'Reports', 'feature': UserAccessProfile.featureReports},
+      {'label': 'Shifts', 'feature': UserAccessProfile.featureShifts},
+      {'label': 'Piki AI', 'feature': UserAccessProfile.featureAgent},
+    ];
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: allFeaturesToDisplay.map((item) {
+        final label = item['label'] as String;
+        final feature = item['feature'] as String;
+        final hasAccess = features.contains(feature);
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: hasAccess
+                ? AppColors.success.withValues(alpha: 0.12)
+                : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: hasAccess
+                  ? AppColors.success.withValues(alpha: 0.24)
+                  : context.appBorder.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                hasAccess
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.block_rounded,
+                size: 11,
+                color: hasAccess ? AppColors.success : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: hasAccess
+                      ? AppColors.success
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _resolveBranchNames(
     List<String> branchIds,
   ) async {
@@ -1109,11 +1223,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text('Change Password'),
+          title: Text('Change Password'),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -1124,7 +1237,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   obscureText: !showCurrentPassword,
                   decoration: InputDecoration(
                     labelText: 'Current password',
-                    prefixIcon: const Icon(Icons.lock_clock_outlined),
+                    prefixIcon: Icon(Icons.lock_clock_outlined),
                     suffixIcon: IconButton(
                       tooltip: showCurrentPassword
                           ? 'Hide password'
@@ -1140,13 +1253,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: newController,
                   obscureText: !showNewPassword,
                   decoration: InputDecoration(
                     labelText: 'New password',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    prefixIcon: Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       tooltip: showNewPassword
                           ? 'Hide password'
@@ -1162,13 +1275,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: confirmController,
                   obscureText: !showConfirmPassword,
                   decoration: InputDecoration(
                     labelText: 'Confirm new password',
-                    prefixIcon: const Icon(Icons.verified_user_outlined),
+                    prefixIcon: Icon(Icons.verified_user_outlined),
                     suffixIcon: IconButton(
                       tooltip: showConfirmPassword
                           ? 'Hide password'
@@ -1190,7 +1303,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: saving
@@ -1243,7 +1356,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
                     },
               child: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -1251,7 +1364,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Update Password'),
+                  : Text('Update Password'),
             ),
           ],
         ),
@@ -1359,14 +1472,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Restore Backup'),
+          title: Text('Restore Backup'),
           content: Text(
             'Restore ${_fileNameFromPath(backupPath)}?\n\nYour current shop data will be replaced. A safety backup of the current database will be created automatically before restore.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
@@ -1374,7 +1487,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 backgroundColor: AppColors.warning,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Restore'),
+              child: Text('Restore'),
             ),
           ],
         ),
@@ -1445,14 +1558,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Restore Backup'),
+        title: Text('Restore Backup'),
         content: Text(
           'Restore ${backup['name']}?\n\nYour current shop data will be replaced. A safety backup of the current database will be created automatically before restore.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1460,7 +1573,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               backgroundColor: AppColors.warning,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Restore'),
+            child: Text('Restore'),
           ),
         ],
       ),
@@ -1563,7 +1676,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final summaryColor = switch (syncState.indicator) {
       SyncIndicatorState.synced => AppColors.success,
       SyncIndicatorState.syncing => AppColors.primaryLight,
-      SyncIndicatorState.localOnly => AppColors.textSecondary,
+      SyncIndicatorState.localOnly => Theme.of(context).colorScheme.onSurfaceVariant,
       SyncIndicatorState.updatesAvailable => AppColors.primaryLight,
       SyncIndicatorState.pending ||
       SyncIndicatorState.offline ||
@@ -1575,7 +1688,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       LicenseAccessStatus.grace => AppColors.warning,
       LicenseAccessStatus.expired ||
       LicenseAccessStatus.invalid => AppColors.error,
-      LicenseAccessStatus.localOnly => AppColors.textSecondary,
+      LicenseAccessStatus.localOnly => Theme.of(context).colorScheme.onSurfaceVariant,
     };
 
     return _buildCard([
@@ -1583,35 +1696,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surfaceHighlight,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
-        child: const Row(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
               Icons.cloud_done_outlined,
-              color: AppColors.primaryLight,
+              color: Theme.of(context).colorScheme.primary,
               size: 20,
             ),
             SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Cloud sync uses the app\'s built-in server configuration. End users do not need to enter a backend URL.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ],
         ),
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: AppColors.surfaceHighlight,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: SwitchListTile.adaptive(
           value: _autoSyncEnabled,
@@ -1621,8 +1734,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           activeThumbColor: AppColors.primaryLight,
           activeTrackColor: AppColors.primary.withValues(alpha: 0.45),
-          title: const Text('Auto Sync'),
-          subtitle: const Text(
+          title: Text('Auto Sync'),
+          subtitle: Text(
             'Check for cloud updates and upload local changes automatically.',
             style: TextStyle(fontSize: 12),
           ),
@@ -1634,7 +1747,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           },
         ),
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -1663,7 +1776,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   color: summaryColor,
                   size: 20,
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     syncState.shortLabel,
@@ -1677,20 +1790,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             if (syncState.lastError != null &&
                 syncState.lastError!.trim().isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(syncState.lastError!, style: const TextStyle(fontSize: 12)),
+              SizedBox(height: 10),
+              Text(syncState.lastError!, style: TextStyle(fontSize: 12)),
             ] else if (syncState.lastMessage != null &&
                 syncState.lastMessage!.trim().isNotEmpty) ...[
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               Text(
                 syncState.lastMessage!,
-                style: const TextStyle(fontSize: 12),
+                style: TextStyle(fontSize: 12),
               ),
             ],
           ],
         ),
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -1705,7 +1818,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             Row(
               children: [
                 Icon(Icons.verified_outlined, color: licenseColor, size: 20),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     license.shortLabel,
@@ -1717,17 +1830,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               license.detail ?? 'No cloud subscription details yet.',
-              style: const TextStyle(fontSize: 12),
+              style: TextStyle(fontSize: 12),
             ),
             if (license.businessId != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 'Business ID: ${license.businessId}',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),
@@ -1735,7 +1848,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
         ),
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -1743,7 +1856,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           FilledButton.icon(
             onPressed: syncState.isSyncing ? null : _runManualSync,
             icon: syncState.isSyncing
-                ? const SizedBox(
+                ? SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
@@ -1751,7 +1864,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Icon(Icons.sync, size: 18),
+                : Icon(Icons.sync, size: 18),
             label: Text(syncState.isSyncing ? 'Syncing...' : 'Sync Now'),
           ),
           OutlinedButton.icon(
@@ -1759,12 +1872,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ? null
                 : () =>
                       ref.read(syncControllerProvider.notifier).refreshStatus(),
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Refresh Status'),
+            icon: Icon(Icons.refresh, size: 18),
+            label: Text('Refresh Status'),
           ),
         ],
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -1778,21 +1891,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _buildSyncStat('Cursor', syncState.cursor),
         ],
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Text(
         'Last synced: ${_formatLastSync(syncState.lastSyncAt)}',
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
       ),
-      const SizedBox(height: 6),
+      SizedBox(height: 6),
       Text(
         'Device ID: ${syncState.deviceId ?? 'Not created yet'}',
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
       ),
       if (license.lastVerifiedAt != null) ...[
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         Text(
           'Subscription checked: ${_formatLastSync(license.lastVerifiedAt)}',
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
         ),
       ],
     ]);
@@ -1803,24 +1916,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       width: 130,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
         ],
       ),
@@ -1832,9 +1945,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1854,7 +1967,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   size: 14,
                   color: AppColors.warning,
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text(
                   'Device-local setting — not shared across branches or devices',
                   style: TextStyle(
@@ -1866,14 +1979,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
+            title: Text(
               'Open physical cash drawer after cash sales',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
-            subtitle: const Text(
+            subtitle: Text(
               'Disabled until a manager or admin sets the Windows printer share or port.',
             ),
             value: _cashDrawerEnabled,
@@ -1882,14 +1995,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _markChanged();
             },
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           _buildField(
             'Drawer Printer Share / Port',
             r'e.g. \\localhost\ReceiptPrinter or LPT1:',
             _cashDrawerPrinterPathController,
             Icons.print_outlined,
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -1897,17 +2010,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               OutlinedButton.icon(
                 onPressed: _cashDrawerEnabled ? _testCashDrawer : null,
-                icon: const Icon(Icons.lock_open_outlined, size: 18),
-                label: const Text('Test Open'),
+                icon: Icon(Icons.lock_open_outlined, size: 18),
+                label: Text('Test Open'),
               ),
               OutlinedButton.icon(
                 onPressed: _showCashDrawerSetupGuide,
-                icon: const Icon(Icons.checklist_outlined, size: 18),
-                label: const Text('Setup Wizard'),
+                icon: Icon(Icons.checklist_outlined, size: 18),
+                label: Text('Setup Wizard'),
               ),
-              const Text(
+              Text(
                 'Test open is limited to managers and admins.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
               ),
             ],
           ),
@@ -1920,10 +2033,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Cash Drawer Setup'),
-        content: const SizedBox(
+        title: Text('Cash Drawer Setup'),
+        content: SizedBox(
           width: 460,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1941,7 +2053,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SizedBox(height: 12),
               Text(
                 'If the drawer does not open, check printer drivers, drawer cable type, and ESC/POS drawer command support.',
-                style: TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -1949,7 +2061,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text('Close'),
           ),
         ],
       ),
@@ -1967,21 +2079,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Open Cash Drawer?'),
-        content: const Text(
+        title: Text('Open Cash Drawer?'),
+        content: Text(
           'This will send an open command to the configured drawer printer.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.lock_open_outlined, size: 18),
-            label: const Text('Open Drawer'),
+            icon: Icon(Icons.lock_open_outlined, size: 18),
+            label: Text('Open Drawer'),
           ),
         ],
       ),
@@ -2026,8 +2137,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       alignment: Alignment.centerRight,
       child: FilledButton.icon(
         onPressed: _save,
-        icon: const Icon(Icons.save_outlined, size: 18),
-        label: const Text('Save settings'),
+        icon: Icon(Icons.save_outlined, size: 18),
+        label: Text('Save settings'),
       ),
     );
   }
@@ -2043,14 +2154,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _nameController,
             Icons.storefront,
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           _buildField(
             'Address',
             'e.g. 123 Main Street, City',
             _addressController,
             Icons.location_on_outlined,
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           Row(
             children: [
               Expanded(
@@ -2061,7 +2172,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Icons.phone_outlined,
                 ),
               ),
-              const SizedBox(width: 20),
+              SizedBox(width: 20),
               Expanded(
                 child: _buildField(
                   'Email',
@@ -2072,7 +2183,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           Row(
             children: [
               Expanded(
@@ -2089,7 +2200,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   keyboardType: TextInputType.number,
                 ),
               ),
-              const SizedBox(width: 20),
+              SizedBox(width: 20),
               Expanded(
                 child: _buildField(
                   'Currency Symbol',
@@ -2101,8 +2212,62 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildSaveSettingsButton(),
+      ],
+    );
+  }
+
+  Widget _buildAppearancePage() {
+    final themeMode = ref.watch(themeProvider);
+    final theme = Theme.of(context);
+
+    final items = ThemeMode.values.map((mode) {
+      final label = switch (mode) {
+        ThemeMode.system => 'System default',
+        ThemeMode.light => 'Light',
+        ThemeMode.dark => 'Dark',
+      };
+      return DropdownMenuItem<ThemeMode>(
+        value: mode,
+        child: Text(label),
+      );
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCard([
+          Text(
+            'Theme',
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Choose whether Piki POS follows your device setting or always uses light or dark mode.',
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          SizedBox(height: 16),
+          DropdownButtonFormField<ThemeMode>(
+            key: ValueKey(themeMode),
+            initialValue: themeMode,
+            decoration: InputDecoration(
+              labelText: 'Appearance',
+              prefixIcon: Icon(Icons.brightness_6_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            items: items,
+            onChanged: (mode) {
+              if (mode != null) {
+                ref.read(themeProvider.notifier).setMode(mode);
+              }
+            },
+          ),
+        ]),
       ],
     );
   }
@@ -2120,11 +2285,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             maxLines: 2,
           ),
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildSaveSettingsButton(),
-        const SizedBox(height: 28),
+        SizedBox(height: 28),
         _buildSectionHeader(Icons.preview_outlined, 'Receipt Preview'),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildReceiptPreview(),
       ],
     );
@@ -2132,7 +2297,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildEtimsSettingsPage() {
     if (_etimsLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
 
     final statusColor = _etimsPlatformActive
@@ -2145,7 +2310,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Row(
             children: [
               Icon(Icons.account_balance_outlined, color: statusColor),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   _etimsPlatformActive
@@ -2159,18 +2324,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
+          SizedBox(height: 16),
+          Text(
             'KRA/eTIMS requires a certified OSCU or VSCU setup. Shop owners enter their taxpayer details here; provider credentials stay on the backend.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           SwitchListTile.adaptive(
             value: _etimsEnabled,
             onChanged: (value) => setState(() => _etimsEnabled = value),
             contentPadding: EdgeInsets.zero,
-            title: const Text('Enable KRA eTIMS'),
-            subtitle: const Text(
+            title: Text('Enable KRA eTIMS'),
+            subtitle: Text(
               'When enabled, sales can be submitted to the configured eTIMS connector.',
             ),
           ),
@@ -2180,13 +2345,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ? (value) => setState(() => _etimsAutoSubmit = value)
                 : null,
             contentPadding: EdgeInsets.zero,
-            title: const Text('Auto-submit after each sale'),
-            subtitle: const Text(
+            title: Text('Auto-submit after each sale'),
+            subtitle: Text(
               'If offline or not configured, the sale is marked for follow-up instead of blocking checkout.',
             ),
           ),
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildCard([
           Row(
             children: [
@@ -2198,7 +2363,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Icons.badge_outlined,
                 ),
               ),
-              const SizedBox(width: 20),
+              SizedBox(width: 20),
               Expanded(
                 child: _buildField(
                   'VAT Number (optional)',
@@ -2209,13 +2374,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
                   initialValue: _etimsSolutionType == 'VSCU' ? 'VSCU' : 'OSCU',
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Solution Type',
                     prefixIcon: Icon(Icons.memory_outlined),
                   ),
@@ -2231,7 +2396,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
               ),
-              const SizedBox(width: 20),
+              SizedBox(width: 20),
               Expanded(
                 child: _buildField(
                   'Branch Code',
@@ -2242,7 +2407,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           _buildField(
             'OSCU/VSCU Device Serial',
             'Device or virtual control unit serial',
@@ -2250,18 +2415,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             Icons.confirmation_number_outlined,
           ),
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.icon(
             onPressed: _etimsSaving ? null : _saveEtimsSettings,
             icon: _etimsSaving
-                ? const SizedBox(
+                ? SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.save_outlined, size: 18),
+                : Icon(Icons.save_outlined, size: 18),
             label: Text(_etimsSaving ? 'Saving...' : 'Save KRA eTIMS'),
           ),
         ),
@@ -2283,11 +2448,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             keyboardType: TextInputType.number,
           ),
           if (Platform.isWindows) ...[
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             _buildCashDrawerCard(),
           ],
         ]),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildSaveSettingsButton(),
       ],
     );
@@ -2298,7 +2463,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSyncCard(syncState),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         _buildSaveSettingsButton(),
       ],
     );
@@ -2368,40 +2533,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildSupportPage(SyncState syncState) {
     return _buildCard([
-      const Text(
+      Text(
         'When something feels wrong, send diagnostics before changing data. The report includes app, sync, license, and database counts but not passwords.',
-        style: TextStyle(color: AppColors.textSecondary),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Wrap(
         spacing: 12,
         runSpacing: 12,
         children: [
           FilledButton.icon(
             onPressed: () => _contactSupport(syncState),
-            icon: const Icon(Icons.support_agent_outlined, size: 18),
-            label: const Text('Contact Support'),
+            icon: Icon(Icons.support_agent_outlined, size: 18),
+            label: Text('Contact Support'),
           ),
           OutlinedButton.icon(
             onPressed: () => _copyDiagnostics(syncState),
-            icon: const Icon(Icons.bug_report_outlined, size: 18),
-            label: const Text('Copy Diagnostics'),
+            icon: Icon(Icons.bug_report_outlined, size: 18),
+            label: Text('Copy Diagnostics'),
           ),
         ],
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       _buildSyncStat('Sync', syncState.shortLabel),
-      const SizedBox(height: 12),
+      SizedBox(height: 12),
       _buildSyncStat('Last Sync', _formatLastSync(syncState.lastSyncAt)),
-      const SizedBox(height: 12),
+      SizedBox(height: 12),
       _buildSyncStat(
         'Issues',
         '${syncState.conflictCount + syncState.errorCount}',
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Text(
         'Support email: ${AppConstants.supportEmail}',
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
       ),
     ]);
   }
@@ -2415,7 +2580,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.primary.withValues(alpha: 0.20)),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -2425,7 +2590,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SizedBox(height: 8),
           Text(
             'Create a backup before major edits, before restoring another file, and before moving devices. On phones, copy the backup location and save the file to Drive, WhatsApp, or another safe storage location.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
           ),
         ],
       ),
@@ -2437,12 +2602,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionHeader(Icons.tune_outlined, 'Shop Settings'),
-        const SizedBox(height: 4),
-        const Text(
+        SizedBox(height: 4),
+        Text(
           'Open one area at a time to update your shop and device setup.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
             final twoColumns = constraints.maxWidth >= 560;
@@ -2463,6 +2628,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: 'Shop Profile',
                       icon: Icons.storefront_outlined,
                       child: _buildShopProfilePage(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.palette_outlined,
+                    title: 'Online Storefront',
+                    subtitle: 'Logo, cover photo, brand color, and store link.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Online Storefront',
+                      icon: Icons.palette_outlined,
+                      maxWidth: 920,
+                      child: const StorefrontBrandSettingsSection(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
+                    icon: Icons.dark_mode_outlined,
+                    title: 'Appearance',
+                    subtitle: 'Choose light, dark, or system theme.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Appearance',
+                      icon: Icons.dark_mode_outlined,
+                      child: _buildAppearancePage(),
                     ),
                   ),
                 ),
@@ -2571,12 +2763,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ],
       ),
-      const SizedBox(height: 16),
-      const Text(
+      SizedBox(height: 16),
+      Text(
         'Training progress is saved separately for each signed-in staff member.',
-        style: TextStyle(color: AppColors.textSecondary),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
-      const SizedBox(height: 16),
+      SizedBox(height: 16),
       Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -2589,15 +2781,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               );
             },
-            icon: const Icon(Icons.play_circle_outline, size: 18),
-            label: const Text('Open Training Hub'),
+            icon: Icon(Icons.play_circle_outline, size: 18),
+            label: Text('Open Training Hub'),
           ),
           OutlinedButton.icon(
             onPressed: training.availableModuleCount == 0
                 ? null
                 : () => ref.read(trainingControllerProvider).startFullTour(),
-            icon: const Icon(Icons.route_outlined, size: 18),
-            label: const Text('Start Full Tour'),
+            icon: Icon(Icons.route_outlined, size: 18),
+            label: Text('Start Full Tour'),
           ),
         ],
       ),
@@ -2612,12 +2804,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Icons.dashboard_customize_outlined,
           'Business Management',
         ),
-        const SizedBox(height: 4),
-        const Text(
+        SizedBox(height: 4),
+        Text(
           'Manage billing, integrations, locations, and staff access.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
             final twoColumns = constraints.maxWidth >= 560;
@@ -2725,6 +2917,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2733,9 +2927,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: Ink(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: colors.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: colors.outline),
           ),
           child: Row(
             children: [
@@ -2743,40 +2937,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
+                  color: colors.primaryContainer,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: AppColors.primaryLight, size: 21),
+                child: Icon(icon, color: colors.primary, size: 21),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w900,
-                        fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                        height: 1.3,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textSecondary,
-              ),
+              SizedBox(width: 8),
+              Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
             ],
           ),
         ),
@@ -2804,28 +2990,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final progressPercent = (training.completionRatio * 100).round();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Settings'),
+        title: Text('Settings'),
         actions: [
           if (_canManageOperationalSettings && _hasChanges)
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onPrimary,
                       ),
                     )
-                  : const Icon(Icons.save, size: 18),
-              label: const Text('Save'),
+                  : Icon(Icons.save, size: 18),
+              label: Text('Save'),
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
             ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
         ],
       ),
       body: SingleChildScrollView(
@@ -2840,30 +3024,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Icons.admin_panel_settings_outlined,
                   'My Account',
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 Text(
                   'Manage your current login and password.',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 TrainingAnchor(
                   id: 'settings.account',
                   child: _buildAccountCard(),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: 32),
                 _buildSectionHeader(Icons.school_outlined, 'Training & Help'),
-                const SizedBox(height: 4),
-                const Text(
+                SizedBox(height: 4),
+                Text(
                   'Replay guided tours whenever a staff member needs a refresher.',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 TrainingAnchor(
                   id: 'settings.training',
                   child: _buildFeaturePageCard(
@@ -2878,7 +3062,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 _buildFeaturePageCard(
                   icon: Icons.support_agent_outlined,
                   title: 'Support & Diagnostics',
@@ -2891,27 +3075,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 if (!_canManageOperationalSettings) ...[
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceHighlight,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Shop settings, backup controls, and receipt configuration are limited to managers and admins.',
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                 ] else ...[
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                   _buildShopSettingsPagesSection(syncState),
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                   _buildManagementPagesSection(),
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                 ],
               ],
             ),
@@ -2934,30 +3118,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : SessionService.currentUserName
                         .substring(0, 1)
                         .toUpperCase(),
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   SessionService.currentUserName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 Text(
                   SessionService.currentUserEmail,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
@@ -2972,7 +3156,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             child: Text(
               RolePermissions.label(SessionService.currentUserRole),
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.primaryLight,
                 fontWeight: FontWeight.w700,
               ),
@@ -2980,20 +3164,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ],
       ),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Wrap(
         spacing: 12,
         runSpacing: 12,
         children: [
           FilledButton.icon(
             onPressed: _showChangePasswordDialog,
-            icon: const Icon(Icons.lock_reset_outlined, size: 18),
-            label: const Text('Change Password'),
+            icon: Icon(Icons.lock_reset_outlined, size: 18),
+            label: Text('Change Password'),
           ),
           OutlinedButton.icon(
             onPressed: _signOut,
-            icon: const Icon(Icons.logout, size: 18),
-            label: const Text('Sign Out'),
+            icon: Icon(Icons.logout, size: 18),
+            label: Text('Sign Out'),
           ),
         ],
       ),
@@ -3008,23 +3192,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           FilledButton.icon(
             onPressed: _showAddStaffDialog,
-            icon: const Icon(Icons.person_add_alt_1, size: 18),
-            label: const Text('Add Staff'),
+            icon: Icon(Icons.person_add_alt_1, size: 18),
+            label: Text('Add Staff'),
           ),
           OutlinedButton.icon(
             onPressed: _teamLoading ? null : _loadTeamMembers,
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Refresh'),
+            icon: Icon(Icons.refresh, size: 18),
+            label: Text('Refresh'),
           ),
         ],
       ),
-      const SizedBox(height: 20),
+      SizedBox(height: 20),
       if (_teamLoading)
-        const Center(child: CircularProgressIndicator())
+        Center(child: CircularProgressIndicator())
       else if (_teamMembers.isEmpty)
-        const Text(
+        Text(
           'No staff accounts yet.',
-          style: TextStyle(color: AppColors.textSecondary),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         )
       else
         Column(
@@ -3038,36 +3222,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHighlight,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     user['name'] as String? ?? 'User',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     user['email'] as String? ?? '',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Text(
                     _buildStaffAccessSummary(user),
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   _buildStaffBranchChips(user, selectedRole),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 8),
+                  _buildStaffFeatureAccessChips(user),
+                  SizedBox(height: 14),
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -3076,7 +3262,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         width: 180,
                         child: DropdownButtonFormField<String>(
                           initialValue: selectedRole,
-                          decoration: const InputDecoration(labelText: 'Role'),
+                          decoration: InputDecoration(labelText: 'Role'),
                           items: RolePermissions.allRoles
                               .map(
                                 (role) => DropdownMenuItem(
@@ -3098,8 +3284,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             : 'Edit feature, service, and POS access',
                         child: OutlinedButton.icon(
                           onPressed: () => _showTeamAccessDialog(user),
-                          icon: const Icon(Icons.tune, size: 18),
-                          label: const Text('Access'),
+                          icon: Icon(Icons.tune, size: 18),
+                          label: Text('Access'),
                         ),
                       ),
                     ],
@@ -3115,7 +3301,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _buildBackupCard() {
     return _buildCard([
       _buildBackupGuidanceCard(),
-      const SizedBox(height: 18),
+      SizedBox(height: 18),
       Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -3123,7 +3309,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           FilledButton.icon(
             onPressed: _backupBusy ? null : _createBackup,
             icon: _backupBusy
-                ? const SizedBox(
+                ? SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
@@ -3131,35 +3317,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Icon(Icons.save_alt, size: 18),
+                : Icon(Icons.save_alt, size: 18),
             label: Text(_backupBusy ? 'Working...' : 'Create Backup'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
           ),
           OutlinedButton.icon(
             onPressed: _backupBusy ? null : _loadBackups,
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Refresh List'),
+            icon: Icon(Icons.refresh, size: 18),
+            label: Text('Refresh List'),
           ),
           if (_isMobilePlatform)
             OutlinedButton.icon(
               onPressed: _backupBusy ? null : _importBackupFromFile,
-              icon: const Icon(Icons.upload_file_outlined, size: 18),
-              label: const Text('Import Backup'),
+              icon: Icon(Icons.upload_file_outlined, size: 18),
+              label: Text('Import Backup'),
             ),
         ],
       ),
-      const SizedBox(height: 20),
+      SizedBox(height: 20),
       if (_backups.isEmpty)
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: AppColors.surfaceHighlight,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Text(
+          child: Text(
             'No backups yet. Create your first snapshot before major changes.',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         )
       else
@@ -3170,26 +3356,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHighlight,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     backup['name'] as String? ?? 'Backup',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Text(
                     '${_formatBackupDate(backup['modified_at'] as String?)} - ${_formatBackupSize(backup['size_bytes'] as int? ?? 0)}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
@@ -3198,7 +3384,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         onPressed: _backupBusy
                             ? null
                             : () => _copyBackupPath(backup['path'] as String),
-                        icon: const Icon(Icons.copy_outlined, size: 18),
+                        icon: Icon(Icons.copy_outlined, size: 18),
                         label: Text(
                           _isMobilePlatform ? 'Copy Location' : 'Copy Path',
                         ),
@@ -3207,12 +3393,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         onPressed: _backupBusy
                             ? null
                             : () => _restoreBackup(backup),
-                        icon: const Icon(Icons.restore_outlined, size: 18),
+                        icon: Icon(Icons.restore_outlined, size: 18),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.warning,
                           foregroundColor: Colors.white,
                         ),
-                        label: const Text('Restore Backup'),
+                        label: Text('Restore Backup'),
                       ),
                     ],
                   ),
@@ -3225,86 +3411,93 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildReceiptPreview() {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: colors.outline),
       ),
       child: Column(
         children: [
           Text(
             _nameController.text.isEmpty ? 'My Shop' : _nameController.text,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: colors.onSurface,
             ),
           ),
           if (_addressController.text.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Text(
               _addressController.text,
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: colors.onSurfaceVariant,
+              ),
             ),
           ],
           if (_phoneController.text.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            SizedBox(height: 2),
             Text(
               'Phone: ${_phoneController.text}',
-              style: const TextStyle(fontSize: 11, color: Colors.black45),
+              style: TextStyle(
+                fontSize: 11,
+                color: colors.onSurfaceVariant,
+              ),
             ),
           ],
-          const SizedBox(height: 12),
-          Container(height: 1, color: Colors.grey.shade300),
-          const SizedBox(height: 8),
-          const Row(
+          SizedBox(height: 12),
+          Container(height: 1, color: colors.outline),
+          SizedBox(height: 8),
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Sample Item x2',
-                style: TextStyle(fontSize: 12, color: Colors.black87),
+                style: TextStyle(fontSize: 12, color: colors.onSurface),
               ),
               Text(
                 '\$19.98',
-                style: TextStyle(fontSize: 12, color: Colors.black87),
+                style: TextStyle(fontSize: 12, color: colors.onSurface),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Container(height: 1, color: Colors.grey.shade300),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
+          Container(height: 1, color: colors.outline),
+          SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'TOTAL',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: colors.onSurface,
                 ),
               ),
               Text(
                 '${_currencyController.text}19.98',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: colors.onSurface,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Text(
             _footerController.text.isEmpty
                 ? 'Thank you for your purchase!'
                 : _footerController.text,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: Colors.black45,
+              color: colors.onSurfaceVariant,
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -3327,7 +3520,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             label,
             style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(color: color, fontWeight: FontWeight.w800),
@@ -3338,26 +3531,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildSectionHeader(IconData icon, String title) {
+    final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppColors.primaryLight),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
+        Icon(icon, size: 20, color: colors.primary),
+        SizedBox(width: 10),
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
       ],
     );
   }
 
   Widget _buildCard(List<Widget> children) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: colors.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3406,14 +3598,18 @@ class _SettingsMiniPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            Icon(icon, color: AppColors.primaryLight, size: 20),
-            const SizedBox(width: 10),
-            Text(title),
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
+            SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),

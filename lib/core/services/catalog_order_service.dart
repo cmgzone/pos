@@ -5,7 +5,9 @@ import 'sync_settings_service.dart';
 
 class CatalogOrderItem {
   final String id;
+  final String itemType;
   final String productId;
+  final String serviceId;
   final String variantId;
   final String productName;
   final String variantName;
@@ -15,7 +17,9 @@ class CatalogOrderItem {
 
   const CatalogOrderItem({
     required this.id,
+    required this.itemType,
     required this.productId,
+    required this.serviceId,
     required this.variantId,
     required this.productName,
     required this.variantName,
@@ -26,17 +30,37 @@ class CatalogOrderItem {
 
   String get label =>
       variantName.trim().isEmpty ? productName : '$productName - $variantName';
+  bool get isService => itemType == 'service';
 
   factory CatalogOrderItem.fromJson(Map<String, dynamic> json) {
+    final serviceId =
+        json['serviceId']?.toString() ?? json['service_id']?.toString() ?? '';
+    final rawItemType =
+        json['itemType']?.toString() ?? json['item_type']?.toString() ?? '';
+    final itemType =
+        rawItemType.trim().toLowerCase() == 'service' ||
+            serviceId.trim().isNotEmpty
+        ? 'service'
+        : 'product';
     return CatalogOrderItem(
       id: json['id']?.toString() ?? '',
-      productId: json['productId']?.toString() ?? '',
-      variantId: json['variantId']?.toString() ?? '',
-      productName: json['productName']?.toString() ?? 'Product',
-      variantName: json['variantName']?.toString() ?? '',
+      itemType: itemType,
+      productId:
+          json['productId']?.toString() ?? json['product_id']?.toString() ?? '',
+      serviceId: serviceId,
+      variantId:
+          json['variantId']?.toString() ?? json['variant_id']?.toString() ?? '',
+      productName:
+          json['productName']?.toString() ??
+          json['product_name']?.toString() ??
+          (itemType == 'service' ? 'Service' : 'Product'),
+      variantName:
+          json['variantName']?.toString() ??
+          json['variant_name']?.toString() ??
+          '',
       quantity: _readDouble(json['quantity']),
-      unitPrice: _readDouble(json['unitPrice']),
-      lineTotal: _readDouble(json['lineTotal']),
+      unitPrice: _readDouble(json['unitPrice'] ?? json['unit_price']),
+      lineTotal: _readDouble(json['lineTotal'] ?? json['line_total']),
     );
   }
 }

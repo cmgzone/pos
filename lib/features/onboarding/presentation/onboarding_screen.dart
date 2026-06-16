@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 
 /// Key used to persist whether the user has completed onboarding.
 const _kOnboardingCompleteKey = 'onboarding_complete';
@@ -128,7 +129,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     final isWide = size.width > 700;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -140,7 +141,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: TextButton(
                   onPressed: _isFinishing ? null : _finish,
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.textSecondary,
+                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
@@ -228,7 +229,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 foregroundColor:
                                     _pages[_currentPage].accent ==
                                             const Color(0xFF00FFC2)
-                                        ? AppColors.background
+                                        ? context.appBackground
                                         : Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
@@ -362,7 +363,7 @@ class _OnboardingPage extends StatelessWidget {
                 data.icon,
                 size: 36,
                 color: data.accent == const Color(0xFF00FFC2)
-                    ? AppColors.background
+                    ? context.appBackground
                     : Colors.white,
               ),
             ),
@@ -375,7 +376,7 @@ class _OnboardingPage extends StatelessWidget {
               style: GoogleFonts.outfit(
                 fontSize: isWide ? 32 : 26,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 height: 1.2,
               ),
             ),
@@ -389,7 +390,7 @@ class _OnboardingPage extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: isWide ? 16 : 14,
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   height: 1.6,
                 ),
               ),
@@ -419,7 +420,7 @@ class _DotIndicator extends StatelessWidget {
       height: 8,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(4),
-        color: isActive ? color : AppColors.surfaceHighlight,
+        color: isActive ? color : context.appSurfaceHighlight,
         boxShadow: isActive
             ? [
                 BoxShadow(

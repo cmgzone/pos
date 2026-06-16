@@ -4,6 +4,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/number_utils.dart';
 import '../../auth/data/user_repository.dart';
 import '../../app/app_shell.dart';
@@ -33,10 +34,10 @@ class _ReportTab extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon.icon, size: 15),
-          const SizedBox(width: 5),
+          SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -78,17 +79,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         toolbarHeight: 50,
         leading: isMobile
             ? IconButton(
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu),
                 onPressed: () =>
                     AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         automaticallyImplyLeading: false,
-        title: const Text(
+        title: Text(
           'Reports',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
@@ -135,7 +136,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               labelPadding: const EdgeInsets.symmetric(horizontal: 8),
               indicatorColor: AppColors.primary,
               labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
+              unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
               tabs: [
                 const _ReportTab(
                   icon: Icon(Icons.badge_outlined),
@@ -233,6 +234,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
   List<Map<String, dynamic>> _cashiers = [];
   List<Map<String, dynamic>> _closedShifts = [];
   List<Map<String, dynamic>> _employeeOptions = [];
+  List<Map<String, dynamic>> _salesTrend = [];
   String _selectedCashierId = _allEmployeesId;
   bool _loading = true;
 
@@ -373,6 +375,13 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
       limit: 20,
       allBranches: widget.branchScope == ReportBranchScope.all,
     );
+    final salesTrend = await ReportRepository.getDailySalesTrend(
+      endingAt: _selectedDate,
+      cashierId: nextSelectedCashierId == _allEmployeesId
+          ? null
+          : nextSelectedCashierId,
+      branchScope: widget.branchScope,
+    );
     if (!mounted) {
       return;
     }
@@ -381,6 +390,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
       _closedShiftSummary = closedShiftSummary;
       _closedShifts = closedShifts;
       _employeeOptions = employeeOptions;
+      _salesTrend = salesTrend;
       _selectedCashierId = nextSelectedCashierId;
       _cashiers = nextSelectedCashierId == _allEmployeesId
           ? activeCashiers
@@ -479,13 +489,35 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
     final topServices = List<Map<String, dynamic>>.from(
       _summary['top_services'] as List? ?? const [],
     );
-    final showEmptyState =
-        !_isFilteredToEmployee && _cashiers.isEmpty && _closedShifts.isEmpty;
+    final salesCount = (_summary['total_sales'] as num? ?? 0).toInt();
+    final salesValue = (_summary['total_revenue'] as num? ?? 0).toDouble();
+    final grossProfit = (_summary['gross_profit'] as num? ?? 0).toDouble();
+    final customerCount = (_summary['customer_count'] as num? ?? 0).toInt();
+    final refundCount = _cashiers.fold<int>(
+      0,
+      (sum, cashier) => sum + (cashier['refund_count'] as num? ?? 0).toInt(),
+    );
+    final refundTotal = _cashiers.fold<double>(
+      0,
+      (sum, cashier) =>
+          sum + (cashier['refunds_issued'] as num? ?? 0).toDouble(),
+    );
+    final averageSale = salesCount == 0 ? 0.0 : salesValue / salesCount;
+    final employeeRows = _cashiers
+        .map(
+          (cashier) => _RankedMetricRow(
+            label: cashier['cashier_name'] as String? ?? 'Unknown Cashier',
+            value: _displayMoney(cashier['total_revenue']),
+            amount: (cashier['total_revenue'] as num? ?? 0).toDouble(),
+            subtitle: '${(cashier['total_sales'] as num? ?? 0).toInt()} sales',
+          ),
+        )
+        .toList(growable: false);
 
     return Column(
       children: [
         Container(
-          color: AppColors.surface,
+          color: Theme.of(context).colorScheme.surface,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Wrap(
             spacing: 10,
@@ -497,24 +529,24 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                 selected: true,
                 onTap: _pickDate,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: _pickDate,
-                icon: const Icon(Icons.calendar_month_outlined, size: 18),
-                label: const Text('Choose Date'),
+                icon: Icon(Icons.calendar_month_outlined, size: 18),
+                label: Text('Choose Date'),
               ),
               SizedBox(
                 width: 240,
                 child: DropdownButtonFormField<String>(
                   initialValue: _selectedCashierId,
                   isExpanded: true,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Employee',
                     isDense: true,
                     prefixIcon: Icon(Icons.person_search_outlined),
                   ),
                   items: [
-                    const DropdownMenuItem(
+                    DropdownMenuItem(
                       value: _allEmployeesId,
                       child: Text('All employees'),
                     ),
@@ -539,20 +571,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                   },
                 ),
               ),
-              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+              IconButton(icon: Icon(Icons.refresh), onPressed: _load),
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(height: 1),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : showEmptyState
-              ? _EmptyState(
-                  icon: Icons.badge_outlined,
-                  message: 'No employee activity for this date',
-                  subtitle: 'Try a different day or complete a sale first.',
-                )
+              ? Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -563,34 +589,56 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         runSpacing: 12,
                         children: [
                           _SummaryMetricCard(
-                            label: 'Revenue',
-                            value: _displayMoney(_summary['total_revenue']),
+                            label: 'Sales Value',
+                            value: _displayMoney(salesValue),
                             compactValue: NumberUtils.formatCompact(
-                              _summary['total_revenue'] as num?,
+                              salesValue,
                               isCurrency: true,
                             ),
                             color: AppColors.success,
                             icon: Icons.attach_money,
                           ),
                           _SummaryMetricCard(
-                            label: 'Sales',
-                            value:
-                                '${(_summary['total_sales'] as num? ?? 0).toInt()}',
-                            compactValue: NumberUtils.formatCompact(
-                              _summary['total_sales'] as num?,
-                            ),
+                            label: 'Sales Count',
+                            value: '$salesCount',
+                            compactValue: NumberUtils.formatCompact(salesCount),
                             color: AppColors.primary,
                             icon: Icons.receipt_long_outlined,
                           ),
                           _SummaryMetricCard(
-                            label: 'Gross Profit',
-                            value: _displayMoney(_summary['gross_profit']),
+                            label: 'Profit',
+                            value: _displayMoney(grossProfit),
                             compactValue: NumberUtils.formatCompact(
-                              _summary['gross_profit'] as num?,
+                              grossProfit,
                               isCurrency: true,
                             ),
                             color: AppColors.primaryLight,
                             icon: Icons.trending_up_rounded,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Refunds',
+                            value: _displayMoney(refundTotal),
+                            color: AppColors.error,
+                            icon: Icons.undo_rounded,
+                            subtitle: '$refundCount refund receipts',
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Average Sale',
+                            value: _displayMoney(averageSale),
+                            color: Theme.of(context).colorScheme.secondary,
+                            icon: Icons.query_stats_rounded,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Transactions',
+                            value: '$salesCount',
+                            color: AppColors.warning,
+                            icon: Icons.swap_horiz_rounded,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Customers',
+                            value: '$customerCount',
+                            color: AppColors.primary,
+                            icon: Icons.groups_2_outlined,
                           ),
                           _SummaryMetricCard(
                             label: 'Product Sales',
@@ -603,7 +651,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           _SummaryMetricCard(
                             label: 'Service Sales',
                             value: _displayMoney(_summary['service_revenue']),
-                            color: AppColors.secondary,
+                            color: Theme.of(context).colorScheme.secondary,
                             icon: Icons.design_services_rounded,
                             subtitle:
                                 '${(_summary['service_sales'] as num? ?? 0).toInt()} sales',
@@ -643,8 +691,45 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           ),
                         ],
                       ),
+                      SizedBox(height: 20),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final panelWidth = constraints.maxWidth >= 900
+                              ? (constraints.maxWidth - 12) / 2
+                              : constraints.maxWidth;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              SizedBox(
+                                width: panelWidth,
+                                child: _SalesTrendPanel(
+                                  rows: _salesTrend,
+                                  money: _displayMoney,
+                                ),
+                              ),
+                              SizedBox(
+                                width: panelWidth,
+                                child: _RankedMetricPanel(
+                                  title: 'Top Employees',
+                                  icon: Icons.badge_outlined,
+                                  rows: employeeRows,
+                                  emptyRows: [
+                                    _RankedMetricRow(
+                                      label: 'No employee sales yet',
+                                      value: _displayMoney(0),
+                                      amount: 0,
+                                      subtitle: '0 sales',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                       if (topProducts.isNotEmpty) ...[
-                        const SizedBox(height: 20),
+                        SizedBox(height: 20),
                         Text(
                           _isFilteredToEmployee
                               ? 'Top products sold by $_selectedCashierName'
@@ -652,7 +737,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: 12),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
@@ -664,24 +749,24 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             return Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.surface,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: AppColors.border),
+                                border: Border.all(color: Theme.of(context).colorScheme.outline),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     product['name'] as String? ?? 'Product',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  SizedBox(height: 4),
                                   Text(
                                     '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} $unit sold',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -692,7 +777,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         ),
                       ],
                       if (topServices.isNotEmpty) ...[
-                        const SizedBox(height: 20),
+                        SizedBox(height: 20),
                         Text(
                           _isFilteredToEmployee
                               ? 'Top services sold by $_selectedCashierName'
@@ -700,7 +785,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: 12),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
@@ -712,24 +797,24 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             return Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.surface,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: AppColors.border),
+                                border: Border.all(color: Theme.of(context).colorScheme.outline),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     service['name'] as String? ?? 'Service',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  SizedBox(height: 4),
                                   Text(
                                     '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} sold - ${_displayMoney(revenue)}',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -739,7 +824,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           }).toList(),
                         ),
                       ],
-                      const SizedBox(height: 24),
+                      SizedBox(height: 24),
                       Text(
                         _isFilteredToEmployee
                             ? 'Shift reconciliation for $_selectedCashierName'
@@ -747,22 +832,22 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                       if (_closedShifts.isEmpty)
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.surface,
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.border),
+                            border: Border.all(color: Theme.of(context).colorScheme.outline),
                           ),
                           child: Text(
                             _isFilteredToEmployee
                                 ? 'No closed shifts were recorded for $_selectedCashierName on ${_displayDate(_selectedDate)}.'
                                 : 'No closed shifts were recorded on ${_displayDate(_selectedDate)}.',
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         )
@@ -775,9 +860,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: AppColors.surface,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.border),
+                              border: Border.all(color: Theme.of(context).colorScheme.outline),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -800,7 +885,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: tone,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -809,15 +894,15 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           Text(
                                             shift['cashier_name'] as String? ??
                                                 'Cashier',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.w700,
                                             ),
                                           ),
-                                          const SizedBox(height: 4),
+                                          SizedBox(height: 4),
                                           Text(
                                             'Closed ${_displayTime(shift['closed_at'] as String?)} • Expected ${_displayMoney(shift['expected_cash'])}',
-                                            style: const TextStyle(
-                                              color: AppColors.textSecondary,
+                                            style: TextStyle(
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
@@ -832,7 +917,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           _displayMoney(
                                             shift['closing_cash_counted'],
                                           ),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 16,
                                           ),
@@ -849,7 +934,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Expanded(
@@ -861,7 +946,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primaryLight,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Cash In',
@@ -871,7 +956,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.success,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Cash Out',
@@ -887,7 +972,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             ),
                           );
                         }),
-                      const SizedBox(height: 24),
+                      SizedBox(height: 24),
                       Text(
                         _isFilteredToEmployee
                             ? 'Sales for $_selectedCashierName'
@@ -895,20 +980,20 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                       if (_cashiers.isEmpty)
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.surface,
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.border),
+                            border: Border.all(color: Theme.of(context).colorScheme.outline),
                           ),
                           child: Text(
                             'No sales were recorded for $_selectedCashierName on ${_displayDate(_selectedDate)}.',
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         )
@@ -923,9 +1008,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: AppColors.surface,
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.border),
+                              border: Border.all(color: Theme.of(context).colorScheme.outline),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -948,14 +1033,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                   '?')
                                               .substring(0, 1)
                                               .toUpperCase(),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.primary,
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -968,7 +1053,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                   cashier['cashier_name']
                                                           as String? ??
                                                       'Unknown Cashier',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontWeight: FontWeight.w700,
                                                     fontSize: 15,
                                                   ),
@@ -980,19 +1065,19 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                 cashier['last_seen_at']
                                                     as String?,
                                               )) ...[
-                                                const SizedBox(width: 6),
+                                                SizedBox(width: 6),
                                                 Container(
                                                   width: 8,
                                                   height: 8,
                                                   decoration:
-                                                      const BoxDecoration(
+                                                      BoxDecoration(
                                                         color:
                                                             AppColors.success,
                                                         shape: BoxShape.circle,
                                                       ),
                                                 ),
-                                                const SizedBox(width: 4),
-                                                const Text(
+                                                SizedBox(width: 4),
+                                                Text(
                                                   'Online',
                                                   style: TextStyle(
                                                     color: AppColors.success,
@@ -1003,14 +1088,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                               ],
                                             ],
                                           ),
-                                          const SizedBox(height: 2),
+                                          SizedBox(height: 2),
                                           Text(
                                             _roleLabel(
                                               cashier['cashier_role']
                                                   as String?,
                                             ),
-                                            style: const TextStyle(
-                                              color: AppColors.textSecondary,
+                                            style: TextStyle(
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
@@ -1025,7 +1110,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           _displayMoney(
                                             cashier['total_revenue'],
                                           ),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.success,
                                             fontWeight: FontWeight.w700,
                                             fontSize: 16,
@@ -1033,8 +1118,8 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         ),
                                         Text(
                                           '${(cashier['total_sales'] as num? ?? 0).toInt()} sales',
-                                          style: const TextStyle(
-                                            color: AppColors.textSecondary,
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
                                           ),
                                         ),
@@ -1042,7 +1127,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 14),
+                                SizedBox(height: 14),
                                 Row(
                                   children: [
                                     Expanded(
@@ -1054,7 +1139,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primaryLight,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Kopesha',
@@ -1064,7 +1149,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.warning,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Profit',
@@ -1076,7 +1161,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Expanded(
@@ -1088,43 +1173,43 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primary,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Services',
                                         value: _displayMoney(
                                           cashier['service_revenue'],
                                         ),
-                                        color: AppColors.secondary,
+                                        color: Theme.of(context).colorScheme.secondary,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: 12),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Service Sales',
                                         value:
                                             '${(cashier['service_sales'] as num? ?? 0).toInt()}',
-                                        color: AppColors.secondary,
+                                        color: Theme.of(context).colorScheme.secondary,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: 12),
                                 Wrap(
                                   spacing: 16,
                                   runSpacing: 8,
                                   children: [
                                     Text(
                                       'Shift: ${_displayTime(cashier['first_sale_at'] as String?)} - ${_displayTime(cashier['last_sale_at'] as String?)}',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                     ),
                                     if (refundCount > 0 || refunds > 0)
                                       Text(
                                         'Refunds: $refundCount (${_displayMoney(refunds)})',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppColors.error,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
@@ -1199,7 +1284,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
       children: [
         // Controls
         Container(
-          color: AppColors.surface,
+          color: Theme.of(context).colorScheme.surface,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Row(
             children: [
@@ -1217,7 +1302,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                   ),
                 ),
               ),
-              const Spacer(),
+              Spacer(),
               // Toggle best/worst
               _Chip(
                 label: _showWorst ? 'Worst Sellers' : 'Best Sellers',
@@ -1231,10 +1316,10 @@ class _TopProductsTabState extends State<_TopProductsTab> {
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(height: 1),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(child: CircularProgressIndicator())
               : _products.isEmpty
               ? _EmptyState(
                   icon: Icons.bar_chart_rounded,
@@ -1243,7 +1328,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
               : ListView.separated(
                   padding: const EdgeInsets.all(20),
                   itemCount: _products.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final p = _products[index];
                     final revenue = (p['total_revenue'] as num? ?? 0)
@@ -1257,9 +1342,9 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                     return Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
                       ),
                       child: Row(
                         children: [
@@ -1270,7 +1355,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                             decoration: BoxDecoration(
                               color: rank <= 3
                                   ? AppColors.primary.withValues(alpha: 0.15)
-                                  : AppColors.surfaceHighlight,
+                                  : context.appSurfaceHighlight,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Center(
@@ -1281,28 +1366,28 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                                   fontSize: 13,
                                   color: rank <= 3
                                       ? AppColors.primary
-                                      : AppColors.textSecondary,
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 14),
+                          SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   p['name'] as String? ?? '',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                SizedBox(height: 4),
                                 Text(
                                   '${qtySold % 1 == 0 ? qtySold.toInt() : qtySold.toStringAsFixed(2)} ${p['sale_unit'] ?? 'pcs'} sold · $txns transactions',
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1314,7 +1399,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                             children: [
                               Text(
                                 '${ShopSettings.currency}${revenue.toStringAsFixed(2)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.primaryLight,
                                   fontSize: 15,
@@ -1381,7 +1466,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return Center(child: CircularProgressIndicator());
 
     if (_debtors.isEmpty) {
       return _EmptyState(
@@ -1403,25 +1488,25 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.account_balance_wallet_outlined,
                 color: AppColors.warning,
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Total Outstanding',
                       style: TextStyle(
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                       ),
                     ),
                     Text(
                       '${ShopSettings.currency}${totalOutstanding.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.warning,
                         fontWeight: FontWeight.bold,
                         fontSize: 20,
@@ -1432,19 +1517,19 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
               ),
               Text(
                 '${_debtors.length} customers',
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
-              const SizedBox(width: 8),
-              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+              SizedBox(width: 8),
+              IconButton(icon: Icon(Icons.refresh), onPressed: _load),
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(height: 1),
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.all(20),
             itemCount: _debtors.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => SizedBox(height: 8),
             itemBuilder: (context, index) {
               final d = _debtors[index];
               final balance = (d['balance'] as num? ?? 0).toDouble();
@@ -1456,9 +1541,9 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
               return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
                 ),
                 child: Column(
                   children: [
@@ -1476,7 +1561,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                               (d['name'] as String? ?? '?')
                                   .substring(0, 1)
                                   .toUpperCase(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.warning,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -1484,14 +1569,14 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 d['name'] as String? ?? 'Unknown',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 14,
                                 ),
@@ -1499,8 +1584,8 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                               if ((d['phone'] as String?)?.isNotEmpty == true)
                                 Text(
                                   d['phone'] as String,
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1512,7 +1597,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                           children: [
                             Text(
                               '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.warning,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -1520,8 +1605,8 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                             ),
                             Text(
                               '$openSales open ${openSales == 1 ? 'sale' : 'sales'}',
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -1529,7 +1614,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     // Share bar
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
@@ -1538,19 +1623,19 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                         backgroundColor: AppColors.warning.withValues(
                           alpha: 0.1,
                         ),
-                        valueColor: const AlwaysStoppedAnimation(
+                        valueColor: AlwaysStoppedAnimation(
                           AppColors.warning,
                         ),
                         minHeight: 5,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text(
                         '${(share * 100).toStringAsFixed(1)}% of total',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 10,
                         ),
                       ),
@@ -1614,9 +1699,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
 
   Color _bucketColor(String bucket) => switch (bucket) {
     '1_7' => AppColors.warning,
-    '8_30' => const Color(0xFFFF6B35),
+    '8_30' => Color(0xFFFF6B35),
     '31_60' => AppColors.error,
-    'over_60' => const Color(0xFF8B0000),
+    'over_60' => Color(0xFF8B0000),
     _ => AppColors.success,
   };
 
@@ -1630,7 +1715,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return Center(child: CircularProgressIndicator());
 
     final total = (_summary['total_outstanding'] as num? ?? 0).toDouble();
     final totalCount = (_summary['total_count'] as num? ?? 0).toInt();
@@ -1663,7 +1748,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
         label: '8–30 Days',
         amount: (_summary['d8_30_amount'] as num? ?? 0).toDouble(),
         count: (_summary['d8_30_count'] as num? ?? 0).toInt(),
-        color: const Color(0xFFFF6B35),
+        color: Color(0xFFFF6B35),
         bucket: '8_30',
       ),
       _AgingBucket(
@@ -1677,7 +1762,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
         label: '60+ Days',
         amount: (_summary['over60_amount'] as num? ?? 0).toDouble(),
         count: (_summary['over60_count'] as num? ?? 0).toInt(),
-        color: const Color(0xFF8B0000),
+        color: Color(0xFF8B0000),
         bucket: 'over_60',
       ),
     ];
@@ -1694,43 +1779,48 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Total Outstanding Kopesha',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 13,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Total Outstanding Kopesha',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.warning,
+                          SizedBox(height: 4),
+                          Text(
+                            '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.warning,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
                           '$totalCount open sales',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.refresh),
+                          icon: Icon(Icons.refresh),
                           onPressed: _load,
                         ),
                       ],
@@ -1738,7 +1828,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
 
               // Bucket cards
               ...buckets
@@ -1767,7 +1857,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                                     borderRadius: BorderRadius.circular(3),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                SizedBox(width: 10),
                                 Text(
                                   b.label,
                                   style: TextStyle(
@@ -1775,15 +1865,15 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                                     color: b.color,
                                   ),
                                 ),
-                                const Spacer(),
+                                Spacer(),
                                 Text(
                                   '${b.count} ${b.count == 1 ? 'sale' : 'sales'}',
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
-                                const SizedBox(width: 16),
+                                SizedBox(width: 16),
                                 Text(
                                   '${ShopSettings.currency}${b.amount.toStringAsFixed(2)}',
                                   style: TextStyle(
@@ -1795,7 +1885,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               ],
                             ),
                             if (total > 0) ...[
-                              const SizedBox(height: 10),
+                              SizedBox(height: 10),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(4),
                                 child: LinearProgressIndicator(
@@ -1814,14 +1904,14 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                     ),
                   ),
 
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 'Individual Sales',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
 
               // Individual sales list
               ..._sales.map((s) {
@@ -1835,9 +1925,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
                     child: Row(
                       children: [
@@ -1849,7 +1939,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1857,11 +1947,11 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               Text(
                                 s['customer_name'] as String? ??
                                     'Unknown Customer',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4),
                               Text(
                                 bucket == 'current'
                                     ? 'Due: ${s['due_date'] ?? 'N/A'}'
@@ -1956,7 +2046,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
       children: [
         // Period picker
         Container(
-          color: AppColors.surface,
+          color: Theme.of(context).colorScheme.surface,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Row(
             children: [
@@ -1973,28 +2063,28 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                   ),
                 ),
               ),
-              const Spacer(),
-              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+              Spacer(),
+              IconButton(icon: Icon(Icons.refresh), onPressed: _load),
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(height: 1),
         // Legend
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           child: Row(
             children: [
               _LegendDot(color: AppColors.success, label: 'Stock In'),
-              const SizedBox(width: 16),
+              SizedBox(width: 16),
               _LegendDot(color: AppColors.error, label: 'Stock Out (sold)'),
-              const SizedBox(width: 16),
+              SizedBox(width: 16),
               _LegendDot(color: AppColors.warning, label: 'Low / Out of stock'),
             ],
           ),
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(child: CircularProgressIndicator())
               : _data.isEmpty
               ? _EmptyState(
                   icon: Icons.swap_vert_rounded,
@@ -2003,7 +2093,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
                   itemCount: _data.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final item = _data[index];
                     final qtyIn = (item['qty_in'] as num? ?? 0).toDouble();
@@ -2021,9 +2111,9 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                     return Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2033,7 +2123,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                               Expanded(
                                 child: Text(
                                   item['name'] as String? ?? '',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14,
                                   ),
@@ -2063,7 +2153,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
+                          SizedBox(height: 10),
                           Row(
                             children: [
                               _MovementTile(
@@ -2073,7 +2163,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                                 color: AppColors.success,
                                 icon: Icons.add_circle_outline,
                               ),
-                              const SizedBox(width: 16),
+                              SizedBox(width: 16),
                               _MovementTile(
                                 label: 'Out',
                                 value: qtyOut,
@@ -2081,7 +2171,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                                 color: AppColors.error,
                                 icon: Icons.remove_circle_outline,
                               ),
-                              const SizedBox(width: 16),
+                              SizedBox(width: 16),
                               _MovementTile(
                                 label: 'Net',
                                 value: qtyIn - qtyOut,
@@ -2145,14 +2235,14 @@ class _Chip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? c : AppColors.surfaceHighlight,
+          color: selected ? c : context.appSurfaceHighlight,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? c : AppColors.border),
+          border: Border.all(color: selected ? c : context.appBorder),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? Colors.white : AppColors.textSecondary,
+            color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             fontSize: 13,
           ),
@@ -2306,23 +2396,27 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
+    final totalSales = (_zReport['total_sales'] as num? ?? 0).toDouble();
+    final amountPaid = (_zReport['amount_paid'] as num? ?? 0).toDouble();
+    final balanceDue = (_zReport['balance_due'] as num? ?? 0).toDouble();
+    final reconciliation = amountPaid - totalSales;
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const Text(
+          Text(
             'Kenya Launch Reports',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 8),
-          const Text(
+          SizedBox(height: 8),
+          Text(
             'Z-report, VAT-ready summary, KRA eTIMS status, and accountant export counts.',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -2330,28 +2424,28 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
               FilledButton.icon(
                 onPressed: _savingPdf ? null : _savePdf,
                 icon: _savingPdf
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    : Icon(Icons.picture_as_pdf_outlined, size: 18),
                 label: Text(_savingPdf ? 'Saving PDF...' : 'Download PDF'),
               ),
               OutlinedButton.icon(
                 onPressed: _savingCsv ? null : _saveCsv,
                 icon: _savingCsv
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.table_chart_outlined, size: 18),
+                    : Icon(Icons.table_chart_outlined, size: 18),
                 label: Text(_savingCsv ? 'Saving CSV...' : 'Download CSV'),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -2362,6 +2456,36 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
                 color: AppColors.success,
                 icon: Icons.point_of_sale_outlined,
                 subtitle: '${_zReport['sale_count'] ?? 0} receipts',
+              ),
+              _SummaryMetricCard(
+                label: 'M-Pesa Collections',
+                value: _money(_zReport['mpesa_sales']),
+                color: AppColors.success,
+                icon: Icons.phone_android_outlined,
+                subtitle: 'Till/Paybill receipts',
+              ),
+              _SummaryMetricCard(
+                label: 'Cash Collections',
+                value: _money(_zReport['cash_sales']),
+                color: AppColors.primary,
+                icon: Icons.payments_outlined,
+                subtitle: 'Counter cash receipts',
+              ),
+              _SummaryMetricCard(
+                label: 'Till Reconciliation',
+                value: _money(reconciliation),
+                color: reconciliation.abs() < 0.01
+                    ? AppColors.success
+                    : AppColors.warning,
+                icon: Icons.account_balance_wallet_outlined,
+                subtitle: 'Paid minus sales',
+              ),
+              _SummaryMetricCard(
+                label: 'Pending Collections',
+                value: _money(balanceDue),
+                color: balanceDue <= 0 ? AppColors.success : AppColors.warning,
+                icon: Icons.pending_actions_outlined,
+                subtitle: 'Kopesha or unpaid balances',
               ),
               _SummaryMetricCard(
                 label: 'Today Tax',
@@ -2387,7 +2511,7 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
               _SummaryMetricCard(
                 label: 'Export Rows',
                 value: '${_exportRows.length}',
-                color: AppColors.secondary,
+                color: Theme.of(context).colorScheme.secondary,
                 icon: Icons.file_download_outlined,
                 subtitle: 'CSV/PDF-ready records',
               ),
@@ -2445,9 +2569,9 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
         width: 220,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Row(
           children: [
@@ -2460,19 +2584,19 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
               ),
               child: Icon(widget.icon, color: widget.color),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     widget.label,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
@@ -2486,11 +2610,11 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
                     ),
                   ),
                   if (widget.subtitle != null) ...[
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
                       widget.subtitle!,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
@@ -2500,6 +2624,234 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SalesTrendPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+  final String Function(dynamic value) money;
+
+  const _SalesTrendPanel({required this.rows, required this.money});
+
+  @override
+  Widget build(BuildContext context) {
+    final values = rows
+        .map((row) => (row['total_revenue'] as num? ?? 0).toDouble())
+        .toList(growable: false);
+    final maxValue = values.fold<double>(
+      0,
+      (max, value) => value > max ? value : max,
+    );
+    final total = values.fold<double>(0, (sum, value) => sum + value);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.show_chart_rounded, color: AppColors.primary),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Sales Trend',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+              Text(
+                money(total),
+                style: TextStyle(
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          SizedBox(
+            height: 150,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: rows.map((row) {
+                final value = (row['total_revenue'] as num? ?? 0).toDouble();
+                final ratio = maxValue <= 0 ? 0.06 : (value / maxValue);
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              heightFactor: ratio.clamp(0.06, 1).toDouble(),
+                              widthFactor: 0.78,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: value > 0
+                                      ? AppColors.primary
+                                      : context.appBorder,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            row['label']?.toString() ?? '',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            maxValue <= 0
+                ? 'No sales in the selected trend window.'
+                : 'Peak day: ${money(maxValue)}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankedMetricRow {
+  final String label;
+  final String value;
+  final double amount;
+  final String? subtitle;
+
+  const _RankedMetricRow({
+    required this.label,
+    required this.value,
+    required this.amount,
+    this.subtitle,
+  });
+}
+
+class _RankedMetricPanel extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<_RankedMetricRow> rows;
+  final List<_RankedMetricRow> emptyRows;
+
+  const _RankedMetricPanel({
+    required this.title,
+    required this.icon,
+    required this.rows,
+    this.emptyRows = const [],
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayRows = rows.isEmpty ? emptyRows : rows;
+    final maxAmount = displayRows.fold<double>(
+      0,
+      (max, row) => row.amount > max ? row.amount : max,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14),
+          ...displayRows.take(5).map((row) {
+            final ratio = maxAmount <= 0 ? 0.0 : row.amount / maxAmount;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          row.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        row.value,
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (row.subtitle != null) ...[
+                    SizedBox(height: 2),
+                    Text(
+                      row.subtitle!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 7,
+                      value: ratio.clamp(0.0, 1.0).toDouble(),
+                      backgroundColor: Theme.of(context).colorScheme.outline,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        row.amount > 0 ? AppColors.primary : context.appBorder,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -2529,12 +2881,12 @@ class _CashierStatTile extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -2568,10 +2920,10 @@ class _LegendDot extends StatelessWidget {
             borderRadius: BorderRadius.circular(3),
           ),
         ),
-        const SizedBox(width: 6),
+        SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );
@@ -2609,15 +2961,15 @@ class _MovementTile extends StatelessWidget {
         child: Row(
           children: [
             Icon(icon, color: color, size: 16),
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     label,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 10,
                     ),
                   ),
@@ -2656,23 +3008,23 @@ class _EmptyState extends StatelessWidget {
           Icon(
             icon,
             size: 64,
-            color: AppColors.textSecondary.withValues(alpha: 0.35),
+            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             message,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 16,
             ),
             textAlign: TextAlign.center,
           ),
           if (subtitle != null) ...[
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(
               subtitle!,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 13,
               ),
               textAlign: TextAlign.center,
@@ -2732,7 +3084,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
       children: [
         // Period selector
         Container(
-          color: AppColors.surface,
+          color: Theme.of(context).colorScheme.surface,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Row(
             children: [
@@ -2749,16 +3101,16 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                   ),
                 ),
               ),
-              const Spacer(),
-              IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+              Spacer(),
+              IconButton(icon: Icon(Icons.refresh), onPressed: _load),
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(height: 1),
         // Content
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(child: CircularProgressIndicator())
               : _branches.isEmpty
               ? const _EmptyState(
                   icon: Icons.compare_arrows_rounded,
@@ -2768,10 +3120,17 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                 )
               : ListView.separated(
                   padding: const EdgeInsets.all(20),
-                  itemCount: _branches.length,
-                  separatorBuilder: (context, _) => const SizedBox(height: 12),
+                  itemCount: _branches.length + 1,
+                  separatorBuilder: (context, _) => SizedBox(height: 12),
                   itemBuilder: (context, index) {
-                    final b = _branches[index];
+                    if (index == 0) {
+                      return _BranchComparisonSummary(
+                        branches: _branches,
+                        days: _days,
+                        money: _money,
+                      );
+                    }
+                    final b = _branches[index - 1];
                     final name = b['branch_name'] as String? ?? 'Branch';
                     final revenue = (b['revenue'] as num? ?? 0).toDouble();
                     final grossProfit = (b['gross_profit'] as num? ?? 0)
@@ -2790,21 +3149,22 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                         .toInt();
 
                     // Rank badge colors
-                    final rankColor = index == 0
+                    final rank = index;
+                    final rankColor = rank == 1
                         ? AppColors.primary
-                        : index == 1
+                        : rank == 2
                         ? AppColors.primaryLight
-                        : AppColors.textSecondary;
+                        : Theme.of(context).colorScheme.onSurfaceVariant;
 
                     return Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: index == 0
+                          color: rank == 1
                               ? AppColors.primary.withValues(alpha: 0.3)
-                              : AppColors.border,
+                              : context.appBorder,
                         ),
                       ),
                       child: Column(
@@ -2822,7 +3182,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                 ),
                                 child: Center(
                                   child: Text(
-                                    '#${index + 1}',
+                                    '#$rank',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
@@ -2831,22 +3191,22 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       name,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 16,
                                       ),
                                     ),
                                     Text(
                                       '$saleCount sales · $_days day period',
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -2858,16 +3218,16 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                 children: [
                                   Text(
                                     _money(revenue),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: AppColors.primaryLight,
                                       fontSize: 18,
                                     ),
                                   ),
-                                  const Text(
+                                  Text(
                                     'Revenue',
                                     style: TextStyle(
-                                      color: AppColors.textSecondary,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 11,
                                     ),
                                   ),
@@ -2875,7 +3235,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          SizedBox(height: 16),
                           // Metrics grid
                           Row(
                             children: [
@@ -2886,13 +3246,13 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                     ? AppColors.success
                                     : AppColors.error,
                               ),
-                              const SizedBox(width: 10),
+                              SizedBox(width: 10),
                               _BranchMetric(
                                 label: 'Expenses',
                                 value: _money(expenses),
                                 color: AppColors.warning,
                               ),
-                              const SizedBox(width: 10),
+                              SizedBox(width: 10),
                               _BranchMetric(
                                 label: 'Net Profit',
                                 value: _money(netProfit),
@@ -2902,7 +3262,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
+                          SizedBox(height: 10),
                           Row(
                             children: [
                               _BranchMetric(
@@ -2910,13 +3270,13 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                 value: _money(productRev),
                                 color: AppColors.primary,
                               ),
-                              const SizedBox(width: 10),
+                              SizedBox(width: 10),
                               _BranchMetric(
                                 label: 'Services',
                                 value: _money(serviceRev),
-                                color: AppColors.secondary,
+                                color: Theme.of(context).colorScheme.secondary,
                               ),
-                              const SizedBox(width: 10),
+                              SizedBox(width: 10),
                               _BranchMetric(
                                 label: 'Refunds',
                                 value: refundCount > 0
@@ -2933,6 +3293,131 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _BranchComparisonSummary extends StatelessWidget {
+  final List<Map<String, dynamic>> branches;
+  final int days;
+  final String Function(dynamic value) money;
+
+  const _BranchComparisonSummary({
+    required this.branches,
+    required this.days,
+    required this.money,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final totalSales = branches.fold<double>(
+      0,
+      (sum, branch) => sum + (branch['revenue'] as num? ?? 0).toDouble(),
+    );
+    final totalProfit = branches.fold<double>(
+      0,
+      (sum, branch) => sum + (branch['gross_profit'] as num? ?? 0).toDouble(),
+    );
+    final maxSales = branches.fold<double>(0, (max, branch) {
+      final revenue = (branch['revenue'] as num? ?? 0).toDouble();
+      return revenue > max ? revenue : max;
+    });
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.compare_arrows_rounded,
+                color: AppColors.primary,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Branch Snapshot - ${days}d',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              Text(
+                '${branches.length} branches',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          SizedBox(height: 14),
+          Row(
+            children: [
+              _BranchMetric(
+                label: 'Total Sales',
+                value: money(totalSales),
+                color: AppColors.primary,
+              ),
+              SizedBox(width: 10),
+              _BranchMetric(
+                label: 'Profit',
+                value: money(totalProfit),
+                color: totalProfit >= 0 ? AppColors.success : AppColors.error,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          ...branches.take(5).map((branch) {
+            final name = branch['branch_name'] as String? ?? 'Branch';
+            final sales = (branch['revenue'] as num? ?? 0).toDouble();
+            final profit = (branch['gross_profit'] as num? ?? 0).toDouble();
+            final ratio = maxSales <= 0 ? 0.0 : sales / maxSales;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Text(
+                        '${money(sales)} sales / ${money(profit)} profit',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 8,
+                      value: ratio.clamp(0.0, 1.0).toDouble(),
+                      backgroundColor: Theme.of(context).colorScheme.outline,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }
@@ -2962,12 +3447,12 @@ class _BranchMetric extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 10,
               ),
             ),
-            const SizedBox(height: 2),
+            SizedBox(height: 2),
             Text(
               value,
               style: TextStyle(

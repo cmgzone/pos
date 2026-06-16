@@ -1,0 +1,20 @@
+- `[x]` App Shell - Bottom nav "More" highlighting fix
+- `[x]` App Shell - Expose showNotificationsSheet static method
+- `[x]` Dashboard - Fix notification bell to show notifications sheet
+- `[x]` Dashboard - Fix Sell action for service-only accounts
+- `[x]` Dashboard - Fix Orders action icon + availability
+- `[x]` Dashboard - Fix Expenses action icon
+- `[x]` Dashboard - Hide stock alerts / low stock for non-product accounts
+- `[x]` Settings - Staff feature access chips in Team Access
+- `[x]` AppBar leading buttons on mobile:
+  - `[x]` branch_management_screen.dart
+  - `[x]` audit_log_screen.dart
+  - `[x]` stock_list_screen.dart
+  - `[x]` category_management_screen.dart
+  - `[x]` purchase_management_screen.dart
+  - `[x]` stock_transfer_screen.dart
+  - `[x]` service_management_screen.dart
+  - `[x]` catalog_orders_screen.dart
+  - `[x]` kopesha_screen.dart
+  - `[x]` contacts_screen.dart
+- `[x]` Run flutter analyze

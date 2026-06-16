@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../data/piki_models.dart';
 
 /// Horizontal step-progress indicator used inside the "Working on it" card.
@@ -32,7 +33,7 @@ class PikiStepIndicator extends StatelessWidget {
                     borderRadius: BorderRadius.circular(2),
                     color: done
                         ? AppColors.primary
-                        : AppColors.border,
+                        : context.appBorder,
                   ),
                 ),
               );
@@ -64,10 +65,10 @@ class PikiStepIndicator extends StatelessWidget {
                       ? FontWeight.w700
                       : FontWeight.w400,
                   color: isDone
-                      ? AppColors.textPrimary
+                      ? Theme.of(context).colorScheme.onSurface
                       : isActive
                           ? AppColors.primary
-                          : AppColors.textSecondary,
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             );
@@ -138,7 +139,7 @@ class _StepCircle extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.border, width: 2),
+            border: Border.all(color: Theme.of(context).colorScheme.outline, width: 2),
           ),
         );
     }

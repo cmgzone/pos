@@ -11,6 +11,11 @@ class ConnectivityService extends AsyncNotifier<bool> {
 
   @override
   FutureOr<bool> build() async {
+    ref.onDispose(() {
+      _subscription?.cancel();
+      _subscription = null;
+    });
+
     _subscription = _connectivity.onConnectivityChanged.listen((result) {
       final isOnline = result != ConnectivityResult.none;
       state = AsyncValue.data(isOnline);
@@ -21,8 +26,4 @@ class ConnectivityService extends AsyncNotifier<bool> {
   }
 
   bool get isOnline => state.valueOrNull ?? false;
-
-  void dispose() {
-    _subscription?.cancel();
-  }
 }

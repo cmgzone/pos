@@ -4,13 +4,13 @@ import '../../../core/services/cloud_auth_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/local_business_reset_service.dart';
-import '../../../core/services/seed_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/subscription_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../data/auth_exception.dart';
@@ -31,6 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _error;
   String _loadingStatus = '';
+  double? _loadingProgress;
   bool _cloudLoginSucceeded = false;
   bool _showPassword = false;
   String _loginBusinessId = '';
@@ -43,6 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _error = null;
       _loadingStatus = '';
+      _loadingProgress = null;
       _cloudLoginSucceeded = false;
       _loginBusinessId = '';
       _loginBusinessName = '';
@@ -66,9 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (backendUrl.isNotEmpty) {
         try {
-          if (mounted) {
-            setState(() => _loadingStatus = 'Verifying with cloud...');
-          }
+          _updateLoadingStatus('Verifying with cloud...', progress: 0.08);
           signedInUser = await _tryOnlineLogin(
             backendUrl: backendUrl,
             email: email,
@@ -110,43 +110,73 @@ class _LoginScreenState extends State<LoginScreen> {
             SyncSettingsService.localBusinessId != incomingBusinessId;
 
         if (businessChanged) {
-          if (mounted) {
-            setState(
-              () => _loadingStatus =
-                  'Switching business — clearing local data...',
-            );
-          }
+          _updateLoadingStatus(
+            SyncSettingsService.localBusinessId.isEmpty
+                ? 'Preparing this business on your device...'
+                : 'Checking current business sync status...',
+            progress: 0.16,
+          );
           await LocalBusinessResetService.clearForBusinessSwitch();
         }
 
         final cloudResponse = _cloudAuthResponse;
         if (cloudResponse != null) {
           await CloudAuthService.persistCloudResponse(cloudResponse);
-
-          if (businessChanged) {
-            authenticatedUser = await _upsertCloudUser(
-              cloudUser: cloudResponse.user,
-              email: email,
-              passwordForLocalLogin: _cloudPasswordForLocalLogin,
-            );
-          }
+          authenticatedUser = await _upsertCloudUser(
+            cloudUser: cloudResponse.user,
+            email: email,
+            passwordForLocalLogin: _cloudPasswordForLocalLogin,
+          );
         }
 
         await SessionService.signIn(authenticatedUser);
 
-        if (mounted) {
-          setState(() => _loadingStatus = 'Syncing business data...');
-        }
+        final productCatalogExpected =
+            LicenseService.currentSnapshot.entitlements.canSellProducts;
+        final shouldForceFullPull =
+            businessChanged ||
+            (productCatalogExpected && await _hasNoLocalProducts());
+        _updateLoadingStatus(
+          shouldForceFullPull
+              ? 'Downloading your product catalog...'
+              : 'Syncing business data...',
+          progress: 0.22,
+        );
         try {
-          await SyncService.syncNow();
+          await SyncService.syncNow(
+            forceFullPull: shouldForceFullPull,
+            onProgress: (progress) {
+              _updateLoadingStatus(progress.message, progress: progress.value);
+            },
+          );
           // Record which business now owns this local DB.
           await _persistCurrentBusinessContext(incomingBusinessId);
-          // Seed demo data if this is a fresh device with no products.
-          await SeedService.seedIfEmpty();
-        } catch (_) {
-          // Sync failure shouldn't block login — data will sync later.
-          // Still record the business so future logins don't wipe unnecessarily.
-          await _persistCurrentBusinessContext(incomingBusinessId);
+          _updateLoadingStatus(
+            'Products ready. Opening Piki POS...',
+            progress: 1,
+          );
+        } catch (error, stackTrace) {
+          debugPrint('Login cloud sync failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          if (businessChanged || shouldForceFullPull) {
+            await SessionService.signOut();
+            if (businessChanged) {
+              await SyncSettingsService.resetSyncProgress();
+            }
+            final reason = AppErrorMessage.from(
+              error,
+              fallback:
+                  'The server returned business data that this device could not apply.',
+            );
+            throw AuthException(
+              productCatalogExpected
+                  ? 'Could not download your products. $reason'
+                  : 'Could not download your business data. $reason',
+            );
+          }
+          _updateLoadingStatus(
+            'Using local data. Cloud sync will retry in the app.',
+          );
         }
       } else {
         await SessionService.signIn(authenticatedUser);
@@ -160,15 +190,42 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      setState(
-        () => _error = AppErrorMessage.from(
+      if (!mounted) return;
+      setState(() {
+        _loadingStatus = '';
+        _loadingProgress = null;
+        _error = AppErrorMessage.from(
           e,
           fallback: 'Sign in failed. Check your details and try again.',
-        ),
-      );
+        );
+      });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _updateLoadingStatus(String status, {double? progress}) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loadingStatus = status;
+      _loadingProgress = progress?.clamp(0, 1).toDouble();
+    });
+  }
+
+  Future<bool> _hasNoLocalProducts() async {
+    final rows = await DatabaseService.rawQuery(
+      'SELECT COUNT(*) AS count FROM products WHERE deleted_at IS NULL',
+    );
+    if (rows.isEmpty) {
+      return true;
+    }
+    final count = rows.first['count'];
+    if (count is int) {
+      return count == 0;
+    }
+    return int.tryParse(count?.toString() ?? '0') == 0;
   }
 
   /// Attempt to authenticate against the cloud backend.
@@ -200,11 +257,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _loginBusinessName = incomingBusinessName;
     }
 
-    return _upsertCloudUser(
-      cloudUser: response.user,
-      email: email,
-      passwordForLocalLogin: _cloudPasswordForLocalLogin,
-    );
+    return response.user;
   }
 
   /// Attempt to authenticate against the local SQLite database.
@@ -272,6 +325,8 @@ class _LoginScreenState extends State<LoginScreen> {
         'feature_access_json': cloudUser['feature_access_json'] as String?,
         'allowed_service_ids_json':
             cloudUser['allowed_service_ids_json'] as String?,
+        'allowed_branch_ids_json':
+            cloudUser['allowed_branch_ids_json'] as String?,
         'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
         'service_order_scope':
             (cloudUser['service_order_scope'] as String?) ??
@@ -293,6 +348,8 @@ class _LoginScreenState extends State<LoginScreen> {
           'feature_access_json': cloudUser['feature_access_json'] as String?,
           'allowed_service_ids_json':
               cloudUser['allowed_service_ids_json'] as String?,
+          'allowed_branch_ids_json':
+              cloudUser['allowed_branch_ids_json'] as String?,
           'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
           'service_order_scope':
               (cloudUser['service_order_scope'] as String?) ??
@@ -328,19 +385,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final formCard = Container(
       constraints: const BoxConstraints(maxWidth: 440),
       padding: const EdgeInsets.all(40),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: colors.outline),
         boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 40,
-            offset: const Offset(0, 16),
-          ),
+          ...context.appPanelShadow,
+          if (!context.isDarkMode)
+            BoxShadow(
+              color: colors.primary.withValues(alpha: 0.08),
+              blurRadius: 40,
+              offset: const Offset(0, 16),
+            ),
         ],
       ),
       child: Column(
@@ -361,11 +422,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 72,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.primary, AppColors.secondary],
+                      colors: [AppColors.primary, Theme.of(context).colorScheme.secondary],
                     ),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.point_of_sale_rounded,
                     size: 36,
                     color: Colors.white,
@@ -374,19 +435,19 @@ class _LoginScreenState extends State<LoginScreen> {
               },
             ),
           ),
-          const SizedBox(height: 28),
+          SizedBox(height: 28),
           Text(
             'Welcome Back',
             style: Theme.of(
               context,
             ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             'Sign in to Piki POS',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 36),
+          SizedBox(height: 36),
 
           // Error message
           if (_error != null)
@@ -402,16 +463,16 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.error_outline,
                     color: AppColors.error,
                     size: 18,
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.error,
                         fontSize: 13,
                       ),
@@ -422,27 +483,27 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
 
           // Email
-          const Text(
+          Text(
             'Email',
             style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           TextField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Enter your email',
               prefixIcon: _GradientIcon(Icons.email_outlined),
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
 
           // Password
-          const Text(
+          Text(
             'Password',
             style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           TextField(
             controller: _passwordController,
             obscureText: !_showPassword,
@@ -476,38 +537,54 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       );
                     },
-              child: const Text('Forgot password?'),
+              child: Text('Forgot password?'),
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
 
           // Sign In button
           ElevatedButton(
             onPressed: _isLoading ? null : _login,
             child: _isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: colors.onPrimary,
                     ),
                   )
-                : const Text('Sign In'),
+                : Text('Sign In'),
           ),
           if (_isLoading && _loadingStatus.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                _loadingStatus,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.outline),
+              ),
+              child: Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: _loadingProgress,
+                      minHeight: 6,
+                      backgroundColor: colors.outline.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    _loadingStatus,
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           TextButton(
             onPressed: _isLoading
                 ? null
@@ -520,34 +597,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     );
                   },
-            child: const Text('Create account'),
+            child: Text('Create account'),
           ),
-          const SizedBox(height: 8),
-          const Text(
+          SizedBox(height: 8),
+          Text(
             'Need a staff login? Ask an admin to add it from Settings > Team Access.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: theme.textTheme.bodySmall,
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
 
           // Cloud sync info
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.surfaceHighlight,
+              color: colors.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                _GradientIcon(Icons.cloud_done_outlined, size: 18),
+                const _GradientIcon(Icons.cloud_done_outlined, size: 18),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Sign in with your cloud account. Works offline after first login.',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
+                    style: theme.textTheme.bodySmall,
                   ),
                 ),
               ],
@@ -589,7 +663,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Expanded(
                   flex: 5,
                   child: Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       image: DecorationImage(
                         image: AssetImage('assets/images/pos_users.png'),
                         fit: BoxFit.cover,
@@ -848,7 +922,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reset password')),
+      appBar: AppBar(title: Text('Reset password')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -856,9 +930,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
               boxShadow: [
                 BoxShadow(
                   color: AppColors.primary.withValues(alpha: 0.08),
@@ -872,25 +946,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const _GradientIcon(Icons.lock_reset_rounded, size: 42),
-                const SizedBox(height: 18),
+                SizedBox(height: 18),
                 Text(
                   _isComplete ? 'Password updated' : 'Forgot password?',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Text(
                   _isComplete
                       ? 'You can now sign in with your new password.'
                       : 'We will send a secure code to your account email.',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                     height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 22),
+                SizedBox(height: 22),
                 if (_error != null) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -903,23 +977,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                     child: Text(
                       _error!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.error,
                         fontSize: 13,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18),
                 ],
                 if (_step == 0) _buildEmailStep(),
                 if (_step == 1) _buildCodeStep(),
                 if (_step == 2) _buildPasswordStep(),
                 if (_step == 3) _buildSuccessStep(),
-                const SizedBox(height: 24),
+                SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _handlePrimaryAction,
                   child: _isLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
@@ -930,11 +1004,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       : Text(_primaryLabel),
                 ),
                 if (_step == 1 && !_isComplete) ...[
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   TextButton.icon(
                     onPressed: _isLoading ? null : _sendCode,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Resend code'),
+                    icon: Icon(Icons.refresh_rounded),
+                    label: Text('Resend code'),
                   ),
                 ],
               ],
@@ -951,7 +1025,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       keyboardType: TextInputType.emailAddress,
       textInputAction: TextInputAction.done,
       onSubmitted: (_) => _sendCode(),
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Account email',
         hintText: 'Enter your email',
         prefixIcon: _GradientIcon(Icons.email_outlined),
@@ -966,19 +1040,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       children: [
         Text(
           'Enter the code sent to $_email.',
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
         ),
         if (expiryText != null) ...[
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             expiryText,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
         ],
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
         TextField(
           controller: _codeController,
           autofocus: true,
@@ -986,7 +1060,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           maxLength: 6,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _verifyCode(),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Verification code',
             counterText: '',
             hintText: 'Enter 6 digit code',
@@ -1020,7 +1094,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         TextField(
           controller: _confirmPasswordController,
           obscureText: !_showConfirmPassword,
@@ -1054,14 +1128,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.success.withValues(alpha: 0.24)),
       ),
-      child: const Row(
+      child: Row(
         children: [
           Icon(Icons.check_circle_outline, color: AppColors.success),
           SizedBox(width: 10),
           Expanded(
             child: Text(
               'Your password was reset successfully.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
             ),
           ),
         ],
@@ -1079,8 +1153,8 @@ class _GradientIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ShaderMask(
-      shaderCallback: (bounds) => const LinearGradient(
-        colors: [AppColors.secondary, AppColors.primaryLight],
+      shaderCallback: (bounds) => LinearGradient(
+        colors: [Theme.of(context).colorScheme.secondary, AppColors.primaryLight],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(bounds),

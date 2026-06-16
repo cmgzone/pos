@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/speech_service.dart';
@@ -427,7 +428,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   void _showInsightDetails(BuildContext context, dynamic data) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -440,20 +441,20 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.auto_awesome, color: AppColors.primary),
-                  const SizedBox(width: 12),
-                  const Text(
+                  Icon(Icons.auto_awesome, color: AppColors.primary),
+                  SizedBox(width: 12),
+                  Text(
                     'AI Insight Details',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               ...data.details
                   .map<Widget>(
                     (detail) => Padding(
@@ -461,7 +462,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             '• ',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
@@ -471,7 +472,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                           Expanded(
                             child: Text(
                               detail,
-                              style: const TextStyle(fontSize: 14, height: 1.5),
+                              style: TextStyle(fontSize: 14, height: 1.5),
                             ),
                           ),
                         ],
@@ -512,12 +513,12 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         leading: isMobile
             ? IconButton(
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu),
                 onPressed: () {
                   AppShell.scaffoldKey.currentState?.openDrawer();
                 },
@@ -526,19 +527,19 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         automaticallyImplyLeading: false,
         title: isMobile
             ? _AiIndicator(status: status, compact: true)
-            : const Text('AI Agent'),
+            : Text('AI Agent'),
         actions: [
           if (!isMobile) _AiIndicator(status: status),
           Builder(
             builder: (context) {
               return IconButton(
-                icon: const Icon(Icons.history_rounded),
+                icon: Icon(Icons.history_rounded),
                 tooltip: 'Chat History',
                 onPressed: () => Scaffold.of(context).openEndDrawer(),
               );
             },
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
         ],
       ),
       endDrawer: const _ChatHistoryDrawer(),
@@ -636,10 +637,10 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: mode == PikiMode.sell
-                      ? [const Color(0xFF00C896), const Color(0xFF00A8FF)]
+                      ? [Color(0xFF00C896), Color(0xFF00A8FF)]
                       : mode == PikiMode.advice
-                      ? [const Color(0xFF9C27B0), const Color(0xFF651FFF)]
-                      : [AppColors.primary, const Color(0xFFFF7E67)],
+                      ? [Color(0xFF9C27B0), Color(0xFF651FFF)]
+                      : [AppColors.primary, Color(0xFFFF7E67)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -648,9 +649,9 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                   BoxShadow(
                     color:
                         (mode == PikiMode.sell
-                                ? const Color(0xFF00C896)
+                                ? Color(0xFF00C896)
                                 : mode == PikiMode.advice
-                                ? const Color(0xFF9C27B0)
+                                ? Color(0xFF9C27B0)
                                 : AppColors.primary)
                             .withValues(alpha: 0.35),
                     blurRadius: 30,
@@ -677,20 +678,20 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             Text(
               mode == PikiMode.sell
                   ? 'Sell Mode'
                   : mode == PikiMode.advice
                   ? 'Business Coach'
                   : 'Piki AI Assistant',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               mode == PikiMode.sell
                   ? 'Say what to sell — e.g. "2 Fanta"\nThen say "checkout" to go to POS.'
@@ -698,13 +699,13 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                   ? 'Ask me for strategic advice,\ninsights, or ways to improve profit.'
                   : 'AI can analyze, plan, and complete\ntasks for your business.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 14,
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             if (mode != PikiMode.sell && mode != PikiMode.advice)
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -714,14 +715,14 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                 decoration: BoxDecoration(
                   color:
                       (mode == PikiMode.plan
-                              ? AppColors.secondary
+                              ? Theme.of(context).colorScheme.secondary
                               : AppColors.warning)
                           .withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(100),
                   border: Border.all(
                     color:
                         (mode == PikiMode.plan
-                                ? AppColors.secondary
+                                ? Theme.of(context).colorScheme.secondary
                                 : AppColors.warning)
                             .withValues(alpha: 0.3),
                   ),
@@ -735,15 +736,15 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                           : Icons.bolt_rounded,
                       size: 16,
                       color: mode == PikiMode.plan
-                          ? AppColors.secondary
+                          ? Theme.of(context).colorScheme.secondary
                           : AppColors.warning,
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Text(
                       mode == PikiMode.plan ? 'Plan Mode' : 'Fast Mode',
                       style: TextStyle(
                         color: mode == PikiMode.plan
-                            ? AppColors.secondary
+                            ? Theme.of(context).colorScheme.secondary
                             : AppColors.warning,
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
@@ -777,7 +778,7 @@ class _StatusBadge extends StatelessWidget {
         label = 'Thinking';
         icon = Icons.psychology_rounded;
       case AgentStatus.working:
-        color = AppColors.secondary;
+        color = Theme.of(context).colorScheme.secondary;
         label = 'Working';
         icon = Icons.auto_awesome;
       case AgentStatus.completed:
@@ -785,7 +786,7 @@ class _StatusBadge extends StatelessWidget {
         label = 'Done';
         icon = Icons.check_circle;
       case AgentStatus.idle:
-        color = AppColors.textSecondary;
+        color = Theme.of(context).colorScheme.onSurfaceVariant;
         label = 'Ready';
         icon = Icons.circle;
     }
@@ -801,7 +802,7 @@ class _StatusBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Text(
             label,
             style: TextStyle(
@@ -841,19 +842,19 @@ class _AiIndicator extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StatusBadge(status: status),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           Flexible(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: aiEnabled
-                    ? const Color(0xFF6B4EE6).withValues(alpha: 0.12)
-                    : AppColors.surfaceHighlight,
+                    ? Color(0xFF6B4EE6).withValues(alpha: 0.12)
+                    : context.appSurfaceHighlight,
                 borderRadius: BorderRadius.circular(100),
                 border: Border.all(
                   color: aiEnabled
-                      ? const Color(0xFF6B4EE6).withValues(alpha: 0.35)
-                      : AppColors.border,
+                      ? Color(0xFF6B4EE6).withValues(alpha: 0.35)
+                      : context.appBorder,
                 ),
               ),
               child: Row(
@@ -863,10 +864,10 @@ class _AiIndicator extends StatelessWidget {
                     aiEnabled ? Icons.auto_awesome_rounded : Icons.offline_bolt,
                     size: 14,
                     color: aiEnabled
-                        ? const Color(0xFF8B6CFF)
-                        : AppColors.textSecondary,
+                        ? Color(0xFF8B6CFF)
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       aiEnabled
@@ -877,8 +878,8 @@ class _AiIndicator extends StatelessWidget {
                       softWrap: false,
                       style: TextStyle(
                         color: aiEnabled
-                            ? const Color(0xFF8B6CFF)
-                            : AppColors.textSecondary,
+                            ? Color(0xFF8B6CFF)
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -907,9 +908,9 @@ class _InsightBar extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Material(
         color: Colors.transparent,
@@ -922,38 +923,38 @@ class _InsightBar extends StatelessWidget {
             child: Row(
               children: [
                 ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
+                  shaderCallback: (bounds) => LinearGradient(
                     colors: [AppColors.primary, AppColors.primaryLight],
                   ).createShader(bounds),
-                  child: const Icon(
+                  child: Icon(
                     Icons.auto_awesome,
                     size: 18,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 8),
-                const Text(
+                SizedBox(width: 8),
+                Text(
                   'Insight:',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
-                    color: AppColors.textPrimary,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     insight,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                       height: 1.3,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'View Details',
                   style: TextStyle(
@@ -962,7 +963,7 @@ class _InsightBar extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.chevron_right,
                   size: 16,
                   color: AppColors.primary,
@@ -992,24 +993,24 @@ class _QuickActions extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: actions.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => SizedBox(width: 8),
         itemBuilder: (context, index) {
           final action = actions[index];
           return ActionChip(
             avatar: Icon(
               action['icon'] as IconData,
               size: 16,
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
             label: Text(
               action['label'] as String,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
-            backgroundColor: AppColors.surfaceHighlight,
-            side: const BorderSide(color: AppColors.border),
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            side: BorderSide(color: Theme.of(context).colorScheme.outline),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -1063,16 +1064,16 @@ class _BottomBar extends StatelessWidget {
     }
   }
 
-  Color _getModeColor(PikiMode m) {
+  Color _getModeColor(BuildContext context, PikiMode m) {
     switch (m) {
       case PikiMode.plan:
-        return AppColors.secondary;
+        return Theme.of(context).colorScheme.secondary;
       case PikiMode.fast:
         return AppColors.warning;
       case PikiMode.sell:
-        return const Color(0xFF00C896);
+        return Color(0xFF00C896);
       case PikiMode.advice:
-        return const Color(0xFF9C27B0);
+        return Color(0xFF9C27B0);
     }
   }
 
@@ -1084,9 +1085,9 @@ class _BottomBar extends StatelessWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.border)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outline)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1101,10 +1102,10 @@ class _BottomBar extends StatelessWidget {
                       label: 'Plan',
                       icon: Icons.route_rounded,
                       isActive: mode == PikiMode.plan,
-                      color: AppColors.secondary,
+                      color: Theme.of(context).colorScheme.secondary,
                       onTap: () => onSelectMode(PikiMode.plan),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     _ModeToggle(
                       label: 'Fast',
                       icon: Icons.bolt_rounded,
@@ -1112,23 +1113,23 @@ class _BottomBar extends StatelessWidget {
                       color: AppColors.warning,
                       onTap: () => onSelectMode(PikiMode.fast),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     _ModeToggle(
                       label: 'Sell',
                       icon: Icons.point_of_sale_rounded,
                       isActive: mode == PikiMode.sell,
-                      color: const Color(0xFF00C896),
+                      color: Color(0xFF00C896),
                       onTap: () => onSelectMode(PikiMode.sell),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     _ModeToggle(
                       label: 'Advice',
                       icon: Icons.lightbulb_rounded,
                       isActive: mode == PikiMode.advice,
-                      color: const Color(0xFF9C27B0),
+                      color: Color(0xFF9C27B0),
                       onTap: () => onSelectMode(PikiMode.advice),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Tooltip(
                       message: isAutoListening
                           ? 'Stop auto listen'
@@ -1143,7 +1144,7 @@ class _BottomBar extends StatelessWidget {
                         onTap: onAutoListenTap,
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    SizedBox(width: 16),
                     Text(
                       isAutoListening
                           ? 'Auto-listening'
@@ -1154,15 +1155,15 @@ class _BottomBar extends StatelessWidget {
                           : mode == PikiMode.advice
                           ? 'Business Coach'
                           : 'Voice-to-cart POS',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
             ],
 
             // Input row
@@ -1172,7 +1173,7 @@ class _BottomBar extends StatelessWidget {
                   PopupMenuButton<PikiMode>(
                     icon: Icon(
                       _getModeIcon(mode),
-                      color: _getModeColor(mode),
+                      color: _getModeColor(context, mode),
                       size: 24,
                     ),
                     tooltip: 'Switch Mode',
@@ -1184,11 +1185,11 @@ class _BottomBar extends StatelessWidget {
                           children: [
                             Icon(
                               Icons.route_rounded,
-                              color: AppColors.secondary,
+                              color: Theme.of(context).colorScheme.secondary,
                               size: 18,
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
+                            SizedBox(width: 12),
+                            Text(
                               'Plan Mode',
                               style: TextStyle(fontSize: 14),
                             ),
@@ -1204,8 +1205,8 @@ class _BottomBar extends StatelessWidget {
                               color: AppColors.warning,
                               size: 18,
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
+                            SizedBox(width: 12),
+                            Text(
                               'Fast Mode',
                               style: TextStyle(fontSize: 14),
                             ),
@@ -1218,11 +1219,11 @@ class _BottomBar extends StatelessWidget {
                           children: [
                             Icon(
                               Icons.point_of_sale_rounded,
-                              color: const Color(0xFF00C896),
+                              color: Color(0xFF00C896),
                               size: 18,
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
+                            SizedBox(width: 12),
+                            Text(
                               'Sell Mode',
                               style: TextStyle(fontSize: 14),
                             ),
@@ -1235,11 +1236,11 @@ class _BottomBar extends StatelessWidget {
                           children: [
                             Icon(
                               Icons.lightbulb_rounded,
-                              color: const Color(0xFF9C27B0),
+                              color: Color(0xFF9C27B0),
                               size: 18,
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
+                            SizedBox(width: 12),
+                            Text(
                               'Advice Mode',
                               style: TextStyle(fontSize: 14),
                             ),
@@ -1260,30 +1261,30 @@ class _BottomBar extends StatelessWidget {
                               color: AppColors.primary,
                               size: 18,
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: 12),
                             Text(
                               isAutoListening
                                   ? 'Stop Auto Listen'
                                   : 'Start Auto Listen',
-                              style: const TextStyle(fontSize: 14),
+                              style: TextStyle(fontSize: 14),
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: 4),
                 ],
                 _ImageSourceButton(
                   isBusy: isImageBusy,
                   onSelected: onImageSource,
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Expanded(
                   child: TextField(
                     controller: controller,
                     focusNode: focusNode,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: mode == PikiMode.sell
                           ? 'Say "2 Fanta" or "checkout"...'
@@ -1291,14 +1292,14 @@ class _BottomBar extends StatelessWidget {
                           ? 'Ask for business advice...'
                           : 'Ask Piki AI...',
                       hintStyle: TextStyle(
-                        color: AppColors.textSecondary.withValues(alpha: 0.6),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 14,
                       ),
                       filled: true,
-                      fillColor: AppColors.surfaceHighlight,
+                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -1310,7 +1311,7 @@ class _BottomBar extends StatelessWidget {
                               : Icons.mic_rounded,
                           color: isListening
                               ? AppColors.primary
-                              : AppColors.textSecondary,
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         onPressed: onMicTap,
                       ),
@@ -1319,10 +1320,10 @@ class _BottomBar extends StatelessWidget {
                     textInputAction: TextInputAction.send,
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Container(
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       colors: [AppColors.primary, Color(0xFFCC2250)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -1338,7 +1339,7 @@ class _BottomBar extends StatelessWidget {
                   ),
                   child: IconButton(
                     onPressed: onSend,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.send_rounded,
                       color: Colors.white,
                       size: 22,
@@ -1392,20 +1393,20 @@ class _ImageSourceButton extends StatelessWidget {
         height: 48,
         width: 48,
         decoration: BoxDecoration(
-          color: AppColors.surfaceHighlight,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Center(
           child: isBusy
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(
+              : Icon(
                   Icons.add_a_photo_outlined,
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
         ),
       ),
@@ -1439,7 +1440,7 @@ class _ModeToggle extends StatelessWidget {
           color: isActive ? color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isActive ? color.withValues(alpha: 0.4) : AppColors.border,
+            color: isActive ? color.withValues(alpha: 0.4) : context.appBorder,
           ),
         ),
         child: Row(
@@ -1448,13 +1449,13 @@ class _ModeToggle extends StatelessWidget {
             Icon(
               icon,
               size: 14,
-              color: isActive ? color : AppColors.textSecondary,
+              color: isActive ? color : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(width: 5),
+            SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? color : AppColors.textSecondary,
+                color: isActive ? color : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
               ),
@@ -1485,7 +1486,7 @@ class _SellCartBar extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Color(0xFF003D2B),
         border: Border(top: BorderSide(color: Color(0xFF00C896), width: 1.5)),
       ),
@@ -1494,21 +1495,21 @@ class _SellCartBar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF00C896).withValues(alpha: 0.2),
+              color: Color(0xFF00C896).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
+                Icon(
                   Icons.shopping_cart_rounded,
                   size: 14,
                   color: Color(0xFF00C896),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text(
                   '$countStr item${itemCount == 1 ? '' : 's'}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Color(0xFF00C896),
                     fontWeight: FontWeight.w700,
                     fontSize: 11,
@@ -1517,11 +1518,11 @@ class _SellCartBar extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Text(
               'Total: $currency${total.toStringAsFixed(2)}',
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
                 fontSize: 12,
@@ -1530,20 +1531,20 @@ class _SellCartBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           ElevatedButton.icon(
             onPressed: onCheckout,
-            icon: const Icon(Icons.point_of_sale_rounded, size: 16),
-            label: const Text('Checkout'),
+            icon: Icon(Icons.point_of_sale_rounded, size: 16),
+            label: Text('Checkout'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00C896),
+              backgroundColor: Color(0xFF00C896),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
               elevation: 0,
-              textStyle: const TextStyle(
+              textStyle: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),
@@ -1564,7 +1565,7 @@ class _ChatHistoryDrawer extends ConsumerWidget {
     final activeId = ref.watch(pikiActiveSessionIdProvider);
 
     return Drawer(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       child: SafeArea(
         child: Column(
           children: [
@@ -1572,15 +1573,15 @@ class _ChatHistoryDrawer extends ConsumerWidget {
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  const Icon(Icons.history_rounded, color: AppColors.primary),
-                  const SizedBox(width: 12),
-                  const Text(
+                  Icon(Icons.history_rounded, color: AppColors.primary),
+                  SizedBox(width: 12),
+                  Text(
                     'Chat History',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -1596,8 +1597,8 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                   ref.read(pikiActiveSessionIdProvider.notifier).state = null;
                   Navigator.pop(context);
                 },
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('New Chat'),
+                icon: Icon(Icons.add_rounded),
+                label: Text('New Chat'),
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   backgroundColor: AppColors.primary.withValues(alpha: 0.1),
@@ -1609,10 +1610,10 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                 ),
               ),
             ),
-            const Divider(),
+            Divider(),
             Expanded(
               child: sessionsAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
+                loading: () => Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(
                   child: Text(
                     AppErrorMessage.from(
@@ -1623,10 +1624,10 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                 ),
                 data: (sessions) {
                   if (sessions.isEmpty) {
-                    return const Center(
+                    return Center(
                       child: Text(
                         'No past chats yet.',
-                        style: TextStyle(color: Colors.grey),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     );
                   }
@@ -1636,7 +1637,7 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                       final session = sessions[index];
                       final isActive = session.id == activeId;
                       return ListTile(
-                        leading: const Icon(
+                        leading: Icon(
                           Icons.chat_bubble_outline_rounded,
                           size: 20,
                         ),
@@ -1653,7 +1654,7 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                         ),
                         subtitle: Text(
                           '${session.updatedAt.day}/${session.updatedAt.month}/${session.updatedAt.year}',
-                          style: const TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 12),
                         ),
                         selected: isActive,
                         selectedTileColor: AppColors.primary.withValues(

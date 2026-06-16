@@ -190,8 +190,8 @@ class _CustomerKopeshaDetailScreenState
     final statement = _statement;
     if (statement == null) {
       return Scaffold(
-        appBar: AppBar(backgroundColor: AppColors.surface),
-        body: const Center(child: Text('Customer statement not found.')),
+        appBar: AppBar(backgroundColor: Theme.of(context).colorScheme.surface),
+        body: Center(child: Text('Customer statement not found.')),
       );
     }
 
@@ -208,20 +208,24 @@ class _CustomerKopeshaDetailScreenState
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: Text(customer['name'] as String? ?? 'Customer Statement'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text(
+          customer['name'] as String? ?? 'Customer Statement',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             onPressed: _messageCustomer,
-            icon: const Icon(Icons.message_outlined),
+            icon: Icon(Icons.message_outlined),
             tooltip: 'Message customer',
           ),
           IconButton(
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -235,9 +239,9 @@ class _CustomerKopeshaDetailScreenState
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: Theme.of(context).colorScheme.outline),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,23 +261,23 @@ class _CustomerKopeshaDetailScreenState
                               color: riskColor,
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          SizedBox(width: 16),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   customer['name'] as String? ?? 'Customer',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
+                                SizedBox(height: 6),
                                 Text(
                                   _contactLine(customer),
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -282,7 +286,7 @@ class _CustomerKopeshaDetailScreenState
                           _Tag(label: risk, color: riskColor),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       Wrap(
                         spacing: 14,
                         runSpacing: 14,
@@ -315,7 +319,7 @@ class _CustomerKopeshaDetailScreenState
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: 24),
                 _SectionCard(
                   title: 'Open Kopesha Sales',
                   subtitle:
@@ -346,7 +350,7 @@ class _CustomerKopeshaDetailScreenState
                               .toList(),
                         ),
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: 24),
                 _SectionCard(
                   title: 'Payment History',
                   subtitle:
@@ -406,23 +410,23 @@ class _SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 18),
+          SizedBox(height: 18),
           child,
         ],
       ),
@@ -458,7 +462,7 @@ class _SummaryTile extends StatelessWidget {
             label,
             style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             value,
             style: TextStyle(color: color, fontWeight: FontWeight.w800),
@@ -495,7 +499,7 @@ class _StatementSaleRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -506,7 +510,7 @@ class _StatementSaleRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Sale #${saleId.isEmpty ? '-' : saleId.substring(0, 8)}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
               _Tag(
@@ -515,7 +519,7 @@ class _StatementSaleRow extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Wrap(
             spacing: 18,
             runSpacing: 10,
@@ -576,7 +580,7 @@ class _PaymentHistoryRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHighlight,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -587,7 +591,7 @@ class _PaymentHistoryRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   '${ShopSettings.currency}${amount.toStringAsFixed(2)} received',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppColors.success,
                   ),
@@ -595,22 +599,22 @@ class _PaymentHistoryRow extends StatelessWidget {
               ),
               Text(
                 dateTimeLabel(receivedAt),
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               IconButton(
                 onPressed: paymentGroupId == null || paymentGroupId!.isEmpty
                     ? null
                     : onPrint,
-                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                icon: Icon(Icons.receipt_long_outlined, size: 18),
                 tooltip: 'Print repayment receipt',
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Wrap(
             spacing: 18,
             runSpacing: 10,
@@ -631,10 +635,10 @@ class _PaymentHistoryRow extends StatelessWidget {
             ],
           ),
           if (note != null && note!.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               note!.trim(),
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ],
@@ -657,14 +661,14 @@ class _MiniMeta extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: 4),
         Text(
           value,
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: valueColor ?? AppColors.textPrimary,
+            color: valueColor ?? Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ],
@@ -707,7 +711,7 @@ class _EmptyText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       message,
-      style: const TextStyle(color: AppColors.textSecondary),
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
   }
 }

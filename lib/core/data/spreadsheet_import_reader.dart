@@ -277,8 +277,12 @@ class SpreadsheetImportReader {
     if (book.tables.isEmpty) {
       return const [];
     }
-    final firstSheet = book.tables.values.first;
-    return firstSheet.rows
+    final sheet = book.tables.values.firstWhere(
+      (table) =>
+          table.rows.any((row) => row.any((cell) => cell?.value != null)),
+      orElse: () => book.tables.values.first,
+    );
+    return sheet.rows
         .map(
           (row) =>
               row.map((cell) => cell?.value?.toString().trim() ?? '').toList(),
@@ -287,7 +291,12 @@ class SpreadsheetImportReader {
   }
 
   static List<List<String>> readCsvRows(Uint8List bytes) {
-    final content = utf8.decode(bytes, allowMalformed: true);
+    var content = utf8.decode(bytes, allowMalformed: true);
+    // Strip UTF-8 BOM if present so the first header is not corrupted.
+    if (content.startsWith('\uFEFF')) {
+      content = content.substring(1);
+    }
+    final separator = _detectCsvSeparator(content);
     final rows = <List<String>>[];
     var row = <String>[];
     final buffer = StringBuffer();
@@ -307,7 +316,7 @@ class SpreadsheetImportReader {
         continue;
       }
 
-      if (char == ',' && !inQuotes) {
+      if (char == separator && !inQuotes) {
         row.add(buffer.toString().trim());
         buffer.clear();
         continue;
@@ -332,6 +341,37 @@ class SpreadsheetImportReader {
       rows.add(row);
     }
     return rows;
+  }
+
+  static String _detectCsvSeparator(String content) {
+    // Look at the first non-empty line and count unquoted commas vs semicolons.
+    final firstLine = content.split('\n').firstWhere(
+          (line) => line.trim().isNotEmpty,
+          orElse: () => '',
+        );
+    if (firstLine.isEmpty) return ',';
+    final commas = _countUnquoted(firstLine, ',');
+    final semicolons = _countUnquoted(firstLine, ';');
+    return semicolons > commas ? ';' : ',';
+  }
+
+  static int _countUnquoted(String line, String separator) {
+    var count = 0;
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i += 1) {
+      final char = line[i];
+      if (char == '"') {
+        // Handle escaped quotes.
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          i += 1;
+          continue;
+        }
+        inQuotes = !inQuotes;
+      } else if (char == separator && !inQuotes) {
+        count += 1;
+      }
+    }
+    return count;
   }
 
   static List<String> normalizeHeaders(List<String> row) {
@@ -424,12 +464,19 @@ class SpreadsheetImportReader {
       final third = int.tryParse(parts[2].split(RegExp(r'\s+')).first);
       if (first != null && second != null && third != null) {
         if (parts[0].length == 4) {
+          // YYYY/MM/DD or YYYY-MM-DD
           return _safeDate(first, second, third);
         }
         if (first > 12) {
+          // Day is clearly first: DD/MM/YYYY
           return _safeDate(third, second, first);
         }
-        return _safeDate(third, first, second);
+        if (second > 12) {
+          // Month is clearly first: MM/DD/YYYY
+          return _safeDate(third, first, second);
+        }
+        // Ambiguous: prefer DD/MM/YYYY for the app's primary East-African market.
+        return _safeDate(third, second, first);
       }
     }
 

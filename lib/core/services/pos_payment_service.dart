@@ -233,6 +233,17 @@ class PosPaymentService {
     return PosPayment.fromJson(data as Map<String, dynamic>);
   }
 
+  static Future<Map<String, dynamic>> testMpesaConnection() async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.post<Map<String, dynamic>>(
+      _url('business/payment-gateways/mpesa/test-connection'),
+      data: {'deviceId': deviceId},
+      options: Options(headers: headers),
+    );
+    return _requireOk(response)['data'] as Map<String, dynamic>;
+  }
+
   static Future<void> linkSale({
     required String paymentId,
     required String saleId,
