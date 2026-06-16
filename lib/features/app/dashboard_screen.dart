@@ -11,6 +11,7 @@ import '../products/data/product_repository.dart';
 import '../sales/data/sale_repository.dart';
 import '../training/widgets/training_anchor.dart';
 import 'app_shell.dart';
+import 'widgets/storefront_share_dialog.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   final DashboardData? initialData;
@@ -241,6 +242,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       destinationIndex: 9,
       available: RolePermissions.canManageUsers(SessionService.currentUserRole),
     ),
+    _HomeAction(
+      label: 'Storefront',
+      description: 'Share online store',
+      icon: Icons.storefront_outlined,
+      destinationIndex: -1,
+      available:
+          SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
+          SessionService.canAccessFeature(UserAccessProfile.featurePos) ||
+          SessionService.canAccessFeature(UserAccessProfile.featureReports),
+    ),
   ];
 
   String get _greeting {
@@ -280,6 +291,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           content: Text('This feature is not available for your account.'),
         ),
       );
+      return;
+    }
+    if (action.destinationIndex == -1) {
+      StorefrontShareDialog.show(context);
       return;
     }
     AppShell.selectIndex(action.destinationIndex);
@@ -483,6 +498,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ],
           ),
+        ),
+        IconButton(
+          tooltip: 'Refresh data',
+          onPressed: _loadDashboard,
+          icon: const Icon(Icons.refresh_rounded),
         ),
         Stack(
           clipBehavior: Clip.none,
