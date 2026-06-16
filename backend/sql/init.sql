@@ -1273,6 +1273,9 @@ CREATE INDEX IF NOT EXISTS idx_stock_batches_fifo_partial ON stock_batches(busin
 CREATE INDEX IF NOT EXISTS idx_sale_items_lookup ON sale_items(sale_id, product_id);
 CREATE INDEX IF NOT EXISTS idx_sales_sync_branch ON sales(business_id, branch_id, deleted_at, created_at);
 
+CREATE INDEX IF NOT EXISTS idx_products_branch_deleted ON products(business_id, branch_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_product_variants_branch_deleted ON product_variants(business_id, branch_id, deleted_at);
+
 CREATE TABLE IF NOT EXISTS customer_invoices (
   id text PRIMARY KEY,
   business_id text NOT NULL,
