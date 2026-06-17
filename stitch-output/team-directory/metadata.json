@@ -1,0 +1,282 @@
+{
+  "screenshot": {
+    "name": "projects/13402134207271897616/files/85436081a5704c299f85c62ddb1d4230",
+    "downloadUrl": "https://lh3.googleusercontent.com/aida/AP1WRLtVhsx0o6Me3TjHumujO-akUrdy3-KF0Kb4c1NmunI4MKc26xfPDbRDE32Cp7wEwfdxSjCpYlpQNhVF-MdCWWzKgmJkoQXGTXz89K6fxyBpiMp8pDQjnGPoF74OBbljwHev7q--1yZT2nHxyeN9pYf1Ob9sDSAU37qm3j4f0Yt66NVcvP5YBQ-pHXtFX_A4zTRrLYYoEWN3FkUkISyJIV_isVqMAdRiHncqR5rtTU8a2AOzCxARQiH7QTu0"
+  },
+  "htmlCode": {
+    "name": "projects/13402134207271897616/files/a5e4a4dbff024e36bf688bcd43bf4a6a",
+    "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzg0OWNkOThlOGIyYzRiODJiNWUxMDU4ZGM5MjE2NTk5EgsSBxDy7aj-thAYAZIBJAoKcHJvamVjdF9pZBIWQhQxMzQwMjEzNDIwNzI3MTg5NzYxNg&filename=&opi=89354086",
+    "mimeType": "text/html"
+  },
+  "id": "8cec5ad99d224e85b019780409cda7a0",
+  "generatedBy": "figaro_agent",
+  "width": "780",
+  "height": "3530",
+  "title": "Team Directory",
+  "prompt": "A 'Team Members' directory page. \nFeatures:\n- A header with a search bar and an 'Add Member' button.\n- A list of team members. Each list item should show a profile photo (avatar), name (e.g., Sophiegitu), role (e.g., Manager, Admin, Staff), and a 'Verified' badge where applicable.\n- Quick action buttons for each member: 'Edit Access' (primary action to link to the edit screen) and 'View Profile'.\n- Use the Executive Magenta design system colors (#d81b60).\n- Content: Include at least 4-5 sample team members with varying roles.\n- Layout: Clean card-based or list-based layout suitable for mobile.",
+  "name": "projects/13402134207271897616/screens/8cec5ad99d224e85b019780409cda7a0",
+  "theme": {
+    "colorMode": "LIGHT",
+    "font": "HANKEN_GROTESK",
+    "roundness": "ROUND_EIGHT",
+    "customColor": "#d81b60",
+    "headlineFont": "HANKEN_GROTESK",
+    "bodyFont": "HANKEN_GROTESK",
+    "labelFont": "HANKEN_GROTESK",
+    "namedColors": {
+      "primary": "#b0004a",
+      "on_tertiary": "#ffffff",
+      "on_background": "#0b1c30",
+      "on_primary_container": "#fff2f3",
+      "surface_container_highest": "#d3e4fe",
+      "tertiary_fixed": "#6ffbbe",
+      "outline_variant": "#e3bdc3",
+      "secondary_fixed_dim": "#bcc7de",
+      "surface_bright": "#f8f9ff",
+      "on_primary_fixed_variant": "#90003b",
+      "on_surface_variant": "#5a4044",
+      "on_secondary_fixed": "#111c2d",
+      "error_container": "#ffdad6",
+      "tertiary_container": "#008058",
+      "background": "#f8f9ff",
+      "on_error_container": "#93000a",
+      "secondary_fixed": "#d8e3fb",
+      "on_primary": "#ffffff",
+      "on_tertiary_fixed": "#002113",
+      "surface": "#f8f9ff",
+      "inverse_on_surface": "#eaf1ff",
+      "primary_fixed_dim": "#ffb2bf",
+      "on_tertiary_fixed_variant": "#005236",
+      "on_secondary_container": "#586377",
+      "primary_container": "#d81b60",
+      "surface_dim": "#cbdbf5",
+      "tertiary": "#006444",
+      "surface_container": "#e5eeff",
+      "tertiary_fixed_dim": "#4edea3",
+      "secondary_container": "#d5e0f8",
+      "secondary": "#545f73",
+      "on_error": "#ffffff",
+      "surface_container_low": "#eff4ff",
+      "on_secondary_fixed_variant": "#3c475a",
+      "on_primary_fixed": "#3f0016",
+      "on_secondary": "#ffffff",
+      "on_surface": "#0b1c30",
+      "surface_container_high": "#dce9ff",
+      "surface_tint": "#bc004f",
+      "surface_container_lowest": "#ffffff",
+      "primary_fixed": "#ffd9de",
+      "error": "#ba1a1a",
+      "inverse_surface": "#213145",
+      "on_tertiary_container": "#d4ffe5",
+      "inverse_primary": "#ffb2bf",
+      "outline": "#8e6f74",
+      "surface_variant": "#d3e4fe"
+    },
+    "designMd": "---\nname: Executive Magenta\ncolors:\n  surface: '#f8f9ff'\n  surface-dim: '#cbdbf5'\n  surface-bright: '#f8f9ff'\n  surface-container-lowest: '#ffffff'\n  surface-container-low: '#eff4ff'\n  surface-container: '#e5eeff'\n  surface-container-high: '#dce9ff'\n  surface-container-highest: '#d3e4fe'\n  on-surface: '#0b1c30'\n  on-surface-variant: '#5a4044'\n  inverse-surface: '#213145'\n  inverse-on-surface: '#eaf1ff'\n  outline: '#8e6f74'\n  outline-variant: '#e3bdc3'\n  surface-tint: '#bc004f'\n  primary: '#b0004a'\n  on-primary: '#ffffff'\n  primary-container: '#d81b60'\n  on-primary-container: '#fff2f3'\n  inverse-primary: '#ffb2bf'\n  secondary: '#545f73'\n  on-secondary: '#ffffff'\n  secondary-container: '#d5e0f8'\n  on-secondary-container: '#586377'\n  tertiary: '#006444'\n  on-tertiary: '#ffffff'\n  tertiary-container: '#008058'\n  on-tertiary-container: '#d4ffe5'\n  error: '#ba1a1a'\n  on-error: '#ffffff'\n  error-container: '#ffdad6'\n  on-error-container: '#93000a'\n  primary-fixed: '#ffd9de'\n  primary-fixed-dim: '#ffb2bf'\n  on-primary-fixed: '#3f0016'\n  on-primary-fixed-variant: '#90003b'\n  secondary-fixed: '#d8e3fb'\n  secondary-fixed-dim: '#bcc7de'\n  on-secondary-fixed: '#111c2d'\n  on-secondary-fixed-variant: '#3c475a'\n  tertiary-fixed: '#6ffbbe'\n  tertiary-fixed-dim: '#4edea3'\n  on-tertiary-fixed: '#002113'\n  on-tertiary-fixed-variant: '#005236'\n  background: '#f8f9ff'\n  on-background: '#0b1c30'\n  surface-variant: '#d3e4fe'\ntypography:\n  headline-lg:\n    fontFamily: Hanken Grotesk\n    fontSize: 32px\n    fontWeight: '700'\n    lineHeight: 40px\n    letterSpacing: -0.02em\n  headline-lg-mobile:\n    fontFamily: Hanken Grotesk\n    fontSize: 24px\n    fontWeight: '700'\n    lineHeight: 32px\n    letterSpacing: -0.01em\n  headline-md:\n    fontFamily: Hanken Grotesk\n    fontSize: 20px\n    fontWeight: '600'\n    lineHeight: 28px\n  body-lg:\n    fontFamily: Hanken Grotesk\n    fontSize: 16px\n    fontWeight: '400'\n    lineHeight: 24px\n  body-md:\n    fontFamily: Hanken Grotesk\n    fontSize: 14px\n    fontWeight: '400'\n    lineHeight: 20px\n  label-md:\n    fontFamily: Hanken Grotesk\n    fontSize: 13px\n    fontWeight: '600'\n    lineHeight: 16px\n    letterSpacing: 0.05em\n  label-sm:\n    fontFamily: Hanken Grotesk\n    fontSize: 12px\n    fontWeight: '500'\n    lineHeight: 16px\nrounded:\n  sm: 0.25rem\n  DEFAULT: 0.5rem\n  md: 0.75rem\n  lg: 1rem\n  xl: 1.5rem\n  full: 9999px\nspacing:\n  base: 4px\n  xs: 4px\n  sm: 8px\n  md: 16px\n  lg: 24px\n  xl: 32px\n  container-max: 1280px\n  gutter: 24px\n---\n\n## Brand & Style\n\nThis design system is built for administrative precision and professional team management. It balances the energetic authority of a deep magenta with a disciplined, high-end corporate aesthetic. The target audience consists of HR managers, IT administrators, and team leads who require a high-density information environment that remains legible and stress-free.\n\nThe visual style is **Corporate / Modern** with a focus on high-clarity minimalism. It employs generous whitespace to reduce cognitive load during complex permission-setting tasks. The interface should feel reliable and systematic, using subtle elevation and crisp boundaries to define the workspace without unnecessary ornamentation.\n\nKey attributes:\n- **Professionalism:** Grounded in functional layouts.\n- **Clarity:** Every action and status is immediately identifiable.\n- **Precision:** Fine lines and intentional alignment reflect a sense of control.\n\n## Colors\n\nThe palette is anchored by a sophisticated magenta, used strategically for primary actions and brand presence. This is balanced by a deep slate secondary color for text and navigation to ensure high readability.\n\n- **Primary (Magenta):** Reserved for the \"hero\" actions like adding staff or primary CTA buttons.\n- **Secondary (Slate):** Used for sidebar backgrounds, headings, and high-contrast UI elements.\n- **Success (Green):** Specifically for \"Active\" status indicators and permission granted states.\n- **Neutrals:** A range of cool grays (from #F8FAFC to #64748B) provides the foundation for borders, backgrounds, and secondary metadata.\n- **Surface:** The background remains a very light gray (#F1F5F9) to allow pure white cards to \"pop\" via elevation.\n\n## Typography\n\nThe design system utilizes **Hanken Grotesk** across all roles. This typeface was chosen for its sharp, contemporary geometry and exceptional legibility in data-heavy environments.\n\n- **Headlines:** Use Bold weights with tight letter-spacing to create a strong visual anchor for page titles and section headers.\n- **Body Text:** Standardized at 14px for density without sacrificing readability. Use the Slate secondary color for body text to maintain professional contrast.\n- **Labels:** Small caps or semi-bold weights are used for table headers and form labels to distinguish them from user-generated content.\n\n## Layout & Spacing\n\nThe system employs a **Fixed Grid** philosophy for desktop to maintain a structured dashboard feel, transitioning to a fluid model for tablet and mobile.\n\n- **Desktop:** 12-column grid with a 1280px max-width, centered in the viewport. 24px gutters provide breathing room between data cards.\n- **Sidebar:** A fixed-width navigation rail (260px) persists on the left.\n- **Rhythm:** An 8px linear scale (4, 8, 16, 24, 32, 48, 64) governs all padding and margins.\n- **Mobile Adaption:** At the 768px breakpoint, margins reduce to 16px, and the 12-column grid collapses into a single-column stack. The sidebar becomes a hidden drawer.\n\n## Elevation & Depth\n\nVisual hierarchy is managed through **Tonal Layers** and **Ambient Shadows**.\n\n1.  **Level 0 (Base):** Background surface (#F1F5F9).\n2.  **Level 1 (Cards):** Pure white surfaces (#FFFFFF) with a very soft, diffused shadow (0px 4px 12px rgba(0,0,0,0.05)). This is the primary container for user lists and forms.\n3.  **Level 2 (Dropdowns/Modals):** Increased shadow depth (0px 8px 24px rgba(0,0,0,0.1)) to indicate temporary interaction layers that sit above the main workspace.\n\nAvoid heavy borders; use subtle 1px outlines in a light gray (#E2E8F0) for card boundaries to maintain a crisp, professional edge.\n\n## Shapes\n\nThe shape language is **Rounded**, utilizing a 0.5rem (8px) base radius. This softens the professional environment, making the software feel modern and accessible rather than rigid and institutional.\n\n- **Buttons & Inputs:** 8px corner radius.\n- **Cards:** 16px (`rounded-lg`) for a more pronounced container feel.\n- **Status Badges:** Fully pill-shaped (999px) to differentiate them from interactive buttons.\n\n## Components\n\n### Buttons\n- **Primary:** Solid Magenta background with white text. High-contrast, 8px radius.\n- **Secondary:** White background with Slate border and Slate text.\n- **Ghost:** No background or border; used for \"Cancel\" or less frequent actions.\n\n### Chips & Badges\n- **Status Badges:** Use a light tint of the status color (e.g., light green background for \"Active\") with dark green text. Always pill-shaped.\n- **Permission Chips:** Small, slate-colored tags with an 'X' icon for easy removal.\n\n### Tables & Lists\n- Row heights should be a minimum of 64px to ensure touch targets are sufficient and data feels uncrowded.\n- Hover states on rows should use a subtle background tint (#F8FAFC).\n\n### Form Fields\n- Inputs feature a 1px border (#CBD5E1) that thickens and changes to Magenta on focus.\n- Labels sit 8px above the input field in `label-md` style.\n\n### Cards\n- The primary container for user profiles and management modules. \n- Should include a header section with a subtle bottom border for consistent structure.",
+    "colorVariant": "FIDELITY",
+    "overridePrimaryColor": "#d81b60",
+    "overrideSecondaryColor": "#1e293b",
+    "overrideTertiaryColor": "#10b981",
+    "overrideNeutralColor": "#64748b",
+    "spacingScale": 2,
+    "typography": {
+      "headline-md": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "20px",
+        "fontWeight": "600",
+        "lineHeight": "28px"
+      },
+      "label-sm": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "12px",
+        "fontWeight": "500",
+        "lineHeight": "16px"
+      },
+      "body-md": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "14px",
+        "fontWeight": "400",
+        "lineHeight": "20px"
+      },
+      "headline-lg": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "32px",
+        "fontWeight": "700",
+        "lineHeight": "40px",
+        "letterSpacing": "-0.02em"
+      },
+      "headline-lg-mobile": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "24px",
+        "fontWeight": "700",
+        "lineHeight": "32px",
+        "letterSpacing": "-0.01em"
+      },
+      "body-lg": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "lineHeight": "24px"
+      },
+      "label-md": {
+        "fontFamily": "Hanken Grotesk",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16px",
+        "letterSpacing": "0.05em"
+      }
+    },
+    "spacing": {
+      "sm": "8px",
+      "container-max": "1280px",
+      "base": "4px",
+      "xl": "32px",
+      "lg": "24px",
+      "md": "16px",
+      "gutter": "24px",
+      "xs": "4px"
+    },
+    "headlineFontFamily": "Hanken Grotesk",
+    "bodyFontFamily": "Hanken Grotesk",
+    "labelFontFamily": "Hanken Grotesk"
+  },
+  "deviceType": "MOBILE",
+  "screenType": "DESIGN",
+  "screenMetadata": {
+    "agentType": "PRO_AGENT",
+    "status": "COMPLETE"
+  },
+  "designSystem": {
+    "name": "assets/e744ab42acf74031bff78ce11ba84bf9",
+    "designSystem": {
+      "displayName": "Executive Magenta",
+      "styleGuidelines": "## Brand & Style\n\nThis design system is built for administrative precision and professional team management. It balances the energetic authority of a deep magenta with a disciplined, high-end corporate aesthetic. The target audience consists of HR managers, IT administrators, and team leads who require a high-density information environment that remains legible and stress-free.\n\nThe visual style is **Corporate / Modern** with a focus on high-clarity minimalism. It employs generous whitespace to reduce cognitive load during complex permission-setting tasks. The interface should feel reliable and systematic, using subtle elevation and crisp boundaries to define the workspace without unnecessary ornamentation.\n\nKey attributes:\n- **Professionalism:** Grounded in functional layouts.\n- **Clarity:** Every action and status is immediately identifiable.\n- **Precision:** Fine lines and intentional alignment reflect a sense of control.\n\n## Layout & Spacing\n\nThe system employs a **Fixed Grid** philosophy for desktop to maintain a structured dashboard feel, transitioning to a fluid model for tablet and mobile.\n\n- **Desktop:** 12-column grid with a 1280px max-width, centered in the viewport. 24px gutters provide breathing room between data cards.\n- **Sidebar:** A fixed-width navigation rail (260px) persists on the left.\n- **Rhythm:** An 8px linear scale (4, 8, 16, 24, 32, 48, 64) governs all padding and margins.\n- **Mobile Adaption:** At the 768px breakpoint, margins reduce to 16px, and the 12-column grid collapses into a single-column stack. The sidebar becomes a hidden drawer.\n\n## Elevation & Depth\n\nVisual hierarchy is managed through **Tonal Layers** and **Ambient Shadows**.\n\n1.  **Level 0 (Base):** Background surface (#F1F5F9).\n2.  **Level 1 (Cards):** Pure white surfaces (#FFFFFF) with a very soft, diffused shadow (0px 4px 12px rgba(0,0,0,0.05)). This is the primary container for user lists and forms.\n3.  **Level 2 (Dropdowns/Modals):** Increased shadow depth (0px 8px 24px rgba(0,0,0,0.1)) to indicate temporary interaction layers that sit above the main workspace.\n\nAvoid heavy borders; use subtle 1px outlines in a light gray (#E2E8F0) for card boundaries to maintain a crisp, professional edge.\n\n## Components\n\n### Buttons\n- **Primary:** Solid Magenta background with white text. High-contrast, 8px radius.\n- **Secondary:** White background with Slate border and Slate text.\n- **Ghost:** No background or border; used for \"Cancel\" or less frequent actions.\n\n### Chips & Badges\n- **Status Badges:** Use a light tint of the status color (e.g., light green background for \"Active\") with dark green text. Always pill-shaped.\n- **Permission Chips:** Small, slate-colored tags with an 'X' icon for easy removal.\n\n### Tables & Lists\n- Row heights should be a minimum of 64px to ensure touch targets are sufficient and data feels uncrowded.\n- Hover states on rows should use a subtle background tint (#F8FAFC).\n\n### Form Fields\n- Inputs feature a 1px border (#CBD5E1) that thickens and changes to Magenta on focus.\n- Labels sit 8px above the input field in `label-md` style.\n\n### Cards\n- The primary container for user profiles and management modules. \n- Should include a header section with a subtle bottom border for consistent structure.",
+      "theme": {
+        "colorMode": "LIGHT",
+        "font": "HANKEN_GROTESK",
+        "roundness": "ROUND_EIGHT",
+        "customColor": "#d81b60",
+        "headlineFont": "HANKEN_GROTESK",
+        "bodyFont": "HANKEN_GROTESK",
+        "labelFont": "HANKEN_GROTESK",
+        "namedColors": {
+          "on_secondary_fixed_variant": "#3c475a",
+          "surface_container_low": "#eff4ff",
+          "secondary": "#545f73",
+          "secondary_container": "#d5e0f8",
+          "on_error": "#ffffff",
+          "surface_dim": "#cbdbf5",
+          "tertiary": "#006444",
+          "surface_container": "#e5eeff",
+          "tertiary_fixed_dim": "#4edea3",
+          "inverse_primary": "#ffb2bf",
+          "outline": "#8e6f74",
+          "surface_variant": "#d3e4fe",
+          "surface_tint": "#bc004f",
+          "error": "#ba1a1a",
+          "primary_fixed": "#ffd9de",
+          "surface_container_lowest": "#ffffff",
+          "inverse_surface": "#213145",
+          "on_tertiary_container": "#d4ffe5",
+          "on_surface": "#0b1c30",
+          "surface_container_high": "#dce9ff",
+          "on_primary_fixed": "#3f0016",
+          "on_secondary": "#ffffff",
+          "on_secondary_fixed": "#111c2d",
+          "error_container": "#ffdad6",
+          "tertiary_container": "#008058",
+          "background": "#f8f9ff",
+          "secondary_fixed_dim": "#bcc7de",
+          "outline_variant": "#e3bdc3",
+          "surface_bright": "#f8f9ff",
+          "on_surface_variant": "#5a4044",
+          "on_primary_fixed_variant": "#90003b",
+          "surface_container_highest": "#d3e4fe",
+          "tertiary_fixed": "#6ffbbe",
+          "primary": "#b0004a",
+          "on_tertiary": "#ffffff",
+          "on_primary_container": "#fff2f3",
+          "on_background": "#0b1c30",
+          "primary_container": "#d81b60",
+          "on_secondary_container": "#586377",
+          "on_tertiary_fixed_variant": "#005236",
+          "surface": "#f8f9ff",
+          "on_tertiary_fixed": "#002113",
+          "on_primary": "#ffffff",
+          "inverse_on_surface": "#eaf1ff",
+          "primary_fixed_dim": "#ffb2bf",
+          "secondary_fixed": "#d8e3fb",
+          "on_error_container": "#93000a"
+        },
+        "designMd": "---\nname: Executive Magenta\ncolors:\n  surface: '#f8f9ff'\n  surface-dim: '#cbdbf5'\n  surface-bright: '#f8f9ff'\n  surface-container-lowest: '#ffffff'\n  surface-container-low: '#eff4ff'\n  surface-container: '#e5eeff'\n  surface-container-high: '#dce9ff'\n  surface-container-highest: '#d3e4fe'\n  on-surface: '#0b1c30'\n  on-surface-variant: '#5a4044'\n  inverse-surface: '#213145'\n  inverse-on-surface: '#eaf1ff'\n  outline: '#8e6f74'\n  outline-variant: '#e3bdc3'\n  surface-tint: '#bc004f'\n  primary: '#b0004a'\n  on-primary: '#ffffff'\n  primary-container: '#d81b60'\n  on-primary-container: '#fff2f3'\n  inverse-primary: '#ffb2bf'\n  secondary: '#545f73'\n  on-secondary: '#ffffff'\n  secondary-container: '#d5e0f8'\n  on-secondary-container: '#586377'\n  tertiary: '#006444'\n  on-tertiary: '#ffffff'\n  tertiary-container: '#008058'\n  on-tertiary-container: '#d4ffe5'\n  error: '#ba1a1a'\n  on-error: '#ffffff'\n  error-container: '#ffdad6'\n  on-error-container: '#93000a'\n  primary-fixed: '#ffd9de'\n  primary-fixed-dim: '#ffb2bf'\n  on-primary-fixed: '#3f0016'\n  on-primary-fixed-variant: '#90003b'\n  secondary-fixed: '#d8e3fb'\n  secondary-fixed-dim: '#bcc7de'\n  on-secondary-fixed: '#111c2d'\n  on-secondary-fixed-variant: '#3c475a'\n  tertiary-fixed: '#6ffbbe'\n  tertiary-fixed-dim: '#4edea3'\n  on-tertiary-fixed: '#002113'\n  on-tertiary-fixed-variant: '#005236'\n  background: '#f8f9ff'\n  on-background: '#0b1c30'\n  surface-variant: '#d3e4fe'\ntypography:\n  headline-lg:\n    fontFamily: Hanken Grotesk\n    fontSize: 32px\n    fontWeight: '700'\n    lineHeight: 40px\n    letterSpacing: -0.02em\n  headline-lg-mobile:\n    fontFamily: Hanken Grotesk\n    fontSize: 24px\n    fontWeight: '700'\n    lineHeight: 32px\n    letterSpacing: -0.01em\n  headline-md:\n    fontFamily: Hanken Grotesk\n    fontSize: 20px\n    fontWeight: '600'\n    lineHeight: 28px\n  body-lg:\n    fontFamily: Hanken Grotesk\n    fontSize: 16px\n    fontWeight: '400'\n    lineHeight: 24px\n  body-md:\n    fontFamily: Hanken Grotesk\n    fontSize: 14px\n    fontWeight: '400'\n    lineHeight: 20px\n  label-md:\n    fontFamily: Hanken Grotesk\n    fontSize: 13px\n    fontWeight: '600'\n    lineHeight: 16px\n    letterSpacing: 0.05em\n  label-sm:\n    fontFamily: Hanken Grotesk\n    fontSize: 12px\n    fontWeight: '500'\n    lineHeight: 16px\nrounded:\n  sm: 0.25rem\n  DEFAULT: 0.5rem\n  md: 0.75rem\n  lg: 1rem\n  xl: 1.5rem\n  full: 9999px\nspacing:\n  base: 4px\n  xs: 4px\n  sm: 8px\n  md: 16px\n  lg: 24px\n  xl: 32px\n  container-max: 1280px\n  gutter: 24px\n---\n\n## Brand & Style\n\nThis design system is built for administrative precision and professional team management. It balances the energetic authority of a deep magenta with a disciplined, high-end corporate aesthetic. The target audience consists of HR managers, IT administrators, and team leads who require a high-density information environment that remains legible and stress-free.\n\nThe visual style is **Corporate / Modern** with a focus on high-clarity minimalism. It employs generous whitespace to reduce cognitive load during complex permission-setting tasks. The interface should feel reliable and systematic, using subtle elevation and crisp boundaries to define the workspace without unnecessary ornamentation.\n\nKey attributes:\n- **Professionalism:** Grounded in functional layouts.\n- **Clarity:** Every action and status is immediately identifiable.\n- **Precision:** Fine lines and intentional alignment reflect a sense of control.\n\n## Colors\n\nThe palette is anchored by a sophisticated magenta, used strategically for primary actions and brand presence. This is balanced by a deep slate secondary color for text and navigation to ensure high readability.\n\n- **Primary (Magenta):** Reserved for the \"hero\" actions like adding staff or primary CTA buttons.\n- **Secondary (Slate):** Used for sidebar backgrounds, headings, and high-contrast UI elements.\n- **Success (Green):** Specifically for \"Active\" status indicators and permission granted states.\n- **Neutrals:** A range of cool grays (from #F8FAFC to #64748B) provides the foundation for borders, backgrounds, and secondary metadata.\n- **Surface:** The background remains a very light gray (#F1F5F9) to allow pure white cards to \"pop\" via elevation.\n\n## Typography\n\nThe design system utilizes **Hanken Grotesk** across all roles. This typeface was chosen for its sharp, contemporary geometry and exceptional legibility in data-heavy environments.\n\n- **Headlines:** Use Bold weights with tight letter-spacing to create a strong visual anchor for page titles and section headers.\n- **Body Text:** Standardized at 14px for density without sacrificing readability. Use the Slate secondary color for body text to maintain professional contrast.\n- **Labels:** Small caps or semi-bold weights are used for table headers and form labels to distinguish them from user-generated content.\n\n## Layout & Spacing\n\nThe system employs a **Fixed Grid** philosophy for desktop to maintain a structured dashboard feel, transitioning to a fluid model for tablet and mobile.\n\n- **Desktop:** 12-column grid with a 1280px max-width, centered in the viewport. 24px gutters provide breathing room between data cards.\n- **Sidebar:** A fixed-width navigation rail (260px) persists on the left.\n- **Rhythm:** An 8px linear scale (4, 8, 16, 24, 32, 48, 64) governs all padding and margins.\n- **Mobile Adaption:** At the 768px breakpoint, margins reduce to 16px, and the 12-column grid collapses into a single-column stack. The sidebar becomes a hidden drawer.\n\n## Elevation & Depth\n\nVisual hierarchy is managed through **Tonal Layers** and **Ambient Shadows**.\n\n1.  **Level 0 (Base):** Background surface (#F1F5F9).\n2.  **Level 1 (Cards):** Pure white surfaces (#FFFFFF) with a very soft, diffused shadow (0px 4px 12px rgba(0,0,0,0.05)). This is the primary container for user lists and forms.\n3.  **Level 2 (Dropdowns/Modals):** Increased shadow depth (0px 8px 24px rgba(0,0,0,0.1)) to indicate temporary interaction layers that sit above the main workspace.\n\nAvoid heavy borders; use subtle 1px outlines in a light gray (#E2E8F0) for card boundaries to maintain a crisp, professional edge.\n\n## Shapes\n\nThe shape language is **Rounded**, utilizing a 0.5rem (8px) base radius. This softens the professional environment, making the software feel modern and accessible rather than rigid and institutional.\n\n- **Buttons & Inputs:** 8px corner radius.\n- **Cards:** 16px (`rounded-lg`) for a more pronounced container feel.\n- **Status Badges:** Fully pill-shaped (999px) to differentiate them from interactive buttons.\n\n## Components\n\n### Buttons\n- **Primary:** Solid Magenta background with white text. High-contrast, 8px radius.\n- **Secondary:** White background with Slate border and Slate text.\n- **Ghost:** No background or border; used for \"Cancel\" or less frequent actions.\n\n### Chips & Badges\n- **Status Badges:** Use a light tint of the status color (e.g., light green background for \"Active\") with dark green text. Always pill-shaped.\n- **Permission Chips:** Small, slate-colored tags with an 'X' icon for easy removal.\n\n### Tables & Lists\n- Row heights should be a minimum of 64px to ensure touch targets are sufficient and data feels uncrowded.\n- Hover states on rows should use a subtle background tint (#F8FAFC).\n\n### Form Fields\n- Inputs feature a 1px border (#CBD5E1) that thickens and changes to Magenta on focus.\n- Labels sit 8px above the input field in `label-md` style.\n\n### Cards\n- The primary container for user profiles and management modules. \n- Should include a header section with a subtle bottom border for consistent structure.",
+        "colorVariant": "FIDELITY",
+        "overridePrimaryColor": "#d81b60",
+        "overrideSecondaryColor": "#1e293b",
+        "overrideTertiaryColor": "#10b981",
+        "overrideNeutralColor": "#64748b",
+        "spacingScale": 2,
+        "typography": {
+          "label-sm": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "12px",
+            "fontWeight": "500",
+            "lineHeight": "16px"
+          },
+          "body-md": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "14px",
+            "fontWeight": "400",
+            "lineHeight": "20px"
+          },
+          "headline-md": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "20px",
+            "fontWeight": "600",
+            "lineHeight": "28px"
+          },
+          "label-md": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "13px",
+            "fontWeight": "600",
+            "lineHeight": "16px",
+            "letterSpacing": "0.05em"
+          },
+          "headline-lg": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "32px",
+            "fontWeight": "700",
+            "lineHeight": "40px",
+            "letterSpacing": "-0.02em"
+          },
+          "headline-lg-mobile": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "24px",
+            "fontWeight": "700",
+            "lineHeight": "32px",
+            "letterSpacing": "-0.01em"
+          },
+          "body-lg": {
+            "fontFamily": "Hanken Grotesk",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "lineHeight": "24px"
+          }
+        },
+        "spacing": {
+          "md": "16px",
+          "lg": "24px",
+          "xs": "4px",
+          "gutter": "24px",
+          "sm": "8px",
+          "xl": "32px",
+          "base": "4px",
+          "container-max": "1280px"
+        },
+        "headlineFontFamily": "Hanken Grotesk",
+        "bodyFontFamily": "Hanken Grotesk",
+        "labelFontFamily": "Hanken Grotesk"
+      }
+    },
+    "version": "1"
+  }
+}
