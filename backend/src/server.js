@@ -7925,7 +7925,7 @@ function renderPublicCatalogPage(catalog) {
       --wrap: min(1240px, 100% - 32px);
     }
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scroll-padding-top: 150px; }
     body {
       margin: 0;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -7955,11 +7955,16 @@ function renderPublicCatalogPage(catalog) {
     }
     .announce .dot { opacity: .5; padding: 0 10px; }
 
-    /* Navbar */
-    .navbar {
+    /* Top stack: navbar + search + categories move as one sticky unit */
+    .top-stack {
       position: sticky;
       top: 0;
       z-index: 50;
+      background: var(--surface);
+    }
+
+    /* Navbar */
+    .navbar {
       background: rgba(255,255,255,0.86);
       backdrop-filter: saturate(180%) blur(14px);
       -webkit-backdrop-filter: saturate(180%) blur(14px);
@@ -8135,9 +8140,6 @@ function renderPublicCatalogPage(catalog) {
 
     /* Toolbar (categories + count + sort) */
     .toolbar {
-      position: sticky;
-      top: 68px;
-      z-index: 30;
       background: rgba(255,255,255,0.92);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
@@ -8649,7 +8651,6 @@ function renderPublicCatalogPage(catalog) {
     @media (max-width: 768px) {
       .nav-search { display: none; }
       .mobile-search { display: block; }
-      .toolbar { top: 120px; }
       .hero { min-height: 340px; padding: 48px 0 40px; }
       .hero-title { font-size: 30px; }
       .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
@@ -8678,40 +8679,61 @@ function renderPublicCatalogPage(catalog) {
     <span>Free local delivery on orders above a reasonable amount</span><span class="dot">-</span><span>Order now, pay on confirmation</span><span class="dot">-</span><span>Track your order online</span>
   </div>
 
-  <!-- Navbar -->
-  <header class="navbar">
-    <div class="wrap nav-inner">
-      <a href="#" class="brand-lockup" aria-label="${escapeHtml(businessName)}">
-        <div class="logo-mark">
-          ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(businessName)} logo" />` : escapeHtml(storeInitial)}
+  <!-- Top stack: navbar + search + categories (one sticky unit) -->
+  <div class="top-stack">
+    <!-- Navbar -->
+    <header class="navbar">
+      <div class="wrap nav-inner">
+        <a href="#" class="brand-lockup" aria-label="${escapeHtml(businessName)}">
+          <div class="logo-mark">
+            ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(businessName)} logo" />` : escapeHtml(storeInitial)}
+          </div>
+          <span class="brand-meta">
+            <span>${escapeHtml(businessName)}</span>
+            <small>Online Store${branchCount > 1 ? ' - ' + escapeHtml(branchName) : ''}</small>
+          </span>
+        </a>
+        <div class="nav-search">
+          <svg class="ic" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <input type="text" id="search-input" placeholder="Search products, brands..." onkeyup="handleSearch()" />
         </div>
-        <span class="brand-meta">
-          <span>${escapeHtml(businessName)}</span>
-          <small>Online Store${branchCount > 1 ? ' - ' + escapeHtml(branchName) : ''}</small>
-        </span>
-      </a>
-      <div class="nav-search">
-        <svg class="ic" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-        <input type="text" id="search-input" placeholder="Search products, brands..." onkeyup="handleSearch()" />
+        <div class="nav-actions">
+          <button class="icon-btn" onclick="document.getElementById('track-order').scrollIntoView({behavior:'smooth'})" aria-label="Track order">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.553 2.776A1 1 0 0021 18.882V8.118a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+          </button>
+          <button class="icon-btn cart-btn" onclick="toggleCart()" aria-label="Open cart">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+            <span class="cart-badge is-empty" id="nav-cart-count">0</span>
+          </button>
+        </div>
       </div>
-      <div class="nav-actions">
-        <button class="icon-btn" onclick="document.getElementById('track-order').scrollIntoView({behavior:'smooth'})" aria-label="Track order">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.553 2.776A1 1 0 0021 18.882V8.118a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
-        </button>
-        <button class="icon-btn cart-btn" onclick="toggleCart()" aria-label="Open cart">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-          <span class="cart-badge is-empty" id="nav-cart-count">0</span>
-        </button>
+    </header>
+
+    <!-- Mobile search -->
+    <div class="mobile-search">
+      <div class="wrap">
+        <div class="nav-search">
+          <svg class="ic" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <input type="text" id="search-input-mobile" placeholder="Search products, brands..." onkeyup="handleSearch()" />
+        </div>
       </div>
     </div>
-  </header>
 
-  <!-- Mobile search -->
-  <div class="mobile-search">
-    <div class="wrap">
-      <div class="nav-search">
-        <svg class="ic" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-        <input type="text" id="search-input-mobile" placeholder="Search products, brands..." onkeyup="handleSearch()" />
+    <!-- Toolbar: categories + sort -->
+    <div class="toolbar">
+      <div class="wrap toolbar-row">
+        <div class="categories" id="category-pills">
+          <button class="cat-btn active" onclick="setCategory('all', this)">All Items</button>
+        </div>
+        <div class="sort-wrap">
+          <select class="sort-select" id="sort-select" onchange="handleSort()">
+            <option value="featured">Featured</option>
+            <option value="price-asc">Price: Low to High</option>
+            <option value="price-desc">Price: High to Low</option>
+            <option value="name-asc">Name: A - Z</option>
+            <option value="name-desc">Name: Z - A</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -8731,27 +8753,9 @@ function renderPublicCatalogPage(catalog) {
     </div>
   </section>
 
-  <!-- Toolbar: categories + sort -->
-  <div class="toolbar">
-    <div class="wrap toolbar-row">
-      <div class="categories" id="category-pills">
-        <button class="cat-btn active" onclick="setCategory('all', this)">All Items</button>
-      </div>
-      <div class="sort-wrap">
-        <select class="sort-select" id="sort-select" onchange="handleSort()">
-          <option value="featured">Featured</option>
-          <option value="price-asc">Price: Low to High</option>
-          <option value="price-desc">Price: High to Low</option>
-          <option value="name-asc">Name: A - Z</option>
-          <option value="name-desc">Name: Z - A</option>
-        </select>
-      </div>
-    </div>
-  </div>
-
   <!-- Catalog -->
-  <main class="wrap" style="padding-top: 28px;">
-    <div class="section-head">
+  <main class="wrap" style="padding-top: 40px;">
+    <div class="section-head" id="catalog-head">
       <div>
         <h2 id="section-title">All Items</h2>
         <p>Browse the catalog and add what you love.</p>
@@ -8793,7 +8797,7 @@ function renderPublicCatalogPage(catalog) {
     </div>
 
     <!-- Order tracking -->
-    <section class="panel" id="track-order" style="margin-top: 40px;">
+    <section class="panel" id="track-order" style="margin-top: 40px; scroll-margin-top: 150px;">
       <div class="panel-head">
         <div class="pi"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.553 2.776A1 1 0 0021 18.882V8.118a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg></div>
         <div><h3>Track your order</h3><p>Enter your order number and phone to check status.</p></div>
@@ -9037,7 +9041,7 @@ function renderPublicCatalogPage(catalog) {
       else document.querySelectorAll('.cat-btn').forEach(b => { if (b.textContent.replace(/[0-9 ]/g,'').trim() === cat) b.classList.add('active'); });
       els.sectionTitle.textContent = cat === 'all' ? 'All Items' : cat;
       renderGrid();
-      document.querySelector('.toolbar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('catalog-head').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     function setCategoryAll() {
       const first = document.querySelector('.cat-btn');
