@@ -4315,6 +4315,7 @@ Promise.all([
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),
   ensureStorefrontBrandSchema(),
+  ensureQuotationsSchema(),
 ])
   .then(() =>
     startPikiProactiveWorker({
@@ -5775,6 +5776,92 @@ async function ensureStorefrontBrandSchema(target = query) {
   await runDbQuery(
     target,
     'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_description text',
+  );
+}
+
+async function ensureQuotationsSchema(target = query) {
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS quotation_sequences (
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      branch_id text NOT NULL DEFAULT 'main_branch',
+      next_number integer NOT NULL DEFAULT 1,
+      PRIMARY KEY (business_id, branch_id)
+    )`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS quotations (
+      id text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      branch_id text NOT NULL DEFAULT 'main_branch',
+      quotation_no text NOT NULL,
+      customer_id text,
+      customer_name text,
+      subtotal numeric NOT NULL DEFAULT 0,
+      discount_total numeric NOT NULL DEFAULT 0,
+      tax_total numeric NOT NULL DEFAULT 0,
+      total numeric NOT NULL DEFAULT 0,
+      expiry_date text,
+      notes text,
+      status text NOT NULL DEFAULT 'draft',
+      created_by text,
+      converted_sale_id text,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      deleted_at timestamptz,
+      sync_status text NOT NULL DEFAULT 'synced',
+      server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+    )`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS quotation_items (
+      id text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      branch_id text NOT NULL DEFAULT 'main_branch',
+      quotation_id text NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+      product_id text,
+      variant_id text,
+      product_name text NOT NULL,
+      quantity numeric NOT NULL DEFAULT 0,
+      unit text NOT NULL DEFAULT 'pcs',
+      unit_price numeric NOT NULL DEFAULT 0,
+      discount numeric NOT NULL DEFAULT 0,
+      tax numeric NOT NULL DEFAULT 0,
+      line_total numeric NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      deleted_at timestamptz,
+      sync_status text NOT NULL DEFAULT 'synced',
+      server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+    )`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_quotations_business_revision
+     ON quotations(business_id, server_revision, id)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_quotation_items_business_revision
+     ON quotation_items(business_id, server_revision, id)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_quotations_status
+     ON quotations(business_id, branch_id, status, expiry_date)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation_id
+     ON quotation_items(business_id, quotation_id)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_quotations_branch_number_unique
+     ON quotations(business_id, branch_id, quotation_no)
+     WHERE deleted_at IS NULL`,
   );
 }
 
