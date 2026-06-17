@@ -8660,7 +8660,7 @@ function renderPublicCatalogPage(catalog) {
     function init() {
       // Extract unique categories
       const cats = new Set();
-      [...catalog.products, ...catalog.services].forEach(item => {
+      catalog.products.forEach(item => {
         if (item.category && item.category !== 'Services') cats.add(item.category);
       });
       
@@ -8704,7 +8704,7 @@ function renderPublicCatalogPage(catalog) {
     }
 
     function getItems() {
-      return [...catalog.products, ...catalog.services].filter(item => {
+      return catalog.products.filter(item => {
         const matchCat = state.activeCategory === 'all' || item.category === state.activeCategory;
         const matchSearch = !state.searchQuery || item.name.toLowerCase().includes(state.searchQuery) || (item.brand || '').toLowerCase().includes(state.searchQuery);
         return matchCat && matchSearch;
@@ -8923,7 +8923,7 @@ function renderPublicCatalogPage(catalog) {
           }))
         };
 
-        const res = await fetch('/api/public/orders', {
+        const res = await fetch('/api/public/catalog/' + encodeURIComponent(catalog.business.id) + '/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -8939,14 +8939,14 @@ function renderPublicCatalogPage(catalog) {
         state.cart.clear();
         renderCart();
         
-        els.alertSuccess.textContent = 'Order placed successfully! Reference: ' + data.order.order_number;
+        els.alertSuccess.textContent = 'Order placed successfully! Reference: ' + data.order.orderNumber;
         els.alertSuccess.style.display = 'block';
         els.checkoutBtn.style.display = 'none';
 
         // Show WhatsApp button if configured
         if (shopWhatsApp) {
           const waUrl = new URL('https://wa.me/' + shopWhatsApp.replace(/\\D/g, ''));
-          waUrl.searchParams.set('text', \`Hi, I just placed an order (\${data.order.order_number}) on your catalog. Please confirm.\`);
+          waUrl.searchParams.set('text', \`Hi, I just placed an order (\${data.order.orderNumber}) on your catalog. Please confirm.\`);
           els.whatsappBtn.href = waUrl.toString();
           els.whatsappBtn.style.display = 'block';
         }
@@ -8969,12 +8969,12 @@ function renderPublicCatalogPage(catalog) {
         const no = document.getElementById('tracking-order-number').value.trim();
         const ph = document.getElementById('tracking-phone').value.trim();
         const res = await fetch(
-          '/api/public/orders/' + encodeURIComponent(no) + '/track?phone=' + encodeURIComponent(ph)
+          '/api/public/catalog/' + encodeURIComponent(catalog.business.id) + '/orders/' + encodeURIComponent(no) + '?phone=' + encodeURIComponent(ph)
         );
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Not found');
         resDiv.className = 'alert alert-success';
-        resDiv.innerHTML = 'Order status: <strong>' + safeHtml(data.order.status) + '</strong><br>Last updated: ' + new Date(data.order.updated_at).toLocaleString();
+        resDiv.innerHTML = 'Order status: <strong>' + safeHtml(data.order.status) + '</strong><br>Last updated: ' + new Date(data.order.updatedAt).toLocaleString();
         resDiv.style.display = 'block';
       } catch (err) {
         resDiv.className = 'alert alert-error';
