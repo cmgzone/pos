@@ -199,14 +199,18 @@ class HeldSaleRepository {
     final adjustments = <String>[];
 
     final productIds = items
-        .where((item) => (item['line_type'] as String? ?? 'product') != 'service')
+        .where(
+          (item) => (item['line_type'] as String? ?? 'product') != 'service',
+        )
         .map((item) => item['product_id'] as String? ?? '')
         .where((id) => id.isNotEmpty)
         .toSet()
         .toList();
 
     final variantIds = items
-        .where((item) => (item['line_type'] as String? ?? 'product') != 'service')
+        .where(
+          (item) => (item['line_type'] as String? ?? 'product') != 'service',
+        )
         .map((item) => item['variant_id'] as String? ?? '')
         .where((id) => id.isNotEmpty)
         .toSet()

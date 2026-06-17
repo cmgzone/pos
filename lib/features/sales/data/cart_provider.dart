@@ -86,6 +86,17 @@ class CartItem {
     'variant_name': variantName,
   };
 
+  Map<String, dynamic> toQuotationItem() => {
+    'product_id': productId,
+    'variant_id': variantId,
+    'product_name': productName,
+    'quantity': quantity,
+    'unit': unit,
+    'unit_price': unitPrice,
+    'discount': 0,
+    'tax': 0,
+  };
+
   factory CartItem.fromHeldItem(Map<String, dynamic> row) {
     return CartItem(
       productId: row['product_id'] as String? ?? '',
@@ -311,6 +322,58 @@ class CartNotifier extends Notifier<List<CartItem>> {
 
   void restoreHeldItems(List<Map<String, dynamic>> heldItems) {
     state = heldItems.map(CartItem.fromHeldItem).toList();
+  }
+
+  /// Restore quotation line items into the cart so they can be paid for as a
+  /// normal sale. Items arrive already stock-validated by
+  /// [QuotationRepository.loadForConvert].
+  void restoreQuotationItems(List<Map<String, dynamic>> items) {
+    final restored = <CartItem>[];
+    for (final item in items) {
+      final lineType = item['line_type'] as String? ?? 'product';
+      if (lineType == 'service') {
+        // Quotations currently only capture product lines; skip service rows.
+        continue;
+      }
+      restored.add(
+        CartItem(
+          productId: item['product_id'] as String? ?? '',
+          productName: item['product_name'] as String? ?? 'Product',
+          unitPrice: _asDouble(item['unit_price']),
+          cost: _asDouble(item['cost']),
+          maxStock: _asDouble(item['max_stock'], fallback: 999999),
+          stockOnHand: _asDouble(item['stock_on_hand']),
+          saleToStockFactor: _asDouble(
+            item['sale_to_stock_factor'],
+            fallback: 1,
+          ),
+          unit: item['unit'] as String? ?? 'pcs',
+          stockUnit:
+              item['stock_unit'] as String? ?? item['unit'] as String? ?? 'pcs',
+          variantId: item['variant_id'] as String?,
+          variantName: item['variant_name'] as String?,
+          tracksStock: _asBool(item['track_stock']),
+          quantity: _asDouble(item['quantity'], fallback: 1),
+        ),
+      );
+    }
+    state = restored;
+  }
+
+  static double _asDouble(Object? value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static bool _asBool(Object? value, {bool fallback = true}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final n = value.trim().toLowerCase();
+      if (n.isEmpty) return fallback;
+      return n != '0' && n != 'false' && n != 'no' && n != 'off';
+    }
+    return fallback;
   }
 
   double get subtotal =>

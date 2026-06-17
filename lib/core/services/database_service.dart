@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 19;
+  static const int _databaseVersion = 20;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -24,6 +24,8 @@ class DatabaseService {
     'sales',
     'customer_invoices',
     'customer_invoice_items',
+    'quotations',
+    'quotation_items',
     'cash_movements',
     'held_sales',
     'suppliers',
@@ -1420,6 +1422,7 @@ class DatabaseService {
     await _ensureSyncMetadataSchema(database);
     await _ensureSaleItemsSchema(database);
     await _ensureCustomerInvoiceSchema(database);
+    await _ensureQuotationSchema(database);
     await _ensureServicesSchema(database);
     await _ensureCarWashSchema(database);
     await _promoteLegacyServiceSyncStatuses(database);
@@ -2033,6 +2036,133 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureQuotationSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS quotation_sequences (
+        branch_id TEXT PRIMARY KEY,
+        next_number INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS quotations (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        quotation_no TEXT NOT NULL,
+        customer_id TEXT,
+        customer_name TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        discount_total REAL NOT NULL DEFAULT 0,
+        tax_total REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        expiry_date TEXT,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_by TEXT,
+        converted_sale_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS quotation_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        quotation_id TEXT NOT NULL,
+        product_id TEXT,
+        variant_id TEXT,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        unit_price REAL NOT NULL DEFAULT 0,
+        discount REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        line_total REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    for (final table in const ['quotations', 'quotation_items']) {
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'branch_id',
+        definition: "TEXT DEFAULT '$defaultBranchId'",
+      );
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'deleted_at',
+        definition: 'TEXT',
+      );
+      await _ensureColumn(
+        database,
+        table: table,
+        column: 'sync_status',
+        definition: "TEXT NOT NULL DEFAULT 'pending'",
+      );
+    }
+
+    for (final spec in const [
+      ['quotations', 'quotation_no', "TEXT NOT NULL DEFAULT ''"],
+      ['quotations', 'customer_id', 'TEXT'],
+      ['quotations', 'customer_name', 'TEXT'],
+      ['quotations', 'subtotal', 'REAL NOT NULL DEFAULT 0'],
+      ['quotations', 'discount_total', 'REAL NOT NULL DEFAULT 0'],
+      ['quotations', 'tax_total', 'REAL NOT NULL DEFAULT 0'],
+      ['quotations', 'total', 'REAL NOT NULL DEFAULT 0'],
+      ['quotations', 'expiry_date', 'TEXT'],
+      ['quotations', 'notes', 'TEXT'],
+      ['quotations', 'status', "TEXT NOT NULL DEFAULT 'draft'"],
+      ['quotations', 'created_by', 'TEXT'],
+      ['quotations', 'converted_sale_id', 'TEXT'],
+      ['quotation_items', 'quotation_id', "TEXT NOT NULL DEFAULT ''"],
+      ['quotation_items', 'product_id', 'TEXT'],
+      ['quotation_items', 'variant_id', 'TEXT'],
+      ['quotation_items', 'product_name', "TEXT NOT NULL DEFAULT ''"],
+      ['quotation_items', 'quantity', 'REAL NOT NULL DEFAULT 0'],
+      ['quotation_items', 'unit', "TEXT NOT NULL DEFAULT 'pcs'"],
+      ['quotation_items', 'unit_price', 'REAL NOT NULL DEFAULT 0'],
+      ['quotation_items', 'discount', 'REAL NOT NULL DEFAULT 0'],
+      ['quotation_items', 'tax', 'REAL NOT NULL DEFAULT 0'],
+      ['quotation_items', 'line_total', 'REAL NOT NULL DEFAULT 0'],
+    ]) {
+      await _ensureColumn(
+        database,
+        table: spec[0],
+        column: spec[1],
+        definition: spec[2],
+      );
+    }
+
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'quotations',
+      indexName: 'idx_quotations_branch_status',
+      columns: ['branch_id', 'status', 'expiry_date'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'quotations',
+      indexName: 'idx_quotations_quotation_no',
+      columns: ['branch_id', 'quotation_no'],
+      unique: true,
+      whereClause: 'deleted_at IS NULL',
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'quotation_items',
+      indexName: 'idx_quotation_items_quotation_id',
+      columns: ['quotation_id'],
+    );
+  }
+
   static Future<void> _ensureProductUnitConversionSchema(
     DatabaseExecutor database,
   ) async {
@@ -2517,6 +2647,8 @@ class DatabaseService {
       'sale_items',
       'customer_invoices',
       'customer_invoice_items',
+      'quotations',
+      'quotation_items',
       'cash_movements',
       'suppliers',
       'purchase_invoices',
@@ -2767,11 +2899,25 @@ class DatabaseService {
     required String column,
     required String definition,
   }) async {
+    if (!await _tableExists(database, table)) {
+      return;
+    }
     final columns = await _getColumnNames(database, table);
     if (columns.contains(column)) {
       return;
     }
     await database.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+  }
+
+  static Future<bool> _tableExists(
+    DatabaseExecutor database,
+    String table,
+  ) async {
+    final rows = await database.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+      [table],
+    );
+    return rows.isNotEmpty;
   }
 
   static Future<Set<String>> _getColumnNames(

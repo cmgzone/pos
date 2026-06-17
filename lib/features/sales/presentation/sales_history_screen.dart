@@ -411,7 +411,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               SizedBox(height: 8),
               Text(
                 '${importResult.summaryOnly} summary-only row${importResult.summaryOnly == 1 ? '' : 's'} imported without item stock changes.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
             if (importResult.skipped > 0) ...[
@@ -1145,7 +1147,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           ...currentFields.map((field) {
                             final fieldId = field['id'] as String;
                             final controller = fieldControllers[fieldId];
-                            if (controller == null) return const SizedBox.shrink();
+                            if (controller == null) {
+                              return const SizedBox.shrink();
+                            }
                             return _ManualServiceFieldInput(
                               field: field,
                               controller: controller,
@@ -1414,7 +1418,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           item['quantity'] as num?,
                           item['unit'] as String?,
                         ),
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       SizedBox(width: 24),
                       Text(
@@ -1512,10 +1518,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Navigator.pop(ctx);
                 _showRefundDialog(sale);
               },
-              child: Text(
-                'Return',
-                style: TextStyle(color: AppColors.error),
-              ),
+              child: Text('Return', style: TextStyle(color: AppColors.error)),
             ),
           if (_canDeleteSale(sale))
             TextButton(
@@ -1523,15 +1526,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Navigator.pop(ctx);
                 _deleteSaleWithConfirmation(sale);
               },
-              child: Text(
-                'Delete',
-                style: TextStyle(color: AppColors.error),
-              ),
+              child: Text('Delete', style: TextStyle(color: AppColors.error)),
             ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Close'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close')),
           if ((sale['etims_status'] as String?) != 'submitted')
             OutlinedButton.icon(
               onPressed: () {
@@ -1796,7 +1793,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 SizedBox(height: 12),
                 Text(
                   'Product stock will be restored automatically where applicable.',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 SizedBox(height: 16),
                 ConstrainedBox(
@@ -1816,7 +1815,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: isCompact
@@ -1833,14 +1834,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                   Text(
                                     'Returnable: ${UnitUtils.formatWithUnit(refundableQuantity, unit)}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
                                   Text(
                                     'Price: ${ShopSettings.currency}${(item['unit_price'] as num? ?? 0).toStringAsFixed(2)}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -1875,14 +1880,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                         Text(
                                           'Returnable: ${UnitUtils.formatWithUnit(refundableQuantity, unit)}',
                                           style: TextStyle(
-                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
                                           ),
                                         ),
                                         Text(
                                           'Price: ${ShopSettings.currency}${(item['unit_price'] as num? ?? 0).toStringAsFixed(2)}',
                                           style: TextStyle(
-                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
                                           ),
                                         ),
@@ -2523,7 +2532,9 @@ class _CompactFilterButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+              color: isSelected
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.w800,
             ),
@@ -2593,7 +2604,9 @@ class _SaleTypeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected ? Theme.of(context).colorScheme.secondary : context.appSurfaceHighlight,
+      color: isSelected
+          ? Theme.of(context).colorScheme.secondary
+          : context.appSurfaceHighlight,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -2701,12 +2714,17 @@ class _EmptySalesState extends StatelessWidget {
             Icon(
               Icons.receipt_long_outlined,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
             ),
             SizedBox(height: 16),
             Text(
               'No sales found',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 16,
+              ),
             ),
             SizedBox(height: 8),
             Text(
@@ -2832,7 +2850,9 @@ class _SaleRow extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               child: Row(
                 children: [
@@ -2882,7 +2902,9 @@ class _SaleRow extends StatelessWidget {
                           style: TextStyle(
                             color: isServiceSale
                                 ? Theme.of(context).colorScheme.secondary
-                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
@@ -2891,7 +2913,9 @@ class _SaleRow extends StatelessWidget {
                         Text(
                           dateStr,
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
@@ -2901,7 +2925,9 @@ class _SaleRow extends StatelessWidget {
                           Text(
                             sale['customer_name'] as String,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -3293,7 +3319,9 @@ class _FilterChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                color: isSelected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
               ),
@@ -3318,7 +3346,12 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           SizedBox(width: 12),
           Flexible(
             child: Text(

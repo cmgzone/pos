@@ -232,7 +232,9 @@ class _CustomerCheckoutDialogState
                 Text(
                   'Assign this credit sale to a customer',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                     fontSize: 13,
                   ),
                 ),
@@ -275,7 +277,9 @@ class _CustomerCheckoutDialogState
                               Text(
                                 'Sale Total',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                   fontSize: 12,
                                 ),
                               ),
@@ -308,7 +312,9 @@ class _CustomerCheckoutDialogState
                               return Text(
                                 'No active payment methods.',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                               );
                             }
@@ -426,9 +432,13 @@ class _CustomerCheckoutDialogState
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                         ),
                         child: Column(
                           children: [
@@ -477,10 +487,7 @@ class _CustomerCheckoutDialogState
                                           color: Colors.white,
                                         ),
                                       )
-                                    : Icon(
-                                        Icons.person_add_alt_1,
-                                        size: 18,
-                                      ),
+                                    : Icon(Icons.person_add_alt_1, size: 18),
                                 label: Text('Create Customer'),
                               ),
                             ),
@@ -506,9 +513,7 @@ class _CustomerCheckoutDialogState
                           children: [
                             Text(
                               'Selected: ${_selectedCustomer!['name']}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: TextStyle(fontWeight: FontWeight.w600),
                             ),
                             SizedBox(height: 6),
                             Text(
@@ -531,7 +536,9 @@ class _CustomerCheckoutDialogState
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: _isLoading
                     ? Center(
@@ -550,9 +557,10 @@ class _CustomerCheckoutDialogState
                               Icon(
                                 Icons.people_outline,
                                 size: 40,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                  alpha: 0.5,
-                                ),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: 0.5),
                               ),
                               SizedBox(height: 12),
                               Text('No customers found'),
@@ -560,9 +568,10 @@ class _CustomerCheckoutDialogState
                               Text(
                                 'Create one now to record this Kopesha sale.',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                    alpha: 0.9,
-                                  ),
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant
+                                      .withValues(alpha: 0.9),
                                   fontSize: 12,
                                 ),
                                 textAlign: TextAlign.center,
@@ -646,7 +655,9 @@ class _CustomerCheckoutDialogState
                                                 .join(' | ')
                                                 .ifEmpty('No contact added'),
                                             style: TextStyle(
-                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
@@ -661,7 +672,9 @@ class _CustomerCheckoutDialogState
                                         Text(
                                           'Outstanding',
                                           style: TextStyle(
-                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                             fontSize: 11,
                                           ),
                                         ),
@@ -764,7 +777,9 @@ class _DueDateChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? AppColors.warning : Theme.of(context).colorScheme.onSurfaceVariant,
+            color: selected
+                ? AppColors.warning
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),

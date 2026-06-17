@@ -623,7 +623,7 @@ class _CurrentShiftCard extends StatelessWidget {
     final paymentBreakdown = (shiftSummary['payment_breakdown'] as Map<String, dynamic>?) ?? {};
     final additionalStats = paymentBreakdown.entries.map((e) {
       final label = e.key.isNotEmpty
-          ? e.key[0].toUpperCase() + e.key.substring(1).replaceAll('_', ' ') + ' sales'
+          ? '${e.key[0].toUpperCase()}${e.key.substring(1).replaceAll('_', ' ')} sales'
           : 'Other sales';
       return _ShiftStatData(
         label: label,

@@ -294,7 +294,7 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 72,
+        height: 56,
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         indicatorColor: scheme.primaryContainer,
@@ -307,12 +307,12 @@ class AppTheme {
           normal: GoogleFonts.inter(
             color: muted,
             fontWeight: FontWeight.w500,
-            fontSize: 11,
+            fontSize: 10.5,
           ),
           selected: GoogleFonts.inter(
             color: scheme.primary,
             fontWeight: FontWeight.w700,
-            fontSize: 11,
+            fontSize: 10.5,
           ),
         ),
       ),

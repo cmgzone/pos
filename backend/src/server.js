@@ -16,8 +16,10 @@ const {
 } = require('./redisCache');
 const { syncTables } = require('./syncTables');
 const {
+  areRecordsEquivalent,
   buildRejectedWriteResult,
   canonicalizeRecord,
+  compareTimestamps,
   prepareIncomingRecord,
 } = require('./syncHelpers');
 const { maxCursor, normalizeCursor } = require('./syncCursor');
@@ -1261,6 +1263,15 @@ app.post('/api/sync/push', async (req, res, next) => {
             storageRecord,
             businessContext.businessId,
           );
+
+          // A same-timestamp conflict was applied using server_revision as a
+          // tiebreaker. Count it as a conflict for client visibility, but treat
+          // the row as applied so the client marks its local copy as synced
+          // instead of overwriting it with a stale server row.
+          if (result.status === 'conflict_applied') {
+            conflictCount[table.name] += 1;
+            result.status = 'applied';
+          }
 
           if (result.status === 'applied') {
             if (
@@ -4427,7 +4438,10 @@ function createRateLimiter({ windowMs, max, keyPrefix }) {
 
 function validateMpesaCallbackSecret(req) {
   if (!config.mpesaCallbackSecret) {
-    return;
+    throw createHttpError(
+      401,
+      'M-Pesa callback secret is not configured. Set MPESA_CALLBACK_SECRET before accepting callbacks.',
+    );
   }
   const provided =
     normalizeOptionalText(req.query?.secret) ||
@@ -5071,7 +5085,7 @@ async function initiateMpesaCheckout(payment, gateway) {
     `${mpesaConfig.shortcode}${mpesaConfig.passkey}${timestamp}`,
   ).toString('base64');
   const phoneNumber = normalizeMpesaPhone(payment.phoneNumber);
-  const amount = Math.max(1, Math.ceil(payment.amountMinor / 100));
+  const amount = Math.max(1, Math.round(payment.amountMinor / 100));
   const fetch = (await import('node-fetch')).default;
   const response = await fetch(
     `${mpesaConfig.baseUrl.replace(/\/$/, '')}/mpesa/stkpush/v1/processrequest`,
@@ -7770,11 +7784,11 @@ function renderPublicCatalogPage(catalog) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-  <title>\${escapeHtml(businessName)} - Store</title>
-  <meta name="description" content="\${escapeHtml(description)}" />
-  <meta property="og:title" content="\${escapeHtml(businessName)}" />
-  <meta property="og:description" content="\${escapeHtml(description)}" />
-  \${coverUrl ? \`<meta property="og:image" content="\${escapeHtml(coverUrl)}" />\` : ''}
+  <title>${escapeHtml(businessName)} - Store</title>
+  <meta name="description" content="${escapeHtml(description)}" />
+  <meta property="og:title" content="${escapeHtml(businessName)}" />
+  <meta property="og:description" content="${escapeHtml(description)}" />
+  ${coverUrl ? `<meta property="og:image" content="${escapeHtml(coverUrl)}" />` : ''}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -7785,7 +7799,7 @@ function renderPublicCatalogPage(catalog) {
       --ink: #111827;
       --muted: #6b7280;
       --line: #e5e7eb;
-      --primary: \${escapeHtml(primaryColor)};
+      --primary: ${escapeHtml(primaryColor)};
       --success: #059669;
       --danger: #dc2626;
       --radius-sm: 8px;
@@ -7891,7 +7905,7 @@ function renderPublicCatalogPage(catalog) {
     /* Hero */
     .hero {
       position: relative;
-      background: \${coverUrl ? \`url('\${escapeHtml(coverUrl)}')\` : 'linear-gradient(135deg, var(--ink), #374151)'};
+      background: ${coverUrl ? `url('${escapeHtml(coverUrl)}')` : 'linear-gradient(135deg, var(--ink), #374151)'};
       background-size: cover;
       background-position: center;
       min-height: 380px;
@@ -8444,9 +8458,9 @@ function renderPublicCatalogPage(catalog) {
     <div class="wrap nav-inner">
       <a href="#" class="brand-lockup">
         <div class="logo-mark">
-          \${logoUrl ? \`<img src="\${escapeHtml(logoUrl)}" alt="Logo" />\` : storeInitial}
+          ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Logo" />` : storeInitial}
         </div>
-        <span>\${escapeHtml(businessName)}</span>
+        <span>${escapeHtml(businessName)}</span>
       </a>
       <div class="nav-actions">
         <button class="cart-btn-top" onclick="toggleCart()">
@@ -8462,8 +8476,8 @@ function renderPublicCatalogPage(catalog) {
   <!-- Hero Banner -->
   <section class="hero">
     <div class="wrap hero-content">
-      <h1 class="hero-title">\${escapeHtml(businessName)}</h1>
-      <p class="hero-subtitle">\${escapeHtml(tagline)}</p>
+      <h1 class="hero-title">${escapeHtml(businessName)}</h1>
+      <p class="hero-subtitle">${escapeHtml(tagline)}</p>
       
       <div class="search-bar">
         <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8595,11 +8609,11 @@ function renderPublicCatalogPage(catalog) {
   </aside>
 
   <!-- Application State & Logic -->
-  <script id="catalog-data" type="application/json">\${safeCatalogJson}</script>
+  <script id="catalog-data" type="application/json">${safeCatalogJson}</script>
   <script>
     // System Init
     const catalog = JSON.parse(document.getElementById('catalog-data').textContent);
-    const shopWhatsApp = '\${escapeHtml(whatsappNumber)}';
+    const shopWhatsApp = '${escapeHtml(whatsappNumber)}';
     
     // State
     const state = {
@@ -10034,6 +10048,54 @@ async function upsertRow(client, tableName, row, businessId) {
         message: 'Record id already exists for another business',
       },
     };
+  }
+
+  // Same-timestamp conflict detection: if two devices push the same record
+  // with the same updated_at but different payloads, we previously silently
+  // dropped the incoming write. Now we apply it using server_revision as a
+  // deterministic tiebreaker and return a client-visible conflict_applied
+  // status so the caller can log/audit it.
+  if (existingRow) {
+    const timestampComparison = compareTimestamps(
+      row.updated_at,
+      existingRow.updated_at,
+    );
+    if (timestampComparison === 0 && !areRecordsEquivalent(tableName, row, existingRow)) {
+      const directUpdateAssignments = [
+        ...updateColumns.map((column, index) => `${column} = $${index + 1}`),
+        "server_revision = nextval('sync_revision_seq')",
+      ].join(', ');
+      const directUpdateValues = [
+        ...updateColumns.map((column) => scopedRow[column]),
+        row.id,
+        businessId,
+      ];
+      await client.query(
+        `UPDATE ${tableName}
+         SET ${directUpdateAssignments}
+         WHERE id = $${updateColumns.length + 1}
+           AND business_id = $${updateColumns.length + 2}`,
+        directUpdateValues,
+      );
+      const appliedResult = await client.query(
+        `SELECT * FROM ${tableName} WHERE id = $1`,
+        [row.id],
+      );
+      const appliedRow = appliedResult.rows[0];
+      console.warn(
+        `[sync][conflict_applied] table=${tableName} id=${row.id} business_id=${businessId} reason=same_timestamp_different_payload`,
+      );
+      return {
+        status: 'conflict_applied',
+        row: appliedRow,
+        conflict: {
+          reason: 'same_timestamp_different_payload',
+          serverRow: canonicalizeRecord(tableName, existingRow, {
+            forceSyncedStatus: true,
+          }),
+        },
+      };
+    }
   }
 
   return buildRejectedWriteResult(tableName, row, existingRow);

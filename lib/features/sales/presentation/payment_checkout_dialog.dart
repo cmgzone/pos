@@ -190,7 +190,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     double? amountTendered;
     double? changeGiven;
     if (isCashDrawer) {
-      amountTendered = double.tryParse(_cashReceivedController.text.trim()) ?? 0.0;
+      amountTendered =
+          double.tryParse(_cashReceivedController.text.trim()) ?? 0.0;
       if (amountTendered + 0.001 < widget.total) {
         setState(() => _cashError = 'Cash received must cover the sale total');
         return;
@@ -214,7 +215,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   }
 
   ({double tendered, double change, bool hasEnoughCash}) _cashSummary() {
-    final tendered = double.tryParse(_cashReceivedController.text.trim()) ?? 0.0;
+    final tendered =
+        double.tryParse(_cashReceivedController.text.trim()) ?? 0.0;
     final hasEnough = tendered + 0.001 >= widget.total;
     final change = hasEnough ? tendered - widget.total : 0.0;
     return (tendered: tendered, change: change, hasEnoughCash: hasEnough);
@@ -404,10 +406,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
               color: AppColors.primary.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(
-              Icons.payments_outlined,
-              color: AppColors.primaryLight,
-            ),
+            child: Icon(Icons.payments_outlined, color: AppColors.primaryLight),
           ),
           SizedBox(width: 14),
           Expanded(
@@ -424,7 +423,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                 Text(
                   'Choose how the customer will pay',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                     fontSize: 13,
                   ),
                 ),
@@ -467,7 +468,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                             Text(
                               'Sale Total',
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -504,7 +507,11 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                         padding: EdgeInsets.all(16),
                         child: Text(
                           'No active payment methods. Please configure payment methods in Settings.',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       );
                     }
@@ -558,9 +565,11 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                     _manualMpesaPollTimer?.cancel();
                                   }
                                   if (_isCashMethod(method) &&
-                                      _cashReceivedController.text.trim().isEmpty) {
-                                    _cashReceivedController.text =
-                                        widget.total.toStringAsFixed(2);
+                                      _cashReceivedController.text
+                                          .trim()
+                                          .isEmpty) {
+                                    _cashReceivedController.text = widget.total
+                                        .toStringAsFixed(2);
                                   }
                                 });
                               },
@@ -577,14 +586,16 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                 Container(
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.secondary.withValues(
-                                      alpha: 0.08,
-                                    ),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondary
+                                        .withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color: Theme.of(context).colorScheme.secondary.withValues(
-                                        alpha: 0.2,
-                                      ),
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .secondary
+                                          .withValues(alpha: 0.2),
                                     ),
                                   ),
                                   child: TextField(
@@ -687,8 +698,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                       ],
                     );
                   },
-                  loading: () =>
-                      Center(child: CircularProgressIndicator()),
+                  loading: () => Center(child: CircularProgressIndicator()),
                   error: (e, st) => Text(
                     AppErrorMessage.from(
                       e,
@@ -762,10 +772,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.check_circle,
-                          color: AppColors.success,
-                        ),
+                        Icon(Icons.check_circle, color: AppColors.success),
                         SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -773,15 +780,15 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                             children: [
                               Text(
                                 'Selected: ${_selectedCustomer!['name']}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                               SizedBox(height: 4),
                               Text(
                                 'Current balance: ${ShopSettings.currency}${currentBalance.toStringAsFixed(2)}',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                   fontSize: 12,
                                 ),
                               ),
@@ -822,9 +829,13 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                   Container(
                     height: isCompact ? 180 : 220,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                     child: _isLoading
                         ? Center(child: CircularProgressIndicator())
@@ -838,15 +849,18 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                   Icon(
                                     Icons.people_outline,
                                     size: 32,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                      alpha: 0.5,
-                                    ),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant
+                                        .withValues(alpha: 0.5),
                                   ),
                                   SizedBox(height: 8),
                                   Text(
                                     'No customers found',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                       fontSize: 13,
                                     ),
                                   ),
@@ -859,8 +873,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                             physics: const ClampingScrollPhysics(),
                             padding: const EdgeInsets.all(12),
                             itemCount: _customers.length,
-                            separatorBuilder: (_, _) =>
-                                SizedBox(height: 10),
+                            separatorBuilder: (_, _) => SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final customer = _customers[index];
                               final isSelected =
@@ -870,9 +883,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                   0;
 
                               return Material(
-                            color: isSelected
-                                ? AppColors.primary.withValues(alpha: 0.12)
-                                : context.appSurface,
+                                color: isSelected
+                                    ? AppColors.primary.withValues(alpha: 0.12)
+                                    : context.appSurface,
                                 borderRadius: BorderRadius.circular(14),
                                 child: InkWell(
                                   onTap: () => setState(() {
@@ -949,8 +962,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                                       'No contact added',
                                                     ),
                                                 style: TextStyle(
-                                                  color:
-                                                      Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
                                                   fontSize: 11,
                                                 ),
                                               ),
@@ -967,7 +981,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                             Text(
                                               'Balance',
                                               style: TextStyle(
-                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
                                                 fontSize: 10,
                                               ),
                                             ),
@@ -1007,50 +1023,52 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
           ),
         ),
         if (_selectedMethod != null) ...[
-          Builder(builder: (ctx) {
-            final isCashMethod = _isCashMethod(_selectedMethod);
-            final cash = _cashSummary();
-            final canPay = !isCashMethod || cash.hasEnoughCash;
-            return SizedBox(
-              width: isCompact ? double.infinity : null,
-              child: ElevatedButton.icon(
-                onPressed: canPay
-                    ? () {
-                        final isKopesha = _selectedMethod!['is_credit'] == 1;
-                        final isMpesa = (_selectedMethod!['name'] as String)
-                            .toLowerCase();
-                        if (isKopesha) {
-                          _handleKopeshaCheckout();
-                        } else if (isMpesa.contains('mpesa') ||
-                            isMpesa.contains('m-pesa')) {
-                          _handleMpesaCheckout();
-                        } else {
-                          _handleOtherPaymentCheckout(_selectedMethod!);
+          Builder(
+            builder: (ctx) {
+              final isCashMethod = _isCashMethod(_selectedMethod);
+              final cash = _cashSummary();
+              final canPay = !isCashMethod || cash.hasEnoughCash;
+              return SizedBox(
+                width: isCompact ? double.infinity : null,
+                child: ElevatedButton.icon(
+                  onPressed: canPay
+                      ? () {
+                          final isKopesha = _selectedMethod!['is_credit'] == 1;
+                          final isMpesa = (_selectedMethod!['name'] as String)
+                              .toLowerCase();
+                          if (isKopesha) {
+                            _handleKopeshaCheckout();
+                          } else if (isMpesa.contains('mpesa') ||
+                              isMpesa.contains('m-pesa')) {
+                            _handleMpesaCheckout();
+                          } else {
+                            _handleOtherPaymentCheckout(_selectedMethod!);
+                          }
                         }
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _getPaymentColor(_selectedMethod!),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _getPaymentColor(_selectedMethod!),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  icon: Icon(_getPaymentIcon(_selectedMethod!), size: 18),
+                  label: Text(
+                    canPay
+                        ? 'Pay with ${_selectedMethod!['name']}'
+                        : 'Need ${ShopSettings.currency}${(widget.total - cash.tendered).toStringAsFixed(2)} more',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                icon: Icon(_getPaymentIcon(_selectedMethod!), size: 18),
-                label: Text(
-                  canPay
-                      ? 'Pay with ${_selectedMethod!['name']}'
-                      : 'Need ${ShopSettings.currency}${(widget.total - cash.tendered).toStringAsFixed(2)} more',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            );
-          }),
+              );
+            },
+          ),
         ],
       ],
     );
@@ -1124,12 +1142,17 @@ class _CashChangeSectionState extends State<_CashChangeSection> {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            : Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: widget.errorText != null
               ? AppColors.error.withValues(alpha: 0.5)
-              : (isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline).withValues(alpha: 0.6),
+              : (isDark
+                        ? AppColors.darkBorder
+                        : Theme.of(context).colorScheme.outline)
+                    .withValues(alpha: 0.6),
         ),
       ),
       child: Column(
@@ -1141,13 +1164,17 @@ class _CashChangeSectionState extends State<_CashChangeSection> {
               Icon(
                 Icons.payments_outlined,
                 size: 18,
-                color: isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary,
+                color: isDark
+                    ? AppColors.darkAccent
+                    : Theme.of(context).colorScheme.primary,
               ),
               SizedBox(width: 8),
               Text(
                 'Cash Received',
                 style: TextStyle(
-                  color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+                  color: isDark
+                      ? AppColors.darkTextPrimary
+                      : Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
@@ -1161,32 +1188,42 @@ class _CashChangeSectionState extends State<_CashChangeSection> {
             autofocus: false,
             onChanged: widget.onChanged,
             style: TextStyle(
-              color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+              color: isDark
+                  ? AppColors.darkTextPrimary
+                  : Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w800,
               fontSize: 16,
             ),
             decoration: InputDecoration(
               filled: true,
-              fillColor: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
+              fillColor: isDark
+                  ? AppColors.darkSurface
+                  : Theme.of(context).colorScheme.surface,
               prefixText: ShopSettings.currency,
               hintText: widget.total.toStringAsFixed(2),
               errorText: widget.errorText,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline,
+                  color: isDark
+                      ? AppColors.darkBorder
+                      : Theme.of(context).colorScheme.outline,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline,
+                  color: isDark
+                      ? AppColors.darkBorder
+                      : Theme.of(context).colorScheme.outline,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary,
+                  color: isDark
+                      ? AppColors.darkAccent
+                      : Theme.of(context).colorScheme.primary,
                   width: 1.5,
                 ),
               ),
@@ -1204,7 +1241,9 @@ class _CashChangeSectionState extends State<_CashChangeSection> {
             child: Row(
               children: [
                 Icon(
-                  cash.hasEnoughCash ? Icons.reply_outlined : Icons.warning_amber_rounded,
+                  cash.hasEnoughCash
+                      ? Icons.reply_outlined
+                      : Icons.warning_amber_rounded,
                   size: 18,
                   color: accent,
                 ),
@@ -1214,7 +1253,9 @@ class _CashChangeSectionState extends State<_CashChangeSection> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        cash.hasEnoughCash ? 'Change to Return' : 'More Cash Needed',
+                        cash.hasEnoughCash
+                            ? 'Change to Return'
+                            : 'More Cash Needed',
                         style: TextStyle(
                           color: accent,
                           fontSize: 11,
@@ -1241,11 +1282,14 @@ class _CashChangeSectionState extends State<_CashChangeSection> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () => widget.controller.text = widget.total.toStringAsFixed(2),
+                onPressed: () =>
+                    widget.controller.text = widget.total.toStringAsFixed(2),
                 icon: Icon(Icons.restart_alt, size: 16),
                 label: Text('Use Exact Amount'),
                 style: TextButton.styleFrom(
-                  foregroundColor: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                  foregroundColor: isDark
+                      ? AppColors.darkTextSecondary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1297,7 +1341,9 @@ class _PaymentMethodButton extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+              color: isSelected
+                  ? color
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               size: 20,
             ),
             SizedBox(width: 10),
@@ -1366,7 +1412,9 @@ class _ManualMpesaSection extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -1474,7 +1522,10 @@ class _KopeshaSection extends StatelessWidget {
       children: [
         Text(
           'Due Date',
-          style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         SizedBox(height: 8),
         Wrap(
@@ -1538,7 +1589,9 @@ class _DueDateChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? AppColors.warning : Theme.of(context).colorScheme.onSurfaceVariant,
+            color: selected
+                ? AppColors.warning
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),

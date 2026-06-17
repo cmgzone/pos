@@ -509,11 +509,7 @@ function hashVerificationToken(token) {
 }
 
 function otpSecret() {
-  return (
-    process.env.EMAIL_OTP_SECRET?.trim() ||
-    config.licenseSigningSecret ||
-    'piki-pos-email-otp-dev-secret'
-  );
+  return config.emailOtpSecret;
 }
 
 function safeEqual(left, right) {

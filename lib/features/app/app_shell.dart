@@ -31,6 +31,7 @@ import '../purchases/presentation/purchase_management_screen.dart';
 import '../reports/presentation/profit_loss_screen.dart';
 import '../reports/presentation/reports_screen.dart';
 import '../sales/presentation/pos_screen.dart';
+import '../sales/presentation/quotations_screen.dart';
 import '../sales/presentation/sales_history_screen.dart';
 import '../services/presentation/service_management_screen.dart';
 import '../settings/presentation/audit_log_screen.dart';
@@ -128,6 +129,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.request_quote_outlined,
         selectedIcon: Icons.request_quote_rounded,
         label: 'Invoices',
+      ),
+    ),
+    _NavDestination(
+      index: 20,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.format_quote_outlined,
+        selectedIcon: Icons.format_quote_rounded,
+        label: 'Quotations',
       ),
     ),
     _NavDestination(
@@ -287,6 +297,10 @@ class AppShellState extends ConsumerState<AppShell> {
     }
     if (SessionService.canAccessFeature(UserAccessProfile.featureSales)) {
       indices.add(19);
+    }
+    if (SessionService.canAccessFeature(UserAccessProfile.featureSales) &&
+        ShopSettings.quotationsEnabled) {
+      indices.add(20);
     }
     if (SessionService.canAccessFeature(UserAccessProfile.featureKopesha) ||
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
@@ -1430,7 +1444,8 @@ class AppShellState extends ConsumerState<AppShell> {
                                 icon: BeautifulIcon(
                                   destination.item.icon,
                                   color: theme.colorScheme.onSurfaceVariant,
-                                  hoverColor: theme.brightness == Brightness.dark
+                                  hoverColor:
+                                      theme.brightness == Brightness.dark
                                       ? Colors.white
                                       : theme.colorScheme.primary,
                                 ),
@@ -1463,7 +1478,7 @@ class AppShellState extends ConsumerState<AppShell> {
               child: NavigationBar(
                 backgroundColor: theme.colorScheme.surface,
                 indicatorColor: theme.colorScheme.primary.withValues(
-                  alpha: 0.1,
+                  alpha: 0.06,
                 ),
                 selectedIndex: mobileSelectedIndex >= 0
                     ? mobileSelectedIndex
@@ -1740,6 +1755,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return const ContactsScreen();
       case 19:
         return const CustomerInvoicesScreen();
+      case 20:
+        return const QuotationsScreen();
       default:
         return const PosScreen();
     }

@@ -7,6 +7,7 @@ const DEFAULT_LICENSE_SIGNING_SECRET =
   'velora-pos-dev-license-secret-change-me';
 const DEFAULT_PLATFORM_ADMIN_PASSWORD = 'superadmin123';
 const DEFAULT_PLATFORM_JWT_SECRET = 'velora-platform-jwt-super-secret-dev';
+const DEFAULT_EMAIL_OTP_SECRET = 'piki-pos-email-otp-dev-secret';
 const DEFAULT_DEV_ALLOWED_ORIGINS = [
   'http://localhost:4000',
   'http://127.0.0.1:4000',
@@ -135,6 +136,11 @@ const config = {
   emailOtpMaxAttempts: positiveNumberEnv(process.env.EMAIL_OTP_MAX_ATTEMPTS, 5),
 };
 
+config.emailOtpSecret =
+  process.env.EMAIL_OTP_SECRET?.trim() ||
+  config.licenseSigningSecret ||
+  DEFAULT_EMAIL_OTP_SECRET;
+
 config.allowedOrigins = parseOriginList(
   process.env.PLATFORM_ALLOWED_ORIGINS ||
     process.env.CORS_ALLOWED_ORIGINS ||
@@ -165,6 +171,19 @@ if (config.nodeEnv === 'production') {
     config.platformAdminEmail,
     'superadmin@velora.pos',
   );
+  assertNonDefaultSecret(
+    'EMAIL_OTP_SECRET',
+    config.emailOtpSecret,
+    DEFAULT_EMAIL_OTP_SECRET,
+  );
+  if (!config.mpesaCallbackSecret) {
+    throw new Error(
+      'MPESA_CALLBACK_SECRET must be set to a non-empty value in production. ' +
+        'Without it, M-Pesa callback endpoints accept unauthenticated requests.',
+    );
+  }
+  assertNonSandboxUrl('PAYPAL_BASE_URL', config.paypalBaseUrl);
+  assertNonSandboxUrl('MPESA_BASE_URL', config.mpesaBaseUrl);
   if (config.allowedOrigins.length === 0) {
     throw new Error(
       'PLATFORM_ALLOWED_ORIGINS or CORS_ALLOWED_ORIGINS must be set in production',
@@ -175,6 +194,16 @@ if (config.nodeEnv === 'production') {
 function assertNonDefaultSecret(name, value, defaultValue) {
   if (!value || value === defaultValue) {
     throw new Error(`${name} must be set to a non-default value in production`);
+  }
+}
+
+function assertNonSandboxUrl(name, value) {
+  const lower = String(value || '').toLowerCase();
+  if (lower.includes('sandbox')) {
+    throw new Error(
+      `${name} must point to a production endpoint in production (found sandbox URL: ${value}). ` +
+        'Set the environment variable to the live API base URL.',
+    );
   }
 }
 

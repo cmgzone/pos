@@ -51,6 +51,9 @@ class ReceiptService {
     String? etimsQrCode,
     bool useAbsoluteAmounts = false,
     bool showTenderedBreakdown = false,
+    bool isQuotation = false,
+    String? quotationNo,
+    String? quotationStatus,
   }) async {
     final pdf = pw.Document();
     final dateStr = _formatDocumentDate(documentDate);
@@ -58,7 +61,9 @@ class ReceiptService {
     final displaySubtotal = useAbsoluteAmounts ? subtotal.abs() : subtotal;
     final displayTax = useAbsoluteAmounts ? tax.abs() : tax;
     final displayDiscount = useAbsoluteAmounts ? discount.abs() : discount;
-    final isCash = showTenderedBreakdown || paymentType.toLowerCase() == 'cash';
+    final isCash =
+        !isQuotation &&
+        (showTenderedBreakdown || paymentType.toLowerCase() == 'cash');
 
     pdf.addPage(
       pw.Page(
@@ -152,19 +157,34 @@ class ReceiptService {
                 ],
               ),
               pw.SizedBox(height: 4),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'Payment: ${_pdfSafe(paymentType).toUpperCase()}',
-                    style: const pw.TextStyle(fontSize: 8),
-                  ),
-                  pw.Text(
-                    'Cashier: ${_pdfSafe(cashierName ?? 'Unknown Cashier')}',
-                    style: const pw.TextStyle(fontSize: 8),
-                  ),
-                ],
-              ),
+              if (isQuotation)
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Quotation No: ${_pdfSafe(quotationNo ?? saleId)}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                    pw.Text(
+                      'Status: ${_pdfSafe(quotationStatus ?? 'DRAFT').toUpperCase()}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  ],
+                )
+              else
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Payment: ${_pdfSafe(paymentType).toUpperCase()}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                    pw.Text(
+                      'Cashier: ${_pdfSafe(cashierName ?? 'Unknown Cashier')}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  ],
+                ),
               if (referenceSaleId != null &&
                   referenceSaleId.trim().isNotEmpty) ...[
                 pw.SizedBox(height: 4),
@@ -218,7 +238,9 @@ class ReceiptService {
                   mainAxisAlignment: pw.MainAxisAlignment.start,
                   children: [
                     pw.Text(
-                      'Due Date: ${_pdfSafe(dueDate)}',
+                      isQuotation
+                          ? 'Valid until: ${_pdfSafe(dueDate)}'
+                          : 'Due Date: ${_pdfSafe(dueDate)}',
                       style: const pw.TextStyle(fontSize: 8),
                     ),
                   ],
@@ -386,7 +408,9 @@ class ReceiptService {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    useAbsoluteAmounts ? 'REFUND TOTAL' : 'TOTAL',
+                    isQuotation
+                        ? 'QUOTATION TOTAL'
+                        : (useAbsoluteAmounts ? 'REFUND TOTAL' : 'TOTAL'),
                     style: pw.TextStyle(
                       fontSize: 14,
                       fontWeight: pw.FontWeight.bold,
@@ -414,14 +438,16 @@ class ReceiptService {
                 ),
               ],
 
-              if (_hasEtimsDetails(
-                etimsStatus: etimsStatus,
-                etimsInvoiceNumber: etimsInvoiceNumber,
-                etimsControlUnitInvoiceNumber: etimsControlUnitInvoiceNumber,
-                etimsControlUnitSerial: etimsControlUnitSerial,
-                etimsVerificationUrl: etimsVerificationUrl,
-                etimsQrCode: etimsQrCode,
-              )) ...[
+              if (!isQuotation &&
+                  _hasEtimsDetails(
+                    etimsStatus: etimsStatus,
+                    etimsInvoiceNumber: etimsInvoiceNumber,
+                    etimsControlUnitInvoiceNumber:
+                        etimsControlUnitInvoiceNumber,
+                    etimsControlUnitSerial: etimsControlUnitSerial,
+                    etimsVerificationUrl: etimsVerificationUrl,
+                    etimsQrCode: etimsQrCode,
+                  )) ...[
                 pw.SizedBox(height: 10),
                 pw.Container(
                   width: double.infinity,
@@ -478,13 +504,42 @@ class ReceiptService {
                 color: PdfColors.grey400,
               ),
               pw.SizedBox(height: 8),
-              pw.Text(
-                _pdfSafe(ShopSettings.receiptFooter),
-                style: pw.TextStyle(
-                  fontSize: 10,
-                  fontWeight: pw.FontWeight.bold,
+              if (isQuotation) ...[
+                pw.Text(
+                  'This is a quotation, not a tax invoice.',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Prices are valid until the expiry date above. '
+                  'No payment has been collected and no stock has been reserved.',
+                  style: const pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  _pdfSafe(ShopSettings.shopPhone).isNotEmpty
+                      ? 'Contact us: ${_pdfSafe(ShopSettings.shopPhone)}'
+                      : '',
+                  style: const pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ] else
+                pw.Text(
+                  _pdfSafe(ShopSettings.receiptFooter),
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
               pw.SizedBox(height: 4),
               pw.SizedBox(height: 8),
               // Barcode-style sale ID
@@ -576,6 +631,9 @@ class ReceiptService {
     String? etimsQrCode,
     bool useAbsoluteAmounts = false,
     bool showTenderedBreakdown = false,
+    bool isQuotation = false,
+    String? quotationNo,
+    String? quotationStatus,
   }) async {
     final pdf = await generateReceipt(
       saleId: saleId,
@@ -604,6 +662,9 @@ class ReceiptService {
       etimsQrCode: etimsQrCode,
       useAbsoluteAmounts: useAbsoluteAmounts,
       showTenderedBreakdown: showTenderedBreakdown,
+      isQuotation: isQuotation,
+      quotationNo: quotationNo,
+      quotationStatus: quotationStatus,
     );
 
     if (!context.mounted) {

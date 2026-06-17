@@ -738,7 +738,7 @@ async function initiateMpesaPosCheckout(payment, businessGateway) {
     `${mpesaConfig.shortcode}${mpesaConfig.passkey}${timestamp}`,
   ).toString('base64');
   const phoneNumber = normalizeMpesaPhone(payment.phoneNumber);
-  const amount = Math.max(1, Math.ceil(payment.amountMinor / 100));
+  const amount = Math.max(1, Math.round(payment.amountMinor / 100));
   const fetch = (await import('node-fetch')).default;
   const response = await fetch(
     `${mpesaConfig.baseUrl.replace(/\/$/, '')}/mpesa/stkpush/v1/processrequest`,

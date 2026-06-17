@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/cash_drawer_service.dart';
@@ -33,8 +33,11 @@ import '../../training/widgets/training_anchor.dart';
 import '../data/cart_provider.dart';
 import '../data/held_sale_provider.dart';
 import '../data/held_sale_repository.dart';
+import '../data/quotation_form_provider.dart';
+import '../data/quotation_repository.dart';
 import '../data/sale_repository.dart';
 import '../../app/app_shell.dart';
+import '../../customers/data/customer_repository.dart';
 import '../../services/data/service_repository.dart';
 import '../../services/data/service_provider.dart';
 
@@ -63,9 +66,30 @@ final posRecentSalesProvider = FutureProvider<List<Map<String, dynamic>>>(
   (ref) => SaleRepository.getAll(
     cashierId: SessionService.currentUserId,
     branchId: BranchService.currentBranchId,
-    startDate: DateTime.now().subtract(const Duration(days: 7)).toIso8601String().substring(0, 10),
+    startDate: DateTime.now()
+        .subtract(const Duration(days: 7))
+        .toIso8601String()
+        .substring(0, 10),
   ),
 );
+
+/// Holds the most recently saved quotation so the Quotation cart can show
+/// Print / Convert actions without leaving the POS.
+final lastSavedQuotationProvider = StateProvider<Map<String, dynamic>?>(
+  (ref) => null,
+);
+
+final quotationCustomerSearchProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+      ref.watch(_quotationCustomerQueryProvider);
+      return CustomerRepository.search(
+        ref.read(_quotationCustomerQueryProvider),
+      );
+    });
+
+final _quotationCustomerQueryProvider = StateProvider<String>((ref) => '');
+
+const _uuid = Uuid();
 
 class PosScreen extends ConsumerWidget {
   const PosScreen({super.key});
@@ -73,7 +97,7 @@ class PosScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isMobile = MediaQuery.of(context).size.width <= 800;
-    final cartCount = ref.watch(cartProvider).length;
+    final isWide = MediaQuery.of(context).size.width > 900;
     final cashierName = SessionService.currentUserName;
     final cashierRole = RolePermissions.label(SessionService.currentUserRole);
     final syncState = ref.watch(syncControllerProvider);
@@ -83,12 +107,12 @@ class PosScreen extends ConsumerWidget {
     );
 
     ref.listen(pikiNavigateProvider, (_, next) {
-      if (next != PikiNavTarget.pos || !isMobile) return;
+      if (next != PikiNavTarget.pos || isWide) return;
       ref.read(pikiNavigateProvider.notifier).state = PikiNavTarget.none;
       if (ref.read(cartProvider).isEmpty) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) {
-          _showMobileCartSheet(context);
+          _showMobileCartSheet(context, ref);
         }
       });
     });
@@ -151,77 +175,53 @@ class PosScreen extends ConsumerWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Responsive: side-by-side on wide screens, stacked on narrow
-          if (constraints.maxWidth > 800) {
-            return Row(
-              children: [
-                Expanded(flex: 7, child: _ProductSide()),
-                Container(width: 1, color: Theme.of(context).colorScheme.outline),
-                SizedBox(
-                  width: 380,
-                  child: TrainingAnchor(id: 'pos.cart', child: _CartSide()),
-                ),
-              ],
-            );
-          } else {
-            return _ProductSide(); // Mobile: full screen products + FAB for cart
+          final quotationsEnabled = ShopSettings.quotationsEnabled;
+          final posMode = ref.watch(posModeProvider);
+          // Responsive: side-by-side on wide screens, full-width + bottom bar on narrow
+          final content = constraints.maxWidth > 900
+              ? Row(
+                  children: [
+                    Expanded(flex: 7, child: _ProductSide()),
+                    Container(
+                      width: 1,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    SizedBox(
+                      width: 360,
+                      child: TrainingAnchor(
+                        id: 'pos.cart',
+                        child: posMode == PosMode.quotation
+                            ? _QuotationCartSide()
+                            : _CartSide(),
+                      ),
+                    ),
+                  ],
+                )
+              : _ProductSide(); // Narrow/medium: full screen products + bottom action bar
+
+          if (!quotationsEnabled) {
+            return content;
           }
+          return Column(
+            children: [
+              _PosModeTabBar(),
+              Expanded(child: content),
+            ],
+          );
         },
       ),
-      bottomNavigationBar: isMobile && cartCount > 0
-          ? _MobilePosCheckoutBar(
-              onOpenCart: () => _showMobileCartSheet(context),
-            )
-          : null,
-      floatingActionButton: isMobile && cartCount == 0
+      bottomNavigationBar: !isWide
           ? TrainingAnchor(
               id: 'pos.cart',
-              child: FloatingActionButton.extended(
-                onPressed: () => _showMobileCartSheet(context),
-                backgroundColor: cartCount > 0
-                    ? AppColors.success
-                    : (Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.darkSurfaceHighlight
-                        : AppColors.surfaceHighlight),
-                foregroundColor: Colors.white,
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(Icons.shopping_cart_checkout_rounded),
-                    if (cartCount > 0)
-                      Positioned(
-                        right: -8,
-                        top: -8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.error,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '$cartCount',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                label: Text(cartCount > 0 ? 'Checkout' : 'Cart'),
+              child: _PosBottomActionBar(
+                onOpenCart: () => _showMobileCartSheet(context, ref),
               ),
             )
           : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  void _showMobileCartSheet(BuildContext context) {
+  void _showMobileCartSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -246,7 +246,11 @@ class PosScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              Expanded(child: _CartSide()),
+              Expanded(
+                child: ref.watch(posModeProvider) == PosMode.quotation
+                    ? _QuotationCartSide()
+                    : _CartSide(),
+              ),
             ],
           ),
         ),
@@ -255,26 +259,36 @@ class PosScreen extends ConsumerWidget {
   }
 }
 
-class _MobilePosCheckoutBar extends ConsumerWidget {
+class _PosBottomActionBar extends ConsumerWidget {
   final VoidCallback onOpenCart;
 
-  const _MobilePosCheckoutBar({required this.onOpenCart});
+  const _PosBottomActionBar({required this.onOpenCart});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(posModeProvider);
+    final cart = ref.watch(cartProvider);
     final total = ref.watch(cartTotalProvider);
-    final cartCount = ref.watch(cartProvider).length;
+    final count = cart.length;
+    final hasItems = count > 0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final totalLabel = mode == PosMode.quotation ? 'Quote total' : 'Total';
+    final buttonLabel = mode == PosMode.quotation
+        ? 'Review & Save Quote'
+        : 'Review & Checkout';
+
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
         decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
+          color: isDark
               ? AppColors.darkSurface
               : Theme.of(context).colorScheme.surface,
           border: Border(
             top: BorderSide(
-              color: Theme.of(context).brightness == Brightness.dark
+              color: isDark
                   ? AppColors.darkBorder
                   : Theme.of(context).colorScheme.outline,
             ),
@@ -288,7 +302,7 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Current sale',
+                    hasItems ? totalLabel : 'Cart',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
@@ -297,12 +311,18 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                    hasItems
+                        ? '${ShopSettings.currency}${total.toStringAsFixed(2)}'
+                        : '$count item${count == 1 ? '' : 's'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: AppColors.success,
-                      fontSize: 20,
+                      color: hasItems
+                          ? (isDark
+                                ? AppColors.darkTextPrimary
+                                : Theme.of(context).colorScheme.onSurface)
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -310,20 +330,38 @@ class _MobilePosCheckoutBar extends ConsumerWidget {
               ),
             ),
             SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: onOpenCart,
-              icon: Icon(Icons.shopping_cart_checkout_rounded),
-              label: Text('Review & Pay ($cartCount)'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
+            if (hasItems)
+              FilledButton.icon(
+                onPressed: onOpenCart,
+                icon: Icon(
+                  mode == PosMode.quotation
+                      ? Icons.request_quote_outlined
+                      : Icons.shopping_cart_checkout_rounded,
+                  size: 20,
                 ),
-                textStyle: TextStyle(fontWeight: FontWeight.w900),
+                label: Text(buttonLabel),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  textStyle: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: onOpenCart,
+                icon: Icon(Icons.shopping_cart_outlined, size: 20),
+                label: Text('Open Cart'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -354,10 +392,7 @@ class _CashierAvatarButton extends StatelessWidget {
         backgroundColor: AppColors.primaryLight,
         child: Text(
           initial,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -751,7 +786,10 @@ class _SyncIndicatorChip extends StatelessWidget {
     );
   }
 
-  _SyncIndicatorStyle _resolveIndicatorStyle(BuildContext context, SyncState state) {
+  _SyncIndicatorStyle _resolveIndicatorStyle(
+    BuildContext context,
+    SyncState state,
+  ) {
     switch (state.indicator) {
       case SyncIndicatorState.localOnly:
         return _SyncIndicatorStyle(
@@ -880,7 +918,9 @@ class _LicenseIndicatorChip extends StatelessWidget {
       LicenseAccessStatus.grace => AppColors.warning,
       LicenseAccessStatus.expired ||
       LicenseAccessStatus.invalid => AppColors.error,
-      LicenseAccessStatus.localOnly => Theme.of(context).colorScheme.onSurfaceVariant,
+      LicenseAccessStatus.localOnly => Theme.of(
+        context,
+      ).colorScheme.onSurfaceVariant,
     };
     final icon = switch (license.accessStatus) {
       LicenseAccessStatus.active => Icons.verified_outlined,
@@ -936,6 +976,150 @@ class _SyncIndicatorStyle {
     required this.color,
     required this.label,
   });
+}
+
+// ──────────────── POS MODE TABS ────────────────
+
+class _PosModeTabBar extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(posModeProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      color: isDark
+          ? AppColors.darkSurface
+          : Theme.of(context).colorScheme.surface,
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+      child: Row(
+        children: [
+          _ModeTab(
+            label: 'Sale',
+            icon: Icons.point_of_sale_rounded,
+            selected: mode == PosMode.sale,
+            onTap: () => _switchMode(context, ref, PosMode.sale),
+          ),
+          SizedBox(width: 8),
+          _ModeTab(
+            label: 'Quotation',
+            icon: Icons.request_quote_outlined,
+            selected: mode == PosMode.quotation,
+            onTap: () => _switchMode(context, ref, PosMode.quotation),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _switchMode(
+    BuildContext context,
+    WidgetRef ref,
+    PosMode target,
+  ) async {
+    final current = ref.read(posModeProvider);
+    if (current == target) return;
+
+    final cart = ref.read(cartProvider);
+    if (cart.isNotEmpty) {
+      final label = target.name[0].toUpperCase() + target.name.substring(1);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Switch to $label?'),
+          content: Text(
+            'Switching will clear the ${cart.length} item${cart.length == 1 ? '' : 's'} '
+            'already in the cart.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Switch'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      _clearCartAndForm(ref);
+    }
+
+    ref.read(posModeProvider.notifier).state = target;
+  }
+
+  void _clearCartAndForm(WidgetRef ref) {
+    ref.read(cartProvider.notifier).clear();
+    ref.read(discountProvider.notifier).state = 0.0;
+    ref.read(quotationCustomerProvider.notifier).state = null;
+    ref.read(quotationExpiryProvider.notifier).state = null;
+    ref.read(quotationNotesProvider.notifier).state = '';
+    ref.read(lastSavedQuotationProvider.notifier).state = null;
+    ref.read(activeQuotationIdProvider.notifier).state = null;
+  }
+}
+
+class _ModeTab extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeTab({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = isDark ? AppColors.darkAccent : AppColors.primary;
+    final bg = selected ? accent : Colors.transparent;
+    final fg = selected
+        ? Colors.white
+        : (isDark
+              ? AppColors.darkTextSecondary
+              : Theme.of(context).colorScheme.onSurfaceVariant);
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? Colors.transparent
+                  : (isDark ? AppColors.darkBorder : AppColors.border),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(icon, size: 15, color: fg),
+                SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ──────────────── LEFT SIDE: Products ────────────────
@@ -1314,7 +1498,9 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           child: Text(
             'Your admin has not enabled POS product or service access for this account.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
@@ -1350,6 +1536,13 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Product grid columns are based on the actual ProductSide width.
+        final sideWidth = constraints.maxWidth;
+        final gridColumns = sideWidth < 600
+            ? 2
+            : sideWidth < 900
+            ? 3
+            : 4;
         final tightVertical = constraints.maxHeight < (compact ? 330 : 380);
         final productPadding = tightVertical
             ? (compact ? 10.0 : 16.0)
@@ -1559,6 +1752,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       }
                       if (viewMode == PosProductViewMode.compact) {
                         return ListView.separated(
+                          padding: const EdgeInsets.only(bottom: 8),
                           itemCount: products.length,
                           separatorBuilder: (_, _) =>
                               SizedBox(height: compact ? 8 : 10),
@@ -1578,11 +1772,12 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         );
                       }
                       return GridView.builder(
-                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: compact ? 180 : 220,
-                          childAspectRatio: compact ? 0.82 : 0.95,
-                          crossAxisSpacing: compact ? 12 : 16,
-                          mainAxisSpacing: compact ? 12 : 16,
+                        padding: const EdgeInsets.only(bottom: 8),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: gridColumns,
+                          mainAxisExtent: 128,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
                         ),
                         itemCount: products.length,
                         itemBuilder: (context, index) {
@@ -1598,23 +1793,24 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       );
                     },
                     loading: () => GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 220,
-                            childAspectRatio: 0.95,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                          ),
+                      padding: const EdgeInsets.only(bottom: 8),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: gridColumns,
+                        mainAxisExtent: 128,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
                       itemCount: 8,
                       itemBuilder: (_, _) => Container(
                         decoration: BoxDecoration(
-                          color: (Theme.of(context).brightness == Brightness.dark
-                                  ? AppColors.darkSurfaceHighlight
-                                  : Theme.of(context).colorScheme.surfaceContainerHighest)
-                              .withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
+                          color:
+                              (Theme.of(context).brightness == Brightness.dark
+                                      ? AppColors.darkSurfaceHighlight
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.surfaceContainerHighest)
+                                  .withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                     ),
@@ -1674,49 +1870,35 @@ class _PremiumSearchField extends StatelessWidget {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          height: compact ? 42 : 46,
+          height: 38,
           decoration: BoxDecoration(
-            color: active
-                ? (isDark ? AppColors.darkSurfaceHighlight : AppColors.surface)
-                : (isDark
-                    ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.72)
-                    : AppColors.surfaceHighlight.withValues(alpha: 0.72)),
-            borderRadius: BorderRadius.circular(14),
+            color: isDark ? AppColors.darkSurfaceHighlight : AppColors.surface,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: active
                   ? (isDark
-                      ? AppColors.darkAccent.withValues(alpha: 0.48)
-                      : Theme.of(context).colorScheme.secondary.withValues(alpha: 0.48))
+                        ? AppColors.darkAccent.withValues(alpha: 0.28)
+                        : AppColors.primary.withValues(alpha: 0.28))
                   : (isDark
-                      ? AppColors.darkBorder.withValues(alpha: 0.9)
-                      : AppColors.border.withValues(alpha: 0.74)),
-              width: active ? 1.25 : 1,
+                        ? AppColors.darkBorder.withValues(alpha: 0.9)
+                        : AppColors.border),
+              width: 1,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: active
-                    ? (isDark
-                        ? AppColors.darkAccent.withValues(alpha: 0.12)
-                        : Theme.of(context).colorScheme.secondary.withValues(alpha: 0.12))
-                    : Colors.black.withValues(alpha: 0.18),
-                blurRadius: active ? 20 : 12,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
           child: Row(
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
-                width: compact ? 28 : 30,
-                height: compact ? 28 : 30,
+                width: 24,
+                height: 24,
                 margin: const EdgeInsets.only(left: 8, right: 8),
                 decoration: BoxDecoration(
                   color: active
-                      ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14)
+                      ? (isDark ? AppColors.darkAccent : AppColors.primary)
+                            .withValues(alpha: 0.14)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: AnimatedRotation(
                   turns: hasFocus ? -0.04 : 0,
@@ -1724,10 +1906,12 @@ class _PremiumSearchField extends StatelessWidget {
                   curve: Curves.easeOutCubic,
                   child: Icon(
                     Icons.manage_search_rounded,
-                    size: compact ? 18 : 19,
+                    size: 17,
                     color: active
-                        ? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
-                        : (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant),
+                        ? (isDark ? AppColors.darkAccent : AppColors.primary)
+                        : (isDark
+                              ? AppColors.darkTextMuted
+                              : Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
               ),
@@ -1764,7 +1948,8 @@ class _PremiumSearchField extends StatelessWidget {
                     hintStyle: TextStyle(
                       color: isDark
                           ? AppColors.darkTextMuted
-                          : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+                          : Theme.of(context).colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.72),
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1781,10 +1966,7 @@ class _PremiumSearchField extends StatelessWidget {
                         onTap: onClear,
                         compact: compact,
                       )
-                    : SizedBox(
-                        key: ValueKey('empty-search-action'),
-                        width: 8,
-                      ),
+                    : SizedBox(key: ValueKey('empty-search-action'), width: 8),
               ),
             ],
           ),
@@ -1817,16 +1999,20 @@ class _SearchClearButton extends StatelessWidget {
             width: compact ? 28 : 30,
             height: compact ? 28 : 30,
             decoration: BoxDecoration(
-              color: (Theme.of(context).brightness == Brightness.dark
-                      ? AppColors.darkSurface
-                      : Theme.of(context).colorScheme.surfaceContainerHighest)
-                  .withValues(alpha: 0.92),
+              color:
+                  (Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.darkSurface
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest)
+                      .withValues(alpha: 0.92),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: (Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.darkBorder
-                        : Theme.of(context).colorScheme.outline)
-                    .withValues(alpha: 0.88),
+                color:
+                    (Theme.of(context).brightness == Brightness.dark
+                            ? AppColors.darkBorder
+                            : Theme.of(context).colorScheme.outline)
+                        .withValues(alpha: 0.88),
               ),
             ),
             child: Icon(
@@ -1852,8 +2038,12 @@ class _SearchStatusHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = ready
-        ? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
-        : (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant);
+        ? (isDark
+              ? AppColors.darkAccent
+              : Theme.of(context).colorScheme.secondary)
+        : (isDark
+              ? AppColors.darkTextMuted
+              : Theme.of(context).colorScheme.onSurfaceVariant);
 
     return Row(
       children: [
@@ -1863,16 +2053,23 @@ class _SearchStatusHint extends StatelessWidget {
           height: 6,
           decoration: BoxDecoration(
             color: ready
-                ? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
+                ? (isDark
+                      ? AppColors.darkAccent
+                      : Theme.of(context).colorScheme.secondary)
                 : (isDark
-                    ? AppColors.darkTextMuted.withValues(alpha: 0.56)
-                    : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.56)),
+                      ? AppColors.darkTextMuted.withValues(alpha: 0.56)
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.56)),
             shape: BoxShape.circle,
             boxShadow: ready
                 ? [
                     BoxShadow(
-                      color: (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
-                          .withValues(alpha: 0.4),
+                      color:
+                          (isDark
+                                  ? AppColors.darkAccent
+                                  : Theme.of(context).colorScheme.secondary)
+                              .withValues(alpha: 0.4),
                       blurRadius: 10,
                     ),
                   ]
@@ -1928,8 +2125,8 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
   @override
   Widget build(BuildContext context) {
     final active = _hovered || _pressed;
-    final size = widget.compact ? 42.0 : 46.0;
-    final iconSize = widget.compact ? 19.0 : 20.0;
+    final size = widget.compact ? 38.0 : 40.0;
+    final iconSize = widget.compact ? 18.0 : 19.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Tooltip(
@@ -1952,7 +2149,7 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: widget.onTap,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(10),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   curve: Curves.easeOutCubic,
@@ -1960,25 +2157,14 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
                   height: size,
                   decoration: BoxDecoration(
                     color: isDark
-                        ? AppColors.darkSurface.withValues(alpha: 0.86)
-                        : Theme.of(context).colorScheme.surface.withValues(alpha: 0.86),
-                    borderRadius: BorderRadius.circular(14),
+                        ? AppColors.darkSurfaceHighlight
+                        : AppColors.surface,
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: active
                           ? widget.accent.withValues(alpha: 0.5)
-                          : (isDark
-                              ? AppColors.darkBorder.withValues(alpha: 0.78)
-                              : AppColors.border.withValues(alpha: 0.78)),
+                          : (isDark ? AppColors.darkBorder : AppColors.border),
                     ),
-                    boxShadow: active
-                        ? [
-                            BoxShadow(
-                              color: widget.accent.withValues(alpha: 0.14),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ]
-                        : null,
                   ),
                   child: Icon(
                     widget.icon,
@@ -1986,8 +2172,9 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
                     color: active
                         ? widget.accent
                         : (isDark
-                            ? AppColors.darkTextMuted
-                            : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.86)),
+                              ? AppColors.darkTextMuted
+                              : Theme.of(context).colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.86)),
                   ),
                 ),
               ),
@@ -2005,28 +2192,16 @@ class _PosViewModeToggle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(posProductViewModeProvider);
-    final compact = MediaQuery.sizeOf(context).width <= 520;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      height: compact ? 42 : 46,
+      height: 38,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurface.withValues(alpha: 0.86)
-            : Theme.of(context).colorScheme.surface.withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(14),
+        color: isDark ? AppColors.darkSurfaceHighlight : AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isDark
-              ? AppColors.darkBorder.withValues(alpha: 0.78)
-              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.78),
+          color: isDark ? AppColors.darkBorder : AppColors.border,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2035,7 +2210,6 @@ class _PosViewModeToggle extends ConsumerWidget {
             icon: Icons.grid_view_rounded,
             tooltip: 'Card view',
             selected: mode == PosProductViewMode.cards,
-            compact: compact,
             onTap: () => ref.read(posProductViewModeProvider.notifier).state =
                 PosProductViewMode.cards,
           ),
@@ -2043,7 +2217,6 @@ class _PosViewModeToggle extends ConsumerWidget {
             icon: Icons.view_list_rounded,
             tooltip: 'Compact view',
             selected: mode == PosProductViewMode.compact,
-            compact: compact,
             onTap: () => ref.read(posProductViewModeProvider.notifier).state =
                 PosProductViewMode.compact,
           ),
@@ -2057,14 +2230,12 @@ class _PosViewModeButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final bool selected;
-  final bool compact;
   final VoidCallback onTap;
 
   const _PosViewModeButton({
     required this.icon,
     required this.tooltip,
     required this.selected,
-    required this.compact,
     required this.onTap,
   });
 
@@ -2078,38 +2249,29 @@ class _PosViewModeButton extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOutCubic,
-          width: compact ? 34 : 38,
-          height: compact ? 34 : 38,
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
             color: selected
                 ? (Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkAccent.withValues(alpha: 0.18)
-                    : AppColors.primaryLight.withValues(alpha: 0.18))
+                          ? AppColors.darkAccent
+                          : AppColors.primary)
+                      .withValues(alpha: 0.14)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: (Theme.of(context).brightness == Brightness.dark
-                              ? AppColors.darkAccent
-                              : AppColors.primaryLight)
-                          .withValues(alpha: 0.18),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : null,
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
             icon,
-            size: compact ? 17 : 18,
+            size: 17,
             color: selected
                 ? (Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkAccent
-                    : AppColors.primaryLight)
+                      ? AppColors.darkAccent
+                      : AppColors.primary)
                 : (Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkTextMuted
-                    : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.82)),
+                      ? AppColors.darkTextMuted
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.82)),
           ),
         ),
       ),
@@ -2135,17 +2297,17 @@ class _QuickPicksStrip extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        SizedBox(height: 8),
+        SizedBox(height: 6),
         SizedBox(
-          height: 56,
+          height: 34,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: products.length,
-            separatorBuilder: (_, _) => SizedBox(width: 10),
+            separatorBuilder: (_, _) => SizedBox(width: 8),
             itemBuilder: (context, index) {
               final product = products[index];
               return _QuickPickChip(
@@ -2170,68 +2332,33 @@ class _QuickPickChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final name = product['name'] as String? ?? 'Product';
-    final price = (product['price'] as num? ?? 0).toDouble();
     return Material(
-      color: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(999),
         child: Container(
-          width: 180,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline,
+              color: isDark ? AppColors.darkBorder : AppColors.border,
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: (isDark ? AppColors.darkAccent : AppColors.primary).withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.add_shopping_cart_rounded,
-                  size: 18,
-                  color: isDark ? AppColors.darkAccent : AppColors.primaryLight,
-                ),
+          child: Center(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isDark
+                    ? AppColors.darkTextPrimary
+                    : Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
               ),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark ? AppColors.darkTextPrimary : null,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      '${ShopSettings.currency}${price.toStringAsFixed(2)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark ? AppColors.darkAccentSoft : AppColors.success,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2270,23 +2397,27 @@ class _NoProductSearchResults extends StatelessWidget {
               size: 58,
               color: isDark
                   ? AppColors.darkTextMuted.withValues(alpha: 0.5)
-                  : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
+                  : Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
             ),
             SizedBox(height: 14),
             Text(
               'No match for "$query"',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: isDark ? AppColors.darkTextPrimary : null,
-                  ),
+                fontWeight: FontWeight.w900,
+                color: isDark ? AppColors.darkTextPrimary : null,
+              ),
             ),
             SizedBox(height: 8),
             Text(
               'Clear the search, create a product, or check services.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             SizedBox(height: 18),
@@ -2376,7 +2507,9 @@ class _CompactProductTile extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
+      color: isDark
+          ? AppColors.darkSurface
+          : Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: isOutOfStock ? null : onTap,
@@ -2388,7 +2521,9 @@ class _CompactProductTile extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isDark ? AppColors.darkBorder : Theme.of(context).colorScheme.outline,
+                color: isDark
+                    ? AppColors.darkBorder
+                    : Theme.of(context).colorScheme.outline,
               ),
             ),
             child: Row(
@@ -2419,7 +2554,9 @@ class _CompactProductTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2431,7 +2568,9 @@ class _CompactProductTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 10,
                           ),
                         ),
@@ -2446,7 +2585,9 @@ class _CompactProductTile extends StatelessWidget {
                     Text(
                       '${ShopSettings.currency}${price.toStringAsFixed(2)}',
                       style: TextStyle(
-                        color: isDark ? AppColors.darkAccentSoft : AppColors.success,
+                        color: isDark
+                            ? AppColors.darkAccentSoft
+                            : AppColors.success,
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
                       ),
@@ -2476,8 +2617,12 @@ class _CompactProductTile extends StatelessWidget {
                 Icon(
                   Icons.add_circle_rounded,
                   color: isOutOfStock
-                      ? (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant)
-                      : (isDark ? AppColors.darkAccent : AppColors.primaryLight),
+                      ? (isDark
+                            ? AppColors.darkTextMuted
+                            : Theme.of(context).colorScheme.onSurfaceVariant)
+                      : (isDark
+                            ? AppColors.darkAccent
+                            : AppColors.primaryLight),
                 ),
               ],
             ),
@@ -2508,13 +2653,18 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary)
-                      .withValues(alpha: 0.14),
+                  color:
+                      (isDark
+                              ? AppColors.darkAccent
+                              : Theme.of(context).colorScheme.secondary)
+                          .withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   Icons.design_services_outlined,
-                  color: isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.secondary,
+                  color: isDark
+                      ? AppColors.darkAccent
+                      : Theme.of(context).colorScheme.secondary,
                   size: 28,
                 ),
               ),
@@ -2522,19 +2672,19 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
               Text(
                 'Services are managed on the Services page',
                 textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: isDark ? AppColors.darkTextPrimary : null,
-                    ),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? AppColors.darkTextPrimary : null,
+                ),
               ),
               SizedBox(height: 8),
               Text(
                 'Open Services to create orders, quick-sell jobs, and send service charges to the cart.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               SizedBox(height: 18),
@@ -2599,7 +2749,9 @@ class _CartSide extends ConsumerWidget {
         final isDark = Theme.of(context).brightness == Brightness.dark;
 
         return Container(
-          color: isDark ? AppColors.darkSurface : Theme.of(context).colorScheme.surface,
+          color: isDark
+              ? AppColors.darkSurface
+              : Theme.of(context).colorScheme.surface,
           child: Column(
             children: [
               Padding(
@@ -2630,7 +2782,9 @@ class _CartSide extends ConsumerWidget {
                               size: 18,
                               color: heldSaleCount > 0
                                   ? AppColors.primaryLight
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                             ),
                             label: Text(
                               heldSaleCount > 0
@@ -2778,8 +2932,14 @@ class _CartSide extends ConsumerWidget {
                 Container(
                   padding: EdgeInsets.all(isMobileCart ? 10 : 24),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outline)),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    border: Border(
+                      top: BorderSide(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
                   ),
                   child: isMobileCart
                       ? Column(
@@ -2792,7 +2952,9 @@ class _CartSide extends ConsumerWidget {
                                     label: 'Total',
                                     value:
                                         '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                                    valueColor: AppColors.success,
+                                    valueColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
                                     isPrimary: true,
                                   ),
                                 ),
@@ -2823,7 +2985,7 @@ class _CartSide extends ConsumerWidget {
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 12,
                                       ),
-                                      backgroundColor: AppColors.success,
+                                      backgroundColor: AppColors.primary,
                                       textStyle: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w800,
@@ -2841,7 +3003,9 @@ class _CartSide extends ConsumerWidget {
                                     child: Text(
                                       'Subtotal ${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
                                       style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
                                       ),
                                       maxLines: 1,
@@ -2852,7 +3016,9 @@ class _CartSide extends ConsumerWidget {
                                     Text(
                                       'Tax ${ShopSettings.currency}${tax.toStringAsFixed(2)}',
                                       style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
                                       ),
                                     ),
@@ -2945,10 +3111,7 @@ class _CartSide extends ConsumerWidget {
                                             context,
                                             ref,
                                           ),
-                                    icon: Icon(
-                                      Icons.layers_outlined,
-                                      size: 16,
-                                    ),
+                                    icon: Icon(Icons.layers_outlined, size: 16),
                                     label: Text(
                                       heldSaleCount > 0
                                           ? 'Held ($heldSaleCount)'
@@ -2999,9 +3162,7 @@ class _CartSide extends ConsumerWidget {
                                       ref,
                                       subtotal,
                                     ),
-                                    icon: Icon(
-                                      Icons.local_offer_outlined,
-                                    ),
+                                    icon: Icon(Icons.local_offer_outlined),
                                     label: Text(
                                       discount > 0
                                           ? 'Edit Discount'
@@ -3044,7 +3205,9 @@ class _CartSide extends ConsumerWidget {
                                         .textTheme
                                         .headlineMedium
                                         ?.copyWith(
-                                          color: AppColors.success,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
                                           fontWeight: FontWeight.bold,
                                         ),
                                   ),
@@ -3058,7 +3221,9 @@ class _CartSide extends ConsumerWidget {
                                 Text(
                                   'Total Profit',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                                 SizedBox(width: 12),
@@ -3083,9 +3248,7 @@ class _CartSide extends ConsumerWidget {
                                   child: OutlinedButton.icon(
                                     onPressed: () =>
                                         _holdCurrentSale(context, ref),
-                                    icon: Icon(
-                                      Icons.pause_circle_outline,
-                                    ),
+                                    icon: Icon(Icons.pause_circle_outline),
                                     label: Text('Hold Sale'),
                                     style: OutlinedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
@@ -3123,9 +3286,10 @@ class _CartSide extends ConsumerWidget {
                               Text(
                                 'You have $heldSaleCount held sale${heldSaleCount == 1 ? '' : 's'} ready to resume.',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                    alpha: 0.85,
-                                  ),
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant
+                                      .withValues(alpha: 0.85),
                                   fontSize: 12,
                                 ),
                                 textAlign: TextAlign.center,
@@ -3148,9 +3312,9 @@ class _CartSide extends ConsumerWidget {
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 20,
+                                        vertical: 16,
                                       ),
-                                      backgroundColor: AppColors.success,
+                                      backgroundColor: AppColors.primary,
                                     ),
                                   ),
                                 ),
@@ -3160,9 +3324,10 @@ class _CartSide extends ConsumerWidget {
                             Text(
                               'Select a payment method such as Cash, Kopesha, or Mobile Money during checkout.',
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                  alpha: 0.8,
-                                ),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: 0.8),
                                 fontSize: 12,
                               ),
                               textAlign: TextAlign.center,
@@ -3200,12 +3365,15 @@ class _CartSide extends ConsumerWidget {
             decoration: BoxDecoration(
               color: isDark
                   ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
-                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  : Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isDark
                     ? AppColors.darkBorder.withValues(alpha: 0.6)
-                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+                    : Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.5),
               ),
             ),
             child: Column(
@@ -3215,22 +3383,28 @@ class _CartSide extends ConsumerWidget {
                   size: 48,
                   color: isDark
                       ? AppColors.darkTextMuted.withValues(alpha: 0.5)
-                      : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                 ),
                 SizedBox(height: 12),
                 Text(
                   'Your cart is empty',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: isDark
+                        ? AppColors.darkTextPrimary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 SizedBox(height: 4),
                 Text(
                   'Tap products to add them to your sale.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -3242,7 +3416,9 @@ class _CartSide extends ConsumerWidget {
           Text(
             'Today\'s Performance',
             style: TextStyle(
-              color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+              color: isDark
+                  ? AppColors.darkTextPrimary
+                  : Theme.of(context).colorScheme.onSurface,
               fontSize: 14,
               fontWeight: FontWeight.w800,
             ),
@@ -3251,7 +3427,8 @@ class _CartSide extends ConsumerWidget {
           todayStatsAsync.when(
             data: (stats) {
               final salesCount = (stats['total_sales'] as num?)?.toInt() ?? 0;
-              final revenue = (stats['total_revenue'] as num?)?.toDouble() ?? 0.0;
+              final revenue =
+                  (stats['total_revenue'] as num?)?.toDouble() ?? 0.0;
               final itemsSold = (stats['total_items'] as num?)?.toInt() ?? 0;
               return Row(
                 children: [
@@ -3277,7 +3454,8 @@ class _CartSide extends ConsumerWidget {
                   Expanded(
                     child: _StatCard(
                       label: 'Revenue',
-                      value: '${ShopSettings.currency}${revenue.toStringAsFixed(0)}',
+                      value:
+                          '${ShopSettings.currency}${revenue.toStringAsFixed(0)}',
                       icon: Icons.payments_outlined,
                       accent: AppColors.darkAccentSoft,
                       isDark: isDark,
@@ -3295,7 +3473,7 @@ class _CartSide extends ConsumerWidget {
                 Expanded(child: _StatCardSkeleton(isDark: isDark)),
               ],
             ),
-            error: (_, __) => Row(
+            error: (_, _) => Row(
               children: [
                 Expanded(
                   child: _StatCard(
@@ -3334,7 +3512,9 @@ class _CartSide extends ConsumerWidget {
               Text(
                 'Recent Sales',
                 style: TextStyle(
-                  color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+                  color: isDark
+                      ? AppColors.darkTextPrimary
+                      : Theme.of(context).colorScheme.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
@@ -3361,19 +3541,24 @@ class _CartSide extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: isDark
                         ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
-                        : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                        : Theme.of(context).colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: isDark
                           ? AppColors.darkBorder.withValues(alpha: 0.5)
-                          : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                          : Theme.of(
+                              context,
+                            ).colorScheme.outline.withValues(alpha: 0.4),
                     ),
                   ),
                   child: Text(
                     'No recent sales. Complete your first sale to see it here.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
@@ -3389,12 +3574,18 @@ class _CartSide extends ConsumerWidget {
                   final createdAt = sale['created_at'] as String?;
                   final productNames = sale['product_names'] as String?;
                   final serviceNames = sale['service_names'] as String?;
-                  final itemsLabel = _formatRecentSaleItems(productNames, serviceNames);
+                  final itemsLabel = _formatRecentSaleItems(
+                    productNames,
+                    serviceNames,
+                  );
                   return Padding(
-                    padding: EdgeInsets.only(bottom: entry.key == recent.length - 1 ? 0 : 8),
+                    padding: EdgeInsets.only(
+                      bottom: entry.key == recent.length - 1 ? 0 : 8,
+                    ),
                     child: _RecentSaleRow(
                       paymentType: paymentType,
-                      total: '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                      total:
+                          '${ShopSettings.currency}${total.toStringAsFixed(2)}',
                       time: _formatRecentSaleTime(createdAt),
                       items: itemsLabel,
                       isDark: isDark,
@@ -3413,20 +3604,23 @@ class _CartSide extends ConsumerWidget {
                 ),
               ),
             ),
-            error: (_, __) => Container(
+            error: (_, _) => Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isDark
                     ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                    : Theme.of(context).colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 'Could not load recent sales.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),
@@ -3470,7 +3664,7 @@ class _CartSide extends ConsumerWidget {
     return '$hour:$minute';
   }
 
-  Future<void> _showDiscountDialog(
+  static Future<void> _showDiscountDialog(
     BuildContext context,
     WidgetRef ref,
     double subtotal,
@@ -3587,7 +3781,9 @@ class _CartSide extends ConsumerWidget {
             decoration: BoxDecoration(
               color: Theme.of(dialogContext).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Theme.of(dialogContext).colorScheme.outline),
+              border: Border.all(
+                color: Theme.of(dialogContext).colorScheme.outline,
+              ),
             ),
             child: Consumer(
               builder: (context, ref, _) {
@@ -3611,9 +3807,10 @@ class _CartSide extends ConsumerWidget {
                                 Text(
                                   'Resume or discard saved carts.',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                      alpha: 0.85,
-                                    ),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant
+                                        .withValues(alpha: 0.85),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -3657,7 +3854,9 @@ class _CartSide extends ConsumerWidget {
                                     fallback: AppErrorMessage.loadFailed,
                                   ),
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
@@ -3685,8 +3884,7 @@ class _CartSide extends ConsumerWidget {
                           return ListView.separated(
                             padding: const EdgeInsets.all(20),
                             itemCount: heldSales.length,
-                            separatorBuilder: (_, _) =>
-                                SizedBox(height: 12),
+                            separatorBuilder: (_, _) => SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final hold = heldSales[index];
                               final holdId = hold['id'] as String? ?? '';
@@ -4064,12 +4262,23 @@ class _CartSide extends ConsumerWidget {
 
   Future<void> _processCheckout(BuildContext context, WidgetRef ref) async {
     final total = ref.read(cartTotalProvider);
+    final pendingQuotationId = ref.read(activeQuotationIdProvider);
+
+    void clearPendingQuotation() {
+      if (pendingQuotationId != null && pendingQuotationId.isNotEmpty) {
+        ref.read(activeQuotationIdProvider.notifier).state = null;
+      }
+    }
+
     final checkoutResult = await PaymentCheckoutDialog.show(
       context,
       total: total,
     );
 
-    if (!context.mounted || checkoutResult == null) return;
+    if (!context.mounted || checkoutResult == null) {
+      clearPendingQuotation();
+      return;
+    }
 
     final type = checkoutResult['type'] as String;
     final customer = checkoutResult['customer'] as Map<String, dynamic>?;
@@ -4083,6 +4292,7 @@ class _CartSide extends ConsumerWidget {
           'Customer is required for Kopesha',
           backgroundColor: AppColors.error,
         );
+        clearPendingQuotation();
         return;
       }
 
@@ -4095,6 +4305,7 @@ class _CartSide extends ConsumerWidget {
         customerId: customer['id'] as String?,
         customerName: customer['name'] as String?,
         dueDate: dueDate,
+        convertFromQuotationId: pendingQuotationId,
       );
     } else if (type == 'mpesa') {
       final phoneNumber = checkoutResult['phoneNumber'] as String?;
@@ -4104,6 +4315,7 @@ class _CartSide extends ConsumerWidget {
           'M-Pesa phone number is required',
           backgroundColor: AppColors.error,
         );
+        clearPendingQuotation();
         return;
       }
       await _completeMpesaCheckout(
@@ -4111,6 +4323,7 @@ class _CartSide extends ConsumerWidget {
         ref,
         phoneNumber: phoneNumber,
         customer: customer,
+        convertFromQuotationId: pendingQuotationId,
       );
     } else if (type == 'mpesa_manual') {
       final payment = checkoutResult['payment'];
@@ -4120,6 +4333,7 @@ class _CartSide extends ConsumerWidget {
           'M-Pesa payment is not confirmed yet. Sale was not saved.',
           backgroundColor: AppColors.warning,
         );
+        clearPendingQuotation();
         return;
       }
       await _completeManualMpesaCheckout(
@@ -4127,12 +4341,16 @@ class _CartSide extends ConsumerWidget {
         ref,
         payment: payment,
         customer: customer,
+        convertFromQuotationId: pendingQuotationId,
       );
     } else {
       // Other payment methods
       final paymentMethod =
           checkoutResult['paymentMethod'] as Map<String, dynamic>?;
-      if (paymentMethod == null) return;
+      if (paymentMethod == null) {
+        clearPendingQuotation();
+        return;
+      }
 
       final isCashDrawer = paymentMethod['is_cash_drawer'] == 1;
       final paymentName = paymentMethod['name'] as String;
@@ -4143,16 +4361,21 @@ class _CartSide extends ConsumerWidget {
           SessionService.currentUserRole,
         );
         if (!context.mounted || (requiresManagedShift && shift == null)) {
+          clearPendingQuotation();
           return;
         }
 
         // Use cash tendered/change collected in the checkout dialog if present.
-        final dialogAmountTendered = checkoutResult['amountTendered'] as double?;
+        final dialogAmountTendered =
+            checkoutResult['amountTendered'] as double?;
         final dialogChangeGiven = checkoutResult['changeGiven'] as double?;
         _CashCheckoutResult? cashCheckout;
         if (dialogAmountTendered == null || dialogChangeGiven == null) {
           cashCheckout = await _showCashCheckoutDialog(context, total);
-          if (!context.mounted || cashCheckout == null) return;
+          if (!context.mounted || cashCheckout == null) {
+            clearPendingQuotation();
+            return;
+          }
         }
 
         await _completeSale(
@@ -4162,10 +4385,12 @@ class _CartSide extends ConsumerWidget {
           isCashDrawer: true,
           isCredit: false,
           shiftId: shift?['id'] as String?,
-          amountTendered: cashCheckout?.amountTendered ?? dialogAmountTendered ?? total,
+          amountTendered:
+              cashCheckout?.amountTendered ?? dialogAmountTendered ?? total,
           changeGiven: cashCheckout?.changeGiven ?? dialogChangeGiven ?? 0.0,
           customerId: customer?['id'] as String?,
           customerName: customer?['name'] as String?,
+          convertFromQuotationId: pendingQuotationId,
         );
       } else {
         await _completeSale(
@@ -4176,6 +4401,7 @@ class _CartSide extends ConsumerWidget {
           isCredit: false,
           customerId: customer?['id'] as String?,
           customerName: customer?['name'] as String?,
+          convertFromQuotationId: pendingQuotationId,
         );
       }
     }
@@ -4186,6 +4412,7 @@ class _CartSide extends ConsumerWidget {
     WidgetRef ref, {
     required String phoneNumber,
     Map<String, dynamic>? customer,
+    String? convertFromQuotationId,
   }) async {
     final total = ref.read(cartTotalProvider);
     try {
@@ -4216,10 +4443,36 @@ class _CartSide extends ConsumerWidget {
               : 'M-Pesa payment is still pending. Sale was not saved.',
           backgroundColor: AppColors.warning,
         );
+        if (convertFromQuotationId != null) {
+          ref.read(activeQuotationIdProvider.notifier).state = null;
+        }
         return;
       }
 
-      final saleId = await _completeSale(
+      final saleId = _uuid.v4();
+      try {
+        await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
+      } catch (error) {
+        if (convertFromQuotationId != null) {
+          ref.read(activeQuotationIdProvider.notifier).state = null;
+        }
+        if (context.mounted) {
+          _showSnackBar(
+            context,
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Payment link failed. Sale was not saved.',
+              fallback:
+                  'Could not link the M-Pesa payment to the sale. The sale was not created.',
+            ),
+            backgroundColor: AppColors.error,
+          );
+        }
+        return;
+      }
+
+      if (!context.mounted) return;
+      await _completeSale(
         context,
         ref,
         paymentType: 'M-Pesa',
@@ -4232,29 +4485,9 @@ class _CartSide extends ConsumerWidget {
             payment.receiptNumber ?? payment.externalReference ?? payment.id,
         paymentStatus: 'paid',
         paymentMetadata: payment.metadata,
+        convertFromQuotationId: convertFromQuotationId,
+        preAllocatedSaleId: saleId,
       );
-
-      if (saleId != null) {
-        try {
-          await PosPaymentService.linkSale(
-            paymentId: payment.id,
-            saleId: saleId,
-          );
-        } catch (error) {
-          if (context.mounted) {
-            _showSnackBar(
-              context,
-              AppErrorMessage.withContext(
-                error,
-                prefix: 'Sale saved, but payment link sync failed.',
-                fallback:
-                    'Sale saved, but the payment link could not be synced.',
-              ),
-              backgroundColor: AppColors.warning,
-            );
-          }
-        }
-      }
     } catch (error) {
       if (context.mounted) {
         _showSnackBar(
@@ -4275,8 +4508,29 @@ class _CartSide extends ConsumerWidget {
     WidgetRef ref, {
     required PosPayment payment,
     Map<String, dynamic>? customer,
+    String? convertFromQuotationId,
   }) async {
-    final saleId = await _completeSale(
+    final saleId = _uuid.v4();
+    try {
+      await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
+    } catch (error) {
+      if (context.mounted) {
+        _showSnackBar(
+          context,
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'Payment link failed. Sale was not saved.',
+            fallback:
+                'Could not link the M-Pesa payment to the sale. The sale was not created.',
+          ),
+          backgroundColor: AppColors.error,
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+    await _completeSale(
       context,
       ref,
       paymentType: 'M-Pesa',
@@ -4289,27 +4543,9 @@ class _CartSide extends ConsumerWidget {
           payment.receiptNumber ?? payment.externalReference ?? payment.id,
       paymentStatus: 'paid',
       paymentMetadata: {...payment.metadata, 'source': 'manual_c2b'},
+      convertFromQuotationId: convertFromQuotationId,
+      preAllocatedSaleId: saleId,
     );
-
-    if (saleId == null) {
-      return;
-    }
-
-    try {
-      await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
-    } catch (error) {
-      if (context.mounted) {
-        _showSnackBar(
-          context,
-          AppErrorMessage.withContext(
-            error,
-            prefix: 'Sale saved, but manual M-Pesa link sync failed.',
-            fallback: 'Sale saved, but the payment link could not be synced.',
-          ),
-          backgroundColor: AppColors.warning,
-        );
-      }
-    }
   }
 
   Future<PosPayment?> _waitForMpesaPayment(
@@ -4362,6 +4598,8 @@ class _CartSide extends ConsumerWidget {
     String? paymentReference,
     String? paymentStatus,
     Map<String, dynamic>? paymentMetadata,
+    String? convertFromQuotationId,
+    String? preAllocatedSaleId,
   }) async {
     final cart = ref.read(cartProvider);
     final subtotal = ref.read(cartSubtotalProvider);
@@ -4384,6 +4622,7 @@ class _CartSide extends ConsumerWidget {
 
     try {
       final saleId = await SaleRepository.createSale(
+        saleId: preAllocatedSaleId,
         totalAmount: total,
         tax: tax,
         discount: discount,
@@ -4428,6 +4667,34 @@ class _CartSide extends ConsumerWidget {
       final etimsResult = await EtimsService.submitSaleIfEnabled(saleId);
       // ──────────────────────────────────────────────────────────────────
 
+      // ── Mark linked quotation as converted (only after successful payment)
+      if (convertFromQuotationId != null && convertFromQuotationId.isNotEmpty) {
+        try {
+          await QuotationRepository.markConverted(
+            convertFromQuotationId,
+            saleId: saleId,
+          );
+          ref.read(lastSavedQuotationProvider.notifier).state = null;
+          bumpQuotationsList(ref);
+        } catch (error) {
+          // Don't fail the sale; surface a warning so admin can fix manually.
+          if (context.mounted) {
+            _showSnackBar(
+              context,
+              AppErrorMessage.withContext(
+                error,
+                prefix: 'Sale saved, but quotation status was not updated.',
+                fallback: 'Sale saved, but quotation status was not updated.',
+              ),
+              backgroundColor: AppColors.warning,
+            );
+          }
+        } finally {
+          ref.read(activeQuotationIdProvider.notifier).state = null;
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────
+
       if (context.mounted) {
         await _openCashDrawerAfterSale(context, isCashDrawer);
       }
@@ -4453,6 +4720,7 @@ class _CartSide extends ConsumerWidget {
       }
       return saleId;
     } catch (e) {
+      ref.read(activeQuotationIdProvider.notifier).state = null;
       if (context.mounted) {
         _showSnackBar(
           context,
@@ -4598,16 +4866,15 @@ class _CartSide extends ConsumerWidget {
               SizedBox(height: 8),
               Text(
                 'Due date: $dueDate',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Done'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Done')),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
@@ -4725,7 +4992,9 @@ class _CartSide extends ConsumerWidget {
                             Text(
                               'Total Due',
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -4927,6 +5196,770 @@ class _CartSide extends ConsumerWidget {
   }
 }
 
+// ──────────────── QUOTATION CART SIDE ────────────────
+
+class _QuotationCartSide extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_QuotationCartSide> createState() => _QuotationCartSideState();
+}
+
+class _QuotationCartSideState extends ConsumerState<_QuotationCartSide> {
+  final _notesController = TextEditingController();
+  final _customerSearchController = TextEditingController();
+  bool _isSaving = false;
+  bool _isConverting = false;
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    _customerSearchController.dispose();
+    super.dispose();
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null || iso.trim().isEmpty) return '';
+    final d = DateTime.tryParse(iso);
+    if (d == null) return iso;
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _pickExpiryDate() async {
+    final now = DateTime.now();
+    final current = ref.read(quotationExpiryProvider);
+    DateTime initial = now.add(const Duration(days: 7));
+    if (current != null && current.isNotEmpty) {
+      final parsed = DateTime.tryParse(current);
+      if (parsed != null) initial = parsed;
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (picked != null) {
+      final iso =
+          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      ref.read(quotationExpiryProvider.notifier).state = iso;
+    }
+  }
+
+  Future<void> _saveQuotation() async {
+    final cart = ref.read(cartProvider);
+    if (cart.isEmpty) {
+      _showSnack(
+        'Add at least one product before saving a quotation.',
+        color: AppColors.warning,
+      );
+      return;
+    }
+    final customer = ref.read(quotationCustomerProvider);
+    if (customer == null) {
+      _showSnack(
+        'Please select a customer for this quotation.',
+        color: AppColors.warning,
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final subtotal = ref.read(cartSubtotalProvider);
+      final tax = ref.read(cartTaxProvider);
+      final discount = ref.read(discountProvider);
+      final total = ref.read(cartTotalProvider);
+      final expiry = ref.read(quotationExpiryProvider);
+      final notes = _notesController.text.trim();
+
+      final quotationId = await QuotationRepository.createQuotation(
+        customerId: customer['id'] as String? ?? '',
+        customerName: customer['name'] as String? ?? '',
+        subtotal: subtotal,
+        discountTotal: discount,
+        taxTotal: tax,
+        total: total,
+        userId: SessionService.currentUserId.isNotEmpty
+            ? SessionService.currentUserId
+            : 'admin',
+        items: cart.map((item) => item.toQuotationItem()).toList(),
+        expiryDate: expiry,
+        notes: notes.isEmpty ? null : notes,
+        status: 'draft',
+      );
+
+      final saved = {
+        'id': quotationId,
+        'quotation_no': 'QUO-pending',
+        'customer_name': customer['name'],
+        'total': total,
+        'subtotal': subtotal,
+        'tax': tax,
+        'discount': discount,
+        'expiry_date': expiry,
+        'notes': notes.isEmpty ? null : notes,
+        'items': cart.map((item) => item.toQuotationItem()).toList(),
+      };
+      // Refresh the real record (with the generated quotation_no).
+      final fresh = await QuotationRepository.getWithItems(quotationId);
+      if (fresh != null) {
+        saved['quotation_no'] = fresh['quotation_no'];
+      }
+      ref.read(lastSavedQuotationProvider.notifier).state = saved;
+      bumpQuotationsList(ref);
+      _showSnack(
+        'Quotation ${saved['quotation_no']} saved.',
+        color: AppColors.success,
+      );
+    } catch (e) {
+      _showSnack(
+        AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+        color: AppColors.error,
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _printQuotation(Map<String, dynamic> quotation) async {
+    if (!mounted) return;
+    final items = (quotation['items'] as List<dynamic>? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    await ReceiptService.showReceiptPreview(
+      context,
+      saleId: quotation['id'] as String,
+      total: (quotation['total'] as num).toDouble(),
+      subtotal: (quotation['subtotal'] as num).toDouble(),
+      tax: (quotation['tax'] as num).toDouble(),
+      discount: (quotation['discount'] as num).toDouble(),
+      paymentType: 'N/A',
+      items: items,
+      customerName: quotation['customer_name'] as String?,
+      dueDate: quotation['expiry_date'] as String?,
+      note: quotation['notes'] as String?,
+      documentTitle: 'Quotation',
+      recordLabel: 'Quote',
+      previewTitle: 'Quotation Preview',
+      fileNamePrefix: 'quotation',
+      isQuotation: true,
+      quotationNo: quotation['quotation_no'] as String?,
+      quotationStatus: 'DRAFT',
+    );
+  }
+
+  Future<void> _convertToSale(Map<String, dynamic> quotation) async {
+    final quotationId = quotation['id'] as String;
+    setState(() => _isConverting = true);
+    try {
+      final loaded = await QuotationRepository.loadForConvert(quotationId);
+      if (!mounted) return;
+      if (loaded.items.isEmpty) {
+        _showSnack(
+          loaded.adjustments.isEmpty
+              ? 'This quotation has no items available to convert.'
+              : 'No items available. ${loaded.adjustments.first}',
+          color: AppColors.warning,
+        );
+        return;
+      }
+
+      final proceed = loaded.adjustments.isEmpty
+          ? true
+          : await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text('Stock changed since quoting'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Some quotation items were adjusted to match '
+                          'current stock:',
+                        ),
+                        SizedBox(height: 10),
+                        ...loaded.adjustments.map(
+                          (a) => Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.warning_amber,
+                                  size: 16,
+                                  color: AppColors.warning,
+                                ),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    a,
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'Continue converting to a sale?',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: Text('Convert'),
+                      ),
+                    ],
+                  ),
+                ) ??
+                false;
+      if (!proceed) return;
+
+      ref.read(cartProvider.notifier).restoreQuotationItems(loaded.items);
+      ref.read(discountProvider.notifier).state =
+          (quotation['discount'] as num?)?.toDouble() ?? 0.0;
+      ref.read(activeQuotationIdProvider.notifier).state = quotationId;
+      ref.read(posModeProvider.notifier).state = PosMode.sale;
+      _showSnack(
+        'Quotation loaded into Sale tab. Take payment to complete.',
+        color: AppColors.primaryLight,
+      );
+    } catch (e) {
+      _showSnack(
+        AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+        color: AppColors.error,
+      );
+    } finally {
+      if (mounted) setState(() => _isConverting = false);
+    }
+  }
+
+  void _clearQuotationForm() {
+    ref.read(cartProvider.notifier).clear();
+    ref.read(discountProvider.notifier).state = 0.0;
+    ref.read(quotationCustomerProvider.notifier).state = null;
+    ref.read(quotationExpiryProvider.notifier).state = null;
+    _notesController.clear();
+    ref.read(lastSavedQuotationProvider.notifier).state = null;
+  }
+
+  void _showSnack(String message, {required Color color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: color,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = ref.watch(cartProvider);
+    final subtotal = ref.watch(cartSubtotalProvider);
+    final tax = ref.watch(cartTaxProvider);
+    final discount = ref.watch(discountProvider);
+    final total = ref.watch(cartTotalProvider);
+    final customer = ref.watch(quotationCustomerProvider);
+    final expiry = ref.watch(quotationExpiryProvider);
+    final savedQuotation = ref.watch(lastSavedQuotationProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMobileCart =
+        MediaQuery.sizeOf(context).width <= 430 ||
+        MediaQuery.sizeOf(context).width <= 430;
+
+    return Container(
+      color: isDark
+          ? AppColors.darkSurface
+          : Theme.of(context).colorScheme.surface,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Quotation',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                if (cart.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: _clearQuotationForm,
+                    icon: Icon(
+                      Icons.delete_outline,
+                      size: 18,
+                      color: AppColors.error,
+                    ),
+                    label: Text(
+                      'Clear',
+                      style: TextStyle(color: AppColors.error),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Divider(height: 1),
+          Expanded(
+            child: cart.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.request_quote_outlined,
+                            size: 48,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.4),
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Add products to build a quotation',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView(
+                    padding: EdgeInsets.all(isMobileCart ? 12 : 16),
+                    children: [
+                      ...cart.map((item) => _CartItemRow(item: item)),
+                      SizedBox(height: 16),
+                      // Summary
+                      _SummaryRow(
+                        title: 'Subtotal',
+                        value:
+                            '${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
+                      ),
+                      SizedBox(height: 8),
+                      _SummaryRow(
+                        title: 'Tax (${ShopSettings.taxRate}%)',
+                        value:
+                            '${ShopSettings.currency}${tax.toStringAsFixed(2)}',
+                      ),
+                      if (discount > 0) ...[
+                        SizedBox(height: 8),
+                        _SummaryRow(
+                          title: 'Discount',
+                          value:
+                              '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
+                          isDiscount: true,
+                        ),
+                      ],
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _CartSide._showDiscountDialog(
+                                context,
+                                ref,
+                                subtotal,
+                              ),
+                              icon: Icon(Icons.local_offer_outlined, size: 18),
+                              label: Text(
+                                discount > 0 ? 'Edit Discount' : 'Add Discount',
+                              ),
+                            ),
+                          ),
+                          if (discount > 0) ...[
+                            SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Clear discount',
+                              onPressed: () =>
+                                  ref.read(discountProvider.notifier).state = 0,
+                              icon: Icon(
+                                Icons.close,
+                                size: 18,
+                                color: AppColors.error,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      Divider(),
+                      SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          Flexible(
+                            child: Text(
+                              '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                              textAlign: TextAlign.end,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.headlineMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 20),
+                      // Customer selector
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Customer',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      if (customer != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.24),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.person, color: AppColors.primaryLight),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      customer['name'] as String? ?? 'Customer',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    if ((customer['phone'] as String?)
+                                            ?.isNotEmpty ==
+                                        true)
+                                      Text(
+                                        customer['phone'] as String,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.close, size: 18),
+                                onPressed: () =>
+                                    ref
+                                            .read(
+                                              quotationCustomerProvider
+                                                  .notifier,
+                                            )
+                                            .state =
+                                        null,
+                                tooltip: 'Clear customer',
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        _QuotationCustomerPicker(),
+                      SizedBox(height: 16),
+                      // Expiry date
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Expiry date (optional)',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _pickExpiryDate,
+                        icon: Icon(Icons.event_outlined, size: 18),
+                        label: Text(
+                          expiry != null && expiry.isNotEmpty
+                              ? 'Valid until: ${_formatDate(expiry)}'
+                              : 'Set expiry date',
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      // Notes
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Notes (optional)',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      TextField(
+                        controller: _notesController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Add a note for the customer...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 20),
+                      // Actions
+                      if (savedQuotation == null) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _isSaving ? null : _saveQuotation,
+                            icon: _isSaving
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(Icons.save_outlined),
+                            label: Text('Save Quotation'),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.success.withValues(alpha: 0.24),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                color: AppColors.success,
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Saved: ${savedQuotation['quotation_no']}',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    _printQuotation(savedQuotation),
+                                icon: Icon(Icons.print_outlined, size: 18),
+                                label: Text('Print'),
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _isConverting
+                                    ? null
+                                    : () => _convertToSale(savedQuotation),
+                                icon: _isConverting
+                                    ? SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Icon(Icons.swap_horiz, size: 18),
+                                label: Text('Convert to Sale'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppColors.success,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: TextButton.icon(
+                            onPressed: _clearQuotationForm,
+                            icon: Icon(Icons.add, size: 18),
+                            label: Text('New Quotation'),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuotationCustomerPicker extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_QuotationCustomerPicker> createState() =>
+      _QuotationCustomerPickerState();
+}
+
+class _QuotationCustomerPickerState
+    extends ConsumerState<_QuotationCustomerPicker> {
+  final _controller = TextEditingController();
+  bool _showResults = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextField(
+          controller: _controller,
+          onTap: () => setState(() => _showResults = true),
+          onChanged: (value) {
+            ref.read(_quotationCustomerQueryProvider.notifier).state = value;
+            setState(() => _showResults = true);
+          },
+          decoration: InputDecoration(
+            hintText: 'Search customer by name or phone',
+            prefixIcon: Icon(
+              Icons.search,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            suffixIcon: _controller.text.isEmpty
+                ? null
+                : IconButton(
+                    icon: Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _controller.clear();
+                      ref.read(_quotationCustomerQueryProvider.notifier).state =
+                          '';
+                    },
+                  ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        if (_showResults)
+          Consumer(
+            builder: (context, ref, _) {
+              final async = ref.watch(quotationCustomerSearchProvider);
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: 220),
+                child: async.when(
+                  data: (customers) {
+                    if (customers.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          'No customers found',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: customers.length,
+                      separatorBuilder: (_, _) => Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final c = customers[index];
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(Icons.person_outline, size: 20),
+                          title: Text(
+                            c['name'] as String? ?? 'Customer',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          subtitle: (c['phone'] as String?)?.isNotEmpty == true
+                              ? Text(
+                                  c['phone'] as String,
+                                  style: TextStyle(fontSize: 11),
+                                )
+                              : null,
+                          onTap: () {
+                            ref.read(quotationCustomerProvider.notifier).state =
+                                c;
+                            setState(() => _showResults = false);
+                            _controller.clear();
+                            ref
+                                    .read(
+                                      _quotationCustomerQueryProvider.notifier,
+                                    )
+                                    .state =
+                                '';
+                          },
+                        );
+                      },
+                    );
+                  },
+                  loading: () => Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'Search failed',
+                      style: TextStyle(fontSize: 12, color: AppColors.error),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
 class _CashCheckoutResult {
   final double amountTendered;
   final double changeGiven;
@@ -5076,7 +6109,11 @@ class _HeldSaleMetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          Icon(
+            icon,
+            size: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           SizedBox(width: 6),
           Text(
             label,
@@ -5208,7 +6245,10 @@ class _CartItemRow extends ConsumerWidget {
           item.isService
               ? '${ShopSettings.currency}${item.unitPrice.toStringAsFixed(2)} service charge'
               : '${ShopSettings.currency}${item.unitPrice.toStringAsFixed(2)} ${UnitUtils.priceLabel(item.unit)}',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+          ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -5228,7 +6268,10 @@ class _CartItemRow extends ConsumerWidget {
         else if (!item.isService)
           Text(
             'No stock limit',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11,
+            ),
           )
         else
           Text(
@@ -5281,10 +6324,7 @@ class _CartItemRow extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Text(
                 UnitUtils.formatWithUnit(item.quantity, item.unit),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ),
           ),
@@ -5366,8 +6406,11 @@ class _CartItemRow extends ConsumerWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: (item.isService ? Theme.of(context).colorScheme.secondary : AppColors.primary)
-                .withValues(alpha: 0.15),
+            color:
+                (item.isService
+                        ? Theme.of(context).colorScheme.secondary
+                        : AppColors.primary)
+                    .withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
@@ -5534,7 +6577,9 @@ class _MobileCartItemCard extends StatelessWidget {
                       ? Text(
                           UnitUtils.formatWithUnit(item.quantity, item.unit),
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w700,
                           ),
                         )
@@ -5548,9 +6593,7 @@ class _MobileCartItemCard extends StatelessWidget {
                                 item.quantity,
                                 item.unit,
                               ),
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
+                              style: TextStyle(fontWeight: FontWeight.w900),
                             ),
                           ),
                         ),
@@ -5625,92 +6668,43 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Resolve category color
-    Color? accentColor;
-    if (color != null) {
-      try {
-        accentColor = Color(int.parse(color!.replaceFirst('#', '0xFF')));
-      } catch (e, st) {
-        debugPrint('POS: failed to parse category color "$color": $e\n$st');
-      }
-    }
-    final chipColor = accentColor ?? (isDark ? AppColors.darkAccent : AppColors.primary);
-    final icon = CategoryIconUtils.iconFor(categoryName ?? title);
+    final accent = isDark ? AppColors.darkAccent : AppColors.primary;
 
     return Padding(
-      padding: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.only(right: 8),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: BorderRadius.circular(999),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: BorderRadius.circular(999),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(100),
-              gradient: isSelected
-                  ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        chipColor,
-                        isDark ? AppColors.darkAccentSoft : AppColors.primaryLight,
-                      ],
-                    )
-                  : null,
+              borderRadius: BorderRadius.circular(999),
               color: isSelected
-                  ? null
-                  : (isDark ? const Color(0xFF111827) : AppColors.surfaceHighlight.withValues(alpha: 0.78)),
+                  ? accent.withValues(alpha: 0.12)
+                  : Colors.transparent,
               border: Border.all(
                 color: isSelected
-                    ? chipColor.withValues(alpha: 0.5)
-                    : (isDark ? AppColors.darkSurfaceHighlight : AppColors.border.withValues(alpha: 0.78)),
-                width: isSelected ? 1.5 : 1,
+                    ? accent.withValues(alpha: 0.4)
+                    : (isDark ? AppColors.darkBorder : AppColors.border),
+                width: 1,
               ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: (isDark ? AppColors.darkAccent : chipColor).withValues(alpha: 0.35),
-                        blurRadius: 18,
-                        spreadRadius: 1,
-                        offset: const Offset(0, 6),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.12),
-                        blurRadius: isDark ? 16 : 14,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  size: 14,
-                  color: isSelected
-                      ? Colors.white
-                      : (isDark
-                          ? AppColors.darkTextSecondary
-                          : (accentColor ?? Theme.of(context).colorScheme.onSurfaceVariant)),
-                ),
-                SizedBox(width: 6),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : (isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface),
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              style: TextStyle(
+                color: isSelected
+                    ? accent
+                    : (isDark
+                          ? AppColors.darkTextPrimary
+                          : Theme.of(context).colorScheme.onSurface),
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12.5,
+              ),
             ),
           ),
         ),
@@ -5737,10 +6731,11 @@ class _ProductImagePlaceholder extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: (Theme.of(context).brightness == Brightness.dark
-                ? AppColors.darkSurfaceHighlight
-                : Theme.of(context).colorScheme.surfaceContainerHighest)
-            .withValues(alpha: 0.8),
+        color:
+            (Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkSurfaceHighlight
+                    : Theme.of(context).colorScheme.surfaceContainerHighest)
+                .withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           if (size > 44)
@@ -5756,38 +6751,14 @@ class _ProductImagePlaceholder extends StatelessWidget {
         size: size <= 44 ? 22 : 32,
         color: isOutOfStock
             ? (Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkTextMuted
-                    : Theme.of(context).colorScheme.onSurfaceVariant)
-                .withValues(alpha: 0.4)
+                      ? AppColors.darkTextMuted
+                      : Theme.of(context).colorScheme.onSurfaceVariant)
+                  .withValues(alpha: 0.4)
             : (Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkAccent
-                    : AppColors.primaryLight)
-                .withValues(alpha: 0.9),
+                      ? AppColors.darkAccent
+                      : AppColors.primaryLight)
+                  .withValues(alpha: 0.9),
       ),
-    );
-  }
-}
-
-class _ProductCardIcon extends StatelessWidget {
-  final String? categoryName;
-  final bool isOutOfStock;
-
-  const _ProductCardIcon({
-    required this.categoryName,
-    required this.isOutOfStock,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Icon(
-      CategoryIconUtils.iconFor(categoryName),
-      size: 42,
-      color: isOutOfStock
-          ? (isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant)
-              .withValues(alpha: 0.35)
-          : (isDark ? AppColors.darkAccent : AppColors.primaryLight)
-              .withValues(alpha: 0.85),
     );
   }
 }
@@ -5808,9 +6779,6 @@ class _ProductCard extends StatefulWidget {
 }
 
 class _ProductCardState extends State<_ProductCard> {
-  bool _isHovered = false;
-  bool _isPressed = false;
-
   Widget _buildProductImage(String imagePath, bool isOutOfStock) {
     if (ProductImageUploadService.isRemoteImage(imagePath)) {
       return Image.network(
@@ -5869,17 +6837,14 @@ class _ProductCardState extends State<_ProductCard> {
         ? (product['matched_variant_low_stock'] as num? ?? 5).toDouble()
         : (product['low_stock'] as num? ?? 5).toDouble();
     final saleUnit = UnitUtils.saleUnitForProduct(product);
-    final stockUnit = UnitUtils.stockUnitForProduct(product);
     final saleToStockFactor = UnitUtils.saleToStockFactor(product);
     final tracksStock = UnitUtils.tracksStock(product);
     final saleStock = saleToStockFactor > 0
         ? (stock / saleToStockFactor)
         : stock;
-    final usesConversion = saleUnit != stockUnit;
     final isLowStock = tracksStock && stock <= lowStock;
     final isOutOfStock = tracksStock && stock <= 0;
 
-    // Aesthetic Colors based on Velvet Night Theme
     final stockBadgeColor = isOutOfStock
         ? AppColors.error
         : isLowStock
@@ -5894,211 +6859,109 @@ class _ProductCardState extends State<_ProductCard> {
 
     final imagePath = product['image_url'] as String?;
     final hasImage = imagePath != null && imagePath.isNotEmpty;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final scale = _isPressed ? 0.96 : (_isHovered ? 1.02 : 1.0);
-
-    return AnimatedScale(
-      scale: scale,
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOutCubic,
-      child: Opacity(
-        opacity: isOutOfStock ? 0.72 : 1,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _isHovered = true),
-          onExit: (_) => setState(() => _isHovered = false),
-          child: GestureDetector(
-            onTapDown: (_) => setState(() => _isPressed = true),
-            onTapUp: (_) => setState(() => _isPressed = false),
-            onTapCancel: () => setState(() => _isPressed = false),
-            onTap: isOutOfStock ? null : widget.onTap,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                // Premium dark glassmorphism card
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkSurface.withValues(alpha: 0.86)
-                    : AppColors.surface.withValues(alpha: 0.9),
-                boxShadow: [
-                  if (_isHovered)
-                    BoxShadow(
-                      color: (Theme.of(context).brightness == Brightness.dark
-                              ? AppColors.darkAccent
-                              : AppColors.primary)
-                          .withValues(alpha: 0.18),
-                      blurRadius: 30,
-                      offset: const Offset(0, 10),
-                    )
-                  else
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+    return Material(
+      color: isOutOfStock
+          ? (isDark
+                ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
+                : Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45))
+          : (isDark ? AppColors.darkSurface : AppColors.surface),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: isOutOfStock ? null : widget.onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isOutOfStock
+                  ? (isDark
+                        ? AppColors.darkBorder.withValues(alpha: 0.3)
+                        : AppColors.border.withValues(alpha: 0.35))
+                  : (isDark ? AppColors.darkBorder : AppColors.border),
+              width: 1,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: hasImage
+                          ? _buildProductImage(imagePath, isOutOfStock)
+                          : _ProductImagePlaceholder(
+                              categoryName: widget.categoryName,
+                              isOutOfStock: isOutOfStock,
+                              size: 40,
+                            ),
                     ),
-                ],
-                border: Border.all(
-                  color: _isHovered
-                      ? (Theme.of(context).brightness == Brightness.dark
-                              ? AppColors.darkAccent
-                              : AppColors.primary)
-                          .withValues(alpha: 0.35)
-                      : (Theme.of(context).brightness == Brightness.dark
-                              ? AppColors.darkBorder
-                              : AppColors.border)
-                          .withValues(alpha: 0.55),
-                  width: 1.5,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Stack(
-                  children: [
-                    Column(
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Minimal visual area — square thumbnail so images never squeeze
-                        Expanded(
-                          child: Center(
-                            child: hasImage
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: SizedBox(
-                                      width: 110,
-                                      height: 110,
-                                      child: _buildProductImage(
-                                        imagePath,
-                                        isOutOfStock,
-                                      ),
-                                    ),
-                                  )
-                                : _ProductCardIcon(
-                                    categoryName: widget.categoryName,
-                                    isOutOfStock: isOutOfStock,
-                                  ),
+                        Text(
+                          displayName,
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkTextPrimary
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            height: 1.2,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 12),
-                      // Text Section
-                      if (product['brand'] != null &&
-                          (product['brand'] as String).isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            (product['brand'] as String).toUpperCase(),
-                            style: TextStyle(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? AppColors.darkAccent
-                                  : AppColors.primaryLight,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 10,
-                              letterSpacing: 0,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      Text(
-                        displayName,
-                        style: TextStyle(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? AppColors.darkTextPrimary
-                              : Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          height: 1.2,
-                          letterSpacing: 0,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? AppColors.darkAccentSoft
-                                  : Theme.of(context).colorScheme.secondary,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                              letterSpacing: 0,
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              '/${UnitUtils.priceLabel(saleUnit)}',
-                              style: TextStyle(
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? AppColors.darkTextSecondary
-                                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (usesConversion) ...[
                         SizedBox(height: 4),
                         Text(
-                          'Stocked: ${UnitUtils.formatWithUnit(stock, stockUnit)}',
+                          '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
                           style: TextStyle(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? AppColors.darkTextMuted
-                                : Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                    alpha: 0.7,
-                                  ),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? AppColors.darkTextPrimary
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                  // Stock badge
-                  Positioned(
-                      top: 0,
-                      right: 0,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: BackdropFilter(
-                          filter: ui.ImageFilter.blur(
-                            sigmaX: 10,
-                            sigmaY: 10,
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: stockBadgeColor.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: stockBadgeColor.withValues(alpha: 0.5),
-                                width: 0.5,
-                              ),
-                            ),
-                            child: Text(
-                              stockLabel,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: stockBadgeColor,
-                                letterSpacing: 0,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: stockBadgeColor.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    stockLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: stockBadgeColor,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -6122,7 +6985,12 @@ class _SummaryRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Text(
+          title,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
         SizedBox(width: 12),
         Flexible(
           child: Text(
@@ -6131,7 +6999,9 @@ class _SummaryRow extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: isDiscount ? AppColors.warning : Theme.of(context).colorScheme.onSurface,
+              color: isDiscount
+                  ? AppColors.warning
+                  : Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -6214,7 +7084,9 @@ class _StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.55)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+            : Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isDark
@@ -6229,7 +7101,11 @@ class _StatCard extends StatelessWidget {
           Icon(
             icon,
             size: 18,
-            color: accent ?? (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary),
+            color:
+                accent ??
+                (isDark
+                    ? AppColors.darkAccent
+                    : Theme.of(context).colorScheme.primary),
           ),
           SizedBox(height: 8),
           Text(
@@ -6237,7 +7113,9 @@ class _StatCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+              color: isDark
+                  ? AppColors.darkTextPrimary
+                  : Theme.of(context).colorScheme.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
@@ -6246,7 +7124,9 @@ class _StatCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -6269,7 +7149,9 @@ class _StatCardSkeleton extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.35)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            : Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -6281,7 +7163,9 @@ class _StatCardSkeleton extends StatelessWidget {
             width: 40,
             height: 16,
             decoration: BoxDecoration(
-              color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.2) : Colors.black12,
+              color: isDark
+                  ? AppColors.darkTextMuted.withValues(alpha: 0.2)
+                  : Colors.black12,
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -6290,7 +7174,9 @@ class _StatCardSkeleton extends StatelessWidget {
             width: 28,
             height: 10,
             decoration: BoxDecoration(
-              color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.15) : Colors.black12,
+              color: isDark
+                  ? AppColors.darkTextMuted.withValues(alpha: 0.15)
+                  : Colors.black12,
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -6322,7 +7208,9 @@ class _RecentSaleRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            : Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isDark
@@ -6336,14 +7224,19 @@ class _RecentSaleRow extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: (isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary)
-                  .withValues(alpha: 0.14),
+              color:
+                  (isDark
+                          ? AppColors.darkAccent
+                          : Theme.of(context).colorScheme.primary)
+                      .withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               Icons.receipt_outlined,
               size: 18,
-              color: isDark ? AppColors.darkAccent : Theme.of(context).colorScheme.primary,
+              color: isDark
+                  ? AppColors.darkAccent
+                  : Theme.of(context).colorScheme.primary,
             ),
           ),
           SizedBox(width: 12),
@@ -6354,7 +7247,9 @@ class _RecentSaleRow extends StatelessWidget {
                 Text(
                   total,
                   style: TextStyle(
-                    color: isDark ? AppColors.darkTextPrimary : Theme.of(context).colorScheme.onSurface,
+                    color: isDark
+                        ? AppColors.darkTextPrimary
+                        : Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
                   ),
@@ -6365,7 +7260,9 @@ class _RecentSaleRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: isDark ? AppColors.darkTextSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -6379,7 +7276,9 @@ class _RecentSaleRow extends StatelessWidget {
               Text(
                 time,
                 style: TextStyle(
-                  color: isDark ? AppColors.darkTextMuted : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: isDark
+                      ? AppColors.darkTextMuted
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
@@ -6388,7 +7287,9 @@ class _RecentSaleRow extends StatelessWidget {
               Text(
                 paymentType,
                 style: TextStyle(
-                  color: isDark ? AppColors.darkAccentSoft : Theme.of(context).colorScheme.primary,
+                  color: isDark
+                      ? AppColors.darkAccentSoft
+                      : Theme.of(context).colorScheme.primary,
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                 ),
@@ -6413,7 +7314,9 @@ class _RecentSaleRowSkeleton extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.25)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+            : Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -6422,7 +7325,9 @@ class _RecentSaleRowSkeleton extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.15) : Colors.black12,
+              color: isDark
+                  ? AppColors.darkTextMuted.withValues(alpha: 0.15)
+                  : Colors.black12,
               borderRadius: BorderRadius.circular(10),
             ),
           ),
@@ -6435,7 +7340,9 @@ class _RecentSaleRowSkeleton extends StatelessWidget {
                   width: 60,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.2) : Colors.black12,
+                    color: isDark
+                        ? AppColors.darkTextMuted.withValues(alpha: 0.2)
+                        : Colors.black12,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -6444,7 +7351,9 @@ class _RecentSaleRowSkeleton extends StatelessWidget {
                   width: 100,
                   height: 10,
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkTextMuted.withValues(alpha: 0.15) : Colors.black12,
+                    color: isDark
+                        ? AppColors.darkTextMuted.withValues(alpha: 0.15)
+                        : Colors.black12,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

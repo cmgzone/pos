@@ -992,10 +992,9 @@ class SaleImportService {
   }
 
   static String _detectCsvSeparator(String content) {
-    final firstLine = content.split('\n').firstWhere(
-          (line) => line.trim().isNotEmpty,
-          orElse: () => '',
-        );
+    final firstLine = content
+        .split('\n')
+        .firstWhere((line) => line.trim().isNotEmpty, orElse: () => '');
     if (firstLine.isEmpty) return ',';
     final commas = _countUnquoted(firstLine, ',');
     final semicolons = _countUnquoted(firstLine, ';');

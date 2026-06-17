@@ -54,6 +54,7 @@ class SaleRepository {
 
   /// Create a complete sale with items (transactional)
   static Future<String> createSale({
+    String? saleId,
     required double totalAmount,
     required double tax,
     required double discount,
@@ -82,7 +83,7 @@ class SaleRepository {
       throw Exception('Kopesha sales require a due date');
     }
 
-    final saleId = _uuid.v4();
+    final effectiveSaleId = saleId ?? _uuid.v4();
     final now = DateTime.now().toIso8601String();
     final saleTimestamp = (createdAt ?? DateTime.now()).toIso8601String();
     final amountPaid = isKopesha ? 0.0 : totalAmount;
@@ -107,55 +108,56 @@ class SaleRepository {
         .where((item) => (item['line_type'] as String? ?? '') == 'service')
         .toList();
 
-    // Fetch products, variants, and stock batches in bulk (N+1 query fix)
-    final productIds = productItems
-        .map((item) => item['product_id'] as String)
-        .toSet()
-        .toList();
-    final variantIds = productItems
-        .map((item) => item['variant_id'] as String?)
-        .whereType<String>()
-        .toSet()
-        .toList();
+    await DatabaseService.db.transaction((txn) async {
+      // Fetch products, variants, and stock batches in bulk (N+1 query fix)
+      final productIds = productItems
+          .map((item) => item['product_id'] as String)
+          .toSet()
+          .toList();
+      final variantIds = productItems
+          .map((item) => item['variant_id'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
 
-    final List<Map<String, dynamic>> productsList;
-    if (productIds.isNotEmpty) {
-      final placeholders = List.filled(productIds.length, '?').join(',');
-      productsList = await DatabaseService.rawQuery(
-        'SELECT * FROM products WHERE id IN ($placeholders)',
-        productIds,
-      );
-    } else {
-      productsList = [];
-    }
-    final productsMap = {for (final p in productsList) p['id'] as String: p};
+      final List<Map<String, dynamic>> productsList;
+      if (productIds.isNotEmpty) {
+        final placeholders = List.filled(productIds.length, '?').join(',');
+        productsList = await txn.rawQuery(
+          'SELECT * FROM products WHERE id IN ($placeholders)',
+          productIds,
+        );
+      } else {
+        productsList = [];
+      }
+      final productsMap = {for (final p in productsList) p['id'] as String: p};
 
-    final List<Map<String, dynamic>> variantsList;
-    if (variantIds.isNotEmpty) {
-      final placeholders = List.filled(variantIds.length, '?').join(',');
-      variantsList = await DatabaseService.rawQuery(
-        'SELECT * FROM product_variants WHERE id IN ($placeholders)',
-        variantIds,
-      );
-    } else {
-      variantsList = [];
-    }
-    final variantsMap = {for (final v in variantsList) v['id'] as String: v};
+      final List<Map<String, dynamic>> variantsList;
+      if (variantIds.isNotEmpty) {
+        final placeholders = List.filled(variantIds.length, '?').join(',');
+        variantsList = await txn.rawQuery(
+          'SELECT * FROM product_variants WHERE id IN ($placeholders)',
+          variantIds,
+        );
+      } else {
+        variantsList = [];
+      }
+      final variantsMap = {for (final v in variantsList) v['id'] as String: v};
 
-    final nonVariantProductIds = productItems
-        .where((item) => item['variant_id'] == null)
-        .map((item) => item['product_id'] as String)
-        .toSet()
-        .toList();
+      final nonVariantProductIds = productItems
+          .where((item) => item['variant_id'] == null)
+          .map((item) => item['product_id'] as String)
+          .toSet()
+          .toList();
 
-    final List<Map<String, dynamic>> allBatches;
-    if (nonVariantProductIds.isNotEmpty) {
-      final placeholders = List.filled(
-        nonVariantProductIds.length,
-        '?',
-      ).join(',');
-      allBatches = await DatabaseService.rawQuery(
-        '''
+      final List<Map<String, dynamic>> allBatches;
+      if (nonVariantProductIds.isNotEmpty) {
+        final placeholders = List.filled(
+          nonVariantProductIds.length,
+          '?',
+        ).join(',');
+        allBatches = await txn.rawQuery(
+          '''
         SELECT * FROM stock_batches
         WHERE product_id IN ($placeholders)
           AND quantity_remaining > 0
@@ -165,259 +167,259 @@ class SaleRepository {
           date(expiry_date) ASC,
           received_at ASC
         ''',
-        [
-          ...nonVariantProductIds,
-          DatabaseService.defaultBranchId,
-          DatabaseService.currentBranchId,
-        ],
-      );
-    } else {
-      allBatches = [];
-    }
-
-    final batchesMap = <String, List<Map<String, dynamic>>>{};
-    for (final batch in allBatches) {
-      final pid = batch['product_id'] as String;
-      batchesMap.putIfAbsent(pid, () => []).add(batch);
-    }
-
-    final requiredBatches = <String, List<Map<String, dynamic>>>{};
-    final tracksStockByProduct = <String, bool>{};
-    for (final item in productItems) {
-      final pid = item['product_id'] as String;
-      final variantId = item['variant_id'] as String?;
-      final qty = (item['quantity'] as num).toDouble();
-      final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
-          .toDouble();
-      final stockQty = qty * saleToStockFactor;
-      final product = productsMap[pid];
-      if (product == null) throw Exception('Product not found');
-      final tracksStock = UnitUtils.tracksStock(product);
-      tracksStockByProduct[pid] = tracksStock;
-
-      if (!tracksStock) {
-        continue;
+          [
+            ...nonVariantProductIds,
+            DatabaseService.defaultBranchId,
+            DatabaseService.currentBranchId,
+          ],
+        );
+      } else {
+        allBatches = [];
       }
 
-      if (variantId != null) {
-        // Variant: validate stock directly, no FIFO batch lookup.
-        final variant = variantsMap[variantId];
-        if (variant == null) throw Exception('Product variant not found');
-        final variantStock = (variant['stock'] as num? ?? 0).toDouble();
-        if (variantStock < stockQty - 0.001) {
-          throw Exception('Not enough stock for variant "${variant['name']}"');
-        }
-        continue;
+      final batchesMap = <String, List<Map<String, dynamic>>>{};
+      for (final batch in allBatches) {
+        final pid = batch['product_id'] as String;
+        batchesMap.putIfAbsent(pid, () => []).add(batch);
       }
 
-      final batches = batchesMap[pid] ?? [];
+      final requiredBatches = <String, List<Map<String, dynamic>>>{};
+      final tracksStockByProduct = <String, bool>{};
+      for (final item in productItems) {
+        final pid = item['product_id'] as String;
+        final variantId = item['variant_id'] as String?;
+        final qty = (item['quantity'] as num).toDouble();
+        final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
+            .toDouble();
+        final stockQty = qty * saleToStockFactor;
+        final product = productsMap[pid];
+        if (product == null) throw Exception('Product not found');
+        final tracksStock = UnitUtils.tracksStock(product);
+        tracksStockByProduct[pid] = tracksStock;
 
-      final mutableBatches = List<Map<String, dynamic>>.from(batches);
-      final batchStock = mutableBatches.fold<double>(
-        0.0,
-        (sum, b) => sum + ((b['quantity_remaining'] as num? ?? 0).toDouble()),
-      );
-      final aggregateStock = (product['stock'] as num? ?? 0).toDouble();
-      final unbatchedStock = aggregateStock - batchStock;
-      if (unbatchedStock > 0.001) {
-        final costPerStockUnit =
-            ((product['cost'] as num? ?? 0).toDouble()) /
-            UnitUtils.saleToStockFactor(product);
-        mutableBatches.add({
-          'id': 'aggregate_fallback_$pid',
-          'quantity_remaining': unbatchedStock,
-          'unit_cost': costPerStockUnit.isFinite ? costPerStockUnit : 0.0,
-          'is_fallback': 1,
-        });
-      }
-      requiredBatches[pid] = mutableBatches;
-    }
-
-    final batch = DatabaseService.db.batch();
-
-    batch.insert(_salesTable, {
-      'id': saleId,
-      'branch_id': DatabaseService.currentBranchId,
-      'total_amount': totalAmount,
-      'tax': tax,
-      'discount': discount,
-      'payment_type': paymentType,
-      'is_cash_drawer': isCashDrawer ? 1 : 0,
-      'user_id': userId,
-      'shift_id': shiftId,
-      'customer_id': customerId,
-      'customer_name': customerName,
-      'due_date': dueDate,
-      'amount_paid': amountPaid,
-      'amount_tendered': normalizedAmountTendered,
-      'change_given': normalizedChangeGiven < 0 ? 0.0 : normalizedChangeGiven,
-      'balance_due': balanceDue,
-      'payment_provider': paymentProvider,
-      'payment_reference': paymentReference,
-      'payment_status': paymentStatus,
-      'payment_metadata_json': paymentMetadata == null
-          ? null
-          : jsonEncode(paymentMetadata),
-      'etims_status': 'not_submitted',
-      'created_at': saleTimestamp,
-      'updated_at': now,
-      'sync_status': 'pending',
-    });
-
-    if (customerId != null && balanceDue > 0) {
-      batch.rawUpdate(
-        'UPDATE customers SET balance = balance + ?, updated_at = ?, sync_status = ? WHERE id = ?',
-        [balanceDue, now, 'pending', customerId],
-      );
-    }
-
-    for (final item in productItems) {
-      final pid = item['product_id'] as String;
-      final variantId = item['variant_id'] as String?;
-      final qty = (item['quantity'] as num).toDouble();
-      final unit = item['unit'] as String? ?? 'pcs';
-      final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
-          .toDouble();
-      final stockQty = qty * saleToStockFactor;
-      final tracksStock = tracksStockByProduct[pid] ?? true;
-
-      if (variantId != null) {
-        // ── Variant path: direct deduction, no FIFO ──────────────────────────
-        final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
-        batch.insert(_itemsTable, {
-          'id': _uuid.v4(),
-          'quantity': qty,
-          'unit_price': item['unit_price'],
-          'unit_cost': unitCost,
-          'unit': unit,
-          'sale_id': saleId,
-          'product_id': pid,
-          'variant_id': variantId,
-          'created_at': saleTimestamp,
-          'updated_at': now,
-          'sync_status': 'pending',
-        });
         if (!tracksStock) {
           continue;
         }
-        batch.rawUpdate(
-          'UPDATE product_variants SET stock = stock - ? WHERE id = ?',
-          [stockQty, variantId],
+
+        if (variantId != null) {
+          // Variant: validate stock directly, no FIFO batch lookup.
+          final variant = variantsMap[variantId];
+          if (variant == null) throw Exception('Product variant not found');
+          final variantStock = (variant['stock'] as num? ?? 0).toDouble();
+          if (variantStock < stockQty - 0.001) {
+            throw Exception(
+              'Not enough stock for variant "${variant['name']}"',
+            );
+          }
+          continue;
+        }
+
+        final batches = batchesMap[pid] ?? [];
+
+        final mutableBatches = List<Map<String, dynamic>>.from(batches);
+        final batchStock = mutableBatches.fold<double>(
+          0.0,
+          (sum, b) => sum + ((b['quantity_remaining'] as num? ?? 0).toDouble()),
         );
-        batch.rawUpdate('UPDATE products SET stock = stock - ? WHERE id = ?', [
-          stockQty,
-          pid,
-        ]);
-        continue;
+        final aggregateStock = (product['stock'] as num? ?? 0).toDouble();
+        final unbatchedStock = aggregateStock - batchStock;
+        if (unbatchedStock > 0.001) {
+          final costPerStockUnit =
+              ((product['cost'] as num? ?? 0).toDouble()) /
+              UnitUtils.saleToStockFactor(product);
+          mutableBatches.add({
+            'id': 'aggregate_fallback_$pid',
+            'quantity_remaining': unbatchedStock,
+            'unit_cost': costPerStockUnit.isFinite ? costPerStockUnit : 0.0,
+            'is_fallback': 1,
+          });
+        }
+        requiredBatches[pid] = mutableBatches;
       }
 
-      // ── Non-variant: FIFO batch deduction ────────────────────────────────
-      if (!tracksStock) {
-        batch.insert(_itemsTable, {
+      await txn.insert(_salesTable, {
+        'id': effectiveSaleId,
+        'branch_id': DatabaseService.currentBranchId,
+        'total_amount': totalAmount,
+        'tax': tax,
+        'discount': discount,
+        'payment_type': paymentType,
+        'is_cash_drawer': isCashDrawer ? 1 : 0,
+        'user_id': userId,
+        'shift_id': shiftId,
+        'customer_id': customerId,
+        'customer_name': customerName,
+        'due_date': dueDate,
+        'amount_paid': amountPaid,
+        'amount_tendered': normalizedAmountTendered,
+        'change_given': normalizedChangeGiven < 0 ? 0.0 : normalizedChangeGiven,
+        'balance_due': balanceDue,
+        'payment_provider': paymentProvider,
+        'payment_reference': paymentReference,
+        'payment_status': paymentStatus,
+        'payment_metadata_json': paymentMetadata == null
+            ? null
+            : jsonEncode(paymentMetadata),
+        'etims_status': 'not_submitted',
+        'created_at': saleTimestamp,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+
+      if (customerId != null && balanceDue > 0) {
+        await txn.rawUpdate(
+          'UPDATE customers SET balance = balance + ?, updated_at = ?, sync_status = ? WHERE id = ?',
+          [balanceDue, now, 'pending', customerId],
+        );
+      }
+
+      for (final item in productItems) {
+        final pid = item['product_id'] as String;
+        final variantId = item['variant_id'] as String?;
+        final qty = (item['quantity'] as num).toDouble();
+        final unit = item['unit'] as String? ?? 'pcs';
+        final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
+            .toDouble();
+        final stockQty = qty * saleToStockFactor;
+        final tracksStock = tracksStockByProduct[pid] ?? true;
+
+        if (variantId != null) {
+          // ── Variant path: direct deduction, no FIFO ──────────────────────────
+          final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
+          await txn.insert(_itemsTable, {
+            'id': _uuid.v4(),
+            'quantity': qty,
+            'unit_price': item['unit_price'],
+            'unit_cost': unitCost,
+            'unit': unit,
+            'sale_id': effectiveSaleId,
+            'product_id': pid,
+            'variant_id': variantId,
+            'created_at': saleTimestamp,
+            'updated_at': now,
+            'sync_status': 'pending',
+          });
+          if (!tracksStock) {
+            continue;
+          }
+          await txn.rawUpdate(
+            'UPDATE product_variants SET stock = stock - ? WHERE id = ?',
+            [stockQty, variantId],
+          );
+          await txn.rawUpdate(
+            'UPDATE products SET stock = stock - ? WHERE id = ?',
+            [stockQty, pid],
+          );
+          continue;
+        }
+
+        // ── Non-variant: FIFO batch deduction ────────────────────────────────
+        if (!tracksStock) {
+          await txn.insert(_itemsTable, {
+            'id': _uuid.v4(),
+            'quantity': qty,
+            'unit_price': item['unit_price'],
+            'unit_cost': (item['unit_cost'] as num? ?? 0).toDouble(),
+            'unit': unit,
+            'sale_id': effectiveSaleId,
+            'product_id': pid,
+            'created_at': saleTimestamp,
+            'updated_at': now,
+            'sync_status': 'pending',
+          });
+          continue;
+        }
+
+        double remainingToFulfill = stockQty;
+        double totalCostAccumulated = 0;
+        final batches = requiredBatches[pid] ?? [];
+
+        for (final b in batches) {
+          if (remainingToFulfill <= 0) break;
+          final availableInBatch = (b['quantity_remaining'] as num).toDouble();
+          final bId = b['id'] as String;
+          final bCost = (b['unit_cost'] as num).toDouble();
+          final isFallback = (b['is_fallback'] as num? ?? 0) == 1;
+
+          if (availableInBatch <= remainingToFulfill) {
+            totalCostAccumulated += availableInBatch * bCost;
+            remainingToFulfill -= availableInBatch;
+            if (!isFallback) {
+              await txn.rawUpdate(
+                'UPDATE stock_batches SET quantity_remaining = 0, finished_at = ?, updated_at = ? WHERE id = ?',
+                [now, now, bId],
+              );
+            }
+          } else {
+            totalCostAccumulated += remainingToFulfill * bCost;
+            if (!isFallback) {
+              await txn.rawUpdate(
+                'UPDATE stock_batches SET quantity_remaining = quantity_remaining - ?, updated_at = ? WHERE id = ?',
+                [remainingToFulfill, now, bId],
+              );
+            }
+            remainingToFulfill = 0;
+          }
+        }
+
+        if (remainingToFulfill > 0.001) {
+          throw Exception('Not enough stock remaining for this sale');
+        }
+
+        final avgUnitCost = qty > 0 ? (totalCostAccumulated / qty) : 0.0;
+        await txn.insert(_itemsTable, {
           'id': _uuid.v4(),
           'quantity': qty,
           'unit_price': item['unit_price'],
-          'unit_cost': (item['unit_cost'] as num? ?? 0).toDouble(),
+          'unit_cost': avgUnitCost,
           'unit': unit,
-          'sale_id': saleId,
+          'sale_id': effectiveSaleId,
           'product_id': pid,
           'created_at': saleTimestamp,
           'updated_at': now,
           'sync_status': 'pending',
         });
-        continue;
+        await txn.rawUpdate(
+          'UPDATE products SET stock = stock - ? WHERE id = ?',
+          [stockQty, pid],
+        );
       }
 
-      double remainingToFulfill = stockQty;
-      double totalCostAccumulated = 0;
-      final batches = requiredBatches[pid] ?? [];
+      for (final item in serviceItems) {
+        await txn.insert(_serviceItemsTable, {
+          'id': _uuid.v4(),
+          'sale_id': effectiveSaleId,
+          'service_order_id': item['service_order_id'],
+          'service_id': item['service_id'],
+          'service_name': item['product_name'] ?? 'Service',
+          'quantity': (item['quantity'] as num?)?.toDouble() ?? 1.0,
+          'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0.0,
+          'created_at': saleTimestamp,
+          'updated_at': now,
+          'sync_status': 'pending',
+        });
 
-      for (final b in batches) {
-        if (remainingToFulfill <= 0) break;
-        final availableInBatch = (b['quantity_remaining'] as num).toDouble();
-        final bId = b['id'] as String;
-        final bCost = (b['unit_cost'] as num).toDouble();
-        final isFallback = (b['is_fallback'] as num? ?? 0) == 1;
-
-        if (availableInBatch <= remainingToFulfill) {
-          totalCostAccumulated += availableInBatch * bCost;
-          remainingToFulfill -= availableInBatch;
-          if (!isFallback) {
-            batch.rawUpdate(
-              'UPDATE stock_batches SET quantity_remaining = 0, finished_at = ?, updated_at = ? WHERE id = ?',
-              [now, now, bId],
-            );
-          }
-        } else {
-          totalCostAccumulated += remainingToFulfill * bCost;
-          if (!isFallback) {
-            batch.rawUpdate(
-              'UPDATE stock_batches SET quantity_remaining = quantity_remaining - ?, updated_at = ? WHERE id = ?',
-              [remainingToFulfill, now, bId],
-            );
-          }
-          remainingToFulfill = 0;
-        }
-      }
-
-      if (remainingToFulfill > 0.001) {
-        throw Exception('Not enough stock remaining for this sale');
-      }
-
-      final avgUnitCost = qty > 0 ? (totalCostAccumulated / qty) : 0.0;
-      batch.insert(_itemsTable, {
-        'id': _uuid.v4(),
-        'quantity': qty,
-        'unit_price': item['unit_price'],
-        'unit_cost': avgUnitCost,
-        'unit': unit,
-        'sale_id': saleId,
-        'product_id': pid,
-        'created_at': saleTimestamp,
-        'updated_at': now,
-        'sync_status': 'pending',
-      });
-      batch.rawUpdate('UPDATE products SET stock = stock - ? WHERE id = ?', [
-        stockQty,
-        pid,
-      ]);
-    }
-
-    for (final item in serviceItems) {
-      batch.insert(_serviceItemsTable, {
-        'id': _uuid.v4(),
-        'sale_id': saleId,
-        'service_order_id': item['service_order_id'],
-        'service_id': item['service_id'],
-        'service_name': item['product_name'] ?? 'Service',
-        'quantity': (item['quantity'] as num?)?.toDouble() ?? 1.0,
-        'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0.0,
-        'created_at': saleTimestamp,
-        'updated_at': now,
-        'sync_status': 'pending',
-      });
-
-      final orderId = item['service_order_id'] as String?;
-      if (orderId != null && orderId.isNotEmpty) {
-        batch.rawUpdate(
-          '''
+        final orderId = item['service_order_id'] as String?;
+        if (orderId != null && orderId.isNotEmpty) {
+          await txn.rawUpdate(
+            '''
           UPDATE service_orders
           SET sale_id = ?, status = ?, updated_at = ?, sync_status = ?
           WHERE id = ?
           ''',
-          [saleId, 'paid', now, 'pending', orderId],
-        );
+            [effectiveSaleId, 'paid', now, 'pending', orderId],
+          );
+        }
       }
-    }
+    });
 
-    await batch.commit(noResult: true);
     DatabaseService.notifyLocalChange();
     await AuditLogService.log(
       action: 'create',
       entityTable: _salesTable,
-      entityId: saleId,
+      entityId: effectiveSaleId,
     );
-    return saleId;
+    return effectiveSaleId;
   }
 
   /// Get all sales, optionally filtered by date range
@@ -700,13 +702,17 @@ class SaleRepository {
         refundedByProduct[_productRefundKey(
           productId: row['product_id'] as String?,
           variantId: row['variant_id'] as String?,
-        )] = _money(row['refunded_quantity'] as num?);
+        )] = _money(
+          row['refunded_quantity'] as num?,
+        );
       } else {
         refundedByService[_serviceRefundKey(
           serviceOrderId: row['service_order_id'] as String?,
           serviceId: row['service_id'] as String?,
           serviceName: row['service_name'] as String?,
-        )] = _money(row['refunded_quantity'] as num?);
+        )] = _money(
+          row['refunded_quantity'] as num?,
+        );
       }
     }
 
@@ -1141,6 +1147,11 @@ class SaleRepository {
 
     return results.isNotEmpty
         ? results.first
-        : {'total_sales': 0, 'total_revenue': 0.0, 'total_profit': 0.0, 'total_items': 0};
+        : {
+            'total_sales': 0,
+            'total_revenue': 0.0,
+            'total_profit': 0.0,
+            'total_items': 0,
+          };
   }
 }

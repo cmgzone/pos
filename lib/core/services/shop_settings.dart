@@ -26,6 +26,7 @@ class ShopSettings {
   static const _keyEtimsSolutionType = 'etims_solution_type';
   static const _keyEtimsBranchCode = 'etims_branch_code';
   static const _keyEtimsDeviceSerial = 'etims_device_serial';
+  static const _keyQuotationsEnabled = 'sales_enable_quotations';
 
   static SharedPreferences? _prefs;
 
@@ -75,6 +76,8 @@ class ShopSettings {
       _prefs?.getString(_keyEtimsBranchCode) ?? '';
   static String get etimsDeviceSerial =>
       _prefs?.getString(_keyEtimsDeviceSerial) ?? '';
+  static bool get quotationsEnabled =>
+      _prefs?.getBool(_keyQuotationsEnabled) ?? true;
 
   // Setters
   static Future<void> setShopName(String value) =>
@@ -125,6 +128,9 @@ class ShopSettings {
   static Future<void> setEtimsDeviceSerial(String value) =>
       _prefs!.setString(_keyEtimsDeviceSerial, value.trim());
 
+  static Future<void> setQuotationsEnabled(bool value) =>
+      _prefs!.setBool(_keyQuotationsEnabled, value);
+
   static Future<void> resetForBusinessSwitch() async {
     await init();
     await _prefs!.remove(_keyShopName);
@@ -143,6 +149,7 @@ class ShopSettings {
     await _prefs!.remove(_keyEtimsSolutionType);
     await _prefs!.remove(_keyEtimsBranchCode);
     await _prefs!.remove(_keyEtimsDeviceSerial);
+    await _prefs!.remove(_keyQuotationsEnabled);
   }
 
   /// Check if shop has been set up
