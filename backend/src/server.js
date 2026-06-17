@@ -8960,7 +8960,7 @@ function renderPublicCatalogPage(catalog) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Not found');
         resDiv.className = 'alert alert-success';
-        resDiv.innerHTML = `Order status: <strong>${safeHtml(data.order.status)}</strong><br>Last updated: ${new Date(data.order.updated_at).toLocaleString()}`;
+        resDiv.innerHTML = 'Order status: <strong>' + safeHtml(data.order.status) + '</strong><br>Last updated: ' + new Date(data.order.updated_at).toLocaleString();
         resDiv.style.display = 'block';
       } catch (err) {
         resDiv.className = 'alert alert-error';
@@ -8976,7 +8976,7 @@ function renderPublicCatalogPage(catalog) {
     init();
   </script>
 </body>
-</html>\`;
+</html>`;
 }
 
 function safePublicImageUrl(value) {
