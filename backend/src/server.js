@@ -8954,7 +8954,9 @@ function renderPublicCatalogPage(catalog) {
       try {
         const no = document.getElementById('tracking-order-number').value.trim();
         const ph = document.getElementById('tracking-phone').value.trim();
-        const res = await fetch(`/api/public/orders/${encodeURIComponent(no)}/track?phone=${encodeURIComponent(ph)}`);
+        const res = await fetch(
+          '/api/public/orders/' + encodeURIComponent(no) + '/track?phone=' + encodeURIComponent(ph)
+        );
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Not found');
         resDiv.className = 'alert alert-success';
