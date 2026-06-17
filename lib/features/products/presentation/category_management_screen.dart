@@ -96,10 +96,9 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                     separatorBuilder: (_, _) => SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final category = _categories[index];
-                      final colorHex = category['color'] as String?;
-                      final color = colorHex != null
-                          ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
-                          : AppColors.primary;
+                      final color = _parseColor(category['color'] as String?);
+                      final categoryId = (category['id'] as String?) ?? '';
+                      final categoryName = (category['name'] as String?) ?? '';
 
                       return Container(
                         padding: const EdgeInsets.all(16),
@@ -118,9 +117,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                CategoryIconUtils.iconFor(
-                                  category['name'] as String?,
-                                ),
+                                CategoryIconUtils.iconFor(categoryName),
                                 color: color,
                                 size: 22,
                               ),
@@ -131,7 +128,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    category['name'] as String,
+                                    categoryName,
                                     style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 16,
@@ -139,7 +136,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                                   ),
                                   SizedBox(height: 4),
                                   Text(
-                                    'ID: ${(category['id'] as String).substring(0, 8)}...',
+                                    'ID: ${categoryId.length >= 8 ? categoryId.substring(0, 8) : categoryId}...',
                                     style: TextStyle(
                                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       fontSize: 11,
@@ -187,6 +184,29 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               ),
       ),
     );
+  }
+
+  Color _parseColor(String? colorHex) {
+    if (colorHex == null || colorHex.trim().isEmpty) return AppColors.primary;
+    final normalized = colorHex.trim().toUpperCase();
+    // Accept 3, 6, or 8 digit hex with optional leading #
+    final hex = normalized.replaceFirst('#', '');
+    if (!RegExp(r'^[0-9A-F]{3}([0-9A-F]{3})?([0-9A-F]{2})?$').hasMatch(hex)) {
+      return AppColors.primary;
+    }
+    try {
+      String fullHex;
+      if (hex.length == 3) {
+        fullHex = 'FF${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}';
+      } else if (hex.length == 6) {
+        fullHex = 'FF$hex';
+      } else {
+        fullHex = hex;
+      }
+      return Color(int.parse(fullHex, radix: 16));
+    } catch (_) {
+      return AppColors.primary;
+    }
   }
 
   void _showCategoryDialog(Map<String, dynamic>? existing) {
@@ -253,9 +273,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: Color(
-                            int.parse(hex.replaceFirst('#', '0xFF')),
-                          ),
+                          color: _parseColor(hex),
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: isSelected
@@ -266,9 +284,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: Color(
-                                      int.parse(hex.replaceFirst('#', '0xFF')),
-                                    ).withValues(alpha: 0.5),
+                                    color: _parseColor(hex).withValues(alpha: 0.5),
                                     blurRadius: 8,
                                   ),
                                 ]
@@ -290,7 +306,9 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               onPressed: () async {
                 if (nameController.text.trim().isEmpty) return;
                 if (isEditing) {
-                  await CategoryRepository.update(existing['id'] as String, {
+                  final id = existing['id'] as String?;
+                  if (id == null || id.isEmpty) return;
+                  await CategoryRepository.update(id, {
                     'name': nameController.text.trim(),
                     'color': colorController.text,
                   });
@@ -319,7 +337,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Delete Category'),
         content: Text(
-          'Delete "${category['name']}"? Products in this category won\'t be deleted.',
+          'Delete "${category['name'] as String? ?? ''}"? Products in this category won\'t be deleted.',
         ),
         actions: [
           TextButton(
@@ -329,8 +347,10 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
           FilledButton(
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
+              final id = category['id'] as String?;
+              if (id == null || id.isEmpty) return;
               try {
-                await CategoryRepository.delete(category['id'] as String);
+                await CategoryRepository.delete(id);
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (mounted) {
                   await _loadCategories();
