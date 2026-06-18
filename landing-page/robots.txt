@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /downloads/
+Disallow: /downloads/app/
+
+Sitemap: https://pikipos.com/sitemap.xml
