@@ -8,8 +8,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Build the storefront web app (React SPA) first so its dist ships with the backend.
+# NODE_ENV=production is set above, so we must explicitly include devDependencies (vite, etc.).
 COPY storefront-web/package*.json ./storefront-web/
-RUN cd storefront-web && npm ci
+RUN cd storefront-web && npm ci --include=dev
 
 COPY storefront-web ./storefront-web
 RUN cd storefront-web && npm run build
