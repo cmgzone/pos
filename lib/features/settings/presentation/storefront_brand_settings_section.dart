@@ -29,6 +29,7 @@ class _StorefrontBrandSettingsSectionState
   bool _saving = false;
   bool _uploadingLogo = false;
   bool _uploadingCover = false;
+  List<String> _coverUrls = [];
   StorefrontBrandSettings _settings = StorefrontBrandSettings.empty();
 
   @override
@@ -67,7 +68,12 @@ class _StorefrontBrandSettingsSectionState
   void _applySettings(StorefrontBrandSettings settings) {
     _settings = settings;
     _logoController.text = settings.logoUrl;
-    _coverController.text = settings.coverUrl;
+    _coverUrls = settings.coverUrls.isNotEmpty
+        ? List<String>.from(settings.coverUrls)
+        : settings.coverUrl.trim().isNotEmpty
+        ? [settings.coverUrl.trim()]
+        : [];
+    _coverController.clear();
     _colorController.text = settings.primaryColor;
     _taglineController.text = settings.tagline;
     _descriptionController.text = settings.description;
@@ -75,13 +81,15 @@ class _StorefrontBrandSettingsSectionState
   }
 
   StorefrontBrandSettings _readForm() {
+    final coverUrls = _normalizedCoverUrls();
     return StorefrontBrandSettings(
       businessId: _settings.businessId,
       businessName: _settings.businessName.isNotEmpty
           ? _settings.businessName
           : ShopSettings.shopName,
       logoUrl: _logoController.text.trim(),
-      coverUrl: _coverController.text.trim(),
+      coverUrl: coverUrls.isNotEmpty ? coverUrls.first : '',
+      coverUrls: coverUrls,
       primaryColor: _normalizeColorInput(_colorController.text),
       tagline: _taglineController.text.trim(),
       description: _descriptionController.text.trim(),
@@ -136,18 +144,18 @@ class _StorefrontBrandSettingsSectionState
         kind: kind,
       );
       if (!mounted) return;
-      setState(() {
-        if (kind == 'cover') {
-          _coverController.text = url;
-        } else {
+      if (kind == 'cover') {
+        _addCoverUrl(url, showMessage: false);
+      } else {
+        setState(() {
           _logoController.text = url;
-        }
-      });
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             kind == 'cover'
-                ? 'Cover photo uploaded. Save to publish it.'
+                ? 'Store photo uploaded. Save to publish the slideshow.'
                 : 'Logo uploaded. Save to publish it.',
           ),
           backgroundColor: AppColors.success,
@@ -217,18 +225,14 @@ class _StorefrontBrandSettingsSectionState
             onUpload: () => _pickAndUploadImage('logo'),
           ),
           SizedBox(height: 14),
-          _buildImageField(
-            label: 'Cover photo URL',
-            controller: _coverController,
-            icon: Icons.panorama_outlined,
-            uploadLabel: _uploadingCover ? 'Uploading...' : 'Upload cover',
-            uploading: _uploadingCover,
-            onUpload: () => _pickAndUploadImage('cover'),
-          ),
+          _buildCoverGalleryField(),
           SizedBox(height: 8),
           Text(
-            'Tip: use a wide cover photo and a square logo for the best catalog look.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+            'Tip: add 3-5 wide photos of your shop, service bay, seats, team, or finished work. The first photo appears as the main cover.',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
           ),
         ]),
         SizedBox(height: 16),
@@ -315,7 +319,8 @@ class _StorefrontBrandSettingsSectionState
 
   Widget _buildPreview(Color color) {
     final logo = _logoController.text.trim();
-    final cover = _coverController.text.trim();
+    final coverUrls = _normalizedCoverUrls();
+    final cover = coverUrls.isNotEmpty ? coverUrls.first : '';
     final title = _settings.businessName.isNotEmpty
         ? _settings.businessName
         : ShopSettings.shopName;
@@ -393,6 +398,25 @@ class _StorefrontBrandSettingsSectionState
               ),
             ],
           ),
+          if (coverUrls.length > 1) ...[
+            SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: Text(
+                '${coverUrls.length} slideshow photos',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
           Spacer(),
           Text(
             _taglineController.text.trim().isEmpty
@@ -471,6 +495,259 @@ class _StorefrontBrandSettingsSectionState
         ),
       ],
     );
+  }
+
+  Widget _buildCoverGalleryField() {
+    final coverUrls = _normalizedCoverUrls();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final buttons = Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _addCoverUrl(_coverController.text),
+                  icon: Icon(Icons.add_photo_alternate_outlined),
+                  label: Text('Add URL'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _uploadingCover
+                      ? null
+                      : () => _pickAndUploadImage('cover'),
+                  icon: _uploadingCover
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(Icons.upload_file_outlined),
+                  label: Text(
+                    _uploadingCover ? 'Uploading...' : 'Upload photo',
+                  ),
+                ),
+              ],
+            );
+            final input = TextField(
+              controller: _coverController,
+              decoration: InputDecoration(
+                labelText: 'Add store photo URL',
+                hintText: 'https://...',
+                prefixIcon: Icon(Icons.photo_library_outlined),
+                suffixIcon: _coverController.text.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear',
+                        icon: Icon(Icons.close_outlined),
+                        onPressed: () => setState(_coverController.clear),
+                      ),
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _addCoverUrl(_coverController.text),
+            );
+            if (constraints.maxWidth < 720) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [input, SizedBox(height: 10), buttons],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: input),
+                SizedBox(width: 10),
+                buttons,
+              ],
+            );
+          },
+        ),
+        SizedBox(height: 12),
+        if (coverUrls.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.slideshow_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'No store photos yet. Upload or add URLs to create a storefront slideshow.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var index = 0; index < coverUrls.length; index++)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      right: index == coverUrls.length - 1 ? 0 : 12,
+                    ),
+                    child: _buildCoverThumb(
+                      coverUrls[index],
+                      index,
+                      coverUrls.length,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCoverThumb(String url, int index, int count) {
+    return Container(
+      width: 190,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Stack(
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (imageContext, error, stackTrace) => Container(
+                    color: Theme.of(
+                      imageContext,
+                    ).colorScheme.surfaceContainerHighest,
+                    child: Icon(Icons.broken_image_outlined),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    index == 0 ? 'Main' : 'Slide ${index + 1}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Move left',
+                  onPressed: index == 0 ? null : () => _moveCoverUrl(index, -1),
+                  icon: Icon(Icons.chevron_left_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Move right',
+                  onPressed: index >= count - 1
+                      ? null
+                      : () => _moveCoverUrl(index, 1),
+                  icon: Icon(Icons.chevron_right_outlined),
+                ),
+                Spacer(),
+                IconButton(
+                  tooltip: 'Remove photo',
+                  onPressed: () => _removeCoverUrl(url),
+                  icon: Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addCoverUrl(String value, {bool showMessage = true}) {
+    final clean = value.trim();
+    if (clean.isEmpty) {
+      if (showMessage) {
+        _showError(
+          Exception('Enter a photo URL first.'),
+          'Enter a photo URL first.',
+        );
+      }
+      return;
+    }
+    if (!_isRemoteUrl(clean)) {
+      _showError(
+        Exception('Use a valid http or https photo URL.'),
+        'Use a valid http or https photo URL.',
+      );
+      return;
+    }
+    setState(() {
+      final urls = _normalizedCoverUrls();
+      if (!urls.contains(clean) && urls.length < 8) {
+        urls.add(clean);
+      }
+      _coverUrls = urls;
+      _coverController.clear();
+    });
+  }
+
+  void _removeCoverUrl(String url) {
+    setState(() {
+      _coverUrls = _normalizedCoverUrls().where((item) => item != url).toList();
+    });
+  }
+
+  void _moveCoverUrl(int index, int delta) {
+    final nextIndex = index + delta;
+    final urls = _normalizedCoverUrls();
+    if (nextIndex < 0 || nextIndex >= urls.length) return;
+    setState(() {
+      final item = urls.removeAt(index);
+      urls.insert(nextIndex, item);
+      _coverUrls = urls;
+    });
+  }
+
+  List<String> _normalizedCoverUrls() {
+    final seen = <String>{};
+    return _coverUrls
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty && seen.add(url))
+        .take(8)
+        .toList();
   }
 
   Widget _buildCard(List<Widget> children) {

@@ -5888,6 +5888,10 @@ async function ensureStorefrontBrandSchema(target = query) {
   );
   await runDbQuery(
     target,
+    'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_cover_urls_json jsonb',
+  );
+  await runDbQuery(
+    target,
     'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_primary_color text',
   );
   await runDbQuery(
@@ -5994,6 +5998,7 @@ async function loadStorefrontBrand(businessId) {
        name,
        catalog_logo_url,
        catalog_cover_url,
+       catalog_cover_urls_json,
        catalog_primary_color,
        catalog_tagline,
        catalog_description,
@@ -6019,6 +6024,11 @@ async function saveStorefrontBrand(businessId, input) {
     input.coverUrl ?? input.cover_url,
     'cover photo URL',
   );
+  const coverUrls = normalizeStorefrontCoverUrls(
+    input.coverUrls ?? input.cover_urls,
+    coverUrl,
+  );
+  const primaryCoverUrl = coverUrls[0] || coverUrl;
   const primaryColor = normalizeStorefrontColor(
     input.primaryColor ?? input.primary_color,
   );
@@ -6029,9 +6039,10 @@ async function saveStorefrontBrand(businessId, input) {
     `UPDATE businesses
      SET catalog_logo_url = $2,
          catalog_cover_url = $3,
-         catalog_primary_color = $4,
-         catalog_tagline = $5,
-         catalog_description = $6,
+         catalog_cover_urls_json = $4::jsonb,
+         catalog_primary_color = $5,
+         catalog_tagline = $6,
+         catalog_description = $7,
          updated_at = NOW()
      WHERE id = $1 AND deleted_at IS NULL
      RETURNING
@@ -6039,11 +6050,20 @@ async function saveStorefrontBrand(businessId, input) {
        name,
        catalog_logo_url,
        catalog_cover_url,
+       catalog_cover_urls_json,
        catalog_primary_color,
        catalog_tagline,
        catalog_description,
        updated_at`,
-    [businessId, logoUrl, coverUrl, primaryColor, tagline, description],
+    [
+      businessId,
+      logoUrl,
+      primaryCoverUrl,
+      JSON.stringify(coverUrls),
+      primaryColor,
+      tagline,
+      description,
+    ],
   );
   if (!result.rows.length) {
     throw createHttpError(404, 'Business was not found');
@@ -6052,11 +6072,17 @@ async function saveStorefrontBrand(businessId, input) {
 }
 
 function normalizeStorefrontBrandRow(row) {
+  const coverUrl = safePublicImageUrl(row.catalog_cover_url);
+  const coverUrls = normalizeStoredStorefrontCoverUrls(
+    row.catalog_cover_urls_json,
+    coverUrl,
+  );
   return {
     businessId: row.id,
     businessName: normalizeOptionalText(row.name) || 'Store',
     logoUrl: safePublicImageUrl(row.catalog_logo_url),
-    coverUrl: safePublicImageUrl(row.catalog_cover_url),
+    coverUrl: coverUrls[0] || coverUrl,
+    coverUrls,
     primaryColor: normalizeStorefrontColor(row.catalog_primary_color, {
       fallback: '#ff2a6d',
       throwOnInvalid: false,
@@ -6807,7 +6833,7 @@ async function loadPublicCatalog(
     `
     SELECT b.id, b.name, b.country_code, b.currency, b.updated_at,
            b.catalog_logo_url, b.catalog_cover_url, b.catalog_primary_color,
-           b.catalog_tagline, b.catalog_description,
+           b.catalog_cover_urls_json, b.catalog_tagline, b.catalog_description,
            cs.whatsapp_number
     FROM businesses b
     LEFT JOIN business_communication_settings cs
@@ -7864,6 +7890,54 @@ function normalizePublicCatalogProduct(row) {
   };
 }
 
+function normalizeStorefrontCoverUrls(
+  value,
+  fallbackCoverUrl = null,
+  { throwOnInvalid = true } = {},
+) {
+  const values = [];
+  if (Array.isArray(value)) {
+    values.push(...value);
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        values.push(...parsed);
+      } else {
+        values.push(value);
+      }
+    } catch (_) {
+      values.push(value);
+    }
+  }
+  if (!values.length && fallbackCoverUrl) {
+    values.push(fallbackCoverUrl);
+  }
+
+  const normalized = [];
+  const seen = new Set();
+  for (const candidate of values) {
+    let url = null;
+    try {
+      url = normalizeStorefrontImageUrl(candidate, 'store photo URL');
+    } catch (error) {
+      if (throwOnInvalid) throw error;
+      continue;
+    }
+    if (!url || seen.has(url)) continue;
+    normalized.push(url);
+    seen.add(url);
+    if (normalized.length >= 8) break;
+  }
+  return normalized;
+}
+
+function normalizeStoredStorefrontCoverUrls(value, fallbackCoverUrl = null) {
+  return normalizeStorefrontCoverUrls(value, fallbackCoverUrl, {
+    throwOnInvalid: false,
+  });
+}
+
 function normalizePublicCatalogService(row) {
   const durationMinutes = Number(row.duration_minutes || 0);
   const description = normalizeOptionalText(row.description);
@@ -7928,7 +8002,11 @@ function injectStorefrontMeta(html, catalog) {
     fallback: '#111827',
     throwOnInvalid: false,
   });
-  const coverUrl = safePublicImageUrl(brand.coverUrl);
+  const coverUrls = normalizeStoredStorefrontCoverUrls(
+    brand.coverUrls,
+    safePublicImageUrl(brand.coverUrl),
+  );
+  const coverUrl = coverUrls[0] || safePublicImageUrl(brand.coverUrl);
   const description =
     normalizeOptionalText(brand.description) ||
     'Shop products and services, choose variants, and send your order directly to the store.';
@@ -7998,6 +8076,10 @@ function renderStorefrontRootFallback(catalog) {
     throwOnInvalid: false,
   });
   const logoUrl = safePublicImageUrl(brand.logoUrl);
+  const coverUrls = normalizeStoredStorefrontCoverUrls(
+    brand.coverUrls,
+    safePublicImageUrl(brand.coverUrl),
+  );
   const tagline = normalizeOptionalText(brand.tagline) || 'Online catalog';
   const description =
     normalizeOptionalText(brand.description) ||
@@ -8007,6 +8089,17 @@ function renderStorefrontRootFallback(catalog) {
   const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
   const itemCountLabel =
     products.length === 1 ? '1 item available' : `${products.length} items available`;
+  const slideDurationSeconds = Math.max(coverUrls.length * 5, 10);
+  const slideWindow = coverUrls.length > 1 ? 100 / coverUrls.length : 100;
+  const slideFadePercent = Math.min(6, slideWindow * 0.25);
+  const slideVisibleEnd = Math.max(0, slideWindow - slideFadePercent).toFixed(2);
+  const slideFadeEnd = slideWindow.toFixed(2);
+  const fallbackSlides = coverUrls
+    .map(
+      (url, index) =>
+        `<img src="${escapeHtml(url)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${index === 0 ? '1' : '0'};transform:scale(1.04);${coverUrls.length > 1 ? `animation:storefrontHeroFade ${slideDurationSeconds}s infinite ease-in-out;animation-delay:${index * 5}s` : ''}">`,
+    )
+    .join('');
 
   const productCards = visibleItems
     .map((item) => {
@@ -8040,8 +8133,13 @@ function renderStorefrontRootFallback(catalog) {
 
   return `<div id="root">
     <main data-static-storefront="true" style="min-height:100vh;background:#f6f7f9;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-      <section style="background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff;padding:46px 20px 58px">
-        <div style="max-width:1120px;margin:0 auto;display:grid;gap:22px">
+      <style>
+        @keyframes storefrontHeroFade { 0%, ${slideVisibleEnd}% { opacity: 1; transform: scale(1.08); } ${slideFadeEnd}%, 100% { opacity: 0; transform: scale(1.02); } }
+      </style>
+      <section style="position:relative;overflow:hidden;background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff;padding:46px 20px 58px">
+        ${fallbackSlides}
+        <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(17,24,39,.9),rgba(31,41,55,.72) 55%,rgba(0,0,0,.42));"></div>
+        <div style="position:relative;max-width:1120px;margin:0 auto;display:grid;gap:22px">
           <div style="display:flex;align-items:center;gap:16px">
             <div style="width:64px;height:64px;border-radius:20px;background:#fff;display:grid;place-items:center;color:${escapeHtml(primaryColor)};font-weight:900;font-size:24px;overflow:hidden">
               ${
@@ -8126,7 +8224,11 @@ function renderPublicCatalogPage(catalog) {
     throwOnInvalid: false,
   });
   const logoUrl = safePublicImageUrl(brand.logoUrl);
-  const coverUrl = safePublicImageUrl(brand.coverUrl);
+  const coverUrls = normalizeStoredStorefrontCoverUrls(
+    brand.coverUrls,
+    safePublicImageUrl(brand.coverUrl),
+  );
+  const coverUrl = coverUrls[0] || safePublicImageUrl(brand.coverUrl);
   const tagline = normalizeOptionalText(brand.tagline) || 'Online store';
   const description =
     normalizeOptionalText(brand.description) ||

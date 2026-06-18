@@ -13,6 +13,7 @@ class StorefrontBrandSettings {
   final String businessName;
   final String logoUrl;
   final String coverUrl;
+  final List<String> coverUrls;
   final String primaryColor;
   final String tagline;
   final String description;
@@ -23,6 +24,7 @@ class StorefrontBrandSettings {
     required this.businessName,
     required this.logoUrl,
     required this.coverUrl,
+    required this.coverUrls,
     required this.primaryColor,
     required this.tagline,
     required this.description,
@@ -35,6 +37,7 @@ class StorefrontBrandSettings {
       businessName: ShopSettings.shopName,
       logoUrl: '',
       coverUrl: '',
+      coverUrls: const [],
       primaryColor: '#ff2a6d',
       tagline: 'Online catalog',
       description:
@@ -44,11 +47,14 @@ class StorefrontBrandSettings {
   }
 
   factory StorefrontBrandSettings.fromJson(Map<String, dynamic> json) {
+    final coverUrl = json['coverUrl']?.toString() ?? '';
+    final coverUrls = _readCoverUrls(json, coverUrl);
     return StorefrontBrandSettings(
       businessId: json['businessId']?.toString() ?? '',
       businessName: json['businessName']?.toString() ?? ShopSettings.shopName,
       logoUrl: json['logoUrl']?.toString() ?? '',
-      coverUrl: json['coverUrl']?.toString() ?? '',
+      coverUrl: coverUrls.isNotEmpty ? coverUrls.first : coverUrl,
+      coverUrls: coverUrls,
       primaryColor: json['primaryColor']?.toString() ?? '#ff2a6d',
       tagline: json['tagline']?.toString() ?? 'Online catalog',
       description:
@@ -61,11 +67,48 @@ class StorefrontBrandSettings {
   Map<String, dynamic> toJson() {
     return {
       'logoUrl': logoUrl.trim(),
-      'coverUrl': coverUrl.trim(),
+      'coverUrl': coverUrls.isNotEmpty
+          ? coverUrls.first.trim()
+          : coverUrl.trim(),
+      'coverUrls': coverUrls
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toList(),
       'primaryColor': primaryColor.trim(),
       'tagline': tagline.trim(),
       'description': description.trim(),
     };
+  }
+
+  static List<String> _readCoverUrls(
+    Map<String, dynamic> json,
+    String coverUrl,
+  ) {
+    final raw = json['coverUrls'] ?? json['cover_urls'];
+    final urls = <String>[];
+    if (raw is List) {
+      urls.addAll(raw.map((value) => value.toString()));
+    } else if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          urls.addAll(decoded.map((value) => value.toString()));
+        } else {
+          urls.add(raw);
+        }
+      } catch (_) {
+        urls.add(raw);
+      }
+    }
+    if (urls.isEmpty && coverUrl.trim().isNotEmpty) {
+      urls.add(coverUrl);
+    }
+    final seen = <String>{};
+    return urls
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty && seen.add(url))
+        .take(8)
+        .toList();
   }
 }
 

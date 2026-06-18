@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useState } from 'react'
+
 import { classNames } from '../utils'
 
 export default function Header({ catalog, loading, error }) {
@@ -10,8 +12,35 @@ export default function Header({ catalog, loading, error }) {
     'Shop products and services, choose variants, and send your order directly to the store.'
   const logoUrl = brand.logoUrl || null
   const coverUrl = brand.coverUrl || null
+  const brandCoverUrls = brand.coverUrls
+  const coverUrls = useMemo(() => {
+    const raw = Array.isArray(brandCoverUrls) && brandCoverUrls.length
+      ? brandCoverUrls
+      : coverUrl
+        ? [coverUrl]
+        : []
+    const seen = new Set()
+    return raw
+      .map((url) => String(url || '').trim())
+      .filter((url) => url && !seen.has(url) && seen.add(url))
+      .slice(0, 8)
+  }, [brandCoverUrls, coverUrl])
+  const coverSignature = coverUrls.join('|')
+  const [activeCoverIndex, setActiveCoverIndex] = useState(0)
   const storeInitial = String(name || '').trim().charAt(0).toUpperCase() || 'P'
   const branchName = business?.selectedBranch?.name
+
+  useEffect(() => {
+    setActiveCoverIndex(0)
+  }, [coverSignature])
+
+  useEffect(() => {
+    if (coverUrls.length <= 1) return undefined
+    const timer = window.setInterval(() => {
+      setActiveCoverIndex((current) => (current + 1) % coverUrls.length)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [coverSignature, coverUrls.length])
 
   if (error) {
     return (
@@ -38,13 +67,36 @@ export default function Header({ catalog, loading, error }) {
 
   return (
     <header className="store-header">
-      <div className={classNames('store-cover', !coverUrl && 'is-placeholder')}>
-        {coverUrl ? (
-          <img src={coverUrl} alt="" className="store-cover-img" />
+      <div className={classNames('store-cover', coverUrls.length === 0 && 'is-placeholder')}>
+        {coverUrls.length > 0 ? (
+          <div className="store-cover-slides" aria-hidden="true">
+            {coverUrls.map((url, index) => (
+              <img
+                key={`${url}-${index}`}
+                src={url}
+                alt=""
+                className={classNames(
+                  'store-cover-img',
+                  index === activeCoverIndex && 'is-active',
+                  coverUrls.length === 1 && 'is-single',
+                )}
+              />
+            ))}
+          </div>
         ) : (
           <div className="store-cover-glow" aria-hidden="true" />
         )}
         <div className="store-cover-shade" aria-hidden="true" />
+        {coverUrls.length > 1 && (
+          <div className="store-cover-dots" aria-hidden="true">
+            {coverUrls.map((url, index) => (
+              <span
+                key={`${url}-dot-${index}`}
+                className={classNames(index === activeCoverIndex && 'is-active')}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="wrap store-header-inner">

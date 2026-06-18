@@ -66,7 +66,53 @@ a { color: inherit; }
   overflow: hidden;
 }
 .store-cover.is-placeholder { background: linear-gradient(135deg, #1f2937 0%, #0b1220 100%); }
-.store-cover-img { width: 100%; height: 100%; object-fit: cover; }
+.store-cover-slides { position: absolute; inset: 0; overflow: hidden; }
+.store-cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.06);
+  transition:
+    opacity 900ms var(--ease),
+    transform 5200ms ease;
+}
+.store-cover-img.is-active {
+  opacity: 1;
+  transform: scale(1.02);
+}
+.store-cover-img.is-single {
+  opacity: 1;
+  transform: scale(1);
+}
+.store-cover-dots {
+  position: absolute;
+  right: max(16px, calc((100vw - 1240px) / 2 + 16px));
+  bottom: 18px;
+  z-index: 2;
+  display: flex;
+  gap: 7px;
+  padding: 7px;
+  border-radius: 999px;
+  background: rgba(11, 18, 32, 0.38);
+  backdrop-filter: blur(12px);
+}
+.store-cover-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  transform: scale(1);
+  transition:
+    background-color 220ms var(--ease),
+    transform 220ms var(--ease);
+}
+.store-cover-dots span.is-active {
+  background: #fff;
+  transform: scale(1.25);
+}
 .store-cover-glow {
   position: absolute; inset: 0;
   background:
@@ -75,7 +121,9 @@ a { color: inherit; }
 }
 .store-cover-shade {
   position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.18) 100%);
+  background:
+    linear-gradient(90deg, rgba(11,18,32,.42), rgba(11,18,32,.1) 45%, rgba(11,18,32,.28)),
+    linear-gradient(180deg, rgba(0,0,0,0) 36%, rgba(0,0,0,0.24) 100%);
 }
 .store-header-inner {
   display: flex;
