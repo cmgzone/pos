@@ -23,6 +23,7 @@ class _CommunicationSettingsSectionState
   String _whatsappConnectedAt = '';
   bool _loading = true;
   bool _saving = false;
+  bool _connectingWhatsApp = false;
   String? _message;
 
   @override
@@ -97,6 +98,33 @@ class _CommunicationSettingsSectionState
     } finally {
       if (mounted) {
         setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _connectWhatsApp() async {
+    setState(() {
+      _connectingWhatsApp = true;
+      _message = null;
+    });
+    try {
+      await MessagingService.openWhatsAppBusinessSetup();
+      if (!mounted) return;
+      setState(
+        () => _message =
+            'Meta setup opened. Finish in the browser, then refresh this screen.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _message = AppErrorMessage.from(
+          error,
+          fallback: 'Could not open WhatsApp setup.',
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _connectingWhatsApp = false);
       }
     }
   }
@@ -208,31 +236,66 @@ class _CommunicationSettingsSectionState
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            connected ? Icons.verified_outlined : Icons.info_outline,
-            color: statusColor,
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: statusColor,
-                    fontWeight: FontWeight.w700,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                connected ? Icons.verified_outlined : Icons.info_outline,
+                color: statusColor,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      detail,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 4),
-                Text(
-                  detail,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _connectingWhatsApp ? null : _connectWhatsApp,
+                  icon: _connectingWhatsApp
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          connected
+                              ? Icons.sync_outlined
+                              : Icons.add_link_outlined,
+                        ),
+                  label: Text(connected ? 'Reconnect' : 'Connect WhatsApp'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _loading ? null : _load,
+                  icon: Icon(Icons.refresh_outlined),
+                  label: Text('Refresh'),
                 ),
               ],
             ),

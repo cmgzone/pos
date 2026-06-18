@@ -99,6 +99,9 @@ const {
   getBusinessCommunicationSettings,
   saveBusinessCommunicationSettings,
   getBusinessWhatsAppConnectStatus,
+  createBusinessWhatsAppConnectSession,
+  resolveBusinessWhatsAppConnectSession,
+  consumeBusinessWhatsAppConnectSession,
   connectBusinessWhatsApp,
   disconnectBusinessWhatsApp,
   sendBusinessMessage,
@@ -2797,8 +2800,110 @@ app.get('/api/business/whatsapp-connect', async (req, res, next) => {
   }
 });
 
+app.post('/api/business/whatsapp-connect/session', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const status = await getBusinessWhatsAppConnectStatus(
+      businessContext.businessId,
+    );
+    const platform = status.platform || {};
+    if (!platform.isActive || !platform.setupReady) {
+      throw createHttpError(
+        400,
+        'WhatsApp Embedded Signup is not configured in Piki Admin',
+      );
+    }
+    if (!platform.oauthRedirectUri) {
+      throw createHttpError(
+        400,
+        'WhatsApp OAuth Redirect URI is required in Piki Admin',
+      );
+    }
+
+    const session = await createBusinessWhatsAppConnectSession(
+      businessContext.businessId,
+      businessContext.deviceId,
+    );
+    const connectUrl = buildWhatsAppConnectUrl(
+      platform.oauthRedirectUri,
+      session.token,
+    );
+    if (!connectUrl) {
+      throw createHttpError(
+        400,
+        'WhatsApp OAuth Redirect URI must be a valid HTTPS URL',
+      );
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        connectUrl,
+        sessionToken: session.token,
+        sessionExpiresAt: session.expiresAt,
+        platform,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/business/whatsapp-connect/session/:token', async (req, res, next) => {
+  try {
+    const session = await resolveBusinessWhatsAppConnectSession(req.params.token);
+    if (!session) {
+      throw createHttpError(
+        401,
+        'WhatsApp connection session expired. Start again from Piki POS settings.',
+      );
+    }
+    const status = await getBusinessWhatsAppConnectStatus(session.businessId);
+    res.json({
+      ok: true,
+      data: {
+        sessionExpiresAt: session.expiresAt,
+        platform: status.platform || {},
+        whatsappConnected: status.whatsappConnected,
+        whatsappDisplayPhoneNumber: status.whatsappDisplayPhoneNumber,
+        whatsappPhoneNumberId: status.whatsappPhoneNumberId,
+        whatsappWabaId: status.whatsappWabaId,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/business/whatsapp-connect/complete', async (req, res, next) => {
   try {
+    const connectSessionToken = normalizeOptionalText(
+      req.body?.connectSession ??
+        req.body?.connect_session ??
+        req.body?.sessionToken ??
+        req.body?.session ??
+        req.query?.connectSession,
+    );
+    if (connectSessionToken) {
+      const session = await resolveBusinessWhatsAppConnectSession(
+        connectSessionToken,
+      );
+      if (!session) {
+        throw createHttpError(
+          401,
+          'WhatsApp connection session expired. Start again from Piki POS settings.',
+        );
+      }
+      const settings = await connectBusinessWhatsApp(
+        session.businessId,
+        req.body || {},
+      );
+      await consumeBusinessWhatsAppConnectSession(connectSessionToken);
+      await invalidateCatalogCache(session.businessId);
+      res.json({ ok: true, data: settings });
+      return;
+    }
+
     const businessContext = await requireBusinessContext(req);
     const settings = await connectBusinessWhatsApp(
       businessContext.businessId,
@@ -10752,6 +10857,31 @@ function paymentGatewayReadinessErrors(gateway) {
   } catch (error) {
     const message = error.message || 'Payment gateway is incomplete.';
     return [message.replace(/^Complete [^:]+:\s*/i, '')];
+  }
+}
+
+function buildWhatsAppConnectUrl(oauthRedirectUri, sessionToken) {
+  const cleanRedirectUri = normalizeOptionalText(oauthRedirectUri);
+  const cleanSessionToken = normalizeOptionalText(sessionToken);
+  if (!cleanRedirectUri || !cleanSessionToken) {
+    return '';
+  }
+
+  try {
+    const url = new URL(cleanRedirectUri);
+    if (url.protocol !== 'https:') {
+      return '';
+    }
+    url.hash = '';
+    url.search = '';
+    url.pathname = url.pathname.replace(/\/callback\/?$/i, '') || '/whatsapp/connect';
+    if (!url.pathname.endsWith('/connect')) {
+      url.pathname = '/whatsapp/connect';
+    }
+    url.searchParams.set('session', cleanSessionToken);
+    return url.toString();
+  } catch (_) {
+    return '';
   }
 }
 

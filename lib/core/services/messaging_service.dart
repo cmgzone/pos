@@ -165,6 +165,30 @@ class MessagingService {
     return _requireOk(response)['data'] as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>> createWhatsAppConnectSession() async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.post<Map<String, dynamic>>(
+      _url('business/whatsapp-connect/session'),
+      data: {'deviceId': deviceId},
+      options: Options(headers: headers),
+    );
+    return _requireOk(response)['data'] as Map<String, dynamic>;
+  }
+
+  static Future<void> openWhatsAppBusinessSetup() async {
+    final session = await createWhatsAppConnectSession();
+    final connectUrl = session['connectUrl']?.toString().trim() ?? '';
+    final uri = Uri.tryParse(connectUrl);
+    if (uri == null || !uri.hasScheme || connectUrl.isEmpty) {
+      throw Exception('WhatsApp setup link could not be created.');
+    }
+    if (await ExternalAppLauncher.launch(uri)) {
+      return;
+    }
+    throw Exception('Could not open WhatsApp setup in the browser.');
+  }
+
   static Future<Map<String, dynamic>> disconnectWhatsAppBusiness() async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();

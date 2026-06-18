@@ -77,6 +77,36 @@ async function ensureCommunicationSchema(target = query) {
   await runQuery(
     target,
     `
+    CREATE TABLE IF NOT EXISTS business_whatsapp_connect_sessions (
+      token_hash text PRIMARY KEY,
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      device_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      expires_at timestamptz NOT NULL,
+      consumed_at timestamptz
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_connect_sessions_business
+      ON business_whatsapp_connect_sessions(business_id, created_at DESC)
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_connect_sessions_expires
+      ON business_whatsapp_connect_sessions(expires_at)
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
     CREATE INDEX IF NOT EXISTS idx_message_send_logs_business
       ON message_send_logs(business_id, created_at DESC)
     `,
@@ -244,6 +274,95 @@ async function getBusinessWhatsAppConnectStatus(businessId, target = query) {
         'https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview',
     },
   };
+}
+
+async function createBusinessWhatsAppConnectSession(
+  businessId,
+  deviceId,
+  target = query,
+) {
+  await ensureCommunicationSchema(target);
+  const cleanBusinessId = normalizeText(businessId);
+  const cleanDeviceId = normalizeText(deviceId);
+  if (!cleanBusinessId) {
+    throw createError(400, 'businessId is required');
+  }
+  if (!cleanDeviceId) {
+    throw createError(400, 'deviceId is required');
+  }
+
+  const token = crypto.randomBytes(32).toString('base64url');
+  const tokenHash = hashConnectSessionToken(token);
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+  await runQuery(
+    target,
+    'DELETE FROM business_whatsapp_connect_sessions WHERE expires_at < NOW() OR consumed_at IS NOT NULL',
+  );
+  await runQuery(
+    target,
+    `
+    INSERT INTO business_whatsapp_connect_sessions (
+      token_hash,
+      business_id,
+      device_id,
+      expires_at
+    )
+    VALUES ($1, $2, $3, $4)
+    `,
+    [tokenHash, cleanBusinessId, cleanDeviceId, expiresAt.toISOString()],
+  );
+
+  return {
+    token,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+async function resolveBusinessWhatsAppConnectSession(token, target = query) {
+  await ensureCommunicationSchema(target);
+  const tokenHash = hashConnectSessionToken(token);
+  if (!tokenHash) return null;
+
+  const result = await runQuery(
+    target,
+    `
+    SELECT business_id, device_id, expires_at
+    FROM business_whatsapp_connect_sessions
+    WHERE token_hash = $1
+      AND consumed_at IS NULL
+      AND expires_at > NOW()
+    LIMIT 1
+    `,
+    [tokenHash],
+  );
+  const row = result.rows[0];
+  return row
+    ? {
+        businessId: row.business_id,
+        deviceId: row.device_id,
+        expiresAt: toIsoString(row.expires_at),
+      }
+    : null;
+}
+
+async function consumeBusinessWhatsAppConnectSession(token, target = query) {
+  await ensureCommunicationSchema(target);
+  const tokenHash = hashConnectSessionToken(token);
+  if (!tokenHash) return false;
+
+  const result = await runQuery(
+    target,
+    `
+    UPDATE business_whatsapp_connect_sessions
+    SET consumed_at = NOW()
+    WHERE token_hash = $1
+      AND consumed_at IS NULL
+      AND expires_at > NOW()
+    `,
+    [tokenHash],
+  );
+  return result.rowCount > 0;
 }
 
 async function connectBusinessWhatsApp(businessId, input = {}, target = query) {
@@ -881,6 +1000,11 @@ function normalizeText(value) {
   return normalized || null;
 }
 
+function hashConnectSessionToken(token) {
+  const clean = normalizeText(token);
+  return clean ? crypto.createHash('sha256').update(clean).digest('hex') : null;
+}
+
 function normalizePhone(value, { plus = false } = {}) {
   const raw = String(value || '').trim();
   if (!raw) return raw;
@@ -949,6 +1073,9 @@ module.exports = {
   getBusinessCommunicationSettings,
   saveBusinessCommunicationSettings,
   getBusinessWhatsAppConnectStatus,
+  createBusinessWhatsAppConnectSession,
+  resolveBusinessWhatsAppConnectSession,
+  consumeBusinessWhatsAppConnectSession,
   connectBusinessWhatsApp,
   disconnectBusinessWhatsApp,
   sendBusinessMessage,

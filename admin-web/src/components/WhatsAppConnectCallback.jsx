@@ -87,6 +87,12 @@ function buildCallbackPayload(params, state, storedContext) {
       'business_access_token',
       'pikiAccessToken',
     ]),
+    connectSession: firstValue(sources, [
+      'connectSession',
+      'connect_session',
+      'sessionToken',
+      'session',
+    ]),
     redirectUri:
       firstValue(sources, ['redirectUri', 'redirect_uri']) ||
       `${window.location.origin}${window.location.pathname}`,
@@ -153,7 +159,7 @@ export default function WhatsAppConnectCallback() {
         return
       }
 
-      if (!payload.accessToken || !payload.deviceId) {
+      if (!payload.connectSession && (!payload.accessToken || !payload.deviceId)) {
         setStatus('needs-context')
         setMessage(
           'This browser callback is missing the Piki business session. Start WhatsApp connection from Piki POS settings so the callback can identify the correct store.',
@@ -181,17 +187,24 @@ export default function WhatsAppConnectCallback() {
       }
 
       try {
+        const headers = {
+          'Content-Type': 'application/json',
+        }
+        if (payload.accessToken) {
+          headers.Authorization = `Bearer ${payload.accessToken}`
+        }
+
         const response = await fetch(apiUrl('/api/business/whatsapp-connect/complete'), {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${payload.accessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify({
             code: payload.code,
             redirectUri: payload.redirectUri,
-            deviceId: payload.deviceId,
             phoneNumberId: payload.phoneNumberId,
+            ...(payload.deviceId ? { deviceId: payload.deviceId } : {}),
+            ...(payload.connectSession
+              ? { connectSession: payload.connectSession }
+              : {}),
             ...(payload.wabaId ? { wabaId: payload.wabaId } : {}),
             ...(payload.displayPhoneNumber
               ? { displayPhoneNumber: payload.displayPhoneNumber }
