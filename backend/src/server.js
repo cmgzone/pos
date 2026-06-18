@@ -4346,6 +4346,20 @@ app.get(['/', '/catalog'], async (req, res, next) => {
   }
 });
 
+app.get('/sitemap.xml', (req, res, next) => {
+  res.type('application/xml');
+  res.sendFile(path.join(landingPageDir, 'sitemap.xml'), (error) => {
+    if (error) next(error);
+  });
+});
+
+app.get('/robots.txt', (req, res, next) => {
+  res.type('text/plain');
+  res.sendFile(path.join(landingPageDir, 'robots.txt'), (error) => {
+    if (error) next(error);
+  });
+});
+
 app.use(express.static(landingPageDir, { index: false }));
 app.use('/landing', express.static(landingPageDir, { index: false }));
 
