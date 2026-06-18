@@ -4284,6 +4284,9 @@ app.use(express.static(landingPageDir, { index: false }));
 app.use('/landing', express.static(landingPageDir, { index: false }));
 
 app.get(['/', '/landing'], (req, res, next) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(landingIndexPath, (error) => {
     if (error) {
       next(error);
