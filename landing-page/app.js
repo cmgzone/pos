@@ -318,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${number} ${label}`;
     }
 
-    function renderMarkets(markets, selectedCountryCode) {
+    function renderMarkets(markets, selectedMarket) {
         if (!pricingMarket || !Array.isArray(markets) || markets.length === 0) {
             return;
         }
@@ -328,7 +328,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const provider = market.providerLabel ? ` - ${market.providerLabel}` : '';
             return `<option value="${escapeHtml(code)}">${escapeHtml(label + provider)}</option>`;
         }).join('');
-        pricingMarket.value = selectedCountryCode || markets[0].countryCode || 'KE';
+        const preferred = selectedMarket?.countryCode || markets[0].countryCode || 'KE';
+        const matching = markets.find((m) => (m.countryCode || 'GLOBAL') === preferred);
+        pricingMarket.value = matching
+            ? (matching.countryCode || 'GLOBAL')
+            : (markets[0].countryCode || 'KE');
+        pricingMarket.disabled = false;
     }
 
     function renderPricingPlans(plans, meta) {
@@ -398,18 +403,31 @@ document.addEventListener('DOMContentLoaded', () => {
         observeReveals(pricingPlans);
     }
 
-    async function loadPricingPlans(countryCode = 'KE') {
+    async function detectVisitorCountry() {
+        try {
+            const response = await fetch('/api/geo/country');
+            const body = await response.json().catch(() => ({}));
+            const code = String(body.countryCode || '').trim().toUpperCase();
+            if (/^[A-Z]{2}$/.test(code)) return code;
+        } catch (_) {
+            // Best-effort detection; fall back to Kenya pricing.
+        }
+        return 'KE';
+    }
+
+    async function loadPricingPlans(countryCode) {
         if (!pricingPlans) return;
+        const resolvedCountry = countryCode || (await detectVisitorCountry());
         if (pricingSourceText) {
             pricingSourceText.textContent = 'Loading live plans...';
         }
         try {
-            const response = await fetch(`/api/subscription/plans?countryCode=${encodeURIComponent(countryCode)}`);
+            const response = await fetch(`/api/subscription/plans?countryCode=${encodeURIComponent(resolvedCountry)}`);
             const body = await response.json().catch(() => ({}));
             if (!response.ok || body.ok !== true) {
                 throw new Error(body.error || 'Could not load pricing plans.');
             }
-            renderMarkets(body.markets || [], body.countryCode);
+            renderMarkets(body.markets || [], body.selectedMarket);
             renderPricingPlans(body.plans || [], body);
         } catch (error) {
             if (pricingSourceText) {
