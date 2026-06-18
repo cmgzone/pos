@@ -12,6 +12,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
+import '../../onboarding/presentation/business_setup_wizard_screen.dart';
 import '../data/auth_password_service.dart';
 import '../../settings/presentation/subscription_screen.dart';
 import 'login_screen.dart';
@@ -438,7 +439,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       showPhoneCode: false,
       countryListTheme: CountryListThemeData(
         textStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-        searchTextStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        searchTextStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         inputDecoration: InputDecoration(
           labelText: 'Search country',
           prefixIcon: Icon(Icons.search),
@@ -643,10 +646,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
               initialPlanCode: _readInitialPlanCode(response),
             )
           : AppShell(key: AppShell.shellKey);
+      final registrationDestination = _isBusinessSetupFlow
+          ? BusinessSetupWizardScreen(
+              businessId: incomingBusinessId,
+              businessName: incomingBusinessName.isNotEmpty
+                  ? incomingBusinessName
+                  : businessName,
+              planCode: signupPlan?.code ?? _readInitialPlanCode(response),
+              planName: signupPlan?.name,
+              planFeatures: signupPlan?.features ?? const [],
+              initialSellingFocus: _selectedSellingMode,
+              destination: destination,
+            )
+          : destination;
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => destination),
+        MaterialPageRoute(builder: (_) => registrationDestination),
         (route) => false,
       );
     } catch (error) {
@@ -673,7 +689,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           SizedBox(height: 12),
           Text(
             'Loading available countries...',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
           ),
         ],
       );
@@ -995,7 +1014,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.24),
+              color: Theme.of(
+                context,
+              ).colorScheme.secondary.withValues(alpha: 0.24),
             ),
           ),
           child: Row(
@@ -1403,7 +1424,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     height: 72,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Theme.of(context).colorScheme.secondary, AppColors.primaryLight],
+                        colors: [
+                          Theme.of(context).colorScheme.secondary,
+                          AppColors.primaryLight,
+                        ],
                       ),
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -1474,19 +1498,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: AppColors.error,
-                      size: 18,
-                    ),
+                    Icon(Icons.error_outline, color: AppColors.error, size: 18),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _error!,
-                        style: TextStyle(
-                          color: AppColors.error,
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: AppColors.error, fontSize: 13),
                       ),
                     ),
                   ],
@@ -1587,7 +1604,10 @@ class _GradientIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return ShaderMask(
       shaderCallback: (bounds) => LinearGradient(
-        colors: [Theme.of(context).colorScheme.secondary, AppColors.primaryLight],
+        colors: [
+          Theme.of(context).colorScheme.secondary,
+          AppColors.primaryLight,
+        ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(bounds),
@@ -1627,10 +1647,7 @@ class _ReviewCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                 ),
               ),
               TextButton(onPressed: onEdit, child: Text('Edit')),
