@@ -40,6 +40,12 @@ const {
   resolveRequestCountry,
 } = require('./geo');
 const {
+  normalizeSubscriptionPlatform,
+  subscriptionProviderAllowedForPlatform,
+  selectSubscriptionMarket,
+  subscriptionMarketsForPlatform,
+} = require('./subscriptionMarkets');
+const {
   issueLicense,
   resolveSubscriptionState,
 } = require('./licenseTokens');
@@ -6576,82 +6582,6 @@ function isAiEnabledUserRecord(record) {
   } catch (_) {
     return false;
   }
-}
-
-function selectSubscriptionMarket(markets, { countryCode, provider } = {}) {
-  const cleanCountry = normalizeOptionalText(countryCode)
-    ? normalizeCountryCode(countryCode)
-    : null;
-  const cleanProvider = normalizeOptionalText(provider)
-    ? normalizeProvider(provider)
-    : null;
-  const matchesProvider = (market) =>
-    !cleanProvider || market.provider === cleanProvider;
-
-  if (cleanCountry) {
-    const exact = markets.find(
-      (market) =>
-        market.countryCode === cleanCountry &&
-        matchesProvider(market),
-    );
-    if (exact) return exact;
-
-    const global = markets.find(
-      (market) =>
-        market.countryCode === 'GLOBAL' &&
-        matchesProvider(market),
-    );
-    if (global) return global;
-  }
-
-  if (cleanProvider) {
-    const byProvider = markets.find(matchesProvider);
-    if (byProvider) return byProvider;
-  }
-
-  return markets[0] || null;
-}
-
-function normalizeSubscriptionPlatform(value) {
-  const platform = String(value || '').trim().toLowerCase();
-  if (platform === 'android') return 'android';
-  if (platform === 'windows') return 'windows';
-  return platform || 'windows';
-}
-
-function subscriptionProviderAllowedForPlatform(provider, platform) {
-  const cleanProvider = normalizeProvider(provider);
-  const cleanPlatform = normalizeSubscriptionPlatform(platform);
-  if (cleanPlatform === 'android') {
-    return cleanProvider === 'google_play';
-  }
-  return cleanProvider === 'paypal' || cleanProvider === 'flutterwave';
-}
-
-function subscriptionMarketsForPlatform(markets, platform, countryCode) {
-  const cleanCountry = normalizeCountryCode(countryCode || 'KE');
-  const filtered = (markets || []).filter((market) =>
-    subscriptionProviderAllowedForPlatform(market.provider, platform),
-  );
-  const providers = [...new Set(filtered.map((market) => market.provider))];
-  return providers.flatMap((provider) => {
-    const exact = filtered.find(
-      (market) =>
-        market.provider === provider && market.countryCode === cleanCountry,
-    );
-    if (exact) return [exact];
-    const global = filtered.find(
-      (market) => market.provider === provider && market.countryCode === 'GLOBAL',
-    );
-    if (!global) return [];
-    return [
-      {
-        ...global,
-        countryCode: cleanCountry,
-        label: cleanCountry === 'KE' ? 'Kenya' : cleanCountry,
-      },
-    ];
-  });
 }
 
 async function resolveRegistrationPlanSelection({

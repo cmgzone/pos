@@ -969,9 +969,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
 
   Widget _countryPill() {
     final market = _selectedMarket();
-    final label = market?.label == 'Other Countries'
-        ? market?.countryCode ?? 'GLOBAL'
-        : market?.label ?? 'Kenya';
+    final label = market?.label ?? 'Other Countries';
     final countryCode =
         market?.countryCode ??
         widget.initialCountryCode ??
