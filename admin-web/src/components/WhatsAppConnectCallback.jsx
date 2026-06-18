@@ -312,9 +312,6 @@ export default function WhatsAppConnectCallback() {
         )}
 
         <div className="callback-actions">
-          <a className="btn btn-primary" href="/">
-            Open Piki Admin
-          </a>
           <button
             className="btn btn-secondary"
             type="button"

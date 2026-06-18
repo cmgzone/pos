@@ -2810,13 +2810,13 @@ app.post('/api/business/whatsapp-connect/session', async (req, res, next) => {
     if (!platform.isActive || !platform.setupReady) {
       throw createHttpError(
         400,
-        'WhatsApp Embedded Signup is not configured in Piki Admin',
+        'WhatsApp setup is not enabled yet. Contact Piki support.',
       );
     }
     if (!platform.oauthRedirectUri) {
       throw createHttpError(
         400,
-        'WhatsApp OAuth Redirect URI is required in Piki Admin',
+        'WhatsApp setup redirect is not configured yet. Contact Piki support.',
       );
     }
 
@@ -2824,14 +2824,11 @@ app.post('/api/business/whatsapp-connect/session', async (req, res, next) => {
       businessContext.businessId,
       businessContext.deviceId,
     );
-    const connectUrl = buildWhatsAppConnectUrl(
-      platform.oauthRedirectUri,
-      session.token,
-    );
+    const connectUrl = buildWhatsAppConnectUrl(req, session.token);
     if (!connectUrl) {
       throw createHttpError(
         400,
-        'WhatsApp OAuth Redirect URI must be a valid HTTPS URL',
+        'WhatsApp setup link could not be created.',
       );
     }
 
@@ -2957,6 +2954,22 @@ app.get('/api/messages/logs', async (req, res, next) => {
     next(normalizeRouteError(error));
   }
 });
+
+app.get(
+  [
+    '/whatsapp/connect',
+    '/whatsapp/connect/callback',
+    '/whatsapp-connect',
+    '/whatsapp-connect/callback',
+  ],
+  (req, res) => {
+    res
+      .status(200)
+      .type('html')
+      .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+      .send(renderWhatsAppConnectPage());
+  },
+);
 
 const AI_RATE_LIMIT = 30; // legacy fallback, replaced by plan counters below
 const AI_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -10860,29 +10873,429 @@ function paymentGatewayReadinessErrors(gateway) {
   }
 }
 
-function buildWhatsAppConnectUrl(oauthRedirectUri, sessionToken) {
-  const cleanRedirectUri = normalizeOptionalText(oauthRedirectUri);
+function renderWhatsAppConnectPage() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Piki POS WhatsApp Setup</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d111a;
+      --panel: #141a27;
+      --line: rgba(148, 163, 184, .16);
+      --text: #f8fafc;
+      --muted: #bfd0e4;
+      --primary: #6d5dfc;
+      --success: #35d07f;
+      --danger: #ff5b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top left, rgba(46, 213, 115, .16), transparent 30rem),
+        radial-gradient(circle at bottom right, rgba(109, 93, 252, .22), transparent 30rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(100%, 620px);
+      padding: 32px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(20, 26, 39, .9);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, .32);
+    }
+    .icon {
+      width: 56px;
+      height: 56px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 20px;
+      border-radius: 14px;
+      background: rgba(109, 93, 252, .14);
+      color: #d8d3ff;
+      font-size: 18px;
+      font-weight: 900;
+    }
+    .icon.success { background: rgba(53, 208, 127, .14); color: var(--success); }
+    .icon.error { background: rgba(255, 91, 107, .14); color: var(--danger); }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: #dbe7f5;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 6vw, 46px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+    p { color: var(--muted); line-height: 1.6; }
+    .details {
+      display: none;
+      gap: 12px;
+      margin-top: 24px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(6, 10, 18, .32);
+    }
+    .details.show { display: grid; }
+    .detail { display: grid; gap: 4px; }
+    .detail span {
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .detail strong { overflow-wrap: anywhere; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    button {
+      min-height: 44px;
+      padding: 0 22px;
+      border: 0;
+      border-radius: 12px;
+      color: white;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .58; cursor: wait; }
+    .primary { background: linear-gradient(135deg, #7b61ff, var(--primary)); }
+    .secondary { background: #20283a; border: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="icon" class="icon">...</div>
+    <p class="eyebrow">Piki POS WhatsApp setup</p>
+    <h1 id="title">Connect WhatsApp</h1>
+    <p id="message">Loading WhatsApp setup...</p>
+    <section id="details" class="details"></section>
+    <div class="actions">
+      <button id="continue" class="primary" type="button" disabled>Continue with Meta</button>
+      <button class="secondary" type="button" onclick="window.close()">Close tab</button>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var FACEBOOK_ORIGINS = {
+        "https://www.facebook.com": true,
+        "https://web.facebook.com": true
+      };
+      var sessionToken = readSessionToken();
+      var params = new URLSearchParams(window.location.search);
+      var authCode = params.get("code") || "";
+      var signupData = null;
+      var platform = null;
+      var submitted = false;
+      var continueButton = document.getElementById("continue");
+
+      function readSessionToken() {
+        var search = new URLSearchParams(window.location.search);
+        return (
+          search.get("session") ||
+          search.get("connectSession") ||
+          search.get("sessionToken") ||
+          search.get("state") ||
+          ""
+        ).trim();
+      }
+
+      function setPhase(phase, title, message) {
+        document.getElementById("title").textContent = title;
+        document.getElementById("message").textContent = message;
+        var icon = document.getElementById("icon");
+        icon.className = "icon";
+        icon.textContent = phase === "success" ? "OK" : phase === "error" ? "!" : "...";
+        if (phase === "success") icon.classList.add("success");
+        if (phase === "error") icon.classList.add("error");
+      }
+
+      function setDetails(data) {
+        var details = document.getElementById("details");
+        var rows = [];
+        function push(label, value) {
+          if (!value) return;
+          rows.push(
+            '<div class="detail"><span>' + escapeHtml(label) + '</span><strong>' +
+              escapeHtml(value) + '</strong></div>'
+          );
+        }
+        push("Selected sender", data.displayPhoneNumber || data.whatsappDisplayPhoneNumber);
+        push("Phone Number ID", data.phoneNumberId || data.whatsappPhoneNumberId);
+        push("WABA ID", data.wabaId || data.whatsappWabaId);
+        push("Setup link expires", data.sessionExpiresAt);
+        details.innerHTML = rows.join("");
+        details.className = rows.length ? "details show" : "details";
+      }
+
+      function escapeHtml(value) {
+        return String(value || "").replace(/[&<>"']/g, function (char) {
+          return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+          }[char];
+        });
+      }
+
+      function loadFacebookSdk(appId, apiVersion) {
+        return new Promise(function (resolve, reject) {
+          function init() {
+            if (!window.FB) {
+              reject(new Error("Meta login SDK failed to load."));
+              return;
+            }
+            window.FB.init({
+              appId: appId,
+              cookie: true,
+              xfbml: false,
+              version: apiVersion || "v20.0"
+            });
+            resolve(window.FB);
+          }
+          if (window.FB) {
+            init();
+            return;
+          }
+          window.fbAsyncInit = init;
+          var existing = document.getElementById("facebook-jssdk");
+          if (existing) {
+            existing.addEventListener("load", init, { once: true });
+            existing.addEventListener("error", function () {
+              reject(new Error("Meta login SDK failed to load."));
+            }, { once: true });
+            return;
+          }
+          var script = document.createElement("script");
+          script.id = "facebook-jssdk";
+          script.async = true;
+          script.defer = true;
+          script.crossOrigin = "anonymous";
+          script.src = "https://connect.facebook.net/en_US/sdk.js";
+          script.onerror = function () {
+            reject(new Error("Meta login SDK failed to load."));
+          };
+          document.body.appendChild(script);
+        });
+      }
+
+      function normalizeSignupData(data) {
+        data = data || {};
+        return {
+          phoneNumberId:
+            data.phone_number_id ||
+            data.phoneNumberId ||
+            data.whatsapp_phone_number_id ||
+            "",
+          wabaId:
+            data.waba_id ||
+            data.wabaId ||
+            data.whatsapp_business_account_id ||
+            "",
+          displayPhoneNumber:
+            data.display_phone_number ||
+            data.displayPhoneNumber ||
+            data.phone_number ||
+            "",
+          businessName:
+            data.business_name ||
+            data.businessName ||
+            data.verified_name ||
+            ""
+        };
+      }
+
+      function tryComplete() {
+        if (submitted || !sessionToken || !platform || !authCode || !signupData || !signupData.phoneNumberId) {
+          return;
+        }
+        submitted = true;
+        continueButton.disabled = true;
+        setPhase("busy", "Connecting WhatsApp", "Saving WhatsApp connection...");
+        fetch("/api/business/whatsapp-connect/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            connectSession: sessionToken,
+            code: authCode,
+            redirectUri: window.location.origin + "/whatsapp/connect/callback",
+            phoneNumberId: signupData.phoneNumberId,
+            wabaId: signupData.wabaId,
+            displayPhoneNumber: signupData.displayPhoneNumber,
+            businessName: signupData.businessName
+          })
+        })
+          .then(readJson)
+          .then(function (body) {
+            if (body.ok !== true) throw new Error(body.error || "WhatsApp connection failed.");
+            setPhase("success", "Connection complete", "WhatsApp Business API connected. Return to Piki POS and refresh messaging settings.");
+            setDetails(body.data || signupData);
+          })
+          .catch(function (error) {
+            submitted = false;
+            continueButton.disabled = false;
+            setPhase("error", "Connection failed", error.message || "WhatsApp connection failed.");
+          });
+      }
+
+      function readJson(response) {
+        return response.json().then(function (body) {
+          if (!response.ok) throw new Error(body.error || "Request failed.");
+          return body;
+        });
+      }
+
+      window.addEventListener("message", function (event) {
+        if (!FACEBOOK_ORIGINS[event.origin]) return;
+        var data = null;
+        try {
+          data = JSON.parse(event.data);
+        } catch (_) {
+          return;
+        }
+        if (!data || data.type !== "WA_EMBEDDED_SIGNUP") return;
+
+        if (data.event === "FINISH") {
+          signupData = normalizeSignupData(data.data);
+          if (!signupData.phoneNumberId) {
+            setPhase("error", "Connection failed", "Meta finished setup but did not return a phone number ID.");
+            continueButton.disabled = false;
+            return;
+          }
+          setDetails(signupData);
+          setPhase("busy", "Connecting WhatsApp", "Meta signup finished. Waiting for authorization...");
+          tryComplete();
+          return;
+        }
+        if (data.event === "CANCEL") {
+          setPhase("error", "Connection cancelled", "WhatsApp setup was cancelled before completion.");
+          continueButton.disabled = false;
+          return;
+        }
+        if (data.event === "ERROR") {
+          setPhase("error", "Connection failed", (data.data && data.data.error_message) || "Meta could not complete WhatsApp setup.");
+          continueButton.disabled = false;
+        }
+      });
+
+      continueButton.addEventListener("click", function () {
+        if (!platform) return;
+        continueButton.disabled = true;
+        setPhase("busy", "Connecting WhatsApp", "Continue in the Meta signup window...");
+        loadFacebookSdk(platform.appId, platform.apiVersion)
+          .then(function (FB) {
+            FB.login(function (response) {
+              authCode = (response && response.authResponse && response.authResponse.code) || "";
+              if (!authCode) {
+                continueButton.disabled = false;
+                setPhase("error", "Connection failed", "Meta login was cancelled before authorization completed.");
+                return;
+              }
+              setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Waiting for WhatsApp number details...");
+              tryComplete();
+            }, {
+              config_id: platform.embeddedSignupConfigId,
+              response_type: "code",
+              override_default_response_type: true,
+              state: sessionToken,
+              extras: {
+                sessionInfoVersion: 2,
+                feature: "whatsapp_embedded_signup"
+              }
+            });
+          })
+          .catch(function (error) {
+            continueButton.disabled = false;
+            setPhase("error", "Connection failed", error.message || "Meta login could not be opened.");
+          });
+      });
+
+      if (!sessionToken) {
+        setPhase("error", "Connection failed", "This WhatsApp setup link is missing a connection session.");
+        return;
+      }
+
+      fetch("/api/business/whatsapp-connect/session/" + encodeURIComponent(sessionToken))
+        .then(readJson)
+        .then(function (body) {
+          platform = (body.data && body.data.platform) || {};
+          if (!platform.isActive || !platform.setupReady) {
+            throw new Error("WhatsApp setup is not enabled yet. Contact Piki support.");
+          }
+          setDetails(body.data || {});
+          continueButton.disabled = false;
+          setPhase("ready", "Connect WhatsApp", "Continue with Meta to verify and connect your WhatsApp number.");
+          if (authCode) {
+            setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Waiting for WhatsApp number details...");
+            tryComplete();
+          }
+        })
+        .catch(function (error) {
+          setPhase("error", "Connection failed", error.message || "WhatsApp setup could not be loaded.");
+        });
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+function buildWhatsAppConnectUrl(req, sessionToken) {
   const cleanSessionToken = normalizeOptionalText(sessionToken);
-  if (!cleanRedirectUri || !cleanSessionToken) {
+  const publicBaseUrl = resolvePublicBackendBaseUrl(req);
+  if (!publicBaseUrl || !cleanSessionToken) {
     return '';
   }
 
   try {
-    const url = new URL(cleanRedirectUri);
-    if (url.protocol !== 'https:') {
+    const url = new URL('/whatsapp/connect', publicBaseUrl);
+    if (!['http:', 'https:'].includes(url.protocol)) {
       return '';
-    }
-    url.hash = '';
-    url.search = '';
-    url.pathname = url.pathname.replace(/\/callback\/?$/i, '') || '/whatsapp/connect';
-    if (!url.pathname.endsWith('/connect')) {
-      url.pathname = '/whatsapp/connect';
     }
     url.searchParams.set('session', cleanSessionToken);
     return url.toString();
   } catch (_) {
     return '';
   }
+}
+
+function resolvePublicBackendBaseUrl(req) {
+  const configured = normalizeOptionalText(config.publicBaseUrl);
+  if (configured) {
+    return configured;
+  }
+
+  const forwardedProto = normalizeOptionalText(req.headers['x-forwarded-proto']);
+  const forwardedHost = normalizeOptionalText(req.headers['x-forwarded-host']);
+  const proto =
+    forwardedProto?.split(',')[0]?.trim() ||
+    (req.secure ? 'https' : normalizeOptionalText(req.protocol)) ||
+    'http';
+  const host =
+    forwardedHost?.split(',')[0]?.trim() ||
+    normalizeOptionalText(req.headers.host);
+  return host ? `${proto}://${host}` : '';
 }
 
 function createHttpError(statusCode, message, { exposeMessage = false } = {}) {

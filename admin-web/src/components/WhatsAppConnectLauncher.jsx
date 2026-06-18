@@ -364,9 +364,6 @@ export default function WhatsAppConnectLauncher() {
               Continue with Meta
             </button>
           )}
-          <a className="btn btn-primary" href="/">
-            Open Piki Admin
-          </a>
           <button
             className="btn btn-secondary"
             type="button"
