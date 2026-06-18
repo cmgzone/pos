@@ -9,7 +9,7 @@ class AppConstants {
       'velora-pos-dev-license-secret-change-me';
   static const String supportEmail = String.fromEnvironment(
     'SUPPORT_EMAIL',
-    defaultValue: 'support@pikipos.co.ke',
+    defaultValue: 'support@pikipos.com',
   );
 
   // App-managed API endpoints
