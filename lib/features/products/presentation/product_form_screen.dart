@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -36,23 +37,31 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     'm:cm': '1 m = 100 cm',
   };
 
-  static const _wizardSteps = ['Basic Info', 'Pricing & Units', 'Inventory', 'Review'];
+  static const _wizardSteps = [
+    'Basic Info',
+    'Pricing & Units',
+    'Inventory',
+    'Review',
+  ];
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _priceController;
   late final TextEditingController _costController;
   late final TextEditingController _brandController;
+  late final TextEditingController _descriptionController;
   late final TextEditingController _skuController;
   late final TextEditingController _barcodeController;
   late final TextEditingController _stockController;
   late final TextEditingController _lowStockController;
+  late final TextEditingController _imageUrlController;
 
   String? _selectedCategoryId;
   String _selectedUnit = UnitUtils.defaultUnit;
   late String _selectedStockUnit;
   late String _selectedPurchaseUnit;
   String? _imagePath;
+  List<String> _imageUrls = [];
   DateTime? _initialExpiryDate;
   bool _useUnitConversion = false;
   bool _isLoading = false;
@@ -61,6 +70,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   bool _isTotalCostMode = false;
   bool _trackStock = true;
   bool _hasVariants = false;
+  bool _showOnline = true;
+  bool _isFeatured = false;
   int _currentStep = 0;
 
   bool get _isEditing => widget.product != null;
@@ -79,6 +90,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _skuController = TextEditingController(text: p?['sku'] as String? ?? '');
     _brandController = TextEditingController(
       text: p?['brand'] as String? ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: p?['description'] as String? ?? '',
     );
     _barcodeController = TextEditingController(
       text: p?['barcode'] as String? ?? '',
@@ -101,6 +115,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _trackStock = p != null ? UnitUtils.tracksStock(p) : true;
     _hasVariants = ((p?['has_variants'] as num?) ?? 0) == 1;
     _imagePath = p?['image_url'] as String?;
+    _imageUrls = _readProductImageUrls(p?['image_urls_json'], _imagePath);
+    if (_imageUrls.isNotEmpty) {
+      _imagePath = _imageUrls.first;
+    }
+    _imageUrlController = TextEditingController();
+    _showOnline = _readBoolish(p?['show_online'], fallback: true);
+    _isFeatured = _readBoolish(p?['is_featured'], fallback: false);
   }
 
   @override
@@ -109,10 +130,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _priceController.dispose();
     _costController.dispose();
     _brandController.dispose();
+    _descriptionController.dispose();
     _skuController.dispose();
     _barcodeController.dispose();
     _stockController.dispose();
     _lowStockController.dispose();
+    _imageUrlController.dispose();
     super.dispose();
   }
 
@@ -140,6 +163,42 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   double get _purchaseToStockFactor =>
       UnitUtils.conversionFactor(_effectivePurchaseUnit, _effectiveStockUnit) ??
       1.0;
+
+  static bool _readBoolish(dynamic value, {required bool fallback}) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final clean = value.toString().trim().toLowerCase();
+    if (clean.isEmpty) return fallback;
+    return !['0', 'false', 'no', 'off'].contains(clean);
+  }
+
+  static List<String> _readProductImageUrls(dynamic raw, String? fallback) {
+    final values = <String>[];
+    if (raw is List) {
+      values.addAll(raw.map((value) => value.toString()));
+    } else if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          values.addAll(decoded.map((value) => value.toString()));
+        } else {
+          values.add(raw);
+        }
+      } catch (_) {
+        values.add(raw);
+      }
+    }
+    if (values.isEmpty && fallback?.trim().isNotEmpty == true) {
+      values.add(fallback!.trim());
+    }
+    final seen = <String>{};
+    return values
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty && seen.add(value))
+        .take(8)
+        .toList();
+  }
 
   TextInputFormatter get _quantityFormatter =>
       FilteringTextInputFormatter.allow(
@@ -189,6 +248,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         final rawCost = double.tryParse(_costController.text) ?? 0;
         finalCost = _isTotalCostMode && stock > 0 ? (rawCost / stock) : rawCost;
       }
+      final productImageUrls = _normalizedProductImageUrls();
 
       final payload = <String, dynamic>{
         'name': _nameController.text.trim(),
@@ -209,10 +269,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         'purchase_unit': purchaseUnit,
         'purchase_to_stock_factor': purchaseToStockFactor,
         'category_id': _selectedCategoryId,
-        'image_url': _imagePath,
+        'image_url': productImageUrls.isNotEmpty
+            ? productImageUrls.first
+            : null,
         'brand': _brandController.text.trim().isNotEmpty
             ? _brandController.text.trim()
             : null,
+        'description': _descriptionController.text.trim().isNotEmpty
+            ? _descriptionController.text.trim()
+            : null,
+        'image_urls_json': productImageUrls.isNotEmpty
+            ? jsonEncode(productImageUrls)
+            : null,
+        'show_online': _showOnline ? 1 : 0,
+        'is_featured': _isFeatured ? 1 : 0,
         'track_stock': _trackStock ? 1 : 0,
         'has_variants': _hasVariants ? 1 : 0,
       };
@@ -242,8 +312,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           purchaseUnit: purchaseUnit,
           purchaseToStockFactor: purchaseToStockFactor,
           categoryId: _selectedCategoryId,
-          imageUrl: _imagePath,
+          imageUrl: productImageUrls.isNotEmpty ? productImageUrls.first : null,
           brand: payload['brand'] as String?,
+          description: payload['description'] as String?,
+          imageUrlsJson: payload['image_urls_json'] as String?,
+          showOnline: _showOnline,
+          isFeatured: _isFeatured,
           initialExpiryDate: ExpiryUtils.toStorageString(_initialExpiryDate),
           trackStock: _trackStock,
           hasVariants: _hasVariants,
@@ -298,8 +372,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     final savedFile = await File(
       picked.path,
     ).copy('${imagesDir.path}/$fileName');
+    final wasFirstImage = _normalizedProductImageUrls().isEmpty;
     setState(() {
-      _imagePath = savedFile.path;
+      _addProductImageUrl(savedFile.path, makeMain: wasFirstImage);
       _isUploadingImage = true;
     });
 
@@ -310,10 +385,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         productName: _nameController.text.trim(),
       );
       if (!mounted) return;
-      setState(() => _imagePath = hostedUrl);
+      setState(() => _replaceProductImageUrl(savedFile.path, hostedUrl));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Image hosted with Bunny for your online catalog.'),
+          content: Text('Photo added to the online product gallery.'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -351,7 +426,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         productName: _nameController.text.trim(),
       );
       if (!mounted) return;
-      setState(() => _imagePath = enhancedPath);
+      setState(() => _replaceProductImageUrl(imagePath, enhancedPath));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -385,7 +460,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   bool _hasDisplayableProductImage() {
-    final imagePath = _imagePath?.trim() ?? '';
+    final images = _normalizedProductImageUrls();
+    final imagePath = images.isNotEmpty ? images.first : '';
     if (imagePath.isEmpty) return false;
     if (ProductImageUploadService.isRemoteImage(imagePath)) return true;
     try {
@@ -443,7 +519,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           SizedBox(height: 8),
           Text(
             isLoading ? 'Loading image...' : 'Image preview unavailable',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -451,7 +529,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Widget _buildImageHostingStatus() {
-    final isHosted = ProductImageUploadService.isRemoteImage(_imagePath);
+    final images = _normalizedProductImageUrls();
+    final isHosted = images.any(ProductImageUploadService.isRemoteImage);
     if (!_isUploadingImage && !isHosted) {
       return const SizedBox.shrink();
     }
@@ -491,6 +570,90 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         ],
       ),
     );
+  }
+
+  List<String> _normalizedProductImageUrls() {
+    final seen = <String>{};
+    final values = <String>[
+      if (_imagePath?.trim().isNotEmpty == true) _imagePath!.trim(),
+      ..._imageUrls,
+    ];
+    return values
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty && seen.add(url))
+        .take(8)
+        .toList();
+  }
+
+  bool _isUsableProductImageUrl(String value) {
+    final clean = value.trim();
+    if (ProductImageUploadService.isRemoteImage(clean)) return true;
+    if (clean.startsWith('file:')) return true;
+    return !clean.contains('://');
+  }
+
+  void _addProductImageUrl(String value, {bool makeMain = false}) {
+    final clean = value.trim();
+    if (clean.isEmpty || !_isUsableProductImageUrl(clean)) return;
+    final urls = _normalizedProductImageUrls()
+        .where((url) => url != clean)
+        .toList();
+    if (makeMain || urls.isEmpty) {
+      urls.insert(0, clean);
+    } else {
+      urls.add(clean);
+    }
+    _imageUrls = urls.take(8).toList();
+    _imagePath = _imageUrls.isNotEmpty ? _imageUrls.first : null;
+  }
+
+  void _replaceProductImageUrl(String oldUrl, String newUrl) {
+    final cleanNew = newUrl.trim();
+    final urls = _normalizedProductImageUrls();
+    final index = urls.indexOf(oldUrl);
+    if (index >= 0) {
+      urls[index] = cleanNew;
+    } else {
+      urls.insert(0, cleanNew);
+    }
+    final seen = <String>{};
+    _imageUrls = urls
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty && seen.add(url))
+        .take(8)
+        .toList();
+    _imagePath = _imageUrls.isNotEmpty ? _imageUrls.first : null;
+  }
+
+  void _removeProductImageUrl(String url) {
+    setState(() {
+      _imageUrls = _normalizedProductImageUrls()
+          .where((item) => item != url)
+          .toList();
+      _imagePath = _imageUrls.isNotEmpty ? _imageUrls.first : null;
+    });
+  }
+
+  void _makeMainProductImage(String url) {
+    setState(() => _addProductImageUrl(url, makeMain: true));
+  }
+
+  void _addProductImageFromInput() {
+    final value = _imageUrlController.text.trim();
+    if (value.isEmpty) return;
+    if (!ProductImageUploadService.isRemoteImage(value)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Use a valid http or https image URL.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _addProductImageUrl(value);
+      _imageUrlController.clear();
+    });
   }
 
   void _toggleConversion(bool enabled) {
@@ -560,7 +723,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       children: [
         Text(
           'Keep simple products in one unit, or turn on conversion when the selling unit differs from how you store stock.',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 13,
+          ),
         ),
         SizedBox(height: 16),
         SingleChildScrollView(
@@ -788,14 +954,16 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           color: isComplete
                               ? AppColors.success
                               : isCurrent
-                                  ? AppColors.primary
-                                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+                              ? AppColors.primary
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
                           border: Border.all(
                             color: isComplete
                                 ? AppColors.success
                                 : isCurrent
-                                    ? AppColors.primary
-                                    : Theme.of(context).colorScheme.outline,
+                                ? AppColors.primary
+                                : Theme.of(context).colorScheme.outline,
                             width: 2,
                           ),
                         ),
@@ -809,7 +977,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                   fontWeight: FontWeight.w700,
                                   color: isCurrent
                                       ? Colors.white
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                 ),
                               ),
                       ),
@@ -838,8 +1008,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
   Widget _buildImagePicker() {
     final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
+    final imageUrls = _normalizedProductImageUrls();
     final hasImage = _hasDisplayableProductImage();
-    final imagePath = _imagePath?.trim() ?? '';
+    final imagePath = imageUrls.isNotEmpty ? imageUrls.first : '';
 
     return Column(
       children: [
@@ -860,7 +1031,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       tooltip: 'Remove image',
                       onPressed: _isUploadingImage
                           ? null
-                          : () => setState(() => _imagePath = null),
+                          : () => _removeProductImageUrl(imagePath),
                     ),
                   ),
                 ),
@@ -887,7 +1058,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     )
                   : Icon(Icons.auto_fix_high_rounded, size: 18),
               label: Text(
-                _isEnhancingImage ? 'Enhancing image...' : 'Enhance with Piki AI',
+                _isEnhancingImage
+                    ? 'Enhancing image...'
+                    : 'Enhance with Piki AI',
               ),
             ),
           ),
@@ -906,7 +1079,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   label: Text('Gallery'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -924,7 +1099,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   label: Text('Camera'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -945,7 +1122,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   label: Text('Gallery'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -962,7 +1141,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   label: Text('Camera'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -971,11 +1152,158 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               ),
             ],
           ),
+        SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _imageUrlController,
+                decoration: const InputDecoration(
+                  labelText: 'Add product photo URL',
+                  hintText: 'https://...',
+                  prefixIcon: Icon(Icons.link_outlined),
+                ),
+                onSubmitted: (_) => _addProductImageFromInput(),
+              ),
+            ),
+            SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: _addProductImageFromInput,
+              icon: Icon(Icons.add_photo_alternate_outlined, size: 18),
+              label: Text('Add'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (imageUrls.isNotEmpty) ...[
+          SizedBox(height: 16),
+          _buildProductImageGallery(imageUrls),
+        ],
       ],
     );
   }
 
   // ──────────────────── Wizard Step 1: Basic Information ────────────────────
+  Widget _buildProductImageGallery(List<String> imageUrls) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${imageUrls.length} online photo${imageUrls.length == 1 ? '' : 's'}',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var index = 0; index < imageUrls.length; index++)
+                Padding(
+                  padding: EdgeInsets.only(
+                    right: index == imageUrls.length - 1 ? 0 : 10,
+                  ),
+                  child: _buildProductImageThumb(imageUrls[index], index),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProductImageThumb(String url, int index) {
+    final isRemote = ProductImageUploadService.isRemoteImage(url);
+    return Container(
+      width: 128,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: isRemote
+                ? Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildImageThumbFallback(),
+                  )
+                : Image.file(
+                    _imageFileForPath(url),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildImageThumbFallback(),
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  index == 0 ? 'Main photo' : 'Photo ${index + 1}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: index == 0
+                        ? AppColors.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'Make main',
+                      onPressed: index == 0
+                          ? null
+                          : () => _makeMainProductImage(url),
+                      icon: Icon(Icons.star_outline, size: 18),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    IconButton(
+                      tooltip: 'Remove',
+                      onPressed: () => _removeProductImageUrl(url),
+                      icon: Icon(Icons.delete_outline, size: 18),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageThumbFallback() {
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.broken_image_outlined,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
   Widget _buildStep1BasicInfo() {
     final categoriesAsync = ref.watch(categoriesProvider);
     final isCompactLayout = MediaQuery.sizeOf(context).width < 600;
@@ -993,12 +1321,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Product Name *',
                 child: TextFormField(
                   controller: _nameController,
-                  validator: (v) => v == null || v.trim().isEmpty
-                      ? 'Name is required'
-                      : null,
-                  decoration: InputDecoration(
-                    hintText: 'e.g. Wireless Mouse',
-                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Name is required' : null,
+                  decoration: InputDecoration(hintText: 'e.g. Wireless Mouse'),
                 ),
               ),
               SizedBox(height: 20),
@@ -1008,6 +1333,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   controller: _brandController,
                   decoration: InputDecoration(
                     hintText: 'e.g. Logitech, Samsung',
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+              _LabeledField(
+                label: 'Online Product Description',
+                child: TextFormField(
+                  controller: _descriptionController,
+                  minLines: 3,
+                  maxLines: 5,
+                  maxLength: 420,
+                  decoration: InputDecoration(
+                    hintText:
+                        'Describe size, material, ingredients, care notes, or what makes this product special.',
+                    alignLabelWithHint: true,
                   ),
                 ),
               ),
@@ -1030,17 +1370,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         controller: _barcodeController,
                         decoration: InputDecoration(
                           hintText: 'e.g. 1000000001',
-                          suffixIcon:
-                              (Platform.isAndroid || Platform.isIOS)
+                          suffixIcon: (Platform.isAndroid || Platform.isIOS)
                               ? IconButton(
-                                  icon: Icon(Icons.qr_code_scanner, color: AppColors.primary),
+                                  icon: Icon(
+                                    Icons.qr_code_scanner,
+                                    color: AppColors.primary,
+                                  ),
                                   tooltip: 'Scan barcode',
                                   onPressed: () async {
-                                    final barcode = await Navigator.of(context).push<String>(
-                                      MaterialPageRoute(
-                                        builder: (_) => const BarcodeScannerScreen(),
-                                      ),
-                                    );
+                                    final barcode = await Navigator.of(context)
+                                        .push<String>(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const BarcodeScannerScreen(),
+                                          ),
+                                        );
                                     if (barcode != null && barcode.isNotEmpty) {
                                       _barcodeController.text = barcode;
                                     }
@@ -1074,15 +1418,23 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             hintText: 'e.g. 1000000001',
                             suffixIcon: (Platform.isAndroid || Platform.isIOS)
                                 ? IconButton(
-                                    icon: Icon(Icons.qr_code_scanner, color: AppColors.primary),
+                                    icon: Icon(
+                                      Icons.qr_code_scanner,
+                                      color: AppColors.primary,
+                                    ),
                                     tooltip: 'Scan barcode',
                                     onPressed: () async {
-                                      final barcode = await Navigator.of(context).push<String>(
-                                        MaterialPageRoute(
-                                          builder: (_) => const BarcodeScannerScreen(),
-                                        ),
-                                      );
-                                      if (barcode != null && barcode.isNotEmpty) {
+                                      final barcode =
+                                          await Navigator.of(
+                                            context,
+                                          ).push<String>(
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const BarcodeScannerScreen(),
+                                            ),
+                                          );
+                                      if (barcode != null &&
+                                          barcode.isNotEmpty) {
                                         _barcodeController.text = barcode;
                                       }
                                     },
@@ -1117,16 +1469,68 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   error: (_, _) => Text('Error loading categories'),
                 ),
               ),
+              SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      value: _showOnline,
+                      title: Text('Show this product online'),
+                      subtitle: Text(
+                        _showOnline
+                            ? 'Customers can find and order this product from the store link.'
+                            : 'Hidden from the online store, but still available inside POS.',
+                      ),
+                      onChanged: _isLoading
+                          ? null
+                          : (value) => setState(() => _showOnline = value),
+                    ),
+                    Divider(height: 1),
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      value: _isFeatured,
+                      title: Text('Feature on storefront'),
+                      subtitle: Text(
+                        'Pin this product into the featured area above the full catalog.',
+                      ),
+                      onChanged: _isLoading
+                          ? null
+                          : (value) => setState(() => _isFeatured = value),
+                    ),
+                  ],
+                ),
+              ),
               if (!_isEditing) ...[
                 SizedBox(height: 16),
                 Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     leading: Icon(Icons.event_available_outlined),
                     title: Text('Initial Batch Expiry Date'),
                     subtitle: Text(
@@ -1140,10 +1544,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         if (_initialExpiryDate != null)
                           IconButton(
                             tooltip: 'Clear expiry date',
-                            onPressed: () => setState(() => _initialExpiryDate = null),
+                            onPressed: () =>
+                                setState(() => _initialExpiryDate = null),
                             icon: Icon(
                               Icons.close,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         IconButton(
@@ -1151,7 +1558,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           onPressed: () async {
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: _initialExpiryDate ?? DateTime.now().add(const Duration(days: 30)),
+                              initialDate:
+                                  _initialExpiryDate ??
+                                  DateTime.now().add(const Duration(days: 30)),
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2100),
                             );
@@ -1159,7 +1568,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                               setState(() => _initialExpiryDate = picked);
                             }
                           },
-                          icon: Icon(Icons.calendar_month_outlined, color: AppColors.primary),
+                          icon: Icon(
+                            Icons.calendar_month_outlined,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ],
                     ),
@@ -1194,15 +1606,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       label: 'Selling Price per $_saleUnitLabel *',
                       child: TextFormField(
                         controller: _priceController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d{0,2}'),
+                          ),
                         ],
                         validator: (v) {
                           if (v == null || v.isEmpty) {
                             return _hasVariants ? null : 'Price is required';
                           }
-                          if (double.tryParse(v) == null) return 'Invalid price';
+                          if (double.tryParse(v) == null) {
+                            return 'Invalid price';
+                          }
                           return null;
                         },
                         decoration: InputDecoration(
@@ -1223,15 +1641,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         label: 'Selling Price per $_saleUnitLabel *',
                         child: TextFormField(
                           controller: _priceController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d*\.?\d{0,2}'),
+                            ),
                           ],
                           validator: (v) {
                             if (v == null || v.isEmpty) {
                               return _hasVariants ? null : 'Price is required';
                             }
-                            if (double.tryParse(v) == null) return 'Invalid price';
+                            if (double.tryParse(v) == null) {
+                              return 'Invalid price';
+                            }
                             return null;
                           },
                           decoration: InputDecoration(
@@ -1245,18 +1669,22 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     Expanded(child: _buildCostField()),
                   ],
                 ),
-              if (_priceController.text.isNotEmpty && _costController.text.isNotEmpty)
+              if (_priceController.text.isNotEmpty &&
+                  _costController.text.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Builder(
                     builder: (context) {
                       final price = double.tryParse(_priceController.text) ?? 0;
-                      final rawCost = double.tryParse(_costController.text) ?? 0;
+                      final rawCost =
+                          double.tryParse(_costController.text) ?? 0;
                       final stock = double.tryParse(_stockController.text) ?? 1;
                       final cost = _isTotalCostMode
                           ? (stock > 0 ? (rawCost / stock) : rawCost)
                           : rawCost;
-                      final margin = price > 0 ? ((price - cost) / price * 100) : 0;
+                      final margin = price > 0
+                          ? ((price - cost) / price * 100)
+                          : 0;
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1268,7 +1696,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           runSpacing: 8,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Icon(Icons.trending_up, size: 16, color: AppColors.success),
+                            Icon(
+                              Icons.trending_up,
+                              size: 16,
+                              color: AppColors.success,
+                            ),
                             Text(
                               'Margin: ${margin.toStringAsFixed(1)}%',
                               style: TextStyle(
@@ -1313,11 +1745,18 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           scrollDirection: Axis.horizontal,
           child: SegmentedButton<bool>(
             segments: const [
-              ButtonSegment(value: false, label: Text('Per Unit', style: TextStyle(fontSize: 12))),
-              ButtonSegment(value: true, label: Text('Bulk Invoice', style: TextStyle(fontSize: 12))),
+              ButtonSegment(
+                value: false,
+                label: Text('Per Unit', style: TextStyle(fontSize: 12)),
+              ),
+              ButtonSegment(
+                value: true,
+                label: Text('Bulk Invoice', style: TextStyle(fontSize: 12)),
+              ),
             ],
             selected: {_isTotalCostMode},
-            onSelectionChanged: (val) => setState(() => _isTotalCostMode = val.first),
+            onSelectionChanged: (val) =>
+                setState(() => _isTotalCostMode = val.first),
             style: SegmentedButton.styleFrom(
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1374,7 +1813,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       ? 'Use stock limits for packaged inventory and items you count.'
                       : 'Sell without stock limits. Good for cooked food, services, and custom charges.',
                 ),
-                onChanged: _isLoading ? null : (value) => setState(() => _trackStock = value),
+                onChanged: _isLoading
+                    ? null
+                    : (value) => setState(() => _trackStock = value),
               ),
               SizedBox(height: 16),
               if (_hasVariants) ...[
@@ -1384,7 +1825,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                    ),
                   ),
                   child: Text(
                     !_trackStock
@@ -1392,7 +1835,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         : _isEditing
                         ? 'Parent stock stays synced from the variants you manage below. Use this screen for product defaults, then add real stock on each variant.'
                         : 'Save the product first, then add real stock on each variant from the variant manager.',
-                    style: TextStyle(color: AppColors.primaryLight, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: AppColors.primaryLight,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 SizedBox(height: 20),
@@ -1402,9 +1848,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                   child: Text(
                     'Stock fields are ignored for this product. It will stay sellable even when stock is zero.',
@@ -1422,14 +1872,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       label: 'Current Stock ($_stockUnitLabel)',
                       child: TextFormField(
                         controller: _stockController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         inputFormatters: [_quantityFormatter],
                         decoration: InputDecoration(
                           hintText: _stockAllowsDecimal ? '0.000' : '0',
                         ),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return null;
-                          if (double.tryParse(v) == null) return 'Invalid stock';
+                          if (v == null || v.trim().isEmpty) {
+                            return null;
+                          }
+                          if (double.tryParse(v) == null) {
+                            return 'Invalid stock';
+                          }
                           return null;
                         },
                         onChanged: (_) => setState(() {}),
@@ -1440,14 +1896,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       label: 'Low Stock Alert ($_stockUnitLabel)',
                       child: TextFormField(
                         controller: _lowStockController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         inputFormatters: [_quantityFormatter],
                         decoration: InputDecoration(
                           hintText: _stockAllowsDecimal ? '5.000' : '5',
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Alert level is required';
-                          if (double.tryParse(v) == null) return 'Invalid alert level';
+                          if (v == null || v.isEmpty) {
+                            return 'Alert level is required';
+                          }
+                          if (double.tryParse(v) == null) {
+                            return 'Invalid alert level';
+                          }
                           return null;
                         },
                         onChanged: (_) => setState(() {}),
@@ -1463,14 +1925,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         label: 'Current Stock ($_stockUnitLabel)',
                         child: TextFormField(
                           controller: _stockController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           inputFormatters: [_quantityFormatter],
                           decoration: InputDecoration(
                             hintText: _stockAllowsDecimal ? '0.000' : '0',
                           ),
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty) return null;
-                            if (double.tryParse(v) == null) return 'Invalid stock';
+                            if (v == null || v.trim().isEmpty) {
+                              return null;
+                            }
+                            if (double.tryParse(v) == null) {
+                              return 'Invalid stock';
+                            }
                             return null;
                           },
                           onChanged: (_) => setState(() {}),
@@ -1483,14 +1951,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         label: 'Low Stock Alert ($_stockUnitLabel)',
                         child: TextFormField(
                           controller: _lowStockController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           inputFormatters: [_quantityFormatter],
                           decoration: InputDecoration(
                             hintText: _stockAllowsDecimal ? '5.000' : '5',
                           ),
                           validator: (v) {
-                            if (v == null || v.isEmpty) return 'Alert level is required';
-                            if (double.tryParse(v) == null) return 'Invalid alert level';
+                            if (v == null || v.isEmpty) {
+                              return 'Alert level is required';
+                            }
+                            if (double.tryParse(v) == null) {
+                              return 'Invalid alert level';
+                            }
                             return null;
                           },
                           onChanged: (_) => setState(() {}),
@@ -1527,30 +2001,80 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         ),
         _FormCard(
           children: [
-            _buildReviewRow('Name', _nameController.text.isNotEmpty ? _nameController.text : '-'),
-            _buildReviewRow('Brand', _brandController.text.isNotEmpty ? _brandController.text : '-'),
-            _buildReviewRow('Category', _selectedCategoryId != null ? 'Set' : 'None'),
-            _buildReviewRow('SKU', _skuController.text.isNotEmpty ? _skuController.text : '-'),
-            _buildReviewRow('Barcode', _barcodeController.text.isNotEmpty ? _barcodeController.text : '-'),
+            _buildReviewRow(
+              'Name',
+              _nameController.text.isNotEmpty ? _nameController.text : '-',
+            ),
+            _buildReviewRow(
+              'Brand',
+              _brandController.text.isNotEmpty ? _brandController.text : '-',
+            ),
+            _buildReviewRow(
+              'Online Description',
+              _descriptionController.text.trim().isNotEmpty
+                  ? _descriptionController.text.trim()
+                  : '-',
+            ),
+            _buildReviewRow(
+              'Category',
+              _selectedCategoryId != null ? 'Set' : 'None',
+            ),
+            _buildReviewRow('Show Online', _showOnline ? 'Yes' : 'No'),
+            _buildReviewRow('Featured', _isFeatured ? 'Yes' : 'No'),
+            _buildReviewRow(
+              'SKU',
+              _skuController.text.isNotEmpty ? _skuController.text : '-',
+            ),
+            _buildReviewRow(
+              'Barcode',
+              _barcodeController.text.isNotEmpty
+                  ? _barcodeController.text
+                  : '-',
+            ),
             Divider(height: 24),
-            _buildReviewRow('Selling Price', _priceController.text.isNotEmpty
-                ? '${ShopSettings.currency} ${_priceController.text} / $_saleUnitLabel'
-                : '-'),
-            _buildReviewRow('Cost', _costController.text.isNotEmpty
-                ? (_isTotalCostMode ? '${ShopSettings.currency} ${_costController.text} (bulk invoice)' : '${ShopSettings.currency} ${_costController.text} / $_saleUnitLabel')
-                : '-'),
-            _buildReviewRow('Unit', _useUnitConversion
-                ? 'Sell: $_saleUnitLabel, Stock: $_stockUnitLabel, Buy: $_purchaseUnitLabel'
-                : _saleUnitLabel),
+            _buildReviewRow(
+              'Selling Price',
+              _priceController.text.isNotEmpty
+                  ? '${ShopSettings.currency} ${_priceController.text} / $_saleUnitLabel'
+                  : '-',
+            ),
+            _buildReviewRow(
+              'Cost',
+              _costController.text.isNotEmpty
+                  ? (_isTotalCostMode
+                        ? '${ShopSettings.currency} ${_costController.text} (bulk invoice)'
+                        : '${ShopSettings.currency} ${_costController.text} / $_saleUnitLabel')
+                  : '-',
+            ),
+            _buildReviewRow(
+              'Unit',
+              _useUnitConversion
+                  ? 'Sell: $_saleUnitLabel, Stock: $_stockUnitLabel, Buy: $_purchaseUnitLabel'
+                  : _saleUnitLabel,
+            ),
             Divider(height: 24),
             _buildReviewRow('Track Stock', _trackStock ? 'Yes' : 'No'),
             if (_trackStock) ...[
-              _buildReviewRow('Current Stock', '$_stockLabelOfCurrent $_stockUnitLabel'),
-              _buildReviewRow('Low Stock Alert', '$_lowStockLabelOfCurrent $_stockUnitLabel'),
+              _buildReviewRow(
+                'Current Stock',
+                '$_stockLabelOfCurrent $_stockUnitLabel',
+              ),
+              _buildReviewRow(
+                'Low Stock Alert',
+                '$_lowStockLabelOfCurrent $_stockUnitLabel',
+              ),
             ],
-            _buildReviewRow('Image', _hasDisplayableProductImage() ? 'Uploaded' : 'None'),
+            _buildReviewRow(
+              'Images',
+              _normalizedProductImageUrls().isEmpty
+                  ? 'None'
+                  : '${_normalizedProductImageUrls().length} photo${_normalizedProductImageUrls().length == 1 ? '' : 's'}',
+            ),
             if (_initialExpiryDate != null)
-              _buildReviewRow('Expiry Date', ExpiryUtils.format(_initialExpiryDate!)),
+              _buildReviewRow(
+                'Expiry Date',
+                ExpiryUtils.format(_initialExpiryDate!),
+              ),
           ],
         ),
         SizedBox(height: 20),
@@ -1567,7 +2091,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     ? 'Sell this item by real choices like size, color, or pack type.'
                     : 'Keep this as one direct sellable product.',
               ),
-              onChanged: _isLoading ? null : (value) => setState(() => _hasVariants = value),
+              onChanged: _isLoading
+                  ? null
+                  : (value) => setState(() => _hasVariants = value),
             ),
             SizedBox(height: 12),
             Text(
@@ -1587,7 +2113,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     : () => _save(openVariants: true),
                 icon: Icon(Icons.tune_outlined, size: 18),
                 label: Text('Save & Manage Variants'),
-                style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
               ),
             ],
           ],
@@ -1596,10 +2124,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     );
   }
 
-  String get _stockLabelOfCurrent =>
-      _trackStock ? (_stockController.text.isNotEmpty ? _stockController.text : '0') : '-';
-  String get _lowStockLabelOfCurrent =>
-      _trackStock ? (_lowStockController.text.isNotEmpty ? _lowStockController.text : '5') : '-';
+  String get _stockLabelOfCurrent => _trackStock
+      ? (_stockController.text.isNotEmpty ? _stockController.text : '0')
+      : '-';
+  String get _lowStockLabelOfCurrent => _trackStock
+      ? (_lowStockController.text.isNotEmpty ? _lowStockController.text : '5')
+      : '-';
 
   Widget _buildReviewRow(String label, String value) {
     return Padding(
@@ -1641,16 +2171,23 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             TrainingAnchor(
               id: 'productForm.save',
               child: FilledButton.icon(
-                onPressed: _isLoading || _isEnhancingImage || _isUploadingImage ? null : _save,
+                onPressed: _isLoading || _isEnhancingImage || _isUploadingImage
+                    ? null
+                    : _save,
                 icon: _isLoading
                     ? SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : Icon(_isEditing ? Icons.save : Icons.add, size: 18),
                 label: Text(_isEditing ? 'Save Changes' : 'Create Product'),
-                style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
               ),
             ),
           SizedBox(width: 16),
@@ -1687,10 +2224,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   Widget _buildStepContent() {
     switch (_currentStep) {
       case 0:
-        return SizedBox(
-          key: ValueKey('step_0'),
-          child: _buildStep1BasicInfo(),
-        );
+        return SizedBox(key: ValueKey('step_0'), child: _buildStep1BasicInfo());
       case 1:
         return SizedBox(
           key: ValueKey('step_1'),
@@ -1702,10 +2236,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           child: _buildStep3InventoryImage(),
         );
       case 3:
-        return SizedBox(
-          key: ValueKey('step_3'),
-          child: _buildStep4Review(),
-        );
+        return SizedBox(key: ValueKey('step_3'), child: _buildStep4Review());
       default:
         return const SizedBox.shrink();
     }
@@ -1736,15 +2267,24 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         ),
         const Spacer(),
         FilledButton.icon(
-          onPressed: _isLoading || _isEnhancingImage || _isUploadingImage ? null : _continueWizard,
+          onPressed: _isLoading || _isEnhancingImage || _isUploadingImage
+              ? null
+              : _continueWizard,
           icon: _isLoading
               ? SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : Icon(isLast ? Icons.check : Icons.arrow_forward, size: 18),
-          label: Text(isLast ? (_isEditing ? 'Save Changes' : 'Create Product') : 'Continue'),
+          label: Text(
+            isLast
+                ? (_isEditing ? 'Save Changes' : 'Create Product')
+                : 'Continue',
+          ),
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.primary,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

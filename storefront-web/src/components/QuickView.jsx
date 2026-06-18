@@ -3,6 +3,7 @@ import { classNames, isItemAvailable, primaryPrice } from '../utils'
 
 export default function QuickView({ item, money, onClose, onAdd }) {
   const [variantId, setVariantId] = useState(null)
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
 
   useEffect(() => {
     if (item && item.hasVariants && Array.isArray(item.variants) && item.variants.length > 0) {
@@ -10,6 +11,7 @@ export default function QuickView({ item, money, onClose, onAdd }) {
     } else {
       setVariantId(null)
     }
+    setActiveImageIndex(0)
   }, [item])
 
   useEffect(() => {
@@ -32,6 +34,12 @@ export default function QuickView({ item, money, onClose, onAdd }) {
   const price = selectedVariant ? selectedVariant.price : primaryPrice(item)
   const available = selectedVariant ? selectedVariant.available !== false : isItemAvailable(item)
   const isService = item.type === 'service'
+  const imageUrls = Array.isArray(item.imageUrls) && item.imageUrls.length
+    ? item.imageUrls
+    : item.imageUrl
+      ? [item.imageUrl]
+      : []
+  const activeImage = imageUrls[activeImageIndex] || imageUrls[0]
 
   const handleAdd = () => {
     if (!available) return
@@ -48,26 +56,42 @@ export default function QuickView({ item, money, onClose, onAdd }) {
           </svg>
         </button>
         <div className="qv-media">
-          {item.imageUrl ? (
-            <img src={item.imageUrl} alt={item.name} />
-          ) : (
-            <div className="card-media-ph">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.6}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
+          <div className="qv-media-main">
+            {activeImage ? (
+              <img src={activeImage} alt={item.name} />
+            ) : (
+              <div className="card-media-ph">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.6}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+            )}
+          </div>
+          {imageUrls.length > 1 && (
+            <div className="qv-thumbs">
+              {imageUrls.map((url, index) => (
+                <button
+                  type="button"
+                  key={`${url}-${index}`}
+                  className={classNames(index === activeImageIndex && 'active')}
+                  onClick={() => setActiveImageIndex(index)}
+                  aria-label={`Show product photo ${index + 1}`}
+                >
+                  <img src={url} alt="" />
+                </button>
+              ))}
             </div>
           )}
         </div>
         <div className="qv-body">
           {item.brand && item.brand !== 'Service' && <div className="card-brand">{item.brand}</div>}
           <h2 className="qv-title">{item.name}</h2>
-          {isService && item.summary && <p className="qv-summary">{item.summary}</p>}
-          {item.description && !isService && <p className="qv-summary">{item.description}</p>}
+          {(item.description || item.summary) && <p className="qv-summary">{item.description || item.summary}</p>}
           <div className="qv-price-row">
             <span className="price">{money(price)}</span>
             <span className="price-sub">{isService ? 'per service' : item.unit || 'each'}</span>

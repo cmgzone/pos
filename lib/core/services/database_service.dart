@@ -459,6 +459,10 @@ class DatabaseService {
         barcode TEXT,
         image_url TEXT,
         brand TEXT,
+        description TEXT,
+        image_urls_json TEXT,
+        show_online INTEGER NOT NULL DEFAULT 1,
+        is_featured INTEGER NOT NULL DEFAULT 0,
         category_id TEXT,
         track_stock INTEGER NOT NULL DEFAULT 1,
         has_variants INTEGER NOT NULL DEFAULT 0,
@@ -1431,6 +1435,7 @@ class DatabaseService {
     await _ensureUserAccessSchema(database);
     await _ensureProductVariantsSchema(database);
     await _ensureBrandColumn(database);
+    await _ensureProductStorefrontSchema(database);
     await _ensurePaymentMethodsSchema(database);
     await _ensureEnterpriseSchema(database);
     await _ensureStockTransferSchema(database);
@@ -1837,6 +1842,35 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureProductStorefrontSchema(
+    DatabaseExecutor database,
+  ) async {
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'description',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'image_urls_json',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'show_online',
+      definition: 'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'is_featured',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
   /// Ensures that columns added to sale_items after initial release exist.
   /// Without these, any P&L query referencing si.unit_cost throws a silent
   /// exception and the screen falls back to showing all-zero profit.
@@ -2225,6 +2259,30 @@ class DatabaseService {
       table: 'products',
       column: 'image_url',
       definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'description',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'image_urls_json',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'show_online',
+      definition: 'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'is_featured',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
     );
     await _ensureColumn(
       database,

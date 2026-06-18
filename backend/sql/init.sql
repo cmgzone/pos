@@ -495,6 +495,10 @@ CREATE TABLE IF NOT EXISTS products (
   sku text,
   barcode text,
   image_url text,
+  description text,
+  image_urls_json text,
+  show_online integer NOT NULL DEFAULT 1,
+  is_featured integer NOT NULL DEFAULT 0,
   category_id text,
   track_stock integer NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL,
@@ -829,6 +833,10 @@ ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls_json text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS show_online integer NOT NULL DEFAULT 1;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured integer NOT NULL DEFAULT 0;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS server_revision bigint;
@@ -1086,6 +1094,12 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS has_variants integer NOT NULL DEFA
 
 -- Ensure brand column exists on products
 ALTER TABLE products ADD COLUMN IF NOT EXISTS brand text;
+
+-- Ensure storefront product columns exist on products
+ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls_json text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS show_online integer NOT NULL DEFAULT 1;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured integer NOT NULL DEFAULT 0;
 
 -- Ensure track_stock column exists on products
 ALTER TABLE products ADD COLUMN IF NOT EXISTS track_stock integer NOT NULL DEFAULT 1;

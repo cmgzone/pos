@@ -11,6 +11,7 @@ import {
 } from './utils'
 import Header from './components/Header.jsx'
 import Toolbar from './components/Toolbar.jsx'
+import StorefrontSections from './components/StorefrontSections.jsx'
 import ProductGrid from './components/ProductGrid.jsx'
 import QuickView from './components/QuickView.jsx'
 import Cart from './components/Cart.jsx'
@@ -147,6 +148,7 @@ export default function App() {
         !query ||
         String(item.name || '').toLowerCase().includes(query) ||
         String(item.brand || '').toLowerCase().includes(query) ||
+        String(item.description || '').toLowerCase().includes(query) ||
         cat.toLowerCase().includes(query)
       return matchCat && matchSearch
     })
@@ -164,10 +166,31 @@ export default function App() {
         items = items.slice().sort((a, b) => String(b.name || '').localeCompare(String(a.name || '')))
         break
       default:
+        items = items.slice().sort((a, b) => {
+          const featured = Number(Boolean(b.isFeatured)) - Number(Boolean(a.isFeatured))
+          if (featured !== 0) return featured
+          const sold = Number(b.soldQty || 0) - Number(a.soldQty || 0)
+          if (sold !== 0) return sold
+          return String(a.name || '').localeCompare(String(b.name || ''))
+        })
         break
     }
     return items
   }, [catalog, activeCategory, searchQuery, sort])
+
+  const featuredItems = useMemo(() => {
+    if (!catalog?.products || searchQuery || activeCategory !== 'all') return []
+    return catalog.products.filter((item) => item.isFeatured).slice(0, 8)
+  }, [catalog, searchQuery, activeCategory])
+
+  const bestSellingItems = useMemo(() => {
+    if (!catalog?.products || searchQuery || activeCategory !== 'all') return []
+    return catalog.products
+      .filter((item) => Number(item.soldQty || 0) > 0)
+      .slice()
+      .sort((a, b) => Number(b.soldQty || 0) - Number(a.soldQty || 0))
+      .slice(0, 8)
+  }, [catalog, searchQuery, activeCategory])
 
   const cartItems = useMemo(() => Array.from(cart.values()), [cart])
   const cartCount = useMemo(() => cartItems.reduce((sum, entry) => sum + entry.qty, 0), [cartItems])
@@ -317,6 +340,17 @@ export default function App() {
           cartCount={cartCount}
           onOpenCart={openCart}
           resultCount={visibleItems.length}
+        />
+      )}
+
+      {!loadError && !loading && !switchingBranch && (
+        <StorefrontSections
+          categories={categories}
+          featuredItems={featuredItems}
+          bestSellingItems={bestSellingItems}
+          money={money}
+          onCategory={setActiveCategory}
+          onQuickView={setQuickView}
         />
       )}
 

@@ -20,6 +20,13 @@ export function ProductCard({ item, money, onAdd, onQuickView }) {
   const isService = item.type === 'service'
   const variants = item.hasVariants && Array.isArray(item.variants) ? item.variants : []
   const price = primaryPrice(item)
+  const imageUrls = Array.isArray(item.imageUrls) && item.imageUrls.length
+    ? item.imageUrls
+    : item.imageUrl
+      ? [item.imageUrl]
+      : []
+  const imageUrl = imageUrls[0]
+  const soldQty = Number(item.soldQty || 0)
 
   return (
     <article
@@ -34,17 +41,16 @@ export function ProductCard({ item, money, onAdd, onQuickView }) {
       }}
     >
       <div className="card-media">
-        {item.imageUrl ? (
-          <img src={item.imageUrl} loading="lazy" alt={item.name} />
+        {imageUrl ? (
+          <img src={imageUrl} loading="lazy" alt={item.name} />
         ) : (
           <Placeholder />
         )}
         <div className="tag-row">
-          {isService ? (
-            <span className="chip service">Service</span>
-          ) : (
-            item.category && <span className="chip cat">{item.category}</span>
-          )}
+          {item.isFeatured && <span className="chip featured">Featured</span>}
+          {soldQty > 0 && <span className="chip seller">{soldQty.toLocaleString()} sold</span>}
+          {imageUrls.length > 1 && <span className="chip photos">{imageUrls.length} photos</span>}
+          {isService && <span className="chip service">Service</span>}
           {!available && <span className="chip unavailable">Ask for availability</span>}
         </div>
         <button
@@ -56,13 +62,15 @@ export function ProductCard({ item, money, onAdd, onQuickView }) {
           }}
           aria-label={`View ${item.name}`}
         >
-          Quick view
+          View details
         </button>
       </div>
       <div className="card-body">
         {item.brand && item.brand !== 'Service' && <div className="card-brand">{item.brand}</div>}
         <h3 className="card-title">{item.name}</h3>
-        {isService && item.summary && <p className="card-summary">{item.summary}</p>}
+        {(item.description || (isService && item.summary)) && (
+          <p className="card-summary">{item.description || item.summary}</p>
+        )}
         {item.hasVariants && variants.length > 1 && (
           <div className="card-variant-note">{variants.length} options from {money(variants[0].price)}</div>
         )}

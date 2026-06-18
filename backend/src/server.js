@@ -4436,6 +4436,7 @@ Promise.all([
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),
   ensureStorefrontBrandSchema(),
+  ensureProductStorefrontSchema(),
   ensureQuotationsSchema(),
 ])
   .then(() =>
@@ -5904,6 +5905,25 @@ async function ensureStorefrontBrandSchema(target = query) {
   );
 }
 
+async function ensureProductStorefrontSchema(target = query) {
+  await runDbQuery(
+    target,
+    'ALTER TABLE products ADD COLUMN IF NOT EXISTS description text',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls_json text',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE products ADD COLUMN IF NOT EXISTS show_online integer NOT NULL DEFAULT 1',
+  );
+  await runDbQuery(
+    target,
+    'ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured integer NOT NULL DEFAULT 0',
+  );
+}
+
 async function ensureQuotationsSchema(target = query) {
   await runDbQuery(
     target,
@@ -6821,6 +6841,7 @@ async function loadPublicCatalog(
 ) {
   await ensureCatalogSubdomainSchema(query);
   await ensureStorefrontBrandSchema(query);
+  await ensureProductStorefrontSchema(query);
   const cacheKey = await buildCatalogCacheKey(businessId, {
     currencyOverride,
     branchId: requestedBranchId,
@@ -6882,9 +6903,15 @@ async function loadPublicCatalog(
       p.stock_unit,
       p.image_url,
       p.brand,
+      p.description,
+      p.image_urls_json,
+      p.show_online,
+      p.is_featured,
       p.track_stock,
       p.has_variants,
       p.updated_at,
+      COALESCE(sales_stats.sold_qty, 0) AS sold_qty,
+      COALESCE(sales_stats.sold_revenue, 0) AS sold_revenue,
       c.name AS category_name,
       COALESCE(
         json_agg(
@@ -6907,8 +6934,26 @@ async function loadPublicCatalog(
       ON pv.product_id = p.id
      AND pv.business_id = p.business_id
      AND pv.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT
+        si.product_id,
+        SUM(si.quantity) AS sold_qty,
+        SUM(si.quantity * si.unit_price) AS sold_revenue
+      FROM sale_items si
+      JOIN sales s
+        ON s.id = si.sale_id
+       AND s.business_id = si.business_id
+      WHERE si.business_id = $1
+        AND si.deleted_at IS NULL
+        AND s.deleted_at IS NULL
+        AND COALESCE(s.branch_id, 'main_branch') = $2
+        AND COALESCE(s.payment_type, '') NOT LIKE 'refund%'
+      GROUP BY si.product_id
+    ) sales_stats
+      ON sales_stats.product_id = p.id
     WHERE p.business_id = $1
       AND p.deleted_at IS NULL
+      AND COALESCE(p.show_online, 1) <> 0
       AND COALESCE(p.branch_id, 'main_branch') = $2
     GROUP BY
       p.id,
@@ -6920,11 +6965,21 @@ async function loadPublicCatalog(
       p.stock_unit,
       p.image_url,
       p.brand,
+      p.description,
+      p.image_urls_json,
+      p.show_online,
+      p.is_featured,
       p.track_stock,
       p.has_variants,
       p.updated_at,
+      sales_stats.sold_qty,
+      sales_stats.sold_revenue,
       c.name
-    ORDER BY c.name ASC NULLS LAST, p.name ASC
+    ORDER BY
+      COALESCE(p.is_featured, 0) DESC,
+      COALESCE(sales_stats.sold_qty, 0) DESC,
+      c.name ASC NULLS LAST,
+      p.name ASC
     LIMIT 500
     `,
     [businessId, selectedBranch.id],
@@ -7562,6 +7617,7 @@ async function resolvePublicCatalogOrderItem({
       p.name AS product_name,
       p.price AS product_price,
       p.track_stock,
+      p.show_online,
       p.stock AS product_stock,
       pv.id AS variant_id,
       pv.name AS variant_name,
@@ -7576,6 +7632,7 @@ async function resolvePublicCatalogOrderItem({
     WHERE p.business_id = $1
       AND p.id = $2
       AND p.deleted_at IS NULL
+      AND COALESCE(p.show_online, 1) <> 0
       AND ($4::text IS NULL OR COALESCE(p.branch_id, 'main_branch') = $4)
     LIMIT 1
     `,
@@ -7856,6 +7913,10 @@ function normalizeServiceCatalogId(value) {
 
 function normalizePublicCatalogProduct(row) {
   const trackStock = Number(row.track_stock ?? 1) !== 0;
+  const imageUrls = normalizeStoredProductImageUrls(
+    row.image_urls_json,
+    row.image_url,
+  );
   const variants = Array.isArray(row.variants)
     ? row.variants
         .filter((variant) => variant && variant.id)
@@ -7881,13 +7942,50 @@ function normalizePublicCatalogProduct(row) {
     price: Number(row.price || 0),
     brand: normalizeOptionalText(row.brand),
     category: normalizeOptionalText(row.category_name),
+    description: limitText(row.description, 420),
     unit: normalizeOptionalText(row.sale_unit) || normalizeOptionalText(row.unit) || 'pcs',
-    imageUrl: safePublicImageUrl(row.image_url),
+    imageUrl: imageUrls[0] || safePublicImageUrl(row.image_url),
+    imageUrls,
+    isFeatured: Number(row.is_featured || 0) !== 0,
+    soldQty: Number(row.sold_qty || 0),
+    soldRevenue: Number(row.sold_revenue || 0),
     hasVariants,
     variants,
     availability: available ? 'Available' : 'Ask for availability',
     updatedAt: toIsoString(row.updated_at),
   };
+}
+
+function normalizeStoredProductImageUrls(value, fallbackImageUrl = null) {
+  const values = [];
+  if (Array.isArray(value)) {
+    values.push(...value);
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        values.push(...parsed);
+      } else {
+        values.push(value);
+      }
+    } catch (_) {
+      values.push(value);
+    }
+  }
+  if (!values.length && fallbackImageUrl) {
+    values.push(fallbackImageUrl);
+  }
+
+  const normalized = [];
+  const seen = new Set();
+  for (const candidate of values) {
+    const url = safePublicImageUrl(candidate);
+    if (!url || seen.has(url)) continue;
+    normalized.push(url);
+    seen.add(url);
+    if (normalized.length >= 8) break;
+  }
+  return normalized;
 }
 
 function normalizeStorefrontCoverUrls(
@@ -8104,8 +8202,8 @@ function renderStorefrontRootFallback(catalog) {
   const productCards = visibleItems
     .map((item) => {
       const name = normalizeOptionalText(item.name) || 'Catalog item';
-      const category = normalizeOptionalText(item.category) || (item.type === 'service' ? 'Service' : 'Product');
       const imageUrl = safePublicImageUrl(item.imageUrl);
+      const description = limitText(item.description || item.summary, 120);
       const price = formatStorefrontFallbackPrice(item, catalog);
       return `
           <article style="border:1px solid #e5e7eb;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 10px 24px -18px rgba(15,23,42,.38)">
@@ -8117,8 +8215,8 @@ function renderStorefrontRootFallback(catalog) {
               }
             </div>
             <div style="padding:16px">
-              <p style="margin:0 0 8px;color:${escapeHtml(primaryColor)};font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(category)}</p>
               <h2 style="margin:0 0 10px;font-size:17px;line-height:1.25;color:#111827">${escapeHtml(name)}</h2>
+              ${description ? `<p style="margin:0 0 10px;color:#6b7280;font-size:13px;line-height:1.45">${escapeHtml(description)}</p>` : ''}
               <strong style="font-size:17px;color:#111827">${escapeHtml(price)}</strong>
             </div>
           </article>`;
@@ -8168,10 +8266,6 @@ function renderStorefrontRootFallback(catalog) {
         </div>
       </section>
       <section style="max-width:1120px;margin:-28px auto 0;padding:0 20px 48px">
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:24px;padding:18px 20px;margin-bottom:18px;box-shadow:0 18px 40px -30px rgba(15,23,42,.55)">
-          <strong style="display:block;color:#111827">Browse this store</strong>
-          <span style="color:#6b7280;font-size:14px">Products and services published by the business appear below.</span>
-        </div>
         ${
           visibleItems.length
             ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px">${productCards}</div>`

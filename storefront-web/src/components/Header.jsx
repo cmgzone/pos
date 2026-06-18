@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { classNames } from '../utils'
+import { classNames, whatsappUrl } from '../utils'
 
 export default function Header({ catalog, loading, error }) {
   const business = catalog?.business
@@ -29,6 +29,10 @@ export default function Header({ catalog, loading, error }) {
   const [activeCoverIndex, setActiveCoverIndex] = useState(0)
   const storeInitial = String(name || '').trim().charAt(0).toUpperCase() || 'P'
   const branchName = business?.selectedBranch?.name
+  const whatsappNumber = business?.whatsappNumber || ''
+  const contactUrl = whatsappNumber
+    ? whatsappUrl(whatsappNumber, `Hi ${name}, I am browsing your online store.`)
+    : null
 
   useEffect(() => {
     setActiveCoverIndex(0)
@@ -137,6 +141,19 @@ export default function Header({ catalog, loading, error }) {
                   </svg>
                   {branchName}
                 </p>
+              )}
+              {contactUrl && (
+                <a className="store-contact" href={contactUrl} target="_blank" rel="noreferrer">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 4v-4z"
+                    />
+                  </svg>
+                  Contact store
+                </a>
               )}
             </>
           )}

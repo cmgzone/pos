@@ -262,7 +262,8 @@ class ProductRepository {
   /// Look up a barcode in a single roundtrip: variant first, then simple product.
   /// Returns a unified row with `result_type` of `'variant'` or `'product'`.
   static Future<Map<String, dynamic>?> lookupBarcode(String barcode) async {
-    final results = await DatabaseService.rawQuery('''
+    final results = await DatabaseService.rawQuery(
+      '''
       SELECT
         'variant' AS result_type,
         pv.id AS variant_id,
@@ -337,13 +338,15 @@ class ProductRepository {
         AND COALESCE(p.branch_id, ?) = ?
       ORDER BY result_type ASC
       LIMIT 1
-      ''', [
+      ''',
+      [
         barcode,
         ..._currentBranchArgs,
         ..._currentBranchArgs,
         barcode,
         ..._currentBranchArgs,
-      ]);
+      ],
+    );
     return results.isNotEmpty ? results.first : null;
   }
 
@@ -364,6 +367,10 @@ class ProductRepository {
     String? purchaseUnit,
     double purchaseToStockFactor = 1,
     String? imageUrl,
+    String? description,
+    String? imageUrlsJson,
+    bool showOnline = true,
+    bool isFeatured = false,
     String? categoryId,
     String? initialExpiryDate,
     String? initialBatchNumber,
@@ -404,6 +411,10 @@ class ProductRepository {
           : 1.0,
       'image_url': imageUrl,
       'brand': brand,
+      'description': description,
+      'image_urls_json': imageUrlsJson,
+      'show_online': showOnline ? 1 : 0,
+      'is_featured': isFeatured ? 1 : 0,
       'category_id': categoryId,
       'track_stock': trackStock ? 1 : 0,
       'has_variants': hasVariants ? 1 : 0,
