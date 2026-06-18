@@ -11,6 +11,8 @@ Piki POS is a Flutter point-of-sale app with:
 - `lib/`: Flutter POS app
 - `backend/`: Express API backed by Neon
 - `admin-web/`: separate web admin frontend
+- `storefront-web/`: per-business public online store (React + Vite SPA served by the backend at each business subdomain)
+- `landing-page/`: marketing site served by the backend at the root domain
 
 ## Neon Migration Notes
 

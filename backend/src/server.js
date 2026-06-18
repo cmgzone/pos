@@ -142,6 +142,8 @@ const io = new Server(server, {
 });
 const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
 const landingIndexPath = path.join(landingPageDir, 'index.html');
+const storefrontWebDistDir = path.resolve(__dirname, '..', '..', 'storefront-web', 'dist');
+const storefrontWebIndexPath = path.join(storefrontWebDistDir, 'index.html');
 const appReleaseUrlPrefix = '/downloads/app';
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
@@ -4326,7 +4328,13 @@ app.get('/catalog/:businessId', async (req, res, next) => {
     res
       .status(200)
       .type('html')
-      .send(renderPublicCatalogPage(catalog));
+      .set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    try {
+      const html = await renderStorefrontSpaPage(catalog);
+      res.send(html);
+    } catch (spaError) {
+      res.send(renderPublicCatalogPage(catalog));
+    }
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -4355,7 +4363,13 @@ app.get(['/', '/catalog'], async (req, res, next) => {
     res
       .status(200)
       .type('html')
-      .send(renderPublicCatalogPage(catalog));
+      .set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    try {
+      const html = await renderStorefrontSpaPage(catalog);
+      res.send(html);
+    } catch (spaError) {
+      res.send(renderPublicCatalogPage(catalog));
+    }
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -4377,6 +4391,7 @@ app.get('/robots.txt', (req, res, next) => {
 
 app.use(express.static(landingPageDir, { index: false }));
 app.use('/landing', express.static(landingPageDir, { index: false }));
+app.use('/storefront', express.static(storefrontWebDistDir, { index: false }));
 
 app.get(['/', '/landing'], (req, res, next) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -7875,6 +7890,89 @@ function normalizePublicCatalogService(row) {
     summary: durationLabel || description,
     updatedAt: toIsoString(row.updated_at),
   };
+}
+
+let storefrontSpaTemplatePromise = null;
+
+function readStorefrontSpaTemplate() {
+  if (!storefrontSpaTemplatePromise) {
+    storefrontSpaTemplatePromise = (async () => {
+      try {
+        const raw = await fsp.readFile(storefrontWebIndexPath, 'utf8');
+        return raw;
+      } catch (error) {
+        storefrontSpaTemplatePromise = null;
+        throw error;
+      }
+    })();
+  }
+  return storefrontSpaTemplatePromise;
+}
+
+function buildStorefrontBootstrapScript(catalog) {
+  const businessId = normalizeOptionalText(catalog.business?.id) || '';
+  const subdomain =
+    normalizeOptionalText(catalog.business?.publicSubdomain) || '';
+  const branchId =
+    normalizeOptionalText(catalog.business?.selectedBranch?.id) || '';
+  const payload = { businessId, subdomain, branchId };
+  const safe = JSON.stringify(payload).replace(/</g, '\\u003c');
+  return `<script>window.__STOREFRONT__=${safe};</script>`;
+}
+
+function injectStorefrontMeta(html, catalog) {
+  const businessName = normalizeOptionalText(catalog.business?.name) || 'Online Store';
+  const brand = catalog.business?.brand || {};
+  const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
+    fallback: '#111827',
+    throwOnInvalid: false,
+  });
+  const coverUrl = safePublicImageUrl(brand.coverUrl);
+  const description =
+    normalizeOptionalText(brand.description) ||
+    'Shop products and services, choose variants, and send your order directly to the store.';
+  const title = `${escapeHtml(businessName)} - Online Store`;
+
+  const headTags = [
+    `<title>${title}</title>`,
+    `<meta name="description" content="${escapeHtml(description)}" />`,
+    `<meta name="theme-color" content="${escapeHtml(primaryColor)}" />`,
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:description" content="${escapeHtml(description)}" />`,
+    `<meta property="og:type" content="website" />`,
+    coverUrl
+      ? `<meta property="og:image" content="${escapeHtml(coverUrl)}" />`
+      : '',
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:title" content="${title}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
+    coverUrl
+      ? `<meta name="twitter:image" content="${escapeHtml(coverUrl)}" />`
+      : '',
+    buildStorefrontBootstrapScript(catalog),
+  ]
+    .filter(Boolean)
+    .join('\n  ');
+
+  let updated = html;
+  const titleReplaced =
+    /<title>[^<]*<\/title>/i.test(updated) &&
+    (updated = updated.replace(
+      /<title>[^<]*<\/title>/i,
+      headTags,
+    ));
+  if (!titleReplaced) {
+    updated = updated.replace(
+      /<\/head>/i,
+      `  ${headTags}\n</head>`,
+    );
+  }
+  return updated;
+}
+
+async function renderStorefrontSpaPage(catalog) {
+  const template = await readStorefrontSpaTemplate();
+  return injectStorefrontMeta(template, catalog);
 }
 
 function renderPublicCatalogPage(catalog) {
