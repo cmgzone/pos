@@ -2,6 +2,7 @@ import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/cloud_auth_service.dart';
+import '../../../core/services/country_detector.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/session_service.dart';
@@ -156,6 +157,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.initState();
     _businessNameController.addListener(_refreshStoreLinkPreview);
     _emailController.addListener(_clearEmailVerificationIfEmailChanged);
+    if (_isBusinessSetupFlow) {
+      _loadSubscriptionCatalog();
+    }
+    _applyDetectedCountry();
+  }
+
+  Future<void> _applyDetectedCountry() async {
+    final detected = await CountryDetector.detect();
+    if (detected == null || detected.toUpperCase() == 'KE') return;
+    if (!mounted) return;
+    final parsed = Country.parse(detected);
+    setState(() {
+      _selectedCountry = parsed;
+      _selectedCurrency = ShopSettings.suggestedCurrencyForCountry(detected);
+      _selectedMarketKey = null;
+    });
     if (_isBusinessSetupFlow) {
       _loadSubscriptionCatalog();
     }

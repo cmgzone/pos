@@ -48,6 +48,26 @@ void main() {
     expect(ShopSettings.suggestedCurrencyForCountry('GLOBAL'), r'$');
   });
 
+  test('currencySymbolFor maps ISO codes to display symbols', () {
+    expect(ShopSettings.currencySymbolFor('KES'), 'KSh');
+    expect(ShopSettings.currencySymbolFor('USD'), r'$');
+    expect(ShopSettings.currencySymbolFor('GBP'), '\u00A3');
+    expect(ShopSettings.currencySymbolFor('EUR'), '\u20AC');
+    expect(ShopSettings.currencySymbolFor('TZS'), 'TSh');
+    expect(ShopSettings.currencySymbolFor('ZAR'), 'R');
+    expect(ShopSettings.currencySymbolFor('usd'), r'$');
+    expect(ShopSettings.currencySymbolFor(null), r'$');
+    expect(ShopSettings.currencySymbolFor('XYZ'), 'XYZ');
+  });
+
+  test('currencySymbolUsesSpace separates letter symbols from amounts', () {
+    expect(ShopSettings.currencySymbolUsesSpace('KSh'), isTrue);
+    expect(ShopSettings.currencySymbolUsesSpace('R'), isTrue);
+    expect(ShopSettings.currencySymbolUsesSpace(r'$'), isFalse);
+    expect(ShopSettings.currencySymbolUsesSpace('\u00A3'), isFalse);
+    expect(ShopSettings.currencySymbolUsesSpace('\u20AC'), isFalse);
+  });
+
   test('setCurrency trims input and keeps a safe default', () async {
     await ShopSettings.setCurrency('  KSh  ');
     expect(ShopSettings.currency, 'KSh');

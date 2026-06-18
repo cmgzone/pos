@@ -46,13 +46,52 @@ void main() {
     expect(plan.billingPeriodsFor(market), ['monthly', 'yearly']);
     expect(
       plan.priceFor(market, billingPeriod: 'monthly')?.displayAmount,
-      'KES 7,500',
+      'KSh 7,500',
     );
     expect(
       plan.priceFor(market, billingPeriod: 'yearly')?.displayAmount,
-      'KES 72,000',
+      'KSh 72,000',
     );
     expect(plan.priceFor(market, billingPeriod: 'weekly'), isNull);
+  });
+
+  test('subscription plan prices render non-KES currencies with their symbol', () {
+    const usdMarket = SubscriptionMarket(
+      countryCode: 'GLOBAL',
+      label: 'Other Countries',
+      currency: 'USD',
+      provider: 'paypal',
+      providerLabel: 'PayPal',
+    );
+    const plan = SubscriptionPlanSummary(
+      code: 'pro',
+      name: 'Pro',
+      description: 'Full POS suite',
+      features: ['pos', 'products', 'services'],
+      sellingModes: ['products', 'services', 'combo'],
+      entitlements: SubscriptionEntitlements.empty(),
+      prices: [
+        SubscriptionPlanPrice(
+          id: 'pro-global-monthly',
+          planCode: 'pro',
+          countryCode: 'GLOBAL',
+          currency: 'USD',
+          amountMinor: 1500,
+          billingPeriod: 'monthly',
+          provider: 'paypal',
+        ),
+      ],
+      price: null,
+    );
+
+    expect(
+      plan.priceFor(usdMarket, billingPeriod: 'monthly')?.displayAmount,
+      r'$15.00',
+    );
+    expect(
+      plan.priceFor(usdMarket, billingPeriod: 'monthly')?.displayAmountWithCode,
+      r'$15.00 (USD)',
+    );
   });
 
   test('subscription checkout parses Google Play details', () {

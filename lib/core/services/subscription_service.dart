@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 
 import 'license_service.dart';
+import 'shop_settings.dart';
 import 'sync_settings_service.dart';
 
 class SubscriptionPlanPrice {
@@ -45,7 +46,18 @@ class SubscriptionPlanPrice {
     final value = major.toStringAsFixed(decimals);
     final parts = value.split('.');
     final whole = _withThousands(parts.first);
-    return '$currency $whole${parts.length > 1 ? '.${parts.last}' : ''}';
+    final body = '$whole${parts.length > 1 ? '.${parts.last}' : ''}';
+    final symbol = ShopSettings.currencySymbolFor(currency);
+    final separator = ShopSettings.currencySymbolUsesSpace(symbol) ? ' ' : '';
+    return '$symbol$separator$body';
+  }
+
+  /// Same amount as [displayAmount] but with the ISO currency code appended in
+  /// parentheses, e.g. `$15.00 (USD)` or `KSh 1,500 (KES)`.
+  String get displayAmountWithCode {
+    final amount = displayAmount;
+    final code = currency.trim().toUpperCase();
+    return code.isEmpty ? amount : '$amount ($code)';
   }
 
   static String _withThousands(String value) {

@@ -177,6 +177,39 @@ class ShopSettings {
     }
   }
 
+  /// Maps an ISO 4217 currency code (e.g. `KES`, `USD`) to the display symbol
+  /// used throughout the app. Unknown codes fall back to the uppercased code
+  /// itself, or `$` when missing.
+  static String currencySymbolFor(String? currencyCode) {
+    switch (currencyCode?.trim().toUpperCase()) {
+      case 'KES':
+        return 'KSh';
+      case 'TZS':
+        return 'TSh';
+      case 'UGX':
+        return 'USh';
+      case 'RWF':
+        return 'FRw';
+      case 'ZAR':
+        return 'R';
+      case 'GBP':
+        return '\u00A3';
+      case 'EUR':
+        return '\u20AC';
+      case 'USD':
+        return r'$';
+      default:
+        final code = currencyCode?.trim().toUpperCase();
+        return (code != null && code.isNotEmpty) ? code : r'$';
+    }
+  }
+
+  /// Letter-based currency symbols (KSh, TSh, USh, FRw, R) are typeset with a
+  /// separating space before the amount; sign-based symbols ($, £, €) are not.
+  static bool currencySymbolUsesSpace(String symbol) {
+    return RegExp(r'^[A-Za-z]').hasMatch(symbol);
+  }
+
   static String normalizeCurrency(String? value) {
     final normalized = value?.trim() ?? '';
     return normalized.isEmpty ? r'$' : normalized;

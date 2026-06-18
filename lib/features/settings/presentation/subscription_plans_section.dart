@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/services/country_detector.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/subscription_service.dart';
@@ -45,6 +46,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   String? _selectedPlanCode;
   String? _selectedBillingPeriod;
   String? _selectedSellingMode;
+  String? _detectedCountryCode;
   bool _loading = true;
   bool _busy = false;
   String? _message;
@@ -116,8 +118,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       _message = null;
     });
     try {
+      final resolvedCountry =
+          countryCode ?? await _resolveCountryFallback();
       final catalog = await SubscriptionService.fetchPlans(
-        countryCode: countryCode,
+        countryCode: resolvedCountry,
         provider: marketKey?.split(':').last ?? widget.initialProvider,
       );
       final selectedMarket =
@@ -969,7 +973,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         ? market?.countryCode ?? 'GLOBAL'
         : market?.label ?? 'Kenya';
     final countryCode =
-        market?.countryCode ?? widget.initialCountryCode ?? 'KE';
+        market?.countryCode ??
+        widget.initialCountryCode ??
+        _detectedCountryCode ??
+        'KE';
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -2173,6 +2180,19 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       return null;
     }
     return '${country.toUpperCase()}:$provider';
+  }
+
+  Future<String?> _resolveCountryFallback() async {
+    final initial = widget.initialCountryCode?.trim().toUpperCase();
+    if (initial != null && initial.isNotEmpty) return initial;
+    final detected = await CountryDetector.detect();
+    if (detected != null && detected.isNotEmpty) {
+      if (mounted) {
+        setState(() => _detectedCountryCode = detected.toUpperCase());
+      }
+      return detected.toUpperCase();
+    }
+    return null;
   }
 
   SubscriptionMarket? _marketForKey(

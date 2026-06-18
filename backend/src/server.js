@@ -36,6 +36,10 @@ const {
 } = require('./businessAccess');
 const { deleteBusinessAccount } = require('./businessDeletion');
 const {
+  currencyForCountry,
+  resolveRequestCountry,
+} = require('./geo');
+const {
   issueLicense,
   resolveSubscriptionState,
 } = require('./licenseTokens');
@@ -241,6 +245,11 @@ app.get('/api/health', async (req, res) => {
       error: error.message,
     });
   }
+});
+
+app.get('/api/geo/country', (req, res) => {
+  const countryCode = resolveRequestCountry(req);
+  res.json({ ok: true, countryCode });
 });
 
 app.post('/api/license/activate', async (req, res, next) => {
@@ -9486,15 +9495,6 @@ function safePublicImageUrl(value) {
   } catch (_) {
     return null;
   }
-}
-
-function currencyForCountry(countryCode) {
-  const clean = String(countryCode || '').trim().toUpperCase();
-  if (clean === 'KE') return 'KES';
-  if (clean === 'TZ') return 'TZS';
-  if (clean === 'UG') return 'UGX';
-  if (clean === 'RW') return 'RWF';
-  return 'KES';
 }
 
 function displayCurrencyForCountry(countryCode) {
