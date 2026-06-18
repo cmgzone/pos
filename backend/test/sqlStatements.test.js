@@ -68,4 +68,10 @@ test('database initialization includes conflict-safe POS effect tables', () => {
   assert.match(sql, /idx_businesses_public_subdomain_unique/i);
   assert.match(sql, /DROP INDEX idx_businesses_public_subdomain_unique/i);
   assert.match(sql, /public_subdomain IS NOT NULL\s+AND deleted_at IS NULL/i);
+  assert.match(
+    sql,
+    /ALTER TABLE business_communication_settings[\s\S]+ADD COLUMN IF NOT EXISTS whatsapp_phone_number_id text/i,
+  );
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS whatsapp_waba_id text/i);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS whatsapp_access_token text/i);
 });

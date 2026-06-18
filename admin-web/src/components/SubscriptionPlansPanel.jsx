@@ -58,9 +58,15 @@ const MESSAGE_GATEWAY_FIELDS = {
     public: [
       ['baseUrl', 'Graph API Base URL'],
       ['apiVersion', 'API Version'],
-      ['phoneNumberId', 'Phone Number ID'],
+      ['appId', 'Meta App ID'],
+      ['embeddedSignupConfigId', 'Embedded Signup Config ID'],
+      ['oauthRedirectUri', 'OAuth Redirect URI'],
+      ['phoneNumberId', 'Fallback Phone Number ID'],
     ],
-    secret: [['accessToken', 'Access Token']],
+    secret: [
+      ['appSecret', 'Meta App Secret'],
+      ['accessToken', 'Fallback/System Access Token'],
+    ],
   },
   africas_talking: {
     public: [
@@ -160,6 +166,42 @@ function gatewayConfigurationError(gateway) {
       return 'Flutterwave API URL must use HTTPS.'
     }
     if (!gateway.secretConfig?.secretKey) return 'Flutterwave secret key is required.'
+  }
+
+  return ''
+}
+
+function messageGatewayConfigurationError(gateway) {
+  if (!gateway?.isActive) return ''
+
+  if (gateway.provider === 'whatsapp') {
+    const publicConfig = gateway.publicConfig || {}
+    const secretConfig = gateway.secretConfig || {}
+    if (!isHttpsUrl(publicConfig.baseUrl)) {
+      return 'WhatsApp Graph API URL must use HTTPS.'
+    }
+    const signupConfigId =
+      publicConfig.embeddedSignupConfigId ||
+      publicConfig.businessLoginConfigurationId ||
+      publicConfig.configId
+    const hasEmbeddedSignup =
+      publicConfig.appId && signupConfigId && secretConfig.appSecret
+    const hasFallbackSender =
+      publicConfig.phoneNumberId && secretConfig.accessToken
+    if (!hasEmbeddedSignup && !hasFallbackSender) {
+      return 'Add Embedded Signup App ID, Config ID, and App Secret, or add a fallback Phone Number ID and access token.'
+    }
+  }
+
+  if (gateway.provider === 'africas_talking') {
+    const publicConfig = gateway.publicConfig || {}
+    const secretConfig = gateway.secretConfig || {}
+    if (!isHttpsUrl(publicConfig.baseUrl)) {
+      return "Africa's Talking URL must use HTTPS."
+    }
+    if (!publicConfig.username || !secretConfig.apiKey) {
+      return "Africa's Talking username and API key are required."
+    }
   }
 
   return ''
@@ -609,6 +651,10 @@ export default function SubscriptionPlansPanel({ token }) {
     setSavingMessageGateway(provider)
     setMessage('')
     try {
+      const validationError = messageGatewayConfigurationError(gateway)
+      if (validationError) {
+        throw new Error(validationError)
+      }
       const response = await fetch(`/api/platform/message-gateways/${provider}`, {
         method: 'PUT',
         headers: {
@@ -1403,6 +1449,18 @@ export default function SubscriptionPlansPanel({ token }) {
             <h3>Message Gateways</h3>
             <p>Configure provider-backed WhatsApp and SMS sending for businesses that enable API messaging.</p>
           </div>
+        </div>
+        <div className="gateway-help-card">
+          <strong>WhatsApp Business API setup for SaaS</strong>
+          <ol>
+            <li>Create a Meta Developer app, add the WhatsApp product, then copy the App ID and App Secret from App settings.</li>
+            <li>Create a Facebook Login for Business configuration using WhatsApp Embedded Signup, then paste its Config ID here.</li>
+            <li>Add your production OAuth redirect URI in Meta and paste the same URI here so signup codes can be exchanged safely.</li>
+            <li>Optional for testing: copy a fallback Phone Number ID and system access token from WhatsApp API Setup.</li>
+          </ol>
+          <p>
+            Store owners do not enter API keys. They connect and verify their own WhatsApp number, then Piki stores that business's WABA ID and Phone Number ID.
+          </p>
         </div>
         <div className="gateway-grid">
           {messageGateways.map((gateway) => {

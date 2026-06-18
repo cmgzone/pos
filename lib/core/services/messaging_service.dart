@@ -122,6 +122,60 @@ class MessagingService {
     return data;
   }
 
+  static Future<Map<String, dynamic>> fetchWhatsAppConnectStatus() async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('business/whatsapp-connect'),
+      queryParameters: {'deviceId': deviceId},
+      options: Options(headers: headers),
+    );
+    return _requireOk(response)['data'] as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> completeWhatsAppConnect({
+    String? code,
+    String? redirectUri,
+    String? wabaId,
+    required String phoneNumberId,
+    String? displayPhoneNumber,
+    String? businessName,
+    String? accessToken,
+  }) async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.post<Map<String, dynamic>>(
+      _url('business/whatsapp-connect/complete'),
+      data: {
+        'deviceId': deviceId,
+        if (code != null && code.trim().isNotEmpty) 'code': code.trim(),
+        if (redirectUri != null && redirectUri.trim().isNotEmpty)
+          'redirectUri': redirectUri.trim(),
+        if (wabaId != null && wabaId.trim().isNotEmpty) 'wabaId': wabaId.trim(),
+        'phoneNumberId': phoneNumberId.trim(),
+        if (displayPhoneNumber != null && displayPhoneNumber.trim().isNotEmpty)
+          'displayPhoneNumber': displayPhoneNumber.trim(),
+        if (businessName != null && businessName.trim().isNotEmpty)
+          'businessName': businessName.trim(),
+        if (accessToken != null && accessToken.trim().isNotEmpty)
+          'accessToken': accessToken.trim(),
+      },
+      options: Options(headers: headers),
+    );
+    return _requireOk(response)['data'] as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> disconnectWhatsAppBusiness() async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _dio.delete<Map<String, dynamic>>(
+      _url('business/whatsapp-connect'),
+      queryParameters: {'deviceId': deviceId},
+      options: Options(headers: headers),
+    );
+    return _requireOk(response)['data'] as Map<String, dynamic>;
+  }
+
   static String receiptMessage({
     required String customerName,
     required String saleId,

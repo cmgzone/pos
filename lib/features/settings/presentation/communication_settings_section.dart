@@ -16,6 +16,11 @@ class _CommunicationSettingsSectionState
   final _whatsappController = TextEditingController();
   final _senderController = TextEditingController();
   bool _allowApiSend = true;
+  String _whatsappApiStatus = 'not_connected';
+  String _whatsappDisplayPhoneNumber = '';
+  String _whatsappPhoneNumberId = '';
+  String _whatsappWabaId = '';
+  String _whatsappConnectedAt = '';
   bool _loading = true;
   bool _saving = false;
   String? _message;
@@ -45,6 +50,15 @@ class _CommunicationSettingsSectionState
         _whatsappController.text = settings['whatsappNumber']?.toString() ?? '';
         _senderController.text = settings['smsSenderId']?.toString() ?? '';
         _allowApiSend = settings['allowApiSend'] != false;
+        _whatsappApiStatus =
+            settings['whatsappApiStatus']?.toString() ?? 'not_connected';
+        _whatsappDisplayPhoneNumber =
+            settings['whatsappDisplayPhoneNumber']?.toString() ?? '';
+        _whatsappPhoneNumberId =
+            settings['whatsappPhoneNumberId']?.toString() ?? '';
+        _whatsappWabaId = settings['whatsappWabaId']?.toString() ?? '';
+        _whatsappConnectedAt =
+            settings['whatsappConnectedAt']?.toString() ?? '';
         _loading = false;
       });
     } catch (error) {
@@ -102,6 +116,8 @@ class _CommunicationSettingsSectionState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildWhatsAppApiStatus(context),
+          SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -156,6 +172,69 @@ class _CommunicationSettingsSectionState
                     )
                   : Icon(Icons.save_outlined),
               label: Text('Save Messaging'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWhatsAppApiStatus(BuildContext context) {
+    final theme = Theme.of(context);
+    final connected =
+        _whatsappApiStatus == 'connected' && _whatsappPhoneNumberId.isNotEmpty;
+    final statusColor = connected
+        ? Colors.green.shade700
+        : theme.colorScheme.onSurfaceVariant;
+    final title = connected
+        ? 'WhatsApp Business API connected'
+        : 'WhatsApp Business API not connected';
+    final detail = connected
+        ? [
+            if (_whatsappDisplayPhoneNumber.isNotEmpty)
+              'Sender: $_whatsappDisplayPhoneNumber',
+            if (_whatsappWabaId.isNotEmpty) 'WABA: $_whatsappWabaId',
+            if (_whatsappConnectedAt.isNotEmpty)
+              'Connected: $_whatsappConnectedAt',
+          ].join('  |  ')
+        : 'Piki admin adds the Meta App ID, App Secret, and Embedded Signup Config ID. Then this business verifies its own WhatsApp number before API messages can be sent from that number.';
+
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            connected ? Icons.verified_outlined : Icons.info_outline,
+            color: statusColor,
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

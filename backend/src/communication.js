@@ -37,11 +37,21 @@ async function ensureCommunicationSchema(target = query) {
       whatsapp_number text,
       sms_sender_id text,
       allow_api_send boolean NOT NULL DEFAULT true,
+      whatsapp_api_status text NOT NULL DEFAULT 'not_connected',
+      whatsapp_waba_id text,
+      whatsapp_phone_number_id text,
+      whatsapp_display_phone_number text,
+      whatsapp_business_name text,
+      whatsapp_access_token text,
+      whatsapp_connected_at timestamptz,
+      whatsapp_last_error text,
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
     `,
   );
+
+  await ensureBusinessCommunicationColumns(target);
 
   await runQuery(
     target,
@@ -156,7 +166,11 @@ async function saveMessageGateway(provider, input = {}, target = query) {
   return normalizeGatewayRow(result.rows[0], { includeSecrets: false });
 }
 
-async function getBusinessCommunicationSettings(businessId, target = query) {
+async function getBusinessCommunicationSettings(
+  businessId,
+  target = query,
+  { includeSecrets = false } = {},
+) {
   await ensureCommunicationSchema(target);
   const result = await runQuery(
     target,
@@ -168,7 +182,9 @@ async function getBusinessCommunicationSettings(businessId, target = query) {
     `,
     [businessId],
   );
-  return normalizeBusinessSettingsRow(result.rows[0] || { business_id: businessId });
+  return normalizeBusinessSettingsRow(result.rows[0] || { business_id: businessId }, {
+    includeSecrets,
+  });
 }
 
 async function saveBusinessCommunicationSettings(businessId, input = {}, target = query) {
@@ -203,6 +219,166 @@ async function saveBusinessCommunicationSettings(businessId, input = {}, target 
   return normalizeBusinessSettingsRow(result.rows[0]);
 }
 
+async function getBusinessWhatsAppConnectStatus(businessId, target = query) {
+  await ensureCommunicationSchema(target);
+  const settings = await getBusinessCommunicationSettings(businessId, target);
+  const gateway = await loadMessageGateway('whatsapp', target, {
+    includeSecrets: false,
+  });
+  const publicConfig = gateway?.publicConfig || {};
+  const signupConfigId =
+    normalizeText(publicConfig.embeddedSignupConfigId) ||
+    normalizeText(publicConfig.businessLoginConfigurationId) ||
+    normalizeText(publicConfig.configId);
+
+  return {
+    ...settings,
+    platform: {
+      isActive: gateway?.isActive === true,
+      appId: normalizeText(publicConfig.appId) || '',
+      apiVersion: normalizeText(publicConfig.apiVersion) || 'v20.0',
+      embeddedSignupConfigId: signupConfigId || '',
+      oauthRedirectUri: normalizeText(publicConfig.oauthRedirectUri) || '',
+      setupReady: Boolean(publicConfig.appId && signupConfigId),
+      docsUrl:
+        'https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview',
+    },
+  };
+}
+
+async function connectBusinessWhatsApp(businessId, input = {}, target = query) {
+  await ensureCommunicationSchema(target);
+  const gateway = await loadMessageGateway('whatsapp', target, {
+    includeSecrets: true,
+  });
+  if (!gateway) {
+    throw createError(400, 'WhatsApp API gateway is not configured');
+  }
+
+  const publicConfig = gateway.publicConfig || {};
+  const secretConfig = gateway.secretConfig || {};
+  const code = normalizeText(input.code ?? input.authorizationCode);
+  const redirectUri =
+    normalizeText(input.redirectUri ?? input.redirect_uri) ||
+    normalizeText(publicConfig.oauthRedirectUri);
+  const exchangeResult = code
+    ? await exchangeWhatsAppSignupCode({
+        gateway,
+        code,
+        redirectUri,
+      })
+    : {};
+
+  const phoneNumberId = normalizeText(
+    input.phoneNumberId ??
+      input.phone_number_id ??
+      input.phoneId ??
+      exchangeResult.phoneNumberId,
+  );
+  const wabaId = normalizeText(
+    input.wabaId ??
+      input.waba_id ??
+      input.whatsappBusinessAccountId ??
+      exchangeResult.wabaId,
+  );
+  const displayPhoneNumber = normalizeText(
+    input.displayPhoneNumber ??
+      input.display_phone_number ??
+      input.whatsappNumber ??
+      input.whatsapp_number,
+  );
+  const businessName = normalizeText(
+    input.businessName ?? input.business_name ?? input.verifiedName,
+  );
+  const accessToken = normalizeText(
+    input.accessToken ?? input.access_token ?? exchangeResult.accessToken,
+  );
+
+  if (!phoneNumberId) {
+    throw createError(400, 'WhatsApp phone number ID is required');
+  }
+  if (!accessToken && !normalizeText(secretConfig.accessToken)) {
+    throw createError(
+      400,
+      'WhatsApp access token is required for API sending',
+    );
+  }
+
+  const result = await runQuery(
+    target,
+    `
+    INSERT INTO business_communication_settings (
+      business_id,
+      whatsapp_number,
+      allow_api_send,
+      whatsapp_api_status,
+      whatsapp_waba_id,
+      whatsapp_phone_number_id,
+      whatsapp_display_phone_number,
+      whatsapp_business_name,
+      whatsapp_access_token,
+      whatsapp_connected_at,
+      whatsapp_last_error,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, true, 'connected', $3, $4, $5, $6, $7, NOW(), NULL, NOW(), NOW())
+    ON CONFLICT (business_id) DO UPDATE
+    SET whatsapp_number = COALESCE(NULLIF(business_communication_settings.whatsapp_number, ''), EXCLUDED.whatsapp_number),
+        allow_api_send = true,
+        whatsapp_api_status = 'connected',
+        whatsapp_waba_id = EXCLUDED.whatsapp_waba_id,
+        whatsapp_phone_number_id = EXCLUDED.whatsapp_phone_number_id,
+        whatsapp_display_phone_number = EXCLUDED.whatsapp_display_phone_number,
+        whatsapp_business_name = EXCLUDED.whatsapp_business_name,
+        whatsapp_access_token = COALESCE(EXCLUDED.whatsapp_access_token, business_communication_settings.whatsapp_access_token),
+        whatsapp_connected_at = NOW(),
+        whatsapp_last_error = NULL,
+        updated_at = NOW()
+    RETURNING *
+    `,
+    [
+      businessId,
+      displayPhoneNumber,
+      wabaId,
+      phoneNumberId,
+      displayPhoneNumber,
+      businessName,
+      accessToken,
+    ],
+  );
+  return normalizeBusinessSettingsRow(result.rows[0]);
+}
+
+async function disconnectBusinessWhatsApp(businessId, target = query) {
+  await ensureCommunicationSchema(target);
+  const result = await runQuery(
+    target,
+    `
+    INSERT INTO business_communication_settings (
+      business_id,
+      whatsapp_api_status,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, 'not_connected', NOW(), NOW())
+    ON CONFLICT (business_id) DO UPDATE
+    SET whatsapp_api_status = 'not_connected',
+        whatsapp_waba_id = NULL,
+        whatsapp_phone_number_id = NULL,
+        whatsapp_display_phone_number = NULL,
+        whatsapp_business_name = NULL,
+        whatsapp_access_token = NULL,
+        whatsapp_connected_at = NULL,
+        whatsapp_last_error = NULL,
+        updated_at = NOW()
+    RETURNING *
+    `,
+    [businessId],
+  );
+  return normalizeBusinessSettingsRow(result.rows[0]);
+}
+
 async function sendBusinessMessage({
   businessContext,
   userId,
@@ -224,6 +400,8 @@ async function sendBusinessMessage({
 
   const settings = await getBusinessCommunicationSettings(
     businessContext.businessId,
+    query,
+    { includeSecrets: true },
   );
   if (!settings.allowApiSend) {
     throw createError(403, 'API messaging is disabled for this business');
@@ -258,7 +436,7 @@ async function sendBusinessMessage({
   try {
     const providerResult =
       provider === 'whatsapp'
-        ? await sendWhatsAppMessage(gateway, cleanRecipient, cleanBody)
+        ? await sendWhatsAppMessage(gateway, cleanRecipient, cleanBody, settings)
         : await sendAfricasTalkingSms(
             gateway,
             cleanRecipient,
@@ -305,9 +483,12 @@ async function seedDefaultMessageGateways(target = query) {
       publicConfig: {
         baseUrl: 'https://graph.facebook.com',
         apiVersion: 'v20.0',
+        appId: '',
+        embeddedSignupConfigId: '',
+        oauthRedirectUri: '',
         phoneNumberId: '',
       },
-      secretConfig: { accessToken: '' },
+      secretConfig: { appSecret: '', accessToken: '' },
     },
     {
       provider: 'africas_talking',
@@ -349,15 +530,22 @@ async function seedDefaultMessageGateways(target = query) {
   }
 }
 
-async function sendWhatsAppMessage(gateway, recipient, body) {
+async function sendWhatsAppMessage(gateway, recipient, body, businessSettings = {}) {
   const publicConfig = gateway.publicConfig || {};
   const secretConfig = gateway.secretConfig || {};
   const baseUrl = normalizeText(publicConfig.baseUrl) || 'https://graph.facebook.com';
   const apiVersion = normalizeText(publicConfig.apiVersion) || 'v20.0';
-  const phoneNumberId = normalizeText(publicConfig.phoneNumberId);
-  const accessToken = normalizeText(secretConfig.accessToken);
+  const phoneNumberId =
+    normalizeText(businessSettings.whatsappPhoneNumberId) ||
+    normalizeText(publicConfig.phoneNumberId);
+  const accessToken =
+    normalizeText(businessSettings.whatsappAccessToken) ||
+    normalizeText(secretConfig.accessToken);
   if (!phoneNumberId || !accessToken) {
-    throw createError(400, 'WhatsApp API credentials are not configured');
+    throw createError(
+      400,
+      'WhatsApp API sender is not connected for this business',
+    );
   }
   const fetch = (await import('node-fetch')).default;
   const response = await fetch(
@@ -384,6 +572,45 @@ async function sendWhatsAppMessage(gateway, recipient, body) {
     );
   }
   return result;
+}
+
+async function exchangeWhatsAppSignupCode({ gateway, code, redirectUri }) {
+  const publicConfig = gateway.publicConfig || {};
+  const secretConfig = gateway.secretConfig || {};
+  const baseUrl = normalizeText(publicConfig.baseUrl) || 'https://graph.facebook.com';
+  const apiVersion = normalizeText(publicConfig.apiVersion) || 'v20.0';
+  const appId = normalizeText(publicConfig.appId);
+  const appSecret = normalizeText(secretConfig.appSecret);
+  if (!appId || !appSecret) {
+    throw createError(
+      400,
+      'Meta App ID and App Secret are required for Embedded Signup',
+    );
+  }
+  const params = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    code,
+  });
+  if (redirectUri) {
+    params.set('redirect_uri', redirectUri);
+  }
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/${apiVersion}/oauth/access_token?${params.toString()}`,
+  );
+  const result = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createError(
+      response.status,
+      result?.error?.message || result?.message || 'WhatsApp signup code exchange failed',
+    );
+  }
+  return {
+    accessToken: normalizeText(result.access_token),
+    tokenType: normalizeText(result.token_type),
+    expiresIn: result.expires_in,
+  };
 }
 
 async function sendAfricasTalkingSms(gateway, recipient, body, senderId) {
@@ -527,14 +754,48 @@ function normalizeGatewayRow(row, { includeSecrets = false } = {}) {
   };
 }
 
-function normalizeBusinessSettingsRow(row) {
-  return {
+function normalizeBusinessSettingsRow(row, { includeSecrets = false } = {}) {
+  const status = normalizeWhatsAppStatus(
+    row.whatsapp_api_status || (row.whatsapp_phone_number_id ? 'connected' : ''),
+  );
+  const normalized = {
     businessId: row.business_id,
     whatsappNumber: row.whatsapp_number || '',
     smsSenderId: row.sms_sender_id || '',
     allowApiSend: row.allow_api_send !== false,
+    whatsappApiStatus: status,
+    whatsappConnected: status === 'connected' && Boolean(row.whatsapp_phone_number_id),
+    whatsappWabaId: row.whatsapp_waba_id || '',
+    whatsappPhoneNumberId: row.whatsapp_phone_number_id || '',
+    whatsappDisplayPhoneNumber: row.whatsapp_display_phone_number || '',
+    whatsappBusinessName: row.whatsapp_business_name || '',
+    whatsappConnectedAt: toIsoString(row.whatsapp_connected_at),
+    whatsappLastError: row.whatsapp_last_error || '',
     updatedAt: toIsoString(row.updated_at),
   };
+  if (includeSecrets) {
+    normalized.whatsappAccessToken = row.whatsapp_access_token || '';
+  }
+  return normalized;
+}
+
+async function ensureBusinessCommunicationColumns(target) {
+  const columns = [
+    ["whatsapp_api_status", "text NOT NULL DEFAULT 'not_connected'"],
+    ['whatsapp_waba_id', 'text'],
+    ['whatsapp_phone_number_id', 'text'],
+    ['whatsapp_display_phone_number', 'text'],
+    ['whatsapp_business_name', 'text'],
+    ['whatsapp_access_token', 'text'],
+    ['whatsapp_connected_at', 'timestamptz'],
+    ['whatsapp_last_error', 'text'],
+  ];
+  for (const [column, definition] of columns) {
+    await runQuery(
+      target,
+      `ALTER TABLE business_communication_settings ADD COLUMN IF NOT EXISTS ${column} ${definition}`,
+    );
+  }
 }
 
 function normalizeMessageLogRow(row) {
@@ -604,6 +865,14 @@ function normalizeProvider(value) {
 function normalizeChannel(value) {
   const clean = normalizeProvider(value);
   return clean === 'sms' ? 'sms' : 'whatsapp';
+}
+
+function normalizeWhatsAppStatus(value) {
+  const clean = normalizeProvider(value);
+  if (clean === 'connected' || clean === 'pending' || clean === 'error') {
+    return clean;
+  }
+  return 'not_connected';
 }
 
 function normalizeText(value) {
@@ -679,6 +948,9 @@ module.exports = {
   saveMessageGateway,
   getBusinessCommunicationSettings,
   saveBusinessCommunicationSettings,
+  getBusinessWhatsAppConnectStatus,
+  connectBusinessWhatsApp,
+  disconnectBusinessWhatsApp,
   sendBusinessMessage,
   listMessageLogs,
 };

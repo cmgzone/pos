@@ -98,6 +98,9 @@ const {
   saveMessageGateway,
   getBusinessCommunicationSettings,
   saveBusinessCommunicationSettings,
+  getBusinessWhatsAppConnectStatus,
+  connectBusinessWhatsApp,
+  disconnectBusinessWhatsApp,
   sendBusinessMessage,
   listMessageLogs,
 } = require('./communication');
@@ -2774,6 +2777,45 @@ app.put('/api/business/communication-settings', async (req, res, next) => {
     const settings = await saveBusinessCommunicationSettings(
       businessContext.businessId,
       req.body || {},
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: settings });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/business/whatsapp-connect', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const status = await getBusinessWhatsAppConnectStatus(
+      businessContext.businessId,
+    );
+    res.json({ ok: true, data: status });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/business/whatsapp-connect/complete', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const settings = await connectBusinessWhatsApp(
+      businessContext.businessId,
+      req.body || {},
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: settings });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.delete('/api/business/whatsapp-connect', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    const settings = await disconnectBusinessWhatsApp(
+      businessContext.businessId,
     );
     await invalidateCatalogCache(businessContext.businessId);
     res.json({ ok: true, data: settings });
@@ -10676,8 +10718,19 @@ function messageGatewayReadinessErrors(gateway) {
     if (!publicConfig.baseUrl || !isHttpsUrl(publicConfig.baseUrl)) {
       errors.push('valid Graph API base URL');
     }
-    if (!publicConfig.phoneNumberId) errors.push('phone number ID');
-    if (!secretConfig.accessToken) errors.push('access token');
+    const signupConfigId =
+      publicConfig.embeddedSignupConfigId ||
+      publicConfig.businessLoginConfigurationId ||
+      publicConfig.configId;
+    const hasEmbeddedSignup =
+      publicConfig.appId && signupConfigId && secretConfig.appSecret;
+    const hasFallbackSender =
+      publicConfig.phoneNumberId && secretConfig.accessToken;
+    if (!hasEmbeddedSignup && !hasFallbackSender) {
+      errors.push(
+        'Embedded Signup App ID, Config ID, and App Secret, or fallback Phone Number ID and access token',
+      );
+    }
   } else if (gateway.provider === 'africas_talking') {
     if (!publicConfig.baseUrl || !isHttpsUrl(publicConfig.baseUrl)) {
       errors.push('valid messaging URL');

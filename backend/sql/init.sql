@@ -200,9 +200,27 @@ CREATE TABLE IF NOT EXISTS business_communication_settings (
   whatsapp_number text,
   sms_sender_id text,
   allow_api_send boolean NOT NULL DEFAULT true,
+  whatsapp_api_status text NOT NULL DEFAULT 'not_connected',
+  whatsapp_waba_id text,
+  whatsapp_phone_number_id text,
+  whatsapp_display_phone_number text,
+  whatsapp_business_name text,
+  whatsapp_access_token text,
+  whatsapp_connected_at timestamptz,
+  whatsapp_last_error text,
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE business_communication_settings
+  ADD COLUMN IF NOT EXISTS whatsapp_api_status text NOT NULL DEFAULT 'not_connected',
+  ADD COLUMN IF NOT EXISTS whatsapp_waba_id text,
+  ADD COLUMN IF NOT EXISTS whatsapp_phone_number_id text,
+  ADD COLUMN IF NOT EXISTS whatsapp_display_phone_number text,
+  ADD COLUMN IF NOT EXISTS whatsapp_business_name text,
+  ADD COLUMN IF NOT EXISTS whatsapp_access_token text,
+  ADD COLUMN IF NOT EXISTS whatsapp_connected_at timestamptz,
+  ADD COLUMN IF NOT EXISTS whatsapp_last_error text;
 
 CREATE TABLE IF NOT EXISTS message_send_logs (
   id text PRIMARY KEY,

@@ -642,6 +642,34 @@ select.compact-input {
   gap: 1rem;
 }
 
+.gateway-help-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.gateway-help-card strong {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--text-primary);
+}
+
+.gateway-help-card ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.gateway-help-card li {
+  margin: 0.25rem 0;
+}
+
+.gateway-help-card p {
+  margin-top: 0.65rem;
+}
+
 .gateway-card {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
