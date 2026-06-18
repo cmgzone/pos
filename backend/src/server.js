@@ -87,6 +87,7 @@ const {
   sendBusinessMessage,
   listMessageLogs,
 } = require('./communication');
+const { sendLandingDemoRequestEmail } = require('./landingMailer');
 const {
   ensurePosPaymentSchema,
   loadBusinessPaymentGateway,
@@ -4217,7 +4218,14 @@ app.get('/api/public/catalog/:businessId/orders/:orderNumber', async (req, res, 
 app.post('/api/public/demo-requests', publicWriteRateLimit, async (req, res, next) => {
   try {
     const request = await createLandingDemoRequest(req.body || {}, req);
-    res.status(201).json({ ok: true, data: request });
+    let notificationSent = false;
+    try {
+      const notification = await sendLandingDemoRequestEmail(request);
+      notificationSent = Boolean(notification.sent);
+    } catch (error) {
+      console.error('Could not send landing demo request notification:', error.message);
+    }
+    res.status(201).json({ ok: true, data: request, notificationSent });
   } catch (error) {
     next(normalizeRouteError(error));
   }

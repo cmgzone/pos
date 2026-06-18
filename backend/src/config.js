@@ -134,6 +134,36 @@ const config = {
     60,
   ),
   emailOtpMaxAttempts: positiveNumberEnv(process.env.EMAIL_OTP_MAX_ATTEMPTS, 5),
+  supportEmail:
+    process.env.SUPPORT_EMAIL?.trim() ||
+    process.env.LANDING_CONTACT_NOTIFY_EMAIL?.trim() ||
+    'support@pikipos.com',
+  landingContactNotifyEmail:
+    process.env.LANDING_CONTACT_NOTIFY_EMAIL?.trim() ||
+    process.env.SUPPORT_EMAIL?.trim() ||
+    'support@pikipos.com',
+  smtpHost:
+    process.env.SMTP_HOST?.trim() ||
+    process.env.MAIL_SMTP_HOST?.trim() ||
+    '',
+  smtpPort: positiveNumberEnv(
+    process.env.SMTP_PORT || process.env.MAIL_SMTP_PORT,
+    465,
+  ),
+  smtpSecure: parseBooleanEnv(
+    process.env.SMTP_SECURE || process.env.MAIL_SMTP_SECURE,
+    true,
+  ),
+  smtpUser:
+    process.env.SMTP_USER?.trim() ||
+    process.env.MAIL_SMTP_USER?.trim() ||
+    '',
+  smtpPass: process.env.SMTP_PASS || process.env.MAIL_SMTP_PASS || '',
+  smtpFromEmail:
+    process.env.SMTP_FROM_EMAIL?.trim() ||
+    process.env.MAIL_FROM?.trim() ||
+    process.env.SUPPORT_EMAIL?.trim() ||
+    'Piki POS <support@pikipos.com>',
 };
 
 config.emailOtpSecret =
