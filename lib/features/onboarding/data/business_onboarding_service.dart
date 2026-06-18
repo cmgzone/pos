@@ -183,7 +183,7 @@ class BusinessOnboardingService {
   }) {
     final planSet = planFeatures.map((feature) => feature.trim()).toSet();
     if (planSet.isEmpty) {
-      return recommendedFeatures.toList();
+      return const [];
     }
     return recommendedFeatures
         .where((feature) => planSet.contains(feature))

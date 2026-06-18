@@ -33,6 +33,23 @@ void main() {
     expect(supported, isNot(contains(UserAccessProfile.featureStockList)));
   });
 
+  test('does not recommend features when plan features are unknown', () {
+    final recommended = BusinessOnboardingService.recommendedFeatures(
+      businessType: 'services',
+      sellingFocus: 'services',
+      stockTracking: 'no',
+      creditSales: 'no',
+      onlineSelling: 'no',
+    );
+
+    final supported = BusinessOnboardingService.planSupportedFeatures(
+      recommendedFeatures: recommended,
+      planFeatures: const [],
+    );
+
+    expect(supported, isEmpty);
+  });
+
   test('stores onboarding answers per business', () async {
     final answers = BusinessOnboardingAnswers(
       businessId: 'biz-1',
