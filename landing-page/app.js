@@ -93,6 +93,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ----------------------------------------------------------------------
+    // 1b. Sticky mobile CTA bar: show after hero, hide near contact/footer
+    // ----------------------------------------------------------------------
+    const stickyCtaBar = document.getElementById('stickyCtaBar');
+    const contactSection = document.getElementById('contact');
+
+    if (stickyCtaBar) {
+        const updateStickyCta = () => {
+            const pastHero = window.scrollY > 600;
+            let nearContact = false;
+            if (contactSection) {
+                const rect = contactSection.getBoundingClientRect();
+                // Hide once the contact section's top reaches the upper half of viewport
+                nearContact = rect.top < window.innerHeight * 0.6;
+            }
+            if (pastHero && !nearContact) {
+                stickyCtaBar.classList.add('visible');
+                stickyCtaBar.setAttribute('aria-hidden', 'false');
+            } else {
+                stickyCtaBar.classList.remove('visible');
+                stickyCtaBar.setAttribute('aria-hidden', 'true');
+            }
+        };
+        window.addEventListener('scroll', updateStickyCta, { passive: true });
+        updateStickyCta();
+    }
+
+    // ----------------------------------------------------------------------
     // 2. Mobile navigation toggle
     // ----------------------------------------------------------------------
     const menuToggle = document.getElementById('menuToggle');
@@ -137,12 +164,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Warn if the file has not been uploaded yet
         if (link) {
-            link.addEventListener('click', (event) => {
+            link.addEventListener('click', () => {
                 const href = link.getAttribute('href') || '';
                 if (href.includes('/downloads/') || href.startsWith('downloads/')) {
                     // In a static file context the download may 404.
                     // Let the browser handle it; log for debugging.
-                    logSyncConsole('system', `Download requested: ${href}`);
+                    console.debug('Download requested:', href);
                 }
             });
         }
@@ -486,277 +513,7 @@ function toggleFaq(element) {
 }
 
 // --------------------------------------------------------------------------
-// 6. Interactive POS Simulator Engine
-// --------------------------------------------------------------------------
-let simulatorCart = [];
-let currentPaymentMethod = 'cash';
-let offlineTxQueue = [];
-let sqliteTransactionsCount = 0;
-let neonTransactionsCount = 0;
-
-// Update network indicators and listeners
-const networkToggle = document.getElementById('networkToggle');
-const terminalNetworkBadge = document.getElementById('terminalNetworkBadge');
-const heroSyncStatus = document.getElementById('heroSyncStatus');
-const neonCloudStatus = document.getElementById('neonCloudStatus');
-const consoleLogs = document.getElementById('consoleLogs');
-
-if (networkToggle) {
-    networkToggle.addEventListener('change', (e) => {
-        const isOnline = e.target.checked;
-        
-        if (isOnline) {
-            terminalNetworkBadge.textContent = 'ONLINE';
-            terminalNetworkBadge.className = 'connection-badge online';
-            heroSyncStatus.textContent = 'Connected';
-            heroSyncStatus.className = 'status-indicator online';
-            heroSyncStatus.innerHTML = '<span class="pulse-ring"></span><i class="fa-solid fa-circle"></i> Connected';
-            
-            logSyncConsole('system', 'Network Connection RESTORED.');
-            triggerBackgroundSync();
-        } else {
-            terminalNetworkBadge.textContent = 'OFFLINE';
-            terminalNetworkBadge.className = 'connection-badge offline';
-            heroSyncStatus.textContent = 'Offline Mode';
-            heroSyncStatus.className = 'status-indicator offline';
-            heroSyncStatus.innerHTML = '<i class="fa-solid fa-plane-arrival"></i> Offline Mode';
-            
-            logSyncConsole('system', 'Network Connection LOST. Running in local-first offline fallback mode.');
-        }
-    });
-}
-
-function logSyncConsole(type, message) {
-    if (!consoleLogs) return;
-    const timestamp = new Date().toLocaleTimeString();
-    const logLine = document.createElement('div');
-    logLine.className = `log-line ${type}`;
-    logLine.textContent = `[${timestamp}] [${type.toUpperCase()}] ${message}`;
-    consoleLogs.appendChild(logLine);
-    consoleLogs.scrollTop = consoleLogs.scrollHeight;
-}
-
-function addToCart(name, price, icon) {
-    const existingItem = simulatorCart.find(item => item.name === name);
-    if (existingItem) {
-        existingItem.qty += 1;
-    } else {
-        simulatorCart.push({ name, price, qty: 1, icon });
-    }
-    
-    logSyncConsole('local', `Added to cart on this device: ${name} (KES ${price})`);
-    renderCart();
-}
-
-function renderCart() {
-    const container = document.getElementById('cartContainer');
-    const subtotalText = document.getElementById('cartSubtotal');
-    const totalText = document.getElementById('cartTotal');
-    
-    if (!container) return;
-    
-    if (simulatorCart.length === 0) {
-        container.innerHTML = `
-            <div class="empty-cart-message">
-                <i class="fa-solid fa-cart-shopping"></i>
-                <p>Cart is empty. Click items to add.</p>
-            </div>
-        `;
-        subtotalText.textContent = 'KES 0';
-        totalText.textContent = 'KES 0';
-        return;
-    }
-    
-    container.innerHTML = '';
-    let total = 0;
-    
-    simulatorCart.forEach((item, index) => {
-        const itemTotal = item.price * item.qty;
-        total += itemTotal;
-        
-        const row = document.createElement('div');
-        row.className = 'cart-item-row';
-        row.innerHTML = `
-            <div class="c-item-details">
-                <span class="c-item-name">${item.name}</span>
-                <span class="c-item-qty">Qty: ${item.qty} &times; KES ${item.price}</span>
-            </div>
-            <div class="c-item-price-remove">
-                <span class="c-item-price">KES ${itemTotal}</span>
-                <button class="c-item-remove" onclick="removeFromCart(${index})">
-                    <i class="fa-solid fa-trash-can"></i>
-                </button>
-            </div>
-        `;
-        container.appendChild(row);
-    });
-    
-    subtotalText.textContent = 'KES ' + total.toLocaleString();
-    totalText.textContent = 'KES ' + total.toLocaleString();
-}
-
-function removeFromCart(index) {
-    const item = simulatorCart[index];
-    logSyncConsole('local', `Removed from cart on this device: ${item.name}`);
-    simulatorCart.splice(index, 1);
-    renderCart();
-}
-
-function selectPaymentMethod(method) {
-    currentPaymentMethod = method;
-    
-    // Toggle active state visual
-    const buttons = document.querySelectorAll('.pay-method-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    
-    const activeBtn = document.querySelector(`.pay-method-btn[data-type="${method}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
-    
-    // Toggle credit fields for Kopesha
-    const kopeshaFields = document.getElementById('kopeshaFields');
-    if (method === 'kopesha') {
-        kopeshaFields.classList.remove('hidden');
-        logSyncConsole('local', 'Kopesha credit option chosen. Ready to record customer balance.');
-    } else {
-        kopeshaFields.classList.add('hidden');
-        logSyncConsole('local', `Payment selected: ${method.toUpperCase()}`);
-    }
-}
-
-function processCheckout() {
-    if (simulatorCart.length === 0) {
-        logSyncConsole('error', 'Checkout failed. Cart is empty!');
-        alert('Please add items to your cart first.');
-        return;
-    }
-    
-    const isOnline = networkToggle ? networkToggle.checked : true;
-    let totalVal = 0;
-    simulatorCart.forEach(item => totalVal += (item.price * item.qty));
-    
-    const receiptPreview = document.getElementById('receiptPreview');
-    const rNum = document.getElementById('rNum');
-    const rDate = document.getElementById('rDate');
-    const rItems = document.getElementById('receiptItems');
-    const receiptTotalVal = document.getElementById('receiptTotalVal');
-    const receiptPaymentType = document.getElementById('receiptPaymentType');
-    const receiptKopeshaDetail = document.getElementById('receiptKopeshaDetail');
-    const receiptStatusText = document.getElementById('receiptStatusText');
-    
-    const txId = 'TX-' + Math.floor(100000 + Math.random() * 900000);
-    const dateStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    
-    // Update local transaction count
-    sqliteTransactionsCount++;
-    document.getElementById('sqliteTxCount').textContent = `${sqliteTransactionsCount} Transactions`;
-    logSyncConsole('local', `Checkout completed on this device. Transaction ID: ${txId}`);
-    
-    // Setup simulated receipt details
-    rNum.textContent = txId;
-    rDate.textContent = dateStr;
-    rItems.innerHTML = '';
-    
-    simulatorCart.forEach(item => {
-        const itemRow = document.createElement('div');
-        itemRow.className = 'r-item-row';
-        itemRow.innerHTML = `
-            <span>${item.qty}x ${item.name}</span>
-            <span>KES ${(item.price * item.qty).toLocaleString()}</span>
-        `;
-        rItems.appendChild(itemRow);
-    });
-    
-    receiptTotalVal.textContent = 'KES ' + totalVal.toLocaleString();
-    receiptPaymentType.textContent = 'Payment Method: ' + currentPaymentMethod.toUpperCase();
-    
-    if (currentPaymentMethod === 'kopesha') {
-        const custSelect = document.getElementById('customerSelect');
-        const dueDateInput = document.getElementById('creditDueDate');
-        const customerName = custSelect.options[custSelect.selectedIndex].text.split(' (')[0];
-        
-        receiptKopeshaDetail.classList.remove('hidden');
-        receiptKopeshaDetail.innerHTML = `Customer: ${customerName}<br>Due Date: ${dueDateInput.value}`;
-        
-        logSyncConsole('local', `Recorded customer balance: Debited KES ${totalVal} to ${customerName}`);
-    } else {
-        receiptKopeshaDetail.classList.add('hidden');
-    }
-    
-    // Queue offline or process cloud sync
-    if (!isOnline) {
-        offlineTxQueue.push({
-            id: txId,
-            items: [...simulatorCart],
-            payment: currentPaymentMethod,
-            total: totalVal,
-            timestamp: dateStr
-        });
-        
-        receiptStatusText.className = 'receipt-status-badge offline';
-        receiptStatusText.textContent = 'OFFLINE TRANSACTION RECORDED';
-        
-        if (neonCloudStatus) {
-            neonCloudStatus.textContent = 'PENDING SYNC';
-            neonCloudStatus.className = 'badge badge-pending';
-        }
-        
-        logSyncConsole('local', `Transaction ${txId} queued for sync. Waiting for internet connection...`);
-    } else {
-        receiptStatusText.className = 'receipt-status-badge online';
-        receiptStatusText.textContent = 'CLOUD SYNCED TRANSACTION';
-        
-        // Simulate a successful sync for the browser demo.
-        neonTransactionsCount++;
-        document.getElementById('neonTxCount').textContent = `${neonTransactionsCount} Transactions`;
-        logSyncConsole('cloud', `Synced successfully. Transaction ID: ${txId} is backed up.`);
-    }
-    
-    // Display receipt
-    receiptPreview.classList.remove('hidden');
-    
-    // Clear simulator cart
-    simulatorCart = [];
-    renderCart();
-}
-
-function triggerBackgroundSync() {
-    if (offlineTxQueue.length === 0) {
-        logSyncConsole('system', 'Records are currently fully synchronized.');
-        return;
-    }
-    
-    logSyncConsole('system', `Found ${offlineTxQueue.length} pending transaction(s). Sending queued changes to cloud sync...`);
-    if (neonCloudStatus) {
-        neonCloudStatus.textContent = 'SYNCING...';
-        neonCloudStatus.className = 'badge badge-pending';
-    }
-    
-    // Simulate API network latency
-    setTimeout(() => {
-        while(offlineTxQueue.length > 0) {
-            const tx = offlineTxQueue.shift();
-            neonTransactionsCount++;
-            document.getElementById('neonTxCount').textContent = `${neonTransactionsCount} Transactions`;
-            logSyncConsole('cloud', `Sync complete. Transaction ${tx.id} is now backed up (sync ${neonTransactionsCount}).`);
-        }
-        
-        if (neonCloudStatus) {
-            neonCloudStatus.textContent = 'SYNCED';
-            neonCloudStatus.className = 'badge';
-        }
-        logSyncConsole('success', 'Device and cloud demo records are now in sync.');
-        
-        // Update current receipt status badge to online synced if it is visible
-        const receiptStatusText = document.getElementById('receiptStatusText');
-        if (receiptStatusText) {
-            receiptStatusText.className = 'receipt-status-badge online';
-            receiptStatusText.textContent = 'CLOUD SYNCED TRANSACTION';
-        }
-    }, 2000);
-}
-
-// --------------------------------------------------------------------------
-// 7. Contact Lead Capture Form Submission Handler
+// 6. Contact Lead Capture Form Submission Handler
 // --------------------------------------------------------------------------
 async function handleFormSubmit(event) {
     event.preventDefault();
@@ -799,13 +556,11 @@ async function handleFormSubmit(event) {
 
         form.classList.add('hidden');
         successMsg.classList.remove('hidden');
-        logSyncConsole('system', `New store demo requested by: ${name}. Request ${body.data?.id || 'created'} saved.`);
     } catch (error) {
         if (errorMsg) {
             errorMsg.textContent = error.message;
             errorMsg.classList.remove('hidden');
         }
-        logSyncConsole('error', `Demo request failed: ${error.message}`);
     } finally {
         submitButton.disabled = false;
         submitButton.innerHTML = originalButtonHtml;

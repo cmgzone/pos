@@ -3,16 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#070913">
     <title>Piki POS | Offline-Ready POS for Retail and Service Businesses</title>
     <meta name="description" content="Piki POS helps shops, pharmacies, wholesalers, salons, car washes, and service businesses sell offline, track stock and customer credit, accept configured payments, and sync to the cloud.">
-    <!-- Google Fonts -->
+    <meta name="keywords" content="POS, point of sale, offline POS, Kenya POS, retail POS, pharmacy POS, wholesale POS, M-Pesa, KRA eTIMS, Kopesha, cloud sync, inventory, car wash POS, service POS">
+    <meta name="author" content="Piki POS">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://pikipos.com/">
+
+    <!-- Favicon (inline SVG, no extra request) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%23070913'/><text x='32' y='46' font-family='Arial,sans-serif' font-size='42' font-weight='bold' text-anchor='middle' fill='%23ff2a85'>P</text></svg>">
+
+    <!-- Open Graph / Social sharing -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Piki POS">
+    <meta property="og:title" content="Piki POS | Offline-Ready POS for Retail and Service Businesses">
+    <meta property="og:description" content="Sell offline, track stock and customer credit, accept M-Pesa and configured payments, and sync securely to the cloud. Built for shops, pharmacies, wholesalers, and service businesses.">
+    <meta property="og:url" content="https://pikipos.com/">
+    <meta property="og:image" content="assets/hero_dashboard.png">
+    <meta property="og:locale" content="en_KE">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Piki POS | Offline-Ready POS for Retail and Service Businesses">
+    <meta name="twitter:description" content="Offline-ready point of sale with cloud sync, Kopesha credit, M-Pesa, and KRA eTIMS support.">
+    <meta name="twitter:image" content="assets/hero_dashboard.png">
+
+    <!-- Performance hints: preconnect to third-party origins -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <!-- Preload the hero image (above the fold) -->
+    <link rel="preload" as="image" href="assets/hero_dashboard.png" fetchpriority="high">
+
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons for modern aesthetic -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Main Stylesheet -->
     <link rel="stylesheet" href="styles.css">
+
+    <!-- Structured data for rich search results -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Piki POS",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Windows 10+, Android 8+",
+      "description": "Offline-ready point of sale for retail and service businesses with cloud sync, Kopesha customer credit, M-Pesa, and KRA eTIMS support.",
+      "url": "https://pikipos.com/",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "KES"
+      }
+    }
+    </script>
 </head>
 <body>
     <!-- Background Glow Blobs -->
@@ -30,9 +77,9 @@
             
             <nav class="nav-menu" id="navMenu">
                 <a href="#features" class="nav-link">Features</a>
-                <a href="#simulator" class="nav-link">Demo</a>
                 <a href="#downloads" class="nav-link">Downloads</a>
                 <a href="#pricing" class="nav-link">Pricing</a>
+                <a href="#security" class="nav-link">Security</a>
                 <a href="#calculator" class="nav-link">Impact</a>
                 <a href="#faq" class="nav-link">FAQs</a>
             </nav>
@@ -57,16 +104,22 @@
                     <div class="badge neon-pulse-badge reveal">
                         <i class="fa-solid fa-cloud-sun"></i> Offline-ready POS with cloud sync
                     </div>
-                    <h1 class="reveal stagger-1">Piki POS for shops, services, and growing local businesses</h1>
-                    <p class="hero-lead reveal stagger-2">Run sales from a fast Piki POS app, keep working when the internet drops, track products and services, manage Kopesha customer credit, and keep business records backed up through secure cloud sync.</p>
+                    <h1 class="reveal stagger-1">Sell anywhere. <span class="text-gradient">Stay running</span> when the internet doesn't.</h1>
+                    <p class="hero-lead reveal stagger-2">Piki POS is a fast, offline-ready point of sale for shops, pharmacies, wholesalers, salons, and service businesses. Track stock and services, manage Kopesha customer credit, accept M-Pesa and configured payments, and back everything up to the cloud.</p>
                     
                     <div class="hero-actions-group reveal stagger-3">
                         <a href="#downloads" class="btn btn-primary btn-lg">
                             <i class="fa-solid fa-download"></i> Download Piki POS
                         </a>
-                        <a href="#simulator" class="btn btn-secondary btn-lg">
-                            <i class="fa-solid fa-circle-play"></i> Try Demo
+                        <a href="#features" class="btn btn-secondary btn-lg">
+                            <i class="fa-solid fa-list-check"></i> Explore Features
                         </a>
+                    </div>
+
+                    <div class="hero-trust-line reveal stagger-4">
+                        <span><i class="fa-solid fa-circle-check"></i> Free to start</span>
+                        <span><i class="fa-solid fa-circle-check"></i> No credit card required</span>
+                        <span><i class="fa-solid fa-circle-check"></i> Works offline</span>
                     </div>
 
                     <div class="hero-features-list reveal stagger-4">
@@ -98,10 +151,7 @@
                             </span>
                         </div>
                         <div class="mockup-body">
-                            <!-- Dark-mode marketing hero -->
-                            <img src="assets/piki-hero-dark.png" alt="Piki POS marketing preview - dark" class="mockup-img hero-img-dark" onerror="this.src='assets/hero_dashboard.png'">
-                            <!-- Light-mode marketing hero -->
-                            <img src="assets/piki-hero-light.png" alt="Piki POS marketing preview - light" class="mockup-img hero-img-light" onerror="this.src='assets/hero_dashboard.png'">
+                            <img src="assets/hero_dashboard.png" alt="Piki POS dashboard showing sales, stock, and cloud sync status" class="mockup-img" width="960" height="600" loading="eager" decoding="async" fetchpriority="high">
                             <div class="visual-glow-overlay"></div>
                         </div>
                     </div>
@@ -113,20 +163,40 @@
         <section class="stats-section">
             <div class="section-container stats-grid">
                 <div class="stat-card glass-card reveal-scale stagger-1">
+                    <div class="stat-icon"><i class="fa-solid fa-wifi-slash"></i></div>
                     <h3>Offline</h3>
                     <p>Sell without waiting for internet</p>
                 </div>
                 <div class="stat-card glass-card reveal-scale stagger-2">
+                    <div class="stat-icon"><i class="fa-solid fa-cash-register"></i></div>
                     <h3>Retail + Services</h3>
                     <p>Products, service jobs, and mixed sales</p>
                 </div>
                 <div class="stat-card glass-card reveal-scale stagger-3">
+                    <div class="stat-icon"><i class="fa-solid fa-hand-holding-dollar"></i></div>
                     <h3>Kopesha</h3>
                     <p>Customer credit and due dates</p>
                 </div>
                 <div class="stat-card glass-card reveal-scale stagger-4">
+                    <div class="stat-icon"><i class="fa-solid fa-chart-column"></i></div>
                     <h3>Reports</h3>
                     <p>Sales, stock, shifts, and eTIMS exports</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Integrations Strip -->
+        <section class="integrations-section" aria-label="Supported integrations and hardware">
+            <div class="section-container">
+                <p class="integrations-title reveal">Works with the tools you already use</p>
+                <div class="integrations-strip reveal stagger-1">
+                    <div class="integration-chip"><i class="fa-solid fa-mobile-screen"></i> M-Pesa</div>
+                    <div class="integration-chip"><i class="fa-solid fa-file-invoice-dollar"></i> KRA eTIMS</div>
+                    <div class="integration-chip"><i class="fa-solid fa-file-excel"></i> Excel / CSV import</div>
+                    <div class="integration-chip"><i class="fa-solid fa-barcode"></i> Barcode scanners</div>
+                    <div class="integration-chip"><i class="fa-solid fa-print"></i> Receipt printers</div>
+                    <div class="integration-chip"><i class="fa-solid fa-cash-register"></i> Cash drawers</div>
+                    <div class="integration-chip"><i class="fa-brands fa-bluetooth-b"></i> Bluetooth printers</div>
                 </div>
             </div>
         </section>
@@ -269,204 +339,6 @@
             </div>
         </section>
 
-        <!-- Interactive POS Simulator Section -->
-        <section class="simulator-section" id="simulator">
-            <div class="section-container">
-                <div class="section-header">
-                    <div class="badge highlight-badge reveal">Interactive demo</div>
-                    <h2 class="reveal stagger-1">Try a simple checkout flow</h2>
-                    <p class="reveal stagger-2">Add items, switch between online and offline mode, choose a payment type, and see how a local-first sale can be queued before cloud sync. This is a browser demo, not a live payment terminal.</p>
-                </div>
-
-                <div class="simulator-layout glass-card reveal-scale">
-                    <!-- Left Column: POS Selling UI -->
-                    <div class="sim-pos-terminal">
-                        <div class="terminal-header">
-                            <div class="title-area">
-                                <i class="fa-solid fa-cash-register text-cyan"></i>
-                                <span>Piki POS Cashier Demo</span>
-                            </div>
-                            <div class="connectivity-control">
-                                <span class="status-label">Network:</span>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="networkToggle" checked>
-                                    <span class="slider round"></span>
-                                </label>
-                                <span class="connection-badge online" id="terminalNetworkBadge">ONLINE</span>
-                            </div>
-                        </div>
-
-                        <!-- Product Grid -->
-                        <div class="terminal-body">
-                            <div class="products-panel">
-                                <h4>Quick Items</h4>
-                                <div class="products-grid">
-                                    <button class="product-btn" onclick="addToCart('Fresh Bread', 60, 'fa-bread-slice')">
-                                        <i class="fa-solid fa-bread-slice"></i>
-                                        <span class="p-name">Fresh Bread</span>
-                                        <span class="p-price">KES 60</span>
-                                    </button>
-                                    <button class="product-btn" onclick="addToCart('Chilled Milk 1L', 120, 'fa-glass-water')">
-                                        <i class="fa-solid fa-glass-water"></i>
-                                        <span class="p-name">Chilled Milk 1L</span>
-                                        <span class="p-price">KES 120</span>
-                                    </button>
-                                    <button class="product-btn" onclick="addToCart('Fanta Soda 500ml', 80, 'fa-bottle-water')">
-                                        <i class="fa-solid fa-bottle-water"></i>
-                                        <span class="p-name">Fanta Soda 500ml</span>
-                                        <span class="p-price">KES 80</span>
-                                    </button>
-                                    <button class="product-btn" onclick="addToCart('Washing Soap', 150, 'fa-soap')">
-                                        <i class="fa-solid fa-soap"></i>
-                                        <span class="p-name">Washing Soap</span>
-                                        <span class="p-price">KES 150</span>
-                                    </button>
-                                    <button class="product-btn" onclick="addToCart('Cooking Oil 1L', 320, 'fa-oil-can')">
-                                        <i class="fa-solid fa-oil-can"></i>
-                                        <span class="p-name">Cooking Oil 1L</span>
-                                        <span class="p-price">KES 320</span>
-                                    </button>
-                                    <button class="product-btn" onclick="addToCart('Premium Rice 2kg', 280, 'fa-bowl-rice')">
-                                        <i class="fa-solid fa-bowl-rice"></i>
-                                        <span class="p-name">Premium Rice 2kg</span>
-                                        <span class="p-price">KES 280</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Cart and Checkout Panel -->
-                            <div class="cart-panel">
-                                <h4>Checkout Cart</h4>
-                                <div class="cart-items-container" id="cartContainer">
-                                    <div class="empty-cart-message">
-                                        <i class="fa-solid fa-cart-shopping"></i>
-                                        <p>Cart is empty. Click items to add.</p>
-                                    </div>
-                                </div>
-                                
-                                <div class="cart-summary">
-                                    <div class="summary-line">
-                                        <span>Subtotal</span>
-                                        <span id="cartSubtotal">KES 0</span>
-                                    </div>
-                                    <div class="summary-line total-line">
-                                        <span>Total Due</span>
-                                        <span id="cartTotal">KES 0</span>
-                                    </div>
-                                </div>
-
-                                <!-- Payment Selector -->
-                                <div class="checkout-actions">
-                                    <div class="payment-methods-title">Select Payment:</div>
-                                    <div class="payment-selector-grid">
-                                        <button class="pay-method-btn active" data-type="cash" onclick="selectPaymentMethod('cash')">
-                                            <i class="fa-solid fa-money-bill-1"></i> Cash
-                                        </button>
-                                        <button class="pay-method-btn" data-type="mpesa" onclick="selectPaymentMethod('mpesa')">
-                                            <i class="fa-solid fa-mobile-screen"></i> M-Pesa
-                                        </button>
-                                        <button class="pay-method-btn kopesha-theme" data-type="kopesha" onclick="selectPaymentMethod('kopesha')">
-                                            <i class="fa-solid fa-user-plus"></i> Pay Kopesha
-                                        </button>
-                                    </div>
-
-                                    <!-- Extra info for Kopesha (Credit) -->
-                                    <div class="kopesha-extra-fields hidden" id="kopeshaFields">
-                                        <div class="input-group">
-                                            <label for="customerSelect">Select Customer:</label>
-                                            <select id="customerSelect" class="form-control">
-                                                <option value="1">Jane Doe (Balance: KES 4,200)</option>
-                                                <option value="2">John Mwangi (Balance: KES 0)</option>
-                                                <option value="3">Fatuma Ali (Balance: KES 1,850)</option>
-                                            </select>
-                                        </div>
-                                        <div class="input-group">
-                                            <label for="creditDueDate">Due Date:</label>
-                                            <input type="date" id="creditDueDate" class="form-control" value="2026-06-28">
-                                        </div>
-                                    </div>
-
-                                    <button class="btn btn-success btn-block" onclick="processCheckout()" id="checkoutBtn">
-                                        <i class="fa-solid fa-receipt"></i> Process Checkout
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right Column: Simulated Cloud Logs & Local Status -->
-                    <div class="sim-monitor-terminal">
-                        <div class="terminal-header">
-                            <div class="title-area">
-                                <i class="fa-solid fa-microchip text-purple"></i>
-                                <span>Offline & Cloud Sync Monitor</span>
-                            </div>
-                        </div>
-                        
-                        <div class="monitor-body">
-                            <div class="db-status-section">
-                                <div class="db-indicator">
-                                    <div class="db-header">
-                                        <i class="fa-solid fa-database text-blue"></i>
-                                        <span>This Device</span>
-                                    </div>
-                                    <div class="db-value" id="sqliteTxCount">0 Transactions</div>
-                                    <span class="badge badge-success">ONLINE READY</span>
-                                </div>
-                                <div class="db-indicator">
-                                    <div class="db-header">
-                                        <i class="fa-solid fa-cloud text-purple"></i>
-                                        <span>Cloud Backup</span>
-                                    </div>
-                                    <div class="db-value" id="neonTxCount">0 Transactions</div>
-                                    <span class="badge" id="neonCloudStatus">SYNCED</span>
-                                </div>
-                            </div>
-
-                            <div class="console-title">Live Sync Logs:</div>
-                            <div class="console-logs" id="consoleLogs">
-                                <div class="log-line system">[SYSTEM] Piki POS initialized successfully.</div>
-                                <div class="log-line system">[SYSTEM] Offline checkout is ready.</div>
-                                <div class="log-line system">[SYSTEM] Cloud sync is ready.</div>
-                            </div>
-
-                            <!-- Receipt Preview -->
-                            <div class="receipt-preview-container hidden" id="receiptPreview">
-                                <div class="receipt">
-                                    <div class="receipt-header">
-                                        <h4>PIKI POS RETAIL SHOP</h4>
-                                        <p>Receipt #<span id="rNum">1002</span></p>
-                                        <p id="rDate">2026-05-28 22:24</p>
-                                    </div>
-                                    <hr class="receipt-divider">
-                                    <div class="receipt-items" id="receiptItems">
-                                        <!-- Dynamic receipt items -->
-                                    </div>
-                                    <hr class="receipt-divider">
-                                    <div class="receipt-total">
-                                        <span>TOTAL</span>
-                                        <span id="receiptTotalVal">KES 0</span>
-                                    </div>
-                                    <div class="receipt-payment-info" id="receiptPaymentType">
-                                        Payment Method: CASH
-                                    </div>
-                                    <div class="receipt-kopesha-info hidden" id="receiptKopeshaDetail">
-                                        Customer: Jane Doe<br>
-                                        Due Date: 2026-06-28
-                                    </div>
-                                    <div class="receipt-footer">
-                                        <div class="barcode">|||| | ||| |||| | |</div>
-                                        <p>Thank you for shopping with us!</p>
-                                        <p class="receipt-status-badge offline" id="receiptStatusText">OFFLINE RECORDED</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <!-- Reliability Section -->
         <section class="architecture-section" id="architecture">
             <div class="section-container">
@@ -507,6 +379,40 @@
                         </div>
                         <h4>3. Manage Clearly</h4>
                         <p>Owners and managers can review sales, stock, customer credit, shifts, and reports with confidence.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Security & Compliance Section -->
+        <section class="security-section" id="security">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge reveal">Trust &amp; compliance</div>
+                    <h2 class="reveal stagger-1">Your business data stays safe and audit-ready</h2>
+                    <p class="reveal stagger-2">Piki POS is built so local sales keep moving while your records stay protected, recoverable, and ready for tax reporting.</p>
+                </div>
+
+                <div class="security-grid">
+                    <div class="security-card glass-card reveal stagger-1">
+                        <div class="icon-box purple-gradient"><i class="fa-solid fa-lock"></i></div>
+                        <h3>Local-first storage</h3>
+                        <p>Sales are saved on the device first, so a dropped connection never means a lost transaction or a stuck cashier.</p>
+                    </div>
+                    <div class="security-card glass-card reveal stagger-2">
+                        <div class="icon-box cyan-gradient"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                        <h3>Encrypted cloud backup</h3>
+                        <p>Approved devices sync securely to the cloud, so records can be recovered and shared with your team when needed.</p>
+                    </div>
+                    <div class="security-card glass-card reveal stagger-3">
+                        <div class="icon-box green-gradient"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                        <h3>KRA eTIMS ready</h3>
+                        <p>Prepare and submit sales records for KRA eTIMS reporting when your credentials are configured.</p>
+                    </div>
+                    <div class="security-card glass-card reveal stagger-4">
+                        <div class="icon-box blue-gradient"><i class="fa-solid fa-user-shield"></i></div>
+                        <h3>Roles &amp; audit logs</h3>
+                        <p>Control who can sell, edit stock, or view reports, and keep an audit trail of important changes.</p>
                     </div>
                 </div>
             </div>
@@ -620,7 +526,7 @@
         </section>
 
         <!-- Use Case Slider Section -->
-        <section class="testimonials-section">
+        <section class="testimonials-section" id="use-cases">
             <div class="section-container">
                 <div class="section-header">
                     <div class="badge reveal">Best fit</div>
@@ -671,11 +577,60 @@
             </div>
         </section>
 
+        <!-- Testimonials / Social Proof Section -->
+        <section class="quotes-section" id="testimonials">
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="badge highlight-badge reveal">From the field</div>
+                    <h2 class="reveal stagger-1">What business owners like about Piki POS</h2>
+                    <p class="reveal stagger-2">Illustrative experiences from the kinds of shops and service businesses that adopt Piki POS.</p>
+                </div>
+
+                <div class="quotes-grid">
+                    <article class="quote-card glass-card reveal stagger-1">
+                        <div class="quote-rating"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+                        <p class="quote-text">"The internet drops almost daily in our area. Since we moved to Piki POS, the till never stops. Sales sync back up the moment we're back online."</p>
+                        <div class="quote-author">
+                            <div class="quote-avatar"><i class="fa-solid fa-prescription-bottle-medical"></i></div>
+                            <div>
+                                <h5>Pharmacy owner</h5>
+                                <p>Nairobi, Kenya</p>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="quote-card glass-card reveal stagger-2">
+                        <div class="quote-rating"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+                        <p class="quote-text">"Kopesha used to live in a notebook. Now every credit sale is tied to a customer with a due date, and I can see who owes me at a glance."</p>
+                        <div class="quote-author">
+                            <div class="quote-avatar"><i class="fa-solid fa-store"></i></div>
+                            <div>
+                                <h5>Supermarket owner</h5>
+                                <p>Eldoret, Kenya</p>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="quote-card glass-card reveal stagger-3">
+                        <div class="quote-rating"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star-half-stroke"></i></div>
+                        <p class="quote-text">"We charge for car wash jobs and sell extras like air fresheners in the same sale. One checkout handles both, and the queue list keeps the team organized."</p>
+                        <div class="quote-author">
+                            <div class="quote-avatar"><i class="fa-solid fa-car"></i></div>
+                            <div>
+                                <h5>Car wash manager</h5>
+                                <p>Mombasa, Kenya</p>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
         <!-- FAQ Section -->
         <section class="faq-section" id="faq">
             <div class="section-container">
                 <div class="section-header">
-                    <div class="badge reveal">Frequently Asked Questions</div>
+                    <div class="badge reveal">FAQ</div>
                     <h2 class="reveal stagger-1">Frequently Asked Questions</h2>
                     <p class="reveal stagger-2">Clear answers about setup, offline selling, payments, and cloud sync.</p>
                 </div>
@@ -792,18 +747,25 @@
         <div class="section-container footer-grid reveal">
             <div class="footer-brand">
                 <a href="#" class="logo">
-                    <img src="assets/logo.png" alt="Piki POS logo" class="logo-mark">
+                    <img src="assets/logo.png" alt="Piki POS logo" class="logo-mark" width="38" height="38" loading="lazy" decoding="async">
                     <span>Piki<span>POS</span></span>
                 </a>
                 <p>Offline-ready point of sale for inventory, services, customer credit, payments, reports, and cloud-backed business records.</p>
+                <div class="social-links" aria-label="Social links">
+                    <a href="#" aria-label="Piki POS on Facebook"><i class="fa-brands fa-facebook-f"></i></a>
+                    <a href="#" aria-label="Piki POS on X (Twitter)"><i class="fa-brands fa-x-twitter"></i></a>
+                    <a href="#" aria-label="Piki POS on Instagram"><i class="fa-brands fa-instagram"></i></a>
+                    <a href="#" aria-label="Piki POS on LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+                    <a href="mailto:support@pikipos.com" aria-label="Email Piki POS support"><i class="fa-solid fa-envelope"></i></a>
+                </div>
             </div>
 
             <div class="footer-links">
                 <h4>Product</h4>
                 <a href="#features">Features</a>
                 <a href="#downloads">Downloads</a>
-                <a href="#simulator">Checkout Demo</a>
                 <a href="#pricing">Pricing</a>
+                <a href="#security">Security</a>
                 <a href="#architecture">Reliability</a>
             </div>
 
@@ -811,8 +773,9 @@
                 <h4>Operations</h4>
                 <a href="#architecture">Offline checkout</a>
                 <a href="#architecture">Secure cloud sync</a>
-                <a href="#architecture">Manager reports</a>
-                <a href="#features">M-Pesa and eTIMS setup</a>
+                <a href="#features">M-Pesa &amp; eTIMS</a>
+                <a href="#use-cases">Use cases</a>
+                <a href="#testimonials">Testimonials</a>
             </div>
 
             <div class="footer-links">
@@ -820,7 +783,8 @@
                 <a href="#contact">Contact</a>
                 <a href="mailto:support@pikipos.com">support@pikipos.com</a>
                 <a href="#faq">FAQs</a>
-                <a href="#simulator">Demo</a>
+                <a href="#calculator">Impact calculator</a>
+                <a href="#hero" class="back-to-top">Back to top &uarr;</a>
             </div>
         </div>
 
@@ -830,6 +794,12 @@
             </div>
         </div>
     </footer>
+
+    <!-- Sticky mobile CTA bar (conversion) -->
+    <div class="sticky-cta-bar" id="stickyCtaBar" aria-hidden="true">
+        <a href="#downloads" class="btn btn-primary btn-sm"><i class="fa-solid fa-download"></i> Download</a>
+        <a href="#contact" class="btn btn-secondary btn-sm"><i class="fa-solid fa-headset"></i> Get Setup Help</a>
+    </div>
 
     <!-- Main JavaScript Logic -->
     <script src="app.js"></script>
