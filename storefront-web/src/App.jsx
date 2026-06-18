@@ -45,6 +45,7 @@ export default function App() {
   const toastIdRef = useRef(0)
 
   const [lastOrder, setLastOrder] = useState(null)
+  const hasLoadedRef = useRef(false)
 
   const pushToast = useCallback((message, type = 'success') => {
     toastIdRef.current += 1
@@ -59,7 +60,7 @@ export default function App() {
     async (options = {}) => {
       const useBranchId = options.branchId !== undefined ? options.branchId : branchId
       if (!options.silent) {
-        if (catalog) setSwitchingBranch(true)
+        if (hasLoadedRef.current) setSwitchingBranch(true)
         else setLoading(true)
       }
       try {
@@ -70,6 +71,7 @@ export default function App() {
         setCatalog(data)
         setBranchId(data.business?.selectedBranch?.id || useBranchId || null)
         setLoadError(null)
+        hasLoadedRef.current = true
       } catch (error) {
         setLoadError(error.message || 'Could not load the store catalog.')
         setCatalog(null)
@@ -78,7 +80,7 @@ export default function App() {
         setSwitchingBranch(false)
       }
     },
-    [branchId, catalog, target.businessId],
+    [branchId, target.businessId],
   )
 
   useEffect(() => {
