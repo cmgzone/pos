@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/database_service.dart';
 import '../../core/services/app_version_service.dart';
 import '../../core/services/device_notification_service.dart';
+import '../../core/services/external_app_launcher.dart';
 import '../../core/services/session_service.dart';
 import '../../core/services/shop_settings.dart';
 import '../../core/services/branch_service.dart';
@@ -74,6 +75,7 @@ class AppShellState extends ConsumerState<AppShell> {
   Set<String> _seenNotificationIds = const <String>{};
   Set<String> _deviceNotifiedIds = const <String>{};
   bool _deviceNotificationBusy = false;
+  bool _appUpdatePromptScheduled = false;
   AppVersionInfo? _appVersionInfo;
 
   final _destinations = const [
@@ -450,7 +452,11 @@ class AppShellState extends ConsumerState<AppShell> {
           message: appVersion.releaseNotes.trim().isEmpty
               ? 'Version ${appVersion.latestVersion} is ready to install.'
               : appVersion.releaseNotes,
-          destinationIndex: 9,
+          opensUpdate: true,
+          severity: appVersion.isRequiredUpdate
+              ? _AppNotificationSeverity.critical
+              : _AppNotificationSeverity.info,
+          deviceNotify: appVersion.isRequiredUpdate,
         ),
       );
     }
@@ -627,10 +633,113 @@ class AppShellState extends ConsumerState<AppShell> {
       final info = await AppVersionService.fetch();
       if (mounted) {
         setState(() => _appVersionInfo = info);
+        if (info?.hasUpdate == true) {
+          _queueAppUpdatePrompt(info!);
+        }
       }
     } catch (_) {
       // Update checks should never block app startup.
     }
+  }
+
+  void _queueAppUpdatePrompt(AppVersionInfo info) {
+    if (_appUpdatePromptScheduled) {
+      return;
+    }
+    _appUpdatePromptScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final dismissedVersion = prefs.getString(
+        'dismissed_app_update_version_v1',
+      );
+      if (!info.isRequiredUpdate && dismissedVersion == info.latestVersion) {
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      await _showAppUpdateDialog(info);
+    });
+  }
+
+  Future<void> _showAppUpdateDialog(AppVersionInfo info) async {
+    final theme = Theme.of(context);
+    final title = info.isRequiredUpdate ? 'Update required' : 'Update Piki POS';
+    final message = info.releaseNotes.trim().isEmpty
+        ? 'Version ${info.latestVersion} is ready to install.'
+        : info.releaseNotes.trim();
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !info.isRequiredUpdate,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: Icon(
+            Icons.system_update_alt_rounded,
+            color: info.isRequiredUpdate ? AppColors.error : AppColors.primary,
+          ),
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            if (!info.isRequiredUpdate)
+              TextButton(
+                onPressed: () async {
+                  final navigator = Navigator.of(dialogContext);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString(
+                    'dismissed_app_update_version_v1',
+                    info.latestVersion,
+                  );
+                  if (navigator.canPop()) {
+                    navigator.pop();
+                  }
+                },
+                child: const Text('Later'),
+              ),
+            FilledButton.icon(
+              onPressed: () async {
+                final navigator = Navigator.of(dialogContext);
+                final opened = await _openAppUpdateDownload(info);
+                if (opened && !info.isRequiredUpdate && navigator.canPop()) {
+                  navigator.pop();
+                }
+              },
+              icon: const Icon(Icons.download_rounded),
+              label: Text(
+                info.platform == 'android' ? 'Download APK' : 'Download update',
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: info.isRequiredUpdate
+                    ? AppColors.error
+                    : theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _openAppUpdateDownload([AppVersionInfo? info]) async {
+    final release = info ?? _appVersionInfo;
+    final uri = release?.downloadUri;
+    if (uri == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Update download link is not ready.')),
+        );
+      }
+      return false;
+    }
+    final opened = await ExternalAppLauncher.launch(uri);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the update download.')),
+      );
+    }
+    return opened;
   }
 
   Future<void> _markNotificationsSeen(
@@ -779,6 +888,10 @@ class AppShellState extends ConsumerState<AppShell> {
     final destinationIndex = notification.destinationIndex;
     if (destinationIndex != null) {
       _selectIndex(destinationIndex);
+      return;
+    }
+    if (notification.opensUpdate) {
+      _openAppUpdateDownload();
     }
   }
 
@@ -865,7 +978,7 @@ class AppShellState extends ConsumerState<AppShell> {
                         itemBuilder: (context, index) {
                           final notification = notifications[index];
                           return ListTile(
-                            onTap: notification.destinationIndex == null
+                            onTap: !notification.canOpen
                                 ? null
                                 : () => _openNotification(
                                     sheetContext,
@@ -897,7 +1010,7 @@ class AppShellState extends ConsumerState<AppShell> {
                               ),
                             ),
                             subtitle: Text(notification.message),
-                            trailing: notification.destinationIndex == null
+                            trailing: !notification.canOpen
                                 ? null
                                 : const Icon(Icons.chevron_right_rounded),
                           );
@@ -1808,6 +1921,7 @@ class _AppNotification {
   final PikiProactiveInsight? pikiInsight;
   final _AppNotificationSeverity severity;
   final bool deviceNotify;
+  final bool opensUpdate;
 
   const _AppNotification({
     String? id,
@@ -1819,7 +1933,11 @@ class _AppNotification {
     this.pikiInsight,
     this.severity = _AppNotificationSeverity.info,
     this.deviceNotify = false,
+    this.opensUpdate = false,
   }) : id = id ?? '$title|$message';
+
+  bool get canOpen =>
+      destinationIndex != null || pikiInsight != null || opensUpdate;
 }
 
 class _SetupChecklistItem {

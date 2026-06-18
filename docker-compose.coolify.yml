@@ -57,7 +57,20 @@ services:
       APP_LATEST_VERSION: ${APP_LATEST_VERSION:-}
       APP_MINIMUM_VERSION: ${APP_MINIMUM_VERSION:-}
       APP_APK_URL: ${APP_APK_URL:-}
+      APP_ANDROID_VERSION: ${APP_ANDROID_VERSION:-}
+      APP_ANDROID_MINIMUM_VERSION: ${APP_ANDROID_MINIMUM_VERSION:-}
+      APP_ANDROID_URL: ${APP_ANDROID_URL:-}
+      APP_WINDOWS_VERSION: ${APP_WINDOWS_VERSION:-}
+      APP_WINDOWS_MINIMUM_VERSION: ${APP_WINDOWS_MINIMUM_VERSION:-}
+      APP_WINDOWS_URL: ${APP_WINDOWS_URL:-}
       APP_RELEASE_NOTES: ${APP_RELEASE_NOTES:-}
+      APP_RELEASE_DIR: ${APP_RELEASE_DIR:-/app/backend/app-releases}
+      APP_RELEASE_MAX_BYTES: ${APP_RELEASE_MAX_BYTES:-314572800}
     ports:
       - "3000:3000"
+    volumes:
+      - piki_app_releases:/app/backend/app-releases
     restart: unless-stopped
+
+volumes:
+  piki_app_releases:

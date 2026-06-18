@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'Piki POS';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.0.0+1';
   static const String productionApiBaseUrl = 'https://pikipos.com/api';
   static const String productionPublicBaseUrl = 'https://pikipos.com';
   static const String debugApiBaseUrl = 'http://127.0.0.1:3000/api';

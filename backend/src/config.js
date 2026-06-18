@@ -165,6 +165,13 @@ const config = {
     process.env.MAIL_FROM?.trim() ||
     process.env.SUPPORT_EMAIL?.trim() ||
     'Piki POS <support@pikipos.com>',
+  appReleaseDir:
+    process.env.APP_RELEASE_DIR?.trim() ||
+    path.resolve(__dirname, '..', 'app-releases'),
+  appReleaseMaxBytes: positiveNumberEnv(
+    process.env.APP_RELEASE_MAX_BYTES,
+    300 * 1024 * 1024,
+  ),
 };
 
 config.emailOtpSecret =

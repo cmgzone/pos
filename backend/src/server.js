@@ -1,8 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
+const fs = require('fs');
+const fsp = require('fs/promises');
 const http = require('http');
 const path = require('path');
+const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const { Server } = require('socket.io');
 
 const { config } = require('./config');
@@ -128,6 +132,7 @@ const io = new Server(server, {
 });
 const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
 const landingIndexPath = path.join(landingPageDir, 'index.html');
+const appReleaseUrlPrefix = '/downloads/app';
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -164,6 +169,24 @@ app.disable('x-powered-by');
 app.use(applySecurityHeaders);
 app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '10mb' }));
+app.use(
+  appReleaseUrlPrefix,
+  express.static(config.appReleaseDir, {
+    index: false,
+    setHeaders(res, filePath) {
+      const extension = path.extname(filePath).toLowerCase();
+      if (extension === '.apk') {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      }
+      if (['.apk', '.exe', '.msi', '.zip'].includes(extension)) {
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${path.basename(filePath).replaceAll('"', '')}"`,
+        );
+      }
+    },
+  }),
+);
 
 io.use(async (socket, next) => {
   try {
@@ -1620,7 +1643,10 @@ app.get('/api/platform/readiness', requirePlatformAdmin, async (req, res, next) 
 app.get('/api/app/version', async (req, res, next) => {
   try {
     const version = await loadAppVersionConfig();
-    res.json({ ok: true, data: version });
+    res.json({
+      ok: true,
+      data: appVersionForPlatform(version, req.query?.platform),
+    });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -1723,6 +1749,46 @@ app.put('/api/platform/app-version', requirePlatformAdmin, async (req, res, next
   try {
     const version = await saveAppVersionConfig(req.body || {});
     res.json({ ok: true, data: version });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/platform/app-release/:platform', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const platform = normalizeReleasePlatform(req.params.platform);
+    const version =
+      normalizeOptionalText(req.query?.version) ||
+      normalizeOptionalText(req.headers['x-app-version']);
+    if (!version) {
+      throw createHttpError(400, 'Release version is required before upload.');
+    }
+
+    const upload = await saveUploadedAppRelease({
+      req,
+      platform,
+      version,
+      originalName:
+        normalizeOptionalText(req.query?.fileName) ||
+        normalizeOptionalText(req.headers['x-file-name']),
+    });
+    const current = await loadAppVersionConfig();
+    const nextVersion =
+      platform === 'android'
+        ? {
+            ...current,
+            latestVersion: version,
+            androidVersion: version,
+            apkUrl: upload.url,
+            androidUrl: upload.url,
+          }
+        : {
+            ...current,
+            windowsVersion: version,
+            windowsUrl: upload.url,
+          };
+    const saved = await saveAppVersionConfig(nextVersion);
+    res.status(201).json({ ok: true, data: { ...saved, upload } });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -9726,6 +9792,12 @@ async function ensureAppVersionSchema(target = query) {
       latest_version text NOT NULL DEFAULT '',
       minimum_version text NOT NULL DEFAULT '',
       apk_url text NOT NULL DEFAULT '',
+      android_version text NOT NULL DEFAULT '',
+      android_minimum_version text NOT NULL DEFAULT '',
+      android_url text NOT NULL DEFAULT '',
+      windows_version text NOT NULL DEFAULT '',
+      windows_minimum_version text NOT NULL DEFAULT '',
+      windows_url text NOT NULL DEFAULT '',
       release_notes text NOT NULL DEFAULT '',
       updated_at timestamptz NOT NULL DEFAULT NOW(),
       CONSTRAINT platform_app_version_single_row CHECK (id = 1)
@@ -9735,21 +9807,52 @@ async function ensureAppVersionSchema(target = query) {
   await runDbQuery(
     target,
     `
+    ALTER TABLE platform_app_version
+      ADD COLUMN IF NOT EXISTS android_version text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS android_minimum_version text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS android_url text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS windows_version text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS windows_minimum_version text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS windows_url text NOT NULL DEFAULT ''
+    `,
+  );
+  const initialLatestVersion =
+    process.env.APP_LATEST_VERSION || process.env.APP_ANDROID_VERSION || '';
+  const initialMinimumVersion =
+    process.env.APP_MINIMUM_VERSION ||
+    process.env.APP_ANDROID_MINIMUM_VERSION ||
+    '';
+  const initialApkUrl = process.env.APP_APK_URL || process.env.APP_ANDROID_URL || '';
+  await runDbQuery(
+    target,
+    `
     INSERT INTO platform_app_version (
       id,
       latest_version,
       minimum_version,
       apk_url,
+      android_version,
+      android_minimum_version,
+      android_url,
+      windows_version,
+      windows_minimum_version,
+      windows_url,
       release_notes
     )
-    VALUES ($1, $2, $3, $4, $5)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     ON CONFLICT (id) DO NOTHING
     `,
     [
       1,
-      process.env.APP_LATEST_VERSION || '',
-      process.env.APP_MINIMUM_VERSION || '',
-      process.env.APP_APK_URL || '',
+      initialLatestVersion,
+      initialMinimumVersion,
+      initialApkUrl,
+      process.env.APP_ANDROID_VERSION || initialLatestVersion,
+      process.env.APP_ANDROID_MINIMUM_VERSION || initialMinimumVersion,
+      process.env.APP_ANDROID_URL || initialApkUrl,
+      process.env.APP_WINDOWS_VERSION || '',
+      process.env.APP_WINDOWS_MINIMUM_VERSION || '',
+      process.env.APP_WINDOWS_URL || '',
       process.env.APP_RELEASE_NOTES || '',
     ],
   );
@@ -9760,7 +9863,18 @@ async function loadAppVersionConfig(target = query) {
   const result = await runDbQuery(
     target,
     `
-    SELECT latest_version, minimum_version, apk_url, release_notes, updated_at
+    SELECT
+      latest_version,
+      minimum_version,
+      apk_url,
+      android_version,
+      android_minimum_version,
+      android_url,
+      windows_version,
+      windows_minimum_version,
+      windows_url,
+      release_notes,
+      updated_at
     FROM platform_app_version
     WHERE id = 1
     LIMIT 1
@@ -9774,9 +9888,35 @@ async function saveAppVersionConfig(input = {}, target = query) {
   const latestVersion = normalizeOptionalText(input.latestVersion || input.latest_version) || '';
   const minimumVersion = normalizeOptionalText(input.minimumVersion || input.minimum_version) || '';
   const apkUrl = normalizeOptionalText(input.apkUrl || input.apk_url) || '';
+  const androidVersion =
+    normalizeOptionalText(input.androidVersion || input.android_version) ||
+    latestVersion;
+  const androidMinimumVersion =
+    normalizeOptionalText(
+      input.androidMinimumVersion || input.android_minimum_version,
+    ) || minimumVersion;
+  const androidUrl =
+    normalizeOptionalText(input.androidUrl || input.android_url) || apkUrl;
+  const windowsVersion =
+    normalizeOptionalText(input.windowsVersion || input.windows_version) || '';
+  const windowsMinimumVersion =
+    normalizeOptionalText(
+      input.windowsMinimumVersion || input.windows_minimum_version,
+    ) || '';
+  const windowsUrl =
+    normalizeOptionalText(input.windowsUrl || input.windows_url) || '';
   const releaseNotes = normalizeOptionalText(input.releaseNotes || input.release_notes) || '';
-  if (apkUrl && !isHttpsUrl(apkUrl)) {
-    throw createHttpError(400, 'APK URL must be a valid HTTPS URL.');
+  for (const [label, url] of [
+    ['APK URL', apkUrl],
+    ['Android URL', androidUrl],
+    ['Windows URL', windowsUrl],
+  ]) {
+    if (!isAllowedReleaseUrl(url)) {
+      throw createHttpError(
+        400,
+        `${label} must be a hosted release path or a valid HTTPS URL.`,
+      );
+    }
   }
   const result = await runDbQuery(
     target,
@@ -9786,31 +9926,222 @@ async function saveAppVersionConfig(input = {}, target = query) {
       latest_version,
       minimum_version,
       apk_url,
+      android_version,
+      android_minimum_version,
+      android_url,
+      windows_version,
+      windows_minimum_version,
+      windows_url,
       release_notes,
       updated_at
     )
-    VALUES (1, $1, $2, $3, $4, NOW())
+    VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
     ON CONFLICT (id) DO UPDATE
     SET latest_version = EXCLUDED.latest_version,
         minimum_version = EXCLUDED.minimum_version,
         apk_url = EXCLUDED.apk_url,
+        android_version = EXCLUDED.android_version,
+        android_minimum_version = EXCLUDED.android_minimum_version,
+        android_url = EXCLUDED.android_url,
+        windows_version = EXCLUDED.windows_version,
+        windows_minimum_version = EXCLUDED.windows_minimum_version,
+        windows_url = EXCLUDED.windows_url,
         release_notes = EXCLUDED.release_notes,
         updated_at = NOW()
-    RETURNING latest_version, minimum_version, apk_url, release_notes, updated_at
+    RETURNING
+      latest_version,
+      minimum_version,
+      apk_url,
+      android_version,
+      android_minimum_version,
+      android_url,
+      windows_version,
+      windows_minimum_version,
+      windows_url,
+      release_notes,
+      updated_at
     `,
-    [latestVersion, minimumVersion, apkUrl, releaseNotes],
+    [
+      latestVersion,
+      minimumVersion,
+      apkUrl,
+      androidVersion,
+      androidMinimumVersion,
+      androidUrl,
+      windowsVersion,
+      windowsMinimumVersion,
+      windowsUrl,
+      releaseNotes,
+    ],
   );
   return normalizeAppVersionRow(result.rows[0]);
 }
 
 function normalizeAppVersionRow(row) {
+  const latestVersion = row.latest_version || '';
+  const minimumVersion = row.minimum_version || '';
+  const apkUrl = row.apk_url || '';
   return {
-    latestVersion: row.latest_version || '',
-    minimumVersion: row.minimum_version || '',
-    apkUrl: row.apk_url || '',
+    latestVersion,
+    minimumVersion,
+    apkUrl,
+    androidVersion: row.android_version || latestVersion,
+    androidMinimumVersion: row.android_minimum_version || minimumVersion,
+    androidUrl: row.android_url || apkUrl,
+    windowsVersion: row.windows_version || '',
+    windowsMinimumVersion: row.windows_minimum_version || '',
+    windowsUrl: row.windows_url || '',
     releaseNotes: row.release_notes || '',
     updatedAt: toIsoString(row.updated_at),
   };
+}
+
+function appVersionForPlatform(version, platform) {
+  const requestedPlatform = normalizeOptionalText(platform);
+  if (!requestedPlatform) {
+    return version;
+  }
+  const normalizedPlatform = normalizeReleasePlatform(requestedPlatform);
+  if (normalizedPlatform === 'android') {
+    const latestVersion = version.androidVersion || version.latestVersion;
+    const minimumVersion =
+      version.androidMinimumVersion || version.minimumVersion;
+    const downloadUrl = version.androidUrl || version.apkUrl;
+    return {
+      platform: 'android',
+      latestVersion,
+      minimumVersion,
+      apkUrl: downloadUrl,
+      downloadUrl,
+      releaseNotes: version.releaseNotes,
+      updatedAt: version.updatedAt,
+    };
+  }
+  const latestVersion = version.windowsVersion || '';
+  const minimumVersion = version.windowsMinimumVersion || '';
+  const downloadUrl = version.windowsUrl;
+  return {
+    platform: 'windows',
+    latestVersion,
+    minimumVersion,
+    apkUrl: version.androidUrl || version.apkUrl,
+    downloadUrl,
+    releaseNotes: version.releaseNotes,
+    updatedAt: version.updatedAt,
+  };
+}
+
+function normalizeReleasePlatform(value) {
+  const platform = normalizeSubscriptionPlatform(value);
+  if (platform === 'android' || platform === 'windows') {
+    return platform;
+  }
+  throw createHttpError(400, 'Release platform must be android or windows.');
+}
+
+function isAllowedReleaseUrl(value) {
+  const clean = normalizeOptionalText(value);
+  if (!clean) {
+    return true;
+  }
+  if (clean.startsWith(`${appReleaseUrlPrefix}/`)) {
+    return true;
+  }
+  if (isHttpsUrl(clean)) {
+    return true;
+  }
+  return (
+    config.nodeEnv !== 'production' &&
+    /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(\/|$)/i.test(clean)
+  );
+}
+
+async function saveUploadedAppRelease({
+  req,
+  platform,
+  version,
+  originalName,
+}) {
+  const maxBytes = Math.max(1, Number(config.appReleaseMaxBytes) || 1);
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > maxBytes) {
+    throw createHttpError(413, 'Release file is too large.');
+  }
+
+  const extension = releaseFileExtension(platform, originalName);
+  const safeVersion = safeReleaseFilePart(version, 'release');
+  const filename = `piki-pos-${platform}-${safeVersion}-${Date.now()}${extension}`;
+  const platformDir = path.join(config.appReleaseDir, platform);
+  const finalPath = path.join(platformDir, filename);
+  const tempPath = path.join(
+    platformDir,
+    `.upload-${crypto.randomUUID()}-${filename}`,
+  );
+
+  await fsp.mkdir(platformDir, { recursive: true });
+  let bytes = 0;
+  const limitStream = new Transform({
+    transform(chunk, _encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        callback(createHttpError(413, 'Release file is too large.'));
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
+
+  try {
+    await pipeline(req, limitStream, fs.createWriteStream(tempPath, { flags: 'wx' }));
+    if (bytes === 0) {
+      throw createHttpError(400, 'Release file is empty.');
+    }
+    await fsp.rename(tempPath, finalPath);
+  } catch (error) {
+    await fsp.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+
+  return {
+    platform,
+    version,
+    fileName: filename,
+    bytes,
+    url: `${appReleaseUrlPrefix}/${platform}/${filename}`,
+  };
+}
+
+function releaseFileExtension(platform, originalName) {
+  const sourceName = sourceFileName(originalName);
+  const extension = path.extname(sourceName).toLowerCase();
+  const allowed =
+    platform === 'android'
+      ? new Set(['.apk'])
+      : new Set(['.zip', '.exe', '.msi']);
+  if (!extension || !allowed.has(extension)) {
+    const label = Array.from(allowed).join(', ');
+    throw createHttpError(
+      400,
+      `${platform === 'android' ? 'Android' : 'Windows'} release must use ${label}.`,
+    );
+  }
+  return extension;
+}
+
+function sourceFileName(value) {
+  return (normalizeOptionalText(value) || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop();
+}
+
+function safeReleaseFilePart(value, fallback) {
+  const clean = (normalizeOptionalText(value) || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return clean || fallback;
 }
 
 async function loadPlatformReadiness() {
@@ -9914,15 +10245,22 @@ async function loadPlatformReadiness() {
   });
 
   const appVersion = await loadAppVersionConfig();
+  const androidReleaseReady = Boolean(
+    (appVersion.androidVersion || appVersion.latestVersion) &&
+      (appVersion.androidUrl || appVersion.apkUrl),
+  );
+  const windowsReleaseReady = Boolean(
+    appVersion.windowsVersion && appVersion.windowsUrl,
+  );
   pushCheck({
     key: 'app_version',
     label: 'App Version Rollout',
-    status: appVersion.latestVersion && appVersion.apkUrl ? 'pass' : 'warning',
+    status: androidReleaseReady && windowsReleaseReady ? 'pass' : 'warning',
     severity: 'warning',
     message:
-      appVersion.latestVersion && appVersion.apkUrl
-        ? `Latest app version is ${appVersion.latestVersion}.`
-        : 'Add latest version and HTTPS APK URL before shop rollout.',
+      androidReleaseReady && windowsReleaseReady
+        ? `Android ${appVersion.androidVersion || appVersion.latestVersion} and Windows ${appVersion.windowsVersion} releases are configured.`
+        : 'Upload Android and Windows app releases before shop rollout.',
   });
 
   const monitoringConfigured =

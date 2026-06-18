@@ -54,3 +54,6 @@ node_modules/
 
 # Local diagnostics
 window.xml
+
+# Hosted app release binaries
+backend/app-releases/

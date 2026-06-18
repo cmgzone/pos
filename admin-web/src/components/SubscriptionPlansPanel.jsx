@@ -176,6 +176,12 @@ export default function SubscriptionPlansPanel({ token }) {
     latestVersion: '',
     minimumVersion: '',
     apkUrl: '',
+    androidVersion: '',
+    androidMinimumVersion: '',
+    androidUrl: '',
+    windowsVersion: '',
+    windowsMinimumVersion: '',
+    windowsUrl: '',
     releaseNotes: '',
   })
   const [readiness, setReadiness] = useState(null)
@@ -191,6 +197,7 @@ export default function SubscriptionPlansPanel({ token }) {
   const [savingSubscriptionSettings, setSavingSubscriptionSettings] =
     useState(false)
   const [savingAppVersion, setSavingAppVersion] = useState(false)
+  const [uploadingRelease, setUploadingRelease] = useState('')
   const [savingGateway, setSavingGateway] = useState('')
   const [savingMessageGateway, setSavingMessageGateway] = useState('')
   const [savingEtimsConfig, setSavingEtimsConfig] = useState(false)
@@ -372,6 +379,50 @@ export default function SubscriptionPlansPanel({ token }) {
       setMessage(friendlyError(error, 'Could not save app release settings.'))
     } finally {
       setSavingAppVersion(false)
+    }
+  }
+
+  const uploadAppRelease = async (platform, file) => {
+    if (!file) return
+    const isAndroid = platform === 'android'
+    const platformLabel = isAndroid ? 'Android APK' : 'Windows app'
+    const version = (
+      isAndroid
+        ? appVersion.androidVersion || appVersion.latestVersion
+        : appVersion.windowsVersion
+    )?.trim()
+    if (!version) {
+      setMessage(`Enter the ${platformLabel} latest version before uploading.`)
+      return
+    }
+
+    setUploadingRelease(platform)
+    setMessage('')
+    try {
+      const params = new URLSearchParams({
+        version,
+        fileName: file.name || `${platform}-release`,
+      })
+      const response = await fetch(`/api/platform/app-release/${platform}?${params}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error || `Could not upload ${platformLabel}`)
+      }
+      const nextVersion = { ...(body.data || {}) }
+      delete nextVersion.upload
+      setAppVersion(nextVersion)
+      setMessage(`${platformLabel} uploaded and release endpoint updated`)
+    } catch (error) {
+      setMessage(friendlyError(error, `Could not upload ${platformLabel}.`))
+    } finally {
+      setUploadingRelease('')
     }
   }
 
@@ -769,55 +820,150 @@ export default function SubscriptionPlansPanel({ token }) {
       <section className="gateway-panel">
         <div className="gateway-panel-header">
           <div>
-            <h3>Signed APK Release</h3>
+            <h3>Hosted App Releases</h3>
             <p>
-              Configure the public version endpoint used by the app update
-              notice and direct shop rollout.
+              Upload signed Android APKs and Windows installers. The app checks
+              this endpoint and prompts users when a newer version is available.
             </p>
           </div>
         </div>
-        <div className="editor-grid">
+        <div className="gateway-card">
+          <div className="gateway-card-header">
+            <strong>Android APK</strong>
+            <small>
+              {appVersion.androidUrl || appVersion.apkUrl
+                ? 'Hosted'
+                : 'Not uploaded'}
+            </small>
+          </div>
+          <div className="editor-grid">
+            <label className="form-group">
+              <span className="form-label">Latest Version</span>
+              <input
+                className="form-input"
+                placeholder="1.0.1+2"
+                value={appVersion.androidVersion || appVersion.latestVersion || ''}
+                onChange={(event) =>
+                  setAppVersion((current) => ({
+                    ...current,
+                    latestVersion: event.target.value,
+                    androidVersion: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Minimum Supported Version</span>
+              <input
+                className="form-input"
+                placeholder="1.0.0+1"
+                value={
+                  appVersion.androidMinimumVersion ||
+                  appVersion.minimumVersion ||
+                  ''
+                }
+                onChange={(event) =>
+                  setAppVersion((current) => ({
+                    ...current,
+                    minimumVersion: event.target.value,
+                    androidMinimumVersion: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
           <label className="form-group">
-            <span className="form-label">Latest Version</span>
+            <span className="form-label">APK Download URL</span>
             <input
               className="form-input"
-              value={appVersion.latestVersion || ''}
+              placeholder="/downloads/app/android/..."
+              value={appVersion.androidUrl || appVersion.apkUrl || ''}
               onChange={(event) =>
                 setAppVersion((current) => ({
                   ...current,
-                  latestVersion: event.target.value,
+                  apkUrl: event.target.value,
+                  androidUrl: event.target.value,
                 }))
               }
             />
           </label>
           <label className="form-group">
-            <span className="form-label">Minimum Supported Version</span>
+            <span className="form-label">Upload Signed APK</span>
             <input
               className="form-input"
-              value={appVersion.minimumVersion || ''}
-              onChange={(event) =>
-                setAppVersion((current) => ({
-                  ...current,
-                  minimumVersion: event.target.value,
-                }))
-              }
+              type="file"
+              accept=".apk"
+              disabled={uploadingRelease === 'android'}
+              onChange={(event) => {
+                uploadAppRelease('android', event.target.files?.[0])
+                event.target.value = ''
+              }}
             />
           </label>
         </div>
-        <label className="form-group">
-          <span className="form-label">APK Download URL</span>
-          <input
-            className="form-input"
-            placeholder="https://..."
-            value={appVersion.apkUrl || ''}
-            onChange={(event) =>
-              setAppVersion((current) => ({
-                ...current,
-                apkUrl: event.target.value,
-              }))
-            }
-          />
-        </label>
+        <div className="gateway-card">
+          <div className="gateway-card-header">
+            <strong>Windows App</strong>
+            <small>{appVersion.windowsUrl ? 'Hosted' : 'Not uploaded'}</small>
+          </div>
+          <div className="editor-grid">
+            <label className="form-group">
+              <span className="form-label">Latest Version</span>
+              <input
+                className="form-input"
+                placeholder="1.0.1"
+                value={appVersion.windowsVersion || ''}
+                onChange={(event) =>
+                  setAppVersion((current) => ({
+                    ...current,
+                    windowsVersion: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Minimum Supported Version</span>
+              <input
+                className="form-input"
+                placeholder="1.0.0"
+                value={appVersion.windowsMinimumVersion || ''}
+                onChange={(event) =>
+                  setAppVersion((current) => ({
+                    ...current,
+                    windowsMinimumVersion: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <label className="form-group">
+            <span className="form-label">Windows Download URL</span>
+            <input
+              className="form-input"
+              placeholder="/downloads/app/windows/..."
+              value={appVersion.windowsUrl || ''}
+              onChange={(event) =>
+                setAppVersion((current) => ({
+                  ...current,
+                  windowsUrl: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label className="form-group">
+            <span className="form-label">Upload Windows Installer</span>
+            <input
+              className="form-input"
+              type="file"
+              accept=".zip,.exe,.msi"
+              disabled={uploadingRelease === 'windows'}
+              onChange={(event) => {
+                uploadAppRelease('windows', event.target.files?.[0])
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </div>
         <label className="form-group">
           <span className="form-label">Release Notes</span>
           <textarea
@@ -834,13 +980,16 @@ export default function SubscriptionPlansPanel({ token }) {
         </label>
         <div className="editor-actions">
           <span className="gateway-status">
-            {appVersion.latestVersion && appVersion.apkUrl
-              ? 'Release endpoint is configured.'
-              : 'Add latest version and APK URL before production rollout.'}
+            {uploadingRelease
+              ? 'Uploading release file...'
+              : (appVersion.androidUrl || appVersion.apkUrl) &&
+                  appVersion.windowsUrl
+                ? 'Android and Windows release endpoints are configured.'
+                : 'Upload Android and Windows builds before production rollout.'}
           </span>
           <button
             className="btn btn-primary"
-            disabled={savingAppVersion}
+            disabled={savingAppVersion || Boolean(uploadingRelease)}
             onClick={saveAppVersion}
           >
             {savingAppVersion ? 'Saving...' : 'Save Release Settings'}
