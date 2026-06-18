@@ -30,10 +30,10 @@ services:
       EMAIL_OTP_MAX_ATTEMPTS: ${EMAIL_OTP_MAX_ATTEMPTS:-5}
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@pikipos.com}
       LANDING_CONTACT_NOTIFY_EMAIL: ${LANDING_CONTACT_NOTIFY_EMAIL:-support@pikipos.com}
-      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.zoho.com}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_SECURE: ${SMTP_SECURE:-true}
-      SMTP_USER: ${SMTP_USER:-}
+      SMTP_USER: ${SMTP_USER:-support@pikipos.com}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-Piki POS <support@pikipos.com>}
       BUNNY_STORAGE_ZONE: ${BUNNY_STORAGE_ZONE:-}

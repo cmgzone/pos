@@ -145,7 +145,7 @@ const config = {
   smtpHost:
     process.env.SMTP_HOST?.trim() ||
     process.env.MAIL_SMTP_HOST?.trim() ||
-    '',
+    'smtp.zoho.com',
   smtpPort: positiveNumberEnv(
     process.env.SMTP_PORT || process.env.MAIL_SMTP_PORT,
     465,
@@ -157,7 +157,8 @@ const config = {
   smtpUser:
     process.env.SMTP_USER?.trim() ||
     process.env.MAIL_SMTP_USER?.trim() ||
-    '',
+    process.env.SUPPORT_EMAIL?.trim() ||
+    'support@pikipos.com',
   smtpPass: process.env.SMTP_PASS || process.env.MAIL_SMTP_PASS || '',
   smtpFromEmail:
     process.env.SMTP_FROM_EMAIL?.trim() ||
