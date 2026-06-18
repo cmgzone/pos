@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
 import 'database_service.dart';
+import 'external_app_launcher.dart';
 import 'license_service.dart';
 import 'shop_settings.dart';
 import 'sync_service.dart';
@@ -112,23 +112,21 @@ class CatalogShareService {
 
   static Future<void> openCatalog(CatalogShareInfo info) async {
     final uri = Uri.parse(info.url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    if (!await ExternalAppLauncher.launch(uri)) {
       throw Exception('Could not open catalog link.');
     }
   }
 
   static Future<void> openWhatsApp(CatalogShareInfo info) async {
     final encoded = Uri.encodeComponent(buildMessage(info));
-    final appUri = Uri.parse('whatsapp://send?text=$encoded');
-    if (await canLaunchUrl(appUri)) {
-      await launchUrl(appUri, mode: LaunchMode.externalApplication);
+    final uris = [
+      Uri.parse('whatsapp://send?text=$encoded'),
+      Uri.parse('https://wa.me/?text=$encoded'),
+    ];
+    if (await ExternalAppLauncher.launchFirst(uris)) {
       return;
     }
-
-    final webUri = Uri.parse('https://wa.me/?text=$encoded');
-    if (!await launchUrl(webUri, mode: LaunchMode.externalApplication)) {
-      throw Exception('Could not open WhatsApp.');
-    }
+    throw Exception('Could not open WhatsApp.');
   }
 
   static String _errorMessage(Object error) {

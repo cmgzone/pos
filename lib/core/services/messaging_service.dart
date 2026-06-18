@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import 'external_app_launcher.dart';
 import 'license_service.dart';
 import 'sync_settings_service.dart';
 
@@ -33,8 +33,7 @@ class MessagingService {
         path: email,
         queryParameters: {'subject': 'Receipt from Piki POS', 'body': message},
       );
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (await ExternalAppLauncher.launch(uri)) {
         return;
       }
       throw Exception('No email app is available to open this receipt.');
@@ -50,13 +49,13 @@ class MessagingService {
             Uri.parse('whatsapp://send?phone=$phone&text=$encoded'),
             Uri.parse('https://wa.me/$phone?text=$encoded'),
           ]
-        : [Uri.parse('sms:$phone?body=$encoded')];
+        : [
+            Uri.parse('sms:$phone?body=$encoded'),
+            Uri.parse('smsto:$phone?body=$encoded'),
+          ];
 
-    for (final uri in uris) {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return;
-      }
+    if (await ExternalAppLauncher.launchFirst(uris)) {
+      return;
     }
     throw Exception('No app is available to open this message.');
   }

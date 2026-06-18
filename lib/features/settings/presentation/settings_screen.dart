@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pos_app/core/constants/app_constants.dart';
 import 'package:pos_app/core/services/backup_service.dart';
 import 'package:pos_app/core/services/branch_service.dart';
 import 'package:pos_app/core/services/cash_drawer_service.dart';
 import 'package:pos_app/core/services/etims_service.dart';
+import 'package:pos_app/core/services/external_app_launcher.dart';
 import 'package:pos_app/core/services/license_service.dart';
 import 'package:pos_app/core/services/session_service.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
@@ -2331,8 +2331,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             'Hi Piki support,\n\nPlease help with this issue:\n\n\nDiagnostics have been copied to my clipboard. I can paste them here if needed.\n',
       },
     );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await ExternalAppLauncher.launch(uri)) {
       return;
     }
     if (!mounted) {
