@@ -57,6 +57,11 @@ body {
   overflow-x: hidden;
 }
 
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
 /* Typography Utilities */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
@@ -129,6 +134,96 @@ p {
 .btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px var(--field-ring);
+}
+
+.whatsapp-callback-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at top left, rgba(46, 213, 115, 0.16), transparent 32rem),
+    radial-gradient(circle at bottom right, rgba(107, 78, 230, 0.22), transparent 30rem),
+    var(--bg-primary);
+}
+
+.whatsapp-callback-card {
+  width: min(100%, 620px);
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+}
+
+.whatsapp-callback-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 1.25rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 165, 2, 0.14);
+  color: var(--accent-warning);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.whatsapp-callback-icon.is-success {
+  background: rgba(46, 213, 115, 0.14);
+  color: var(--accent-success);
+}
+
+.whatsapp-callback-icon.is-error {
+  background: rgba(255, 71, 87, 0.14);
+  color: var(--accent-danger);
+}
+
+.callback-eyebrow {
+  margin-bottom: 0.4rem;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.callback-message {
+  max-width: 52ch;
+  margin-top: 0.5rem;
+}
+
+.callback-details {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(15, 18, 29, 0.48);
+}
+
+.callback-details div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.callback-details span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.callback-details strong {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 0.94rem;
+}
+
+.callback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
 /* Forms */

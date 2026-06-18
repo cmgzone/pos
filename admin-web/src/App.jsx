@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react'
 import Login from './components/Login'
 import Dashboard from './components/Dashboard'
+import WhatsAppConnectCallback from './components/WhatsAppConnectCallback'
 import { apiUrl } from './utils/api'
 import './index.css'
+
+const CALLBACK_PATHS = new Set([
+  '/whatsapp/connect/callback',
+  '/whatsapp-connect/callback',
+])
 
 function App() {
   const [token, setToken] = useState(
     sessionStorage.getItem('platform_token') || null,
   )
+  const isWhatsAppCallback = CALLBACK_PATHS.has(window.location.pathname)
 
   const handleLogin = (newToken) => {
     sessionStorage.setItem('platform_token', newToken)
@@ -41,7 +48,9 @@ function App() {
 
   return (
     <div className="app-container">
-      {token ? (
+      {isWhatsAppCallback ? (
+        <WhatsAppConnectCallback />
+      ) : token ? (
         <Dashboard token={token} onLogout={handleLogout} />
       ) : (
         <Login onLogin={handleLogin} />
