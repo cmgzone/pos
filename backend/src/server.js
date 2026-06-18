@@ -7917,7 +7917,8 @@ function buildStorefrontBootstrapScript(catalog) {
     normalizeOptionalText(catalog.business?.selectedBranch?.id) || '';
   const payload = { businessId, subdomain, branchId };
   const safe = JSON.stringify(payload).replace(/</g, '\\u003c');
-  return `<script>window.__STOREFRONT__=${safe};</script>`;
+  const safeCatalog = JSON.stringify(catalog).replace(/</g, '\\u003c');
+  return `<script>window.__STOREFRONT__=${safe};window.__STOREFRONT_CATALOG__=${safeCatalog};</script>`;
 }
 
 function injectStorefrontMeta(html, catalog) {
@@ -7967,12 +7968,151 @@ function injectStorefrontMeta(html, catalog) {
       `  ${headTags}\n</head>`,
     );
   }
+  updated = injectStorefrontRootFallback(updated, catalog);
   return updated;
 }
 
 async function renderStorefrontSpaPage(catalog) {
   const template = await readStorefrontSpaTemplate();
   return injectStorefrontMeta(template, catalog);
+}
+
+function injectStorefrontRootFallback(html, catalog) {
+  const fallback = renderStorefrontRootFallback(catalog);
+  if (/<div id="root">/i.test(html)) {
+    return html.replace(
+      /<div id="root">[\s\S]*<\/div>\s*<\/body>/i,
+      `${fallback}\n  </body>`,
+    );
+  }
+  return html.replace(/<body([^>]*)>/i, `<body$1>\n    ${fallback}`);
+}
+
+function renderStorefrontRootFallback(catalog) {
+  const business = catalog.business || {};
+  const brand = business.brand || {};
+  const businessName = normalizeOptionalText(business.name) || 'Online Store';
+  const branchName = normalizeOptionalText(business.selectedBranch?.name);
+  const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
+    fallback: '#111827',
+    throwOnInvalid: false,
+  });
+  const logoUrl = safePublicImageUrl(brand.logoUrl);
+  const tagline = normalizeOptionalText(brand.tagline) || 'Online catalog';
+  const description =
+    normalizeOptionalText(brand.description) ||
+    'Shop products and services, choose variants, and send your order directly to the store.';
+  const products = Array.isArray(catalog.products) ? catalog.products : [];
+  const visibleItems = products.slice(0, 12);
+  const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
+  const itemCountLabel =
+    products.length === 1 ? '1 item available' : `${products.length} items available`;
+
+  const productCards = visibleItems
+    .map((item) => {
+      const name = normalizeOptionalText(item.name) || 'Catalog item';
+      const category = normalizeOptionalText(item.category) || (item.type === 'service' ? 'Service' : 'Product');
+      const imageUrl = safePublicImageUrl(item.imageUrl);
+      const price = formatStorefrontFallbackPrice(item, catalog);
+      return `
+          <article style="border:1px solid #e5e7eb;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 10px 24px -18px rgba(15,23,42,.38)">
+            <div style="height:150px;background:#f3f4f6;display:grid;place-items:center;color:#9ca3af;font-weight:800">
+              ${
+                imageUrl
+                  ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" style="width:100%;height:100%;object-fit:cover" loading="lazy">`
+                  : `<span>${escapeHtml(storeInitial)}</span>`
+              }
+            </div>
+            <div style="padding:16px">
+              <p style="margin:0 0 8px;color:${escapeHtml(primaryColor)};font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(category)}</p>
+              <h2 style="margin:0 0 10px;font-size:17px;line-height:1.25;color:#111827">${escapeHtml(name)}</h2>
+              <strong style="font-size:17px;color:#111827">${escapeHtml(price)}</strong>
+            </div>
+          </article>`;
+    })
+    .join('');
+
+  const emptyState = `
+        <div style="border:1px dashed #d1d5db;border-radius:22px;background:#fff;padding:36px 24px;text-align:center;color:#6b7280">
+          <h2 style="margin:0 0 8px;color:#111827;font-size:22px">No products published yet</h2>
+          <p style="margin:0">This store is online. Products will appear here once the business publishes its catalog.</p>
+        </div>`;
+
+  return `<div id="root">
+    <main data-static-storefront="true" style="min-height:100vh;background:#f6f7f9;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+      <section style="background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff;padding:46px 20px 58px">
+        <div style="max-width:1120px;margin:0 auto;display:grid;gap:22px">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="width:64px;height:64px;border-radius:20px;background:#fff;display:grid;place-items:center;color:${escapeHtml(primaryColor)};font-weight:900;font-size:24px;overflow:hidden">
+              ${
+                logoUrl
+                  ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(businessName)} logo" style="width:100%;height:100%;object-fit:cover">`
+                  : escapeHtml(storeInitial)
+              }
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:rgba(255,255,255,.72);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.06em">Online Store</p>
+              <h1 style="margin:0;font-size:clamp(30px,5vw,56px);line-height:1.02">${escapeHtml(businessName)}</h1>
+            </div>
+          </div>
+          <div style="max-width:720px">
+            <p style="margin:0 0 10px;font-size:clamp(18px,2.6vw,26px);font-weight:800">${escapeHtml(tagline)}</p>
+            <p style="margin:0;color:rgba(255,255,255,.78);font-size:16px;line-height:1.7">${escapeHtml(description)}</p>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <span style="border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800">${escapeHtml(itemCountLabel)}</span>
+            ${
+              branchName
+                ? `<span style="border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800">${escapeHtml(branchName)}</span>`
+                : ''
+            }
+          </div>
+        </div>
+      </section>
+      <section style="max-width:1120px;margin:-28px auto 0;padding:0 20px 48px">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:24px;padding:18px 20px;margin-bottom:18px;box-shadow:0 18px 40px -30px rgba(15,23,42,.55)">
+          <strong style="display:block;color:#111827">Browse this store</strong>
+          <span style="color:#6b7280;font-size:14px">Products and services published by the business appear below.</span>
+        </div>
+        ${
+          visibleItems.length
+            ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px">${productCards}</div>`
+            : emptyState
+        }
+      </section>
+    </main>
+  </div>`;
+}
+
+function formatStorefrontFallbackPrice(item, catalog) {
+  const variants = Array.isArray(item.variants) ? item.variants : [];
+  const hasItemPrice =
+    item.price !== null &&
+    item.price !== undefined &&
+    item.price !== '' &&
+    Number.isFinite(Number(item.price));
+  const amount = hasItemPrice
+    ? Number(item.price)
+    : Number(variants[0]?.price || 0);
+  const currencySymbol = normalizeOptionalText(catalog.currencySymbol);
+  const currencyCode = normalizeOptionalText(catalog.currencyCode || catalog.currency) || 'KES';
+  if (currencySymbol) {
+    return `${currencySymbol}${amount.toLocaleString('en', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+  try {
+    return new Intl.NumberFormat('en', {
+      style: 'currency',
+      currency: currencyCode,
+    }).format(amount);
+  } catch (_) {
+    return `${currencyCode} ${amount.toLocaleString('en', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
 }
 
 function renderPublicCatalogPage(catalog) {

@@ -11,6 +11,13 @@ function readBootstrap() {
   return null
 }
 
+export function readInitialCatalog() {
+  if (typeof window !== 'undefined' && window.__STOREFRONT_CATALOG__) {
+    return window.__STOREFRONT_CATALOG__
+  }
+  return null
+}
+
 function readBusinessIdFromPath() {
   if (typeof window === 'undefined') return null
   const match = window.location.pathname.match(/^\/catalog\/([^/?#]+)/)

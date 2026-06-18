@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { fetchCatalog, placeOrder, trackOrder, resolveStorefrontTarget } from './api'
+import { fetchCatalog, placeOrder, readInitialCatalog, trackOrder, resolveStorefrontTarget } from './api'
 import {
   cartKey,
   classNames,
@@ -27,11 +27,13 @@ const SORT_OPTIONS = [
 
 export default function App() {
   const target = useMemo(() => resolveStorefrontTarget(), [])
+  const initialCatalog = useMemo(() => readInitialCatalog(), [])
+  const initialBranchId = initialCatalog?.business?.selectedBranch?.id || target.branchId || null
 
-  const [catalog, setCatalog] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [catalog, setCatalog] = useState(initialCatalog)
+  const [loading, setLoading] = useState(!initialCatalog)
   const [loadError, setLoadError] = useState(null)
-  const [branchId, setBranchId] = useState(target.branchId || null)
+  const [branchId, setBranchId] = useState(initialBranchId)
   const [switchingBranch, setSwitchingBranch] = useState(false)
 
   const [activeCategory, setActiveCategory] = useState('all')
@@ -45,7 +47,7 @@ export default function App() {
   const toastIdRef = useRef(0)
 
   const [lastOrder, setLastOrder] = useState(null)
-  const hasLoadedRef = useRef(false)
+  const hasLoadedRef = useRef(Boolean(initialCatalog))
 
   const pushToast = useCallback((message, type = 'success') => {
     toastIdRef.current += 1
@@ -73,8 +75,12 @@ export default function App() {
         setLoadError(null)
         hasLoadedRef.current = true
       } catch (error) {
-        setLoadError(error.message || 'Could not load the store catalog.')
-        setCatalog(null)
+        if (options.silent && hasLoadedRef.current) {
+          console.warn('Could not refresh storefront catalog:', error)
+        } else {
+          setLoadError(error.message || 'Could not load the store catalog.')
+          setCatalog(null)
+        }
       } finally {
         setLoading(false)
         setSwitchingBranch(false)
@@ -84,8 +90,8 @@ export default function App() {
   )
 
   useEffect(() => {
-    loadCatalog()
-  }, [loadCatalog])
+    loadCatalog({ silent: Boolean(initialCatalog) })
+  }, [initialCatalog, loadCatalog])
 
   const brand = catalog?.business?.brand || {}
   const primaryColor = brand.primaryColor || '#111827'
