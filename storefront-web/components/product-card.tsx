@@ -37,8 +37,25 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
   const [added, setAdded] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const price = selectedVariant ? selectedVariant.price : item.price;
-  const isOutOfStock = item.trackStock && item.stock <= 0 && !item.hasVariants;
+  const variants = item.variants || [];
+  const hasVariants = Boolean(item.hasVariants && variants.length > 0);
+  const availableVariants = variants.filter((variant) => variant.available !== false);
+  const variantPrices = (availableVariants.length ? availableVariants : variants).map(
+    (variant) => variant.price
+  );
+  const selectedAvailableVariant =
+    selectedVariant && selectedVariant.available !== false ? selectedVariant : undefined;
+  const price =
+    selectedAvailableVariant
+      ? selectedAvailableVariant.price
+      : hasVariants && variantPrices.length > 0
+        ? Math.min(...variantPrices)
+        : item.price;
+  const pricePrefix =
+    hasVariants && !selectedAvailableVariant && variantPrices.length > 0 ? "From " : "";
+  const isOutOfStock = hasVariants
+    ? availableVariants.length === 0
+    : Boolean(item.trackStock && item.stock <= 0);
   const images = getCatalogItemImages(item);
   const image = images[0];
   const imageCount = images.length;
@@ -48,7 +65,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
   const handleAdd = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (isOutOfStock) return;
-    if (item.hasVariants && !selectedVariant) {
+    if (hasVariants && !selectedAvailableVariant) {
       setShowQuickView(true);
       return;
     }
@@ -131,6 +148,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
             <div className="mt-auto flex items-center justify-between pt-3">
               <span className="text-base font-bold text-accent">
+                {pricePrefix}
                 {formatPrice(price, currencySymbol, currencyCode)}
               </span>
               <button

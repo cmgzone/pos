@@ -26,7 +26,8 @@ export interface ProductVariant {
   id: string;
   name: string;
   price: number;
-  stock: number;
+  stock?: number;
+  available?: boolean;
 }
 
 export interface CatalogItem {

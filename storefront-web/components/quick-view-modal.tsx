@@ -27,11 +27,21 @@ export function QuickViewModal({
   onAdd,
 }: QuickViewModalProps) {
   const images = useMemo(() => getCatalogItemImages(item), [item]);
+  const variants = useMemo(() => item.variants || [], [item.variants]);
+  const availableVariants = useMemo(
+    () => variants.filter((variant) => variant.available !== false),
+    [variants]
+  );
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [imageError, setImageError] = useState(false);
-  const price = selectedVariant ? selectedVariant.price : item.price;
+  const requiresVariant = Boolean(item.hasVariants && variants.length > 0);
+  const selectedAvailableVariant =
+    selectedVariant && selectedVariant.available !== false ? selectedVariant : undefined;
+  const fallbackVariant = availableVariants[0] || variants[0];
+  const price = selectedAvailableVariant?.price ?? fallbackVariant?.price ?? item.price;
   const image = images[selectedImageIndex];
   const hasMultipleImages = images.length > 1;
+  const canAdd = !requiresVariant || Boolean(selectedAvailableVariant);
 
   useEffect(() => {
     setSelectedImageIndex(0);
@@ -44,6 +54,20 @@ export function QuickViewModal({
       setImageError(false);
     }
   }, [images.length, selectedImageIndex]);
+
+  useEffect(() => {
+    if (!requiresVariant) {
+      if (selectedVariant) onVariantChange(undefined);
+      return;
+    }
+
+    const stillAvailable = availableVariants.some(
+      (variant) => variant.id === selectedVariant?.id
+    );
+    if (!stillAvailable) {
+      onVariantChange(availableVariants[0]);
+    }
+  }, [availableVariants, onVariantChange, requiresVariant, selectedVariant]);
 
   const chooseImage = (index: number) => {
     setSelectedImageIndex(index);
@@ -149,26 +173,42 @@ export function QuickViewModal({
               {item.description || "No description available."}
             </p>
 
-            {item.variants && item.variants.length > 0 && (
+            {variants.length > 0 && (
               <div className="mt-6">
                 <span className="text-xs font-medium uppercase tracking-wider text-muted">
-                  Select option
+                  Choose variant
                 </span>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {item.variants.map((variant) => (
-                    <button
-                      key={variant.id}
-                      onClick={() => onVariantChange(variant)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                        selectedVariant?.id === variant.id
-                          ? "bg-accent text-background"
-                          : "bg-surface-elevated ring-1 ring-white/10 hover:bg-white/5"
-                      }`}
-                    >
-                      {variant.name} — {formatPrice(variant.price, currencySymbol, currencyCode)}
-                    </button>
-                  ))}
+                  {variants.map((variant) => {
+                    const isAvailable = variant.available !== false;
+                    const isSelected = selectedVariant?.id === variant.id;
+
+                    return (
+                      <button
+                        key={variant.id}
+                        onClick={() => {
+                          if (isAvailable) onVariantChange(variant);
+                        }}
+                        disabled={!isAvailable}
+                        className={classNames(
+                          "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                          isSelected
+                            ? "bg-accent text-background"
+                            : "bg-surface-elevated ring-1 ring-white/10 hover:bg-white/5",
+                          !isAvailable && "cursor-not-allowed opacity-40"
+                        )}
+                      >
+                        {variant.name} - {formatPrice(variant.price, currencySymbol, currencyCode)}
+                        {!isAvailable ? " - Sold out" : ""}
+                      </button>
+                    );
+                  })}
                 </div>
+                {requiresVariant && availableVariants.length === 0 && (
+                  <p className="mt-2 text-xs text-red-300">
+                    No variants are currently available.
+                  </p>
+                )}
               </div>
             )}
 
@@ -178,14 +218,15 @@ export function QuickViewModal({
               </span>
               <button
                 onClick={() => {
+                  if (!canAdd) return;
                   onAdd();
                   onClose();
                 }}
-                disabled={item.hasVariants && !selectedVariant}
+                disabled={!canAdd}
                 className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
               >
                 <Plus className="h-4 w-4" />
-                Add to cart
+                {requiresVariant && availableVariants.length === 0 ? "Sold out" : "Add to cart"}
               </button>
             </div>
           </div>
