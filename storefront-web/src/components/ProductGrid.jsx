@@ -1,4 +1,5 @@
 import { classNames, isItemAvailable, primaryPrice } from '../utils'
+import SafeImage from './SafeImage.jsx'
 
 function Placeholder() {
   return (
@@ -42,7 +43,7 @@ export function ProductCard({ item, money, onAdd, onQuickView }) {
     >
       <div className="card-media">
         {imageUrl ? (
-          <img src={imageUrl} loading="lazy" alt={item.name} />
+          <SafeImage src={imageUrl} loading="lazy" alt={item.name} className="card-img" />
         ) : (
           <Placeholder />
         )}

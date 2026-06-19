@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { classNames, isItemAvailable, primaryPrice } from '../utils'
+import SafeImage from './SafeImage.jsx'
 
 export default function QuickView({ item, money, onClose, onAdd }) {
   const [variantId, setVariantId] = useState(null)
@@ -57,20 +58,7 @@ export default function QuickView({ item, money, onClose, onAdd }) {
         </button>
         <div className="qv-media">
           <div className="qv-media-main">
-            {activeImage ? (
-              <img src={activeImage} alt={item.name} />
-            ) : (
-              <div className="card-media-ph">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.6}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-              </div>
-            )}
+            <SafeImage src={activeImage} alt={item.name} className="qv-img" />
           </div>
           {imageUrls.length > 1 && (
             <div className="qv-thumbs">
@@ -82,7 +70,7 @@ export default function QuickView({ item, money, onClose, onAdd }) {
                   onClick={() => setActiveImageIndex(index)}
                   aria-label={`Show product photo ${index + 1}`}
                 >
-                  <img src={url} alt="" />
+                  <SafeImage src={url} alt="" className="qv-thumb-img" />
                 </button>
               ))}
             </div>

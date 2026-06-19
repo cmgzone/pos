@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { fetchCatalog, placeOrder, readInitialCatalog, trackOrder, resolveStorefrontTarget } from './api'
 import {
   cartKey,
   classNames,
+  clearPersistedCart,
   formatMoney,
   isItemAvailable,
   itemCategory,
+  loadPersistedCart,
+  persistCart,
   primaryPrice,
+  reconcileCart,
+  useDebounce,
   whatsappUrl,
 } from './utils'
 import Header from './components/Header.jsx'
@@ -39,9 +45,10 @@ export default function App() {
 
   const [activeCategory, setActiveCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearchQuery = useDebounce(searchQuery, 250)
   const [sort, setSort] = useState('default')
 
-  const [cart, setCart] = useState(() => new Map())
+  const [cart, setCart] = useState(() => loadPersistedCart(target.businessId) || new Map())
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [quickView, setQuickView] = useState(null)
   const [toasts, setToasts] = useState([])
@@ -94,6 +101,16 @@ export default function App() {
     loadCatalog({ silent: Boolean(initialCatalog) })
   }, [initialCatalog, loadCatalog])
 
+  useEffect(() => {
+    if (!catalog?.business?.id) return
+    persistCart(catalog.business.id, cart)
+  }, [catalog?.business?.id, cart])
+
+  useEffect(() => {
+    if (!catalog?.products) return
+    setCart((prev) => reconcileCart(prev, catalog.products))
+  }, [catalog?.products])
+
   const brand = catalog?.business?.brand || {}
   const primaryColor = brand.primaryColor || '#111827'
   const freeShipThreshold = catalog?.freeShipThreshold || FREE_SHIP_FALLBACK
@@ -140,7 +157,7 @@ export default function App() {
 
   const visibleItems = useMemo(() => {
     if (!catalog?.products) return []
-    const query = searchQuery.toLowerCase().trim()
+    const query = debouncedSearchQuery.toLowerCase().trim()
     let items = catalog.products.filter((item) => {
       const cat = itemCategory(item)
       const matchCat = activeCategory === 'all' || cat === activeCategory
@@ -176,21 +193,21 @@ export default function App() {
         break
     }
     return items
-  }, [catalog, activeCategory, searchQuery, sort])
+  }, [catalog, activeCategory, debouncedSearchQuery, sort])
 
   const featuredItems = useMemo(() => {
-    if (!catalog?.products || searchQuery || activeCategory !== 'all') return []
+    if (!catalog?.products || debouncedSearchQuery || activeCategory !== 'all') return []
     return catalog.products.filter((item) => item.isFeatured).slice(0, 8)
-  }, [catalog, searchQuery, activeCategory])
+  }, [catalog, debouncedSearchQuery, activeCategory])
 
   const bestSellingItems = useMemo(() => {
-    if (!catalog?.products || searchQuery || activeCategory !== 'all') return []
+    if (!catalog?.products || debouncedSearchQuery || activeCategory !== 'all') return []
     return catalog.products
       .filter((item) => Number(item.soldQty || 0) > 0)
       .slice()
       .sort((a, b) => Number(b.soldQty || 0) - Number(a.soldQty || 0))
       .slice(0, 8)
-  }, [catalog, searchQuery, activeCategory])
+  }, [catalog, debouncedSearchQuery, activeCategory])
 
   const cartItems = useMemo(() => Array.from(cart.values()), [cart])
   const cartCount = useMemo(() => cartItems.reduce((sum, entry) => sum + entry.qty, 0), [cartItems])
@@ -280,6 +297,7 @@ export default function App() {
         items,
       })
       setCart(new Map())
+      if (catalog?.business?.id) clearPersistedCart(catalog.business.id)
       setLastOrder(order)
       return order
     },

@@ -1,4 +1,5 @@
 import { classNames, itemCategory, primaryPrice } from '../utils'
+import SafeImage from './SafeImage.jsx'
 
 function itemImages(item) {
   if (Array.isArray(item.imageUrls) && item.imageUrls.length) return item.imageUrls
@@ -13,7 +14,11 @@ function MiniProduct({ item, money, onQuickView, badge }) {
   return (
     <button type="button" className="mini-product" onClick={() => onQuickView(item)}>
       <span className="mini-media">
-        {imageUrl ? <img src={imageUrl} alt="" loading="lazy" /> : <span>{String(item.name || 'P').charAt(0)}</span>}
+        {imageUrl ? (
+          <SafeImage src={imageUrl} alt="" loading="lazy" className="mini-img" />
+        ) : (
+          <span>{String(item.name || 'P').charAt(0)}</span>
+        )}
         {imageUrls.length > 1 && <em>{imageUrls.length}</em>}
       </span>
       <span className="mini-copy">
