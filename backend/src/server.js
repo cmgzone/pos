@@ -11010,6 +11010,7 @@ function renderWhatsAppConnectPage() {
       var facebookSdk = null;
       var facebookSdkPromise = null;
       var metaWaitTimer = null;
+      var directMetaMode = false;
       var continueButton = document.getElementById("continue");
 
       function readSessionToken() {
@@ -11076,9 +11077,23 @@ function renderWhatsAppConnectPage() {
           return facebookSdkPromise;
         }
         facebookSdkPromise = new Promise(function (resolve, reject) {
+          var settled = false;
+          var sdkTimer = window.setTimeout(function () {
+            if (settled) return;
+            settled = true;
+            reject(new Error("Meta login is taking too long to load in this browser."));
+          }, 8000);
+
+          function settle(callback, value) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(sdkTimer);
+            callback(value);
+          }
+
           function init() {
             if (!window.FB) {
-              reject(new Error("Meta login SDK failed to load."));
+              settle(reject, new Error("Meta login SDK failed to load."));
               return;
             }
             window.FB.init({
@@ -11088,7 +11103,7 @@ function renderWhatsAppConnectPage() {
               version: apiVersion || "v20.0"
             });
             facebookSdk = window.FB;
-            resolve(facebookSdk);
+            settle(resolve, facebookSdk);
           }
           if (window.FB) {
             init();
@@ -11099,7 +11114,7 @@ function renderWhatsAppConnectPage() {
           if (existing) {
             existing.addEventListener("load", init, { once: true });
             existing.addEventListener("error", function () {
-              reject(new Error("Meta login SDK failed to load."));
+              settle(reject, new Error("Meta login SDK failed to load."));
             }, { once: true });
             return;
           }
@@ -11110,7 +11125,7 @@ function renderWhatsAppConnectPage() {
           script.crossOrigin = "anonymous";
           script.src = "https://connect.facebook.net/en_US/sdk.js";
           script.onerror = function () {
-            reject(new Error("Meta login SDK failed to load."));
+            settle(reject, new Error("Meta login SDK failed to load."));
           };
           document.body.appendChild(script);
         }).catch(function (error) {
@@ -11118,6 +11133,28 @@ function renderWhatsAppConnectPage() {
           throw error;
         });
         return facebookSdkPromise;
+      }
+
+      function enableDirectMetaMode(message) {
+        directMetaMode = true;
+        setButton("Open Meta directly", false);
+        setPhase(
+          "ready",
+          "Connect WhatsApp",
+          message || "Meta login did not load in this browser. Open Meta directly to continue."
+        );
+      }
+
+      function buildDirectMetaUrl() {
+        var version = String(platform.apiVersion || "v20.0").replace(/^\\/+/, "");
+        var url = new URL("https://www.facebook.com/" + version + "/dialog/oauth");
+        url.searchParams.set("client_id", platform.appId);
+        url.searchParams.set("redirect_uri", window.location.origin + "/whatsapp/connect/callback");
+        url.searchParams.set("response_type", "code");
+        url.searchParams.set("config_id", platform.embeddedSignupConfigId);
+        url.searchParams.set("override_default_response_type", "true");
+        url.searchParams.set("state", sessionToken);
+        return url.toString();
       }
 
       function normalizeSignupData(data) {
@@ -11147,9 +11184,10 @@ function renderWhatsAppConnectPage() {
       }
 
       function tryComplete() {
-        if (submitted || !sessionToken || !platform || !authCode || !signupData || !signupData.phoneNumberId) {
+        if (submitted || !sessionToken || !platform || !authCode) {
           return;
         }
+        var completionData = signupData || {};
         submitted = true;
         clearMetaWaitTimer();
         setButton("Saving connection...", true);
@@ -11161,10 +11199,10 @@ function renderWhatsAppConnectPage() {
             connectSession: sessionToken,
             code: authCode,
             redirectUri: window.location.origin + "/whatsapp/connect/callback",
-            phoneNumberId: signupData.phoneNumberId,
-            wabaId: signupData.wabaId,
-            displayPhoneNumber: signupData.displayPhoneNumber,
-            businessName: signupData.businessName
+            phoneNumberId: completionData.phoneNumberId,
+            wabaId: completionData.wabaId,
+            displayPhoneNumber: completionData.displayPhoneNumber,
+            businessName: completionData.businessName
           })
         })
           .then(readJson)
@@ -11245,6 +11283,11 @@ function renderWhatsAppConnectPage() {
 
       continueButton.addEventListener("click", function () {
         if (!platform) return;
+        if (directMetaMode) {
+          setButton("Opening Meta...", true);
+          window.location.assign(buildDirectMetaUrl());
+          return;
+        }
         if (!facebookSdk) {
           setButton("Preparing Meta...", true);
           setPhase("busy", "Preparing Meta login", "Loading Meta setup. Try again in a moment...");
@@ -11254,8 +11297,7 @@ function renderWhatsAppConnectPage() {
               setPhase("ready", "Connect WhatsApp", "Continue with Meta to verify and connect your WhatsApp number.");
             })
             .catch(function (error) {
-              setButton("Retry Meta setup", false);
-              setPhase("error", "Connection failed", error.message || "Meta login could not be prepared.");
+              enableDirectMetaMode(error.message || "Meta login could not be prepared in this browser.");
             });
           return;
         }
@@ -11304,20 +11346,28 @@ function renderWhatsAppConnectPage() {
             throw new Error("WhatsApp setup is not enabled yet. Contact Piki support.");
           }
           setDetails(body.data || {});
+          if (authCode) {
+            setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Saving WhatsApp connection...");
+            tryComplete();
+            return null;
+          }
           setButton("Preparing Meta...", true);
           setPhase("busy", "Preparing Meta login", "Loading Meta setup...");
           return loadFacebookSdk(platform.appId, platform.apiVersion);
         })
         .then(function () {
+          if (submitted || authCode) {
+            return;
+          }
           setButton("Continue with Meta", false);
           setPhase("ready", "Connect WhatsApp", "Continue with Meta to verify and connect your WhatsApp number.");
-          if (authCode) {
-            setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Waiting for WhatsApp number details...");
-            tryComplete();
-          }
         })
         .catch(function (error) {
-          setButton("Retry Meta setup", false);
+          if (platform && platform.appId && platform.embeddedSignupConfigId) {
+            enableDirectMetaMode(error.message || "Meta login could not be loaded in this browser.");
+            return;
+          }
+          setButton("Try again", false);
           setPhase("error", "Connection failed", error.message || "WhatsApp setup could not be loaded.");
         });
     })();

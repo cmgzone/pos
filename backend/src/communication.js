@@ -725,11 +725,112 @@ async function exchangeWhatsAppSignupCode({ gateway, code, redirectUri }) {
       result?.error?.message || result?.message || 'WhatsApp signup code exchange failed',
     );
   }
+  const accessToken = normalizeText(result.access_token);
+  const discovered = accessToken
+    ? await discoverWhatsAppSignupAssets({
+        gateway,
+        accessToken,
+        fetch,
+      })
+    : {};
   return {
-    accessToken: normalizeText(result.access_token),
+    accessToken,
     tokenType: normalizeText(result.token_type),
     expiresIn: result.expires_in,
+    ...discovered,
   };
+}
+
+async function discoverWhatsAppSignupAssets({ gateway, accessToken, fetch }) {
+  const publicConfig = gateway.publicConfig || {};
+  const secretConfig = gateway.secretConfig || {};
+  const baseUrl = normalizeText(publicConfig.baseUrl) || 'https://graph.facebook.com';
+  const apiVersion = normalizeText(publicConfig.apiVersion) || 'v20.0';
+  const appId = normalizeText(publicConfig.appId);
+  const appSecret = normalizeText(secretConfig.appSecret);
+  if (!accessToken || !appId || !appSecret) {
+    return {};
+  }
+
+  const debugParams = new URLSearchParams({
+    input_token: accessToken,
+    access_token: `${appId}|${appSecret}`,
+  });
+  const debugResponse = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/${apiVersion}/debug_token?${debugParams.toString()}`,
+  );
+  const debugResult = await readMaybeJson(debugResponse);
+  if (!debugResponse.ok) {
+    return {};
+  }
+
+  const targetIds = extractDebugTokenTargetIds(debugResult?.data);
+  for (const wabaId of targetIds) {
+    const phoneResult = await fetchFirstWabaPhoneNumber({
+      baseUrl,
+      apiVersion,
+      wabaId,
+      accessToken,
+      fetch,
+    });
+    if (phoneResult.phoneNumberId) {
+      return {
+        wabaId,
+        ...phoneResult,
+      };
+    }
+  }
+
+  return targetIds[0] ? { wabaId: targetIds[0] } : {};
+}
+
+function extractDebugTokenTargetIds(data) {
+  const ids = [];
+  const scopes = Array.isArray(data?.granular_scopes)
+    ? data.granular_scopes
+    : [];
+  for (const scope of scopes) {
+    const scopeName = normalizeProvider(scope?.scope);
+    if (!scopeName.includes('whatsapp') && scopeName !== 'business_management') {
+      continue;
+    }
+    const targets = Array.isArray(scope?.target_ids) ? scope.target_ids : [];
+    for (const id of targets) {
+      const clean = normalizeText(id);
+      if (clean && !ids.includes(clean)) {
+        ids.push(clean);
+      }
+    }
+  }
+  return ids;
+}
+
+async function fetchFirstWabaPhoneNumber({
+  baseUrl,
+  apiVersion,
+  wabaId,
+  accessToken,
+  fetch,
+}) {
+  const params = new URLSearchParams({
+    fields: 'id,display_phone_number,verified_name',
+    access_token: accessToken,
+  });
+  const response = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/${apiVersion}/${encodeURIComponent(wabaId)}/phone_numbers?${params.toString()}`,
+  );
+  const result = await readMaybeJson(response);
+  if (!response.ok || !Array.isArray(result?.data)) {
+    return {};
+  }
+  const phone = result.data.find((item) => normalizeText(item?.id));
+  return phone
+    ? {
+        phoneNumberId: normalizeText(phone.id),
+        displayPhoneNumber: normalizeText(phone.display_phone_number),
+        businessName: normalizeText(phone.verified_name),
+      }
+    : {};
 }
 
 async function sendAfricasTalkingSms(gateway, recipient, body, senderId) {
