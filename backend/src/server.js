@@ -11152,7 +11152,6 @@ function renderWhatsAppConnectPage() {
         url.searchParams.set("redirect_uri", window.location.origin + "/whatsapp/connect/callback");
         url.searchParams.set("response_type", "code");
         url.searchParams.set("config_id", platform.embeddedSignupConfigId);
-        url.searchParams.set("override_default_response_type", "true");
         url.searchParams.set("state", sessionToken);
         return url.toString();
       }
