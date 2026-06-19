@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { AnimatePresence } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { StoreProvider, useStore } from "./store-provider";
+import { SiteHeader } from "./site-header";
 import { Hero } from "./hero";
+import { TrustBadges } from "./trust-badges";
 import { CatalogToolbar } from "./catalog-toolbar";
 import { ProductGrid } from "./product-grid";
 import { CartDrawer } from "./cart-drawer";
@@ -15,6 +18,7 @@ import { SkeletonGrid } from "./skeleton-grid";
 import { ErrorState } from "./error-state";
 import { getBootstrap } from "@/lib/utils";
 import { fetchCatalog } from "@/lib/api";
+import { FadeIn } from "./motion";
 
 function StorefrontInner() {
   const {
@@ -117,18 +121,29 @@ function StorefrontInner() {
 
   const isLoading = catalog === null && error === null;
 
+  const scrollToCatalog = () => {
+    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+  };
+
   if (error) {
     return <ErrorState message={error} />;
   }
 
   return (
     <>
-      <Hero
+      <SiteHeader
         business={catalog?.business}
         onTrackOrder={() => setShowTracker(true)}
       />
 
-      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-8">
+      <Hero
+        business={catalog?.business}
+        onBrowse={scrollToCatalog}
+      />
+
+      <TrustBadges />
+
+      <main className="flex-1 w-full space-y-8 px-4 pb-16 pt-8 sm:px-6 lg:px-8 xl:px-12">
         <CatalogToolbar
           categories={catalog?.categories || []}
           activeCategory={category}
@@ -143,22 +158,44 @@ function StorefrontInner() {
         />
 
         {isLoading || !catalog ? (
-          <SkeletonGrid />
+          <div className="pt-4">
+            <SkeletonGrid />
+          </div>
         ) : filteredItems.length === 0 ? (
-          <div className="py-24 text-center text-muted">
-            <p className="text-lg">No items match your search.</p>
+          <div className="py-20 text-center text-muted">
+            <p className="text-sm">No items match your search.</p>
             <button
               onClick={() => {
                 setSearch("");
                 setCategory("all");
               }}
-              className="mt-4 text-accent hover:underline"
+              className="mt-3 text-xs text-accent hover:underline"
             >
               Clear filters
             </button>
           </div>
         ) : (
-          <ProductGrid items={filteredItems} currency={catalog.currencySymbol} />
+          <section>
+            <FadeIn>
+              <div className="mb-6 flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent/[0.12] ring-1 ring-accent/20">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight">
+                    {search || category !== "all"
+                      ? "Search results"
+                      : "Featured products"}
+                  </h2>
+                  <p className="text-[12px] text-muted">
+                    {filteredItems.length}{" "}
+                    {filteredItems.length === 1 ? "item" : "items"}
+                  </p>
+                </div>
+              </div>
+            </FadeIn>
+            <ProductGrid items={filteredItems} currency={catalog.currencySymbol} />
+          </section>
         )}
       </main>
 

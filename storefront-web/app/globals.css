@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #f5f5f5;
-  --accent: #d4af37;
-  --accent-2: #a78bfa;
-  --muted: #a1a1aa;
-  --surface: #111113;
-  --surface-elevated: #18181b;
-  --border: rgba(255, 255, 255, 0.08);
+  --background: #08080a;
+  --foreground: #f4f4f5;
+  --accent: #f4c430;
+  --accent-glow: rgba(244, 196, 48, 0.15);
+  --muted: #969699;
+  --surface: #111114;
+  --surface-elevated: #18181c;
+  --border: rgba(255, 255, 255, 0.07);
   --radius: 1rem;
 }
 
@@ -16,7 +16,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
-  --color-accent-2: var(--accent-2);
+  --color-accent-glow: var(--accent-glow);
   --color-muted: var(--muted);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
@@ -36,28 +36,28 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.10);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .glass {
-  background: rgba(17, 17, 19, 0.72);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border);
+  background: rgba(17, 17, 20, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
 }
 
 .text-gradient {
@@ -67,11 +67,15 @@ body {
   background-clip: text;
 }
 
+.placeholder-gradient {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-elevated) 100%);
+}
+
 .shimmer {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.04) 50%,
+    rgba(255, 255, 255, 0.03) 50%,
     rgba(255, 255, 255, 0) 100%
   );
   background-size: 200% 100%;
@@ -85,6 +89,15 @@ body {
   100% {
     background-position: -200% 0;
   }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,108 +1,136 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { MapPin, Package, Sparkles, Search } from "lucide-react";
+import { MapPin, Package, CreditCard, Smartphone } from "lucide-react";
 import type { Business } from "@/lib/types";
 import { FadeIn } from "./motion";
 
 interface HeroProps {
   business?: Business;
-  onTrackOrder: () => void;
+  onBrowse: () => void;
 }
 
-export function Hero({ business, onTrackOrder }: HeroProps) {
+export function Hero({ business, onBrowse }: HeroProps) {
   const brand = business?.brand;
-  const primaryColor = brand?.primaryColor || "#d4af37";
+  const primaryColor = brand?.primaryColor || "#f4c430";
+  const coverUrl = brand?.coverUrl;
+  const logoUrl = brand?.logoUrl;
 
   return (
-    <section className="relative overflow-hidden">
-      {brand?.coverUrl ? (
+    <section className="relative overflow-hidden min-h-[360px]">
+      {coverUrl ? (
         <div className="absolute inset-0">
           <img
-            src={brand.coverUrl}
+            src={coverUrl}
             alt=""
-            className="h-full w-full object-cover opacity-40"
+            className="h-full w-full object-cover opacity-25"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background" />
+          <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/60" />
         </div>
       ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--accent)_0%,_transparent_50%)] opacity-10" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--accent-glow)_0%,_transparent_50%)] opacity-30" />
       )}
 
-      <div className="relative z-10 w-full px-4 sm:px-6 lg:px-8 xl:px-12 pt-10 pb-14">
-        <motion.nav
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="flex items-center justify-between py-4 mb-10"
-        >
-          <div className="flex items-center gap-3">
-            {brand?.logoUrl ? (
-              <img
-                src={brand.logoUrl}
-                alt={business?.name}
-                className="h-10 w-10 rounded-full object-cover ring-1 ring-white/10"
-              />
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface ring-1 ring-white/10">
-                <Sparkles className="h-5 w-5 text-accent" />
-              </div>
-            )}
-            <span className="text-lg font-semibold tracking-tight">
-              {business?.name || "Storefront"}
-            </span>
-          </div>
-          <button
-            onClick={onTrackOrder}
-            className="hidden sm:flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-medium ring-1 ring-white/10 transition hover:bg-surface-elevated"
-          >
-            <Search className="h-4 w-4 text-accent" />
-            Track order
-          </button>
-        </motion.nav>
-
-        <div className="max-w-3xl">
-          <FadeIn delay={0.1}>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-surface/80 px-3 py-1 text-xs font-medium text-muted ring-1 ring-white/10">
-              <MapPin className="h-3.5 w-3.5" />
+      <div className="relative z-10 mx-auto grid min-h-[360px] items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_380px] lg:px-8 xl:grid-cols-[1fr_440px] xl:px-12">
+        <div>
+          <FadeIn delay={0.05}>
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-surface/70 px-3 py-1 text-[11px] font-medium text-muted ring-1 ring-white/10">
+              <MapPin className="h-3 w-3 text-accent" />
               {business?.selectedBranch?.name || "Online store"}
             </div>
           </FadeIn>
 
-          <FadeIn delay={0.2}>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
-              {brand?.tagline || `Welcome to ${business?.name || "our store"}`}
+          <FadeIn delay={0.1}>
+            <h1 className="text-3xl font-bold tracking-tight leading-[1.15] sm:text-4xl lg:text-5xl">
+              {brand?.tagline || business?.name || "Your online store"}
             </h1>
           </FadeIn>
 
-          <FadeIn delay={0.3}>
-            <p className="mt-5 max-w-xl text-base sm:text-lg text-muted leading-relaxed">
+          <FadeIn delay={0.15}>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted sm:text-base">
               {brand?.description ||
-                "Browse our curated collection of products and services, crafted for quality and convenience."}
+                "Shop products, book services, choose variants, and place orders in seconds."}
             </p>
           </FadeIn>
 
-          <FadeIn delay={0.4}>
-            <div className="mt-8 flex flex-wrap items-center gap-4">
-              <a
-                href="#catalog"
-                className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
+          <FadeIn delay={0.2}>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                onClick={onBrowse}
+                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-90"
                 style={{ backgroundColor: primaryColor }}
               >
                 <Package className="h-4 w-4" />
                 Browse collection
-              </a>
-              <button
-                onClick={onTrackOrder}
-                className="inline-flex items-center gap-2 rounded-full bg-surface px-6 py-3 text-sm font-semibold ring-1 ring-white/10 transition hover:bg-surface-elevated sm:hidden"
-              >
-                <Search className="h-4 w-4" />
-                Track order
               </button>
             </div>
           </FadeIn>
         </div>
+
+        <FadeIn delay={0.2} direction="left">
+          <div className="hidden lg:block">
+            <CheckoutPreviewCard logoUrl={logoUrl} businessName={business?.name} />
+          </div>
+        </FadeIn>
       </div>
     </section>
+  );
+}
+
+function CheckoutPreviewCard({
+  logoUrl,
+  businessName,
+}: {
+  logoUrl?: string | null;
+  businessName?: string;
+}) {
+  return (
+    <motion.div
+      animate={{ y: [0, -6, 0] }}
+      transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+      className="relative mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl bg-surface-elevated/90 p-5 ring-1 ring-white/[0.08] shadow-xl shadow-black/40"
+    >
+      <div className="mb-4 flex items-center gap-2.5">
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+        ) : (
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface ring-1 ring-white/10">
+            <span className="text-[10px] font-bold text-accent">P</span>
+          </div>
+        )}
+        <div>
+          <p className="text-xs font-semibold">
+            {businessName || "Online store"}
+          </p>
+          <p className="text-[10px] text-muted">Fast checkout</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="rounded-xl bg-surface p-3 ring-1 ring-white/[0.05]">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted">Selected item</span>
+            <span className="font-semibold text-accent">KSH 2,450</span>
+          </div>
+          <div className="mt-2 h-2 w-3/4 rounded-full bg-surface-elevated shimmer" />
+        </div>
+
+        <div className="rounded-xl bg-surface p-3 ring-1 ring-white/[0.05]">
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <CreditCard className="h-3.5 w-3.5 text-accent" />
+            Pay with M-Pesa, card, or bank
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-accent p-3 text-center text-xs font-semibold text-background">
+          Place order
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-center gap-2 text-[10px] text-muted">
+        <Smartphone className="h-3 w-3" />
+        Order tracking + WhatsApp updates
+      </div>
+    </motion.div>
   );
 }
