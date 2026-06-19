@@ -19,6 +19,19 @@ class StorefrontBrandSettingsSection extends StatefulWidget {
 
 class _StorefrontBrandSettingsSectionState
     extends State<StorefrontBrandSettingsSection> {
+  static const _brandColorPresets = [
+    '#ff2a6d',
+    '#f4c430',
+    '#10b981',
+    '#0ea5e9',
+    '#6366f1',
+    '#8b5cf6',
+    '#ef4444',
+    '#f97316',
+    '#14b8a6',
+    '#111827',
+  ];
+
   final _logoController = TextEditingController();
   final _coverController = TextEditingController();
   final _colorController = TextEditingController(text: '#ff2a6d');
@@ -242,25 +255,7 @@ class _StorefrontBrandSettingsSectionState
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
           SizedBox(height: 12),
-          TextField(
-            controller: _colorController,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'Primary brand color',
-              hintText: '#ff2a6d',
-              prefixIcon: Icon(Icons.palette_outlined, color: color),
-              suffixIcon: Container(
-                width: 22,
-                height: 22,
-                margin: const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white24),
-                ),
-              ),
-            ),
-          ),
+          _buildColorPickerField(color),
           SizedBox(height: 14),
           TextField(
             controller: _taglineController,
@@ -449,6 +444,293 @@ class _StorefrontBrandSettingsSectionState
             style: TextStyle(color: Colors.white70, height: 1.35),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildColorPickerField(Color color) {
+    final input = TextField(
+      controller: _colorController,
+      onChanged: (_) => setState(() {}),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F#]')),
+        LengthLimitingTextInputFormatter(7),
+      ],
+      decoration: InputDecoration(
+        labelText: 'Primary brand color',
+        hintText: '#ff2a6d',
+        prefixIcon: Icon(Icons.palette_outlined, color: color),
+        suffixIcon: Container(
+          width: 22,
+          height: 22,
+          margin: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white24),
+          ),
+        ),
+      ),
+    );
+    final pickButton = OutlinedButton.icon(
+      onPressed: _openColorPicker,
+      icon: Icon(Icons.color_lens_outlined),
+      label: Text('Pick color'),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [input, SizedBox(height: 10), pickButton],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: input),
+            SizedBox(width: 10),
+            pickButton,
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openColorPicker() async {
+    var selectedHex = _normalizeColorInput(_colorController.text);
+    var red = _hexChannel(selectedHex, 0);
+    var green = _hexChannel(selectedHex, 1);
+    var blue = _hexChannel(selectedHex, 2);
+
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            void updateFromRgb() {
+              selectedHex = _hexFromRgb(red, green, blue);
+            }
+
+            void setSelectedHex(String hex) {
+              selectedHex = _normalizeColorInput(hex);
+              red = _hexChannel(selectedHex, 0);
+              green = _hexChannel(selectedHex, 1);
+              blue = _hexChannel(selectedHex, 2);
+            }
+
+            Widget channelSlider({
+              required String label,
+              required int value,
+              required Color activeColor,
+              required ValueChanged<int> onChanged,
+            }) {
+              return Row(
+                children: [
+                  SizedBox(
+                    width: 46,
+                    child: Text(
+                      label,
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Expanded(
+                    child: Slider(
+                      min: 0,
+                      max: 255,
+                      divisions: 255,
+                      value: value.toDouble(),
+                      activeColor: activeColor,
+                      label: value.toString(),
+                      onChanged: (next) {
+                        setDialogState(() {
+                          onChanged(next.round());
+                          updateFromRgb();
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      value.toString(),
+                      textAlign: TextAlign.end,
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            final selectedColor = _colorFromHex(selectedHex);
+            return AlertDialog(
+              title: Text('Choose brand color'),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: selectedColor,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.storefront_outlined,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Store accent',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    selectedHex,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.78,
+                                      ),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 18),
+                      Text(
+                        'Quick colors',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final hex in _brandColorPresets)
+                            _buildColorSwatch(
+                              hex: hex,
+                              selected: hex == selectedHex,
+                              onSelected: (next) {
+                                setDialogState(() => setSelectedHex(next));
+                              },
+                            ),
+                        ],
+                      ),
+                      SizedBox(height: 18),
+                      Text(
+                        'Fine tune',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      SizedBox(height: 8),
+                      channelSlider(
+                        label: 'Red',
+                        value: red,
+                        activeColor: Colors.red,
+                        onChanged: (next) => red = next,
+                      ),
+                      channelSlider(
+                        label: 'Green',
+                        value: green,
+                        activeColor: Colors.green,
+                        onChanged: (next) => green = next,
+                      ),
+                      channelSlider(
+                        label: 'Blue',
+                        value: blue,
+                        activeColor: Colors.blue,
+                        onChanged: (next) => blue = next,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(dialogContext).pop(selectedHex),
+                  icon: Icon(Icons.check_outlined),
+                  label: Text('Use color'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (picked == null || !mounted) return;
+    setState(() {
+      _colorController.text = picked;
+    });
+  }
+
+  Widget _buildColorSwatch({
+    required String hex,
+    required bool selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    final color = _colorFromHex(hex);
+    return Tooltip(
+      message: hex,
+      child: InkWell(
+        onTap: () => onSelected(hex),
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.outline,
+              width: selected ? 3 : 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
+          ),
+          child: selected ? Icon(Icons.check, color: Colors.white) : null,
+        ),
       ),
     );
   }
@@ -766,10 +1048,26 @@ class _StorefrontBrandSettingsSectionState
   }
 
   Color get _brandColor {
-    final clean = _normalizeColorInput(_colorController.text);
+    return _colorFromHex(_colorController.text);
+  }
+
+  Color _colorFromHex(String hex) {
+    final clean = _normalizeColorInput(hex);
     final value = int.tryParse(clean.substring(1), radix: 16);
     if (value == null) return Color(0xFFff2a6d);
     return Color(value + 0xFF000000);
+  }
+
+  int _hexChannel(String hex, int index) {
+    final clean = _normalizeColorInput(hex);
+    final start = 1 + (index * 2);
+    return int.tryParse(clean.substring(start, start + 2), radix: 16) ?? 0;
+  }
+
+  String _hexFromRgb(int red, int green, int blue) {
+    String channel(int value) =>
+        value.clamp(0, 255).toRadixString(16).padLeft(2, '0');
+    return '#${channel(red)}${channel(green)}${channel(blue)}';
   }
 
   String _normalizeColorInput(String value) {
