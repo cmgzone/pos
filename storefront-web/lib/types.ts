@@ -50,7 +50,10 @@ export interface CatalogItem {
   soldQty?: number;
   variants?: ProductVariant[];
   durationMinutes?: number | null;
-  itemType: "product" | "service";
+  itemType?: "product" | "service";
+  type?: "product" | "service";
+  productId?: string | null;
+  serviceId?: string | null;
 }
 
 export interface Catalog {

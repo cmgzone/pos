@@ -15,7 +15,7 @@ export function ProductGrid({ items, currencySymbol, currencyCode }: ProductGrid
   return (
     <StaggerContainer className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) =>
-        item.itemType === "service" ? (
+        (item.itemType || item.type) === "service" ? (
           <ServiceCard key={item.id} item={item} currencySymbol={currencySymbol} currencyCode={currencyCode} />
         ) : (
           <ProductCard key={item.id} item={item} currencySymbol={currencySymbol} currencyCode={currencyCode} />

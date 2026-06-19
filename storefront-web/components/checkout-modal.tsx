@@ -38,13 +38,22 @@ export function CheckoutModal({ business, currencySymbol, currencyCode, onClose 
       deliveryAddress: deliveryAddress.trim() || undefined,
       fulfillmentMethod,
       note: note.trim() || undefined,
-      items: cart.map(({ item, variant, quantity }) => ({
-        itemType: item.itemType,
-        productId: item.itemType === "product" ? item.id : undefined,
-        serviceId: item.itemType === "service" ? item.id : undefined,
-        variantId: variant?.id,
-        quantity,
-      })),
+      items: cart.map(({ item, variant, quantity }) => {
+        const itemType = item.itemType || item.type || "product";
+        return {
+          itemType,
+          productId:
+            itemType === "product"
+              ? item.productId || item.id
+              : undefined,
+          serviceId:
+            itemType === "service"
+              ? item.serviceId || item.id
+              : undefined,
+          variantId: variant?.id,
+          quantity,
+        };
+      }),
     };
 
     setIsSubmitting(true);

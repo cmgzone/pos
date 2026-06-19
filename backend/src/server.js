@@ -7289,7 +7289,11 @@ async function createPublicCatalogOrder(businessId, payload) {
       payload.delivery_method,
   );
   const note = normalizeOptionalText(payload.note);
-  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  const rawItems = Array.isArray(payload.items)
+    ? payload.items
+    : Array.isArray(payload.lines)
+      ? payload.lines
+      : [];
 
   if (!customerName) {
     throw createHttpError(400, 'Customer name is required');
@@ -8123,6 +8127,7 @@ function normalizePublicCatalogProduct(row) {
 
   return {
     type: 'product',
+    itemType: 'product',
     id: row.id,
     productId: row.id,
     serviceId: null,
@@ -8243,6 +8248,7 @@ function normalizePublicCatalogService(row) {
 
   return {
     type: 'service',
+    itemType: 'service',
     id: `service:${row.id}`,
     productId: null,
     serviceId: row.id,
@@ -9988,10 +9994,11 @@ function renderPublicCatalogPage(catalog) {
           fulfillmentMethod: method,
           deliveryAddress: note,
           note: note,
-          lines: items.map(entry => ({
-            productId: entry.item.type === 'product' ? entry.item.id : null,
+          items: items.map(entry => ({
+            itemType: entry.item.itemType || entry.item.type || 'product',
+            productId: (entry.item.itemType || entry.item.type) === 'product' ? (entry.item.productId || entry.item.id) : null,
             variantId: entry.variant ? entry.variant.id : null,
-            serviceId: entry.item.type === 'service' ? entry.item.serviceId : null,
+            serviceId: (entry.item.itemType || entry.item.type) === 'service' ? (entry.item.serviceId || entry.item.id) : null,
             quantity: entry.qty
           }))
         };
@@ -10006,7 +10013,8 @@ function renderPublicCatalogPage(catalog) {
 
         state.cart.clear();
         renderCart();
-        const ref = data.order && data.order.orderNumber ? data.order.orderNumber : '';
+        const order = data.data || data.order || {};
+        const ref = order.orderNumber || '';
         els.alertSuccessText.textContent = 'Order placed successfully! Reference: ' + ref;
         els.alertSuccess.style.display = 'flex';
         els.checkoutBtn.style.display = 'none';
