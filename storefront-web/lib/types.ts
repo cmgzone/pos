@@ -99,7 +99,7 @@ export interface Order {
   id: string;
   orderNumber: string;
   status: string;
-  total: number;
+  subtotal: number;
   customerName: string;
   phone?: string;
   deliveryAddress?: string;
@@ -107,10 +107,10 @@ export interface Order {
   note?: string;
   createdAt: string;
   items: {
-    name: string;
+    productName: string;
     quantity: number;
     unitPrice: number;
-    total: number;
+    lineTotal: number;
   }[];
 }
 

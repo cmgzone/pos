@@ -150,10 +150,10 @@ export function OrderTracker({ business, currency, currencyCode, onClose }: Orde
                       className="flex items-center justify-between text-sm"
                     >
                       <span className="text-muted">
-                        {item.quantity}× {item.name}
+                        {item.quantity}× {item.productName}
                       </span>
                       <span className="font-medium">
-                        {formatPrice(item.total, currency, currencyCode)}
+                        {formatPrice(item.lineTotal, currency, currencyCode)}
                       </span>
                     </div>
                   ))}
@@ -162,7 +162,7 @@ export function OrderTracker({ business, currency, currencyCode, onClose }: Orde
                 <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">
                   <span className="text-muted">Total</span>
                   <span className="text-xl font-bold text-accent">
-                    {formatPrice(order.total, currency, currencyCode)}
+                    {formatPrice(order.subtotal, currency, currencyCode)}
                   </span>
                 </div>
 
