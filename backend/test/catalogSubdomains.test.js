@@ -8,6 +8,7 @@ const {
   ensureBusinessCatalogSubdomain,
   extractCatalogSubdomain,
   findBusinessIdByCatalogSubdomain,
+  isCatalogStorefrontOrigin,
   normalizeCatalogSubdomain,
 } = require('../src/catalogSubdomains');
 
@@ -57,6 +58,35 @@ test('catalog storefront URL uses HTTPS and the configured root domain', () => {
   assert.equal(
     buildCatalogStorefrontUrl('pikipos.com', 'my-shop'),
     'https://my-shop.pikipos.com',
+  );
+});
+
+test('catalog storefront origin accepts secure shop subdomains only', () => {
+  assert.equal(
+    isCatalogStorefrontOrigin('https://asset.pikipos.com', 'pikipos.com'),
+    true,
+  );
+  assert.equal(
+    isCatalogStorefrontOrigin('https://asset.pikipos.com/', 'pikipos.com'),
+    true,
+  );
+  assert.equal(
+    isCatalogStorefrontOrigin('http://asset.pikipos.com', 'pikipos.com'),
+    false,
+  );
+  assert.equal(
+    isCatalogStorefrontOrigin('http://asset.pikipos.com', 'pikipos.com', {
+      allowHttp: true,
+    }),
+    true,
+  );
+  assert.equal(
+    isCatalogStorefrontOrigin('https://nested.asset.pikipos.com', 'pikipos.com'),
+    false,
+  );
+  assert.equal(
+    isCatalogStorefrontOrigin('https://pikipos.com', 'pikipos.com'),
+    false,
   );
 });
 

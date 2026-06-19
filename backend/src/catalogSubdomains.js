@@ -252,6 +252,30 @@ function buildCatalogStorefrontUrl(rootDomain, subdomain) {
   return `https://${normalizedSubdomain}.${root}`;
 }
 
+function isCatalogStorefrontOrigin(origin, rootDomain, options = {}) {
+  const normalizedOrigin = String(origin || '').trim().replace(/\/+$/, '');
+  if (!normalizedOrigin) {
+    return false;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(normalizedOrigin);
+  } catch (_) {
+    return false;
+  }
+
+  const allowHttp = Boolean(options.allowHttp);
+  if (parsed.protocol !== 'https:' && !(allowHttp && parsed.protocol === 'http:')) {
+    return false;
+  }
+  if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    return false;
+  }
+
+  return Boolean(extractCatalogSubdomain(parsed.host, rootDomain));
+}
+
 function fitDnsLabel(value, maxLength = 63) {
   return String(value || '')
     .slice(0, maxLength)
@@ -293,5 +317,6 @@ module.exports = {
   extractCatalogSubdomain,
   findBusinessIdByCatalogSubdomain,
   initializeCatalogSubdomainSchema,
+  isCatalogStorefrontOrigin,
   normalizeCatalogSubdomain,
 };

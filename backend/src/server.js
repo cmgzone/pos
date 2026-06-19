@@ -138,6 +138,7 @@ const {
   extractCatalogSubdomain,
   findBusinessIdByCatalogSubdomain,
   initializeCatalogSubdomainSchema,
+  isCatalogStorefrontOrigin,
 } = require('./catalogSubdomains');
 const { normalizePublicCatalogBranches } = require('./catalogBranches');
 
@@ -186,7 +187,11 @@ const CATALOG_CACHE_CODE_VERSION = '1';
 
 app.disable('x-powered-by');
 app.use(applySecurityHeaders);
-app.use(cors(buildCorsOptions()));
+app.use(
+  cors((req, callback) => {
+    callback(null, buildCorsOptions(req));
+  }),
+);
 app.use(express.json({ limit: '10mb' }));
 app.use(
   appReleaseUrlPrefix,
@@ -4652,7 +4657,7 @@ function notifyBusinessRealtimeChange({
   });
 }
 
-function buildCorsOptions() {
+function buildCorsOptions(req) {
   const allowedOrigins = new Set(
     (config.allowedOrigins || []).map((origin) =>
       String(origin || '').trim().replace(/\/+$/, ''),
@@ -4668,6 +4673,16 @@ function buildCorsOptions() {
       }
       const normalizedOrigin = String(origin).trim().replace(/\/+$/, '');
       if (allowedOrigins.has(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+      if (
+        isCatalogStorefrontOrigin(
+          normalizedOrigin,
+          config.publicCatalogRootDomain,
+          { allowHttp: config.nodeEnv !== 'production' },
+        )
+      ) {
         callback(null, true);
         return;
       }
