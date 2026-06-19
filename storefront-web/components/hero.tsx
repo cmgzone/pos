@@ -41,7 +41,7 @@ export function Hero({ business, onBrowse }: HeroProps) {
                     src={url}
                     alt=""
                     initial={{ opacity: 0, scale: 1.04 }}
-                    animate={{ opacity: 0.25, scale: 1 }}
+                    animate={{ opacity: 0.72, scale: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 1, ease: "easeInOut" }}
                     className="absolute inset-0 h-full w-full object-cover"
@@ -53,10 +53,10 @@ export function Hero({ business, onBrowse }: HeroProps) {
             <img
               src={coverUrls[0]}
               alt=""
-              className="h-full w-full object-cover opacity-25"
+              className="h-full w-full object-cover opacity-[0.72]"
             />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-background/80 to-background" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,8,10,0.18)_0%,rgba(8,8,10,0.42)_58%,rgba(8,8,10,0.84)_100%)]" />
         </div>
       ) : (
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--accent-glow)_0%,_transparent_50%)] opacity-30" />
