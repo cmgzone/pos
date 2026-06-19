@@ -11007,6 +11007,9 @@ function renderWhatsAppConnectPage() {
       var signupData = null;
       var platform = null;
       var submitted = false;
+      var facebookSdk = null;
+      var facebookSdkPromise = null;
+      var metaWaitTimer = null;
       var continueButton = document.getElementById("continue");
 
       function readSessionToken() {
@@ -11028,6 +11031,11 @@ function renderWhatsAppConnectPage() {
         icon.textContent = phase === "success" ? "OK" : phase === "error" ? "!" : "...";
         if (phase === "success") icon.classList.add("success");
         if (phase === "error") icon.classList.add("error");
+      }
+
+      function setButton(label, disabled) {
+        continueButton.textContent = label;
+        continueButton.disabled = disabled;
       }
 
       function setDetails(data) {
@@ -11061,7 +11069,13 @@ function renderWhatsAppConnectPage() {
       }
 
       function loadFacebookSdk(appId, apiVersion) {
-        return new Promise(function (resolve, reject) {
+        if (facebookSdk) {
+          return Promise.resolve(facebookSdk);
+        }
+        if (facebookSdkPromise) {
+          return facebookSdkPromise;
+        }
+        facebookSdkPromise = new Promise(function (resolve, reject) {
           function init() {
             if (!window.FB) {
               reject(new Error("Meta login SDK failed to load."));
@@ -11073,7 +11087,8 @@ function renderWhatsAppConnectPage() {
               xfbml: false,
               version: apiVersion || "v20.0"
             });
-            resolve(window.FB);
+            facebookSdk = window.FB;
+            resolve(facebookSdk);
           }
           if (window.FB) {
             init();
@@ -11098,7 +11113,11 @@ function renderWhatsAppConnectPage() {
             reject(new Error("Meta login SDK failed to load."));
           };
           document.body.appendChild(script);
+        }).catch(function (error) {
+          facebookSdkPromise = null;
+          throw error;
         });
+        return facebookSdkPromise;
       }
 
       function normalizeSignupData(data) {
@@ -11132,7 +11151,8 @@ function renderWhatsAppConnectPage() {
           return;
         }
         submitted = true;
-        continueButton.disabled = true;
+        clearMetaWaitTimer();
+        setButton("Saving connection...", true);
         setPhase("busy", "Connecting WhatsApp", "Saving WhatsApp connection...");
         fetch("/api/business/whatsapp-connect/complete", {
           method: "POST",
@@ -11155,9 +11175,29 @@ function renderWhatsAppConnectPage() {
           })
           .catch(function (error) {
             submitted = false;
-            continueButton.disabled = false;
+            setButton("Try again", false);
             setPhase("error", "Connection failed", error.message || "WhatsApp connection failed.");
           });
+      }
+
+      function clearMetaWaitTimer() {
+        if (metaWaitTimer) {
+          window.clearTimeout(metaWaitTimer);
+          metaWaitTimer = null;
+        }
+      }
+
+      function startMetaWaitTimer() {
+        clearMetaWaitTimer();
+        metaWaitTimer = window.setTimeout(function () {
+          if (submitted || authCode || signupData) return;
+          setButton("Try again", false);
+          setPhase(
+            "busy",
+            "Still waiting for Meta",
+            "If no Meta signup window opened, allow pop-ups for pikipos.com and tap Try again. If Meta is open, finish setup there."
+          );
+        }, 12000);
       }
 
       function readJson(response) {
@@ -11178,6 +11218,7 @@ function renderWhatsAppConnectPage() {
         if (!data || data.type !== "WA_EMBEDDED_SIGNUP") return;
 
         if (data.event === "FINISH") {
+          clearMetaWaitTimer();
           signupData = normalizeSignupData(data.data);
           if (!signupData.phoneNumberId) {
             setPhase("error", "Connection failed", "Meta finished setup but did not return a phone number ID.");
@@ -11190,46 +11231,64 @@ function renderWhatsAppConnectPage() {
           return;
         }
         if (data.event === "CANCEL") {
+          clearMetaWaitTimer();
           setPhase("error", "Connection cancelled", "WhatsApp setup was cancelled before completion.");
-          continueButton.disabled = false;
+          setButton("Try again", false);
           return;
         }
         if (data.event === "ERROR") {
+          clearMetaWaitTimer();
           setPhase("error", "Connection failed", (data.data && data.data.error_message) || "Meta could not complete WhatsApp setup.");
-          continueButton.disabled = false;
+          setButton("Try again", false);
         }
       });
 
       continueButton.addEventListener("click", function () {
         if (!platform) return;
-        continueButton.disabled = true;
-        setPhase("busy", "Connecting WhatsApp", "Continue in the Meta signup window...");
-        loadFacebookSdk(platform.appId, platform.apiVersion)
-          .then(function (FB) {
-            FB.login(function (response) {
-              authCode = (response && response.authResponse && response.authResponse.code) || "";
-              if (!authCode) {
-                continueButton.disabled = false;
-                setPhase("error", "Connection failed", "Meta login was cancelled before authorization completed.");
-                return;
-              }
-              setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Waiting for WhatsApp number details...");
-              tryComplete();
-            }, {
-              config_id: platform.embeddedSignupConfigId,
-              response_type: "code",
-              override_default_response_type: true,
-              state: sessionToken,
-              extras: {
-                sessionInfoVersion: 2,
-                feature: "whatsapp_embedded_signup"
-              }
+        if (!facebookSdk) {
+          setButton("Preparing Meta...", true);
+          setPhase("busy", "Preparing Meta login", "Loading Meta setup. Try again in a moment...");
+          loadFacebookSdk(platform.appId, platform.apiVersion)
+            .then(function () {
+              setButton("Continue with Meta", false);
+              setPhase("ready", "Connect WhatsApp", "Continue with Meta to verify and connect your WhatsApp number.");
+            })
+            .catch(function (error) {
+              setButton("Retry Meta setup", false);
+              setPhase("error", "Connection failed", error.message || "Meta login could not be prepared.");
             });
-          })
-          .catch(function (error) {
-            continueButton.disabled = false;
-            setPhase("error", "Connection failed", error.message || "Meta login could not be opened.");
+          return;
+        }
+
+        setButton("Waiting for Meta...", true);
+        setPhase("busy", "Connecting WhatsApp", "Continue in the Meta signup window...");
+        startMetaWaitTimer();
+        try {
+          facebookSdk.login(function (response) {
+            clearMetaWaitTimer();
+            authCode = (response && response.authResponse && response.authResponse.code) || "";
+            if (!authCode) {
+              setButton("Try again", false);
+              setPhase("error", "Connection failed", "Meta login was cancelled before authorization completed.");
+              return;
+            }
+            setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Waiting for WhatsApp number details...");
+            tryComplete();
+          }, {
+            config_id: platform.embeddedSignupConfigId,
+            response_type: "code",
+            override_default_response_type: true,
+            state: sessionToken,
+            extras: {
+              sessionInfoVersion: 2,
+              feature: "whatsapp_embedded_signup"
+            }
           });
+        } catch (error) {
+          clearMetaWaitTimer();
+          setButton("Try again", false);
+          setPhase("error", "Connection failed", error.message || "Meta login could not be opened.");
+        }
       });
 
       if (!sessionToken) {
@@ -11245,7 +11304,12 @@ function renderWhatsAppConnectPage() {
             throw new Error("WhatsApp setup is not enabled yet. Contact Piki support.");
           }
           setDetails(body.data || {});
-          continueButton.disabled = false;
+          setButton("Preparing Meta...", true);
+          setPhase("busy", "Preparing Meta login", "Loading Meta setup...");
+          return loadFacebookSdk(platform.appId, platform.apiVersion);
+        })
+        .then(function () {
+          setButton("Continue with Meta", false);
           setPhase("ready", "Connect WhatsApp", "Continue with Meta to verify and connect your WhatsApp number.");
           if (authCode) {
             setPhase("busy", "Connecting WhatsApp", "Meta authorized Piki. Waiting for WhatsApp number details...");
@@ -11253,6 +11317,7 @@ function renderWhatsAppConnectPage() {
           }
         })
         .catch(function (error) {
+          setButton("Retry Meta setup", false);
           setPhase("error", "Connection failed", error.message || "WhatsApp setup could not be loaded.");
         });
     })();
