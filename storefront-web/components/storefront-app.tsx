@@ -18,6 +18,7 @@ import { ErrorState } from "./error-state";
 import { getBootstrap } from "@/lib/utils";
 import { fetchCatalog } from "@/lib/api";
 import { FadeIn } from "./motion";
+import type { BusinessBrand } from "@/lib/types";
 
 function StorefrontInner() {
   const {
@@ -41,6 +42,7 @@ function StorefrontInner() {
         const data = await fetchCatalog(businessId, branchId);
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
+        applyBrandStyles(data.business.brand);
       } catch (err) {
         setCatalog(null);
         setError(err instanceof Error ? err.message : "Failed to load store");
@@ -54,6 +56,7 @@ function StorefrontInner() {
     if (bootstrap.catalog) {
       setCatalog(bootstrap.catalog);
       setSelectedBranch(bootstrap.catalog.business.selectedBranch);
+      applyBrandStyles(bootstrap.catalog.business.brand);
       return;
     }
     if (!bootstrap.businessId) {
@@ -229,6 +232,20 @@ function StorefrontInner() {
       </AnimatePresence>
     </>
   );
+}
+
+function applyBrandStyles(brand?: BusinessBrand) {
+  const root = document.documentElement;
+  if (brand?.primaryColor) {
+    root.style.setProperty("--accent", brand.primaryColor);
+    root.style.setProperty(
+      "--accent-glow",
+      `${brand.primaryColor}26`
+    );
+  } else {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent-glow");
+  }
 }
 
 export function StorefrontApp() {
