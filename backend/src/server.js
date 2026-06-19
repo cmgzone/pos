@@ -182,6 +182,7 @@ const CATALOG_CACHE_TABLES = new Set([
   'purchase_invoices',
   'stock_transfers',
 ]);
+const CATALOG_CACHE_CODE_VERSION = '1';
 
 app.disable('x-powered-by');
 app.use(applySecurityHeaders);
@@ -7146,8 +7147,8 @@ async function loadPublicCatalog(
     [businessId, selectedBranch.id],
   );
 
-  const products = productsResult.rows.map((row) =>
-    normalizePublicCatalogProduct(row),
+  const products = deduplicatePublicCatalogProducts(
+    productsResult.rows.map((row) => normalizePublicCatalogProduct(row)),
   );
   const servicesResult = await query(
     `
@@ -7224,6 +7225,7 @@ async function buildCatalogCacheKey(
     normalizeCacheKeyPart(version),
     normalizeCacheKeyPart(branchId || 'default'),
     normalizeCacheKeyPart(currencyOverride || 'default'),
+    CATALOG_CACHE_CODE_VERSION,
   ].join(':');
 }
 
@@ -8115,6 +8117,16 @@ function normalizePublicCatalogProduct(row) {
     availability: available ? 'Available' : 'Ask for availability',
     updatedAt: toIsoString(row.updated_at),
   };
+}
+
+function deduplicatePublicCatalogProducts(products) {
+  const seen = new Set();
+  return products.filter((item) => {
+    const key = String(item.name || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeStoredProductImageUrls(value, fallbackImageUrl = null) {
