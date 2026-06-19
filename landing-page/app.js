@@ -35,8 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (savedTheme) {
         applyTheme(savedTheme);
-    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-        applyTheme('light');
+    } else {
+        applyTheme('dark');
     }
 
     if (themeToggle) {
