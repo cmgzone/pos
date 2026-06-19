@@ -477,6 +477,7 @@ let currentSlideIndex = 0;
 const slides = document.querySelectorAll('.testimonial-slide');
 
 function showSlide(index) {
+    if (!slides.length) return;
     slides.forEach(slide => slide.classList.remove('active'));
     
     if (index >= slides.length) {
