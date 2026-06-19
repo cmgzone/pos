@@ -514,6 +514,74 @@ header.scrolled .header-container { padding: 0.75rem 2rem; }
 }
 
 /* ==========================================================================
+   Product screens
+   ========================================================================== */
+.screens-section { padding: 6rem 0; }
+
+.screens-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1.5rem;
+}
+
+.screen-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--bg-soft);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.3s ease, transform 0.3s var(--ease);
+}
+.screen-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+}
+.screen-card-wide { grid-column: span 6; }
+.screen-card-phone { grid-column: span 3; }
+
+.screen-media {
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    padding: 0.55rem;
+}
+.screen-media img {
+    width: 100%;
+    display: block;
+    border-radius: 8px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    object-position: left top;
+}
+.screen-card-phone .screen-media {
+    display: grid;
+    place-items: center;
+    padding: 1.1rem 0.9rem;
+}
+.screen-card-phone .screen-media img {
+    width: min(100%, 220px);
+    max-height: 430px;
+    aspect-ratio: auto;
+    object-fit: contain;
+    border-radius: 18px;
+}
+
+.screen-copy {
+    padding: 1.25rem;
+    display: grid;
+    gap: 0.4rem;
+}
+.screen-copy h3 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+.screen-copy p {
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+/* ==========================================================================
    The story — editorial narrative with a sticky rail
    ========================================================================== */
 .story-section { padding: 6rem 0; }
@@ -1173,6 +1241,8 @@ footer {
     .hero-visual { max-width: 560px; }
 
     .work-grid { grid-template-columns: 1fr; gap: 2.5rem; max-width: 640px; }
+    .screen-card-wide,
+    .screen-card-phone { grid-column: span 6; }
 
     .story-grid { grid-template-columns: 1fr; gap: 2rem; }
     .story-rail { position: static; }
@@ -1212,6 +1282,11 @@ footer {
     .hero-actions .btn-lg { width: 100%; }
 
     .proof-line { font-size: 1.05rem; }
+
+    .screens-grid { grid-template-columns: 1fr; }
+    .screen-card-wide,
+    .screen-card-phone { grid-column: 1; }
+    .screen-card-phone .screen-media img { width: min(78vw, 240px); }
 
     .section-head { margin-bottom: 3rem; }
 
