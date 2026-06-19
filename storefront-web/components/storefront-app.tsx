@@ -6,7 +6,6 @@ import { Sparkles } from "lucide-react";
 import { StoreProvider, useStore } from "./store-provider";
 import { SiteHeader } from "./site-header";
 import { Hero } from "./hero";
-import { TrustBadges } from "./trust-badges";
 import { CatalogToolbar } from "./catalog-toolbar";
 import { ProductGrid } from "./product-grid";
 import { CartDrawer } from "./cart-drawer";
@@ -140,8 +139,6 @@ function StorefrontInner() {
         business={catalog?.business}
         onBrowse={scrollToCatalog}
       />
-
-      <TrustBadges />
 
       <main className="flex-1 w-full space-y-8 px-4 pb-16 pt-8 sm:px-6 lg:px-8 xl:px-12">
         <CatalogToolbar

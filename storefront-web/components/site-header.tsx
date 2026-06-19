@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Search, ShoppingBag, Sparkles, Phone } from "lucide-react";
+import { Search, ShoppingBag, Sparkles } from "lucide-react";
 import type { Business } from "@/lib/types";
 import { useStore } from "./store-provider";
 
@@ -41,17 +41,6 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          {business?.whatsappNumber && (
-            <a
-              href={`https://wa.me/${business.whatsappNumber.replace(/\D/g, "")}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-muted transition hover:bg-surface-elevated hover:text-foreground"
-            >
-              <Phone className="h-3.5 w-3.5 text-accent" />
-              <span className="hidden sm:inline">WhatsApp</span>
-            </a>
-          )}
           <button
             onClick={onTrackOrder}
             className="flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-muted transition hover:bg-surface-elevated hover:text-foreground"
