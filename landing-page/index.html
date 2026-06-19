@@ -41,7 +41,7 @@
     <!-- FontAwesome (functional icons only, never in gradient boxes) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=20260619-hero900">
+    <link rel="stylesheet" href="styles.css?v=20260620-stores">
 
     <!-- Structured data for rich search results -->
     <script type="application/ld+json">
@@ -277,7 +277,7 @@
                 <div class="section-head reveal">
                     <p class="section-tag"><span class="tag-num">05</span><span class="tag-dash">&mdash;</span><span class="tag-label">Get the app</span></p>
                     <h2 class="section-title">Install once. Start selling in minutes.</h2>
-                    <p class="section-lede">Pick the right installer for your hardware, install once, and you're running. Use Windows for a fixed counter with a printer and scanner; use Android if you need to carry the till to the customer.</p>
+                    <p class="section-lede">Pick the right version for your hardware. Use Windows for a fixed counter, APK for Android direct installs, and watch for Google Play and iOS releases coming soon.</p>
                 </div>
 
                 <div class="downloads-grid">
@@ -303,25 +303,69 @@
                         </div>
                     </article>
 
-                    <article class="download-card reveal-right stagger-2" data-os="android">
+                    <article class="download-card download-card-muted reveal-right stagger-2" data-os="google-play">
                         <div class="download-platform">
-                            <span class="platform-glyph"><i class="fa-brands fa-android"></i></span>
+                            <span class="platform-glyph"><i class="fa-brands fa-google-play"></i></span>
                             <div>
-                                <h3 class="download-title">Android</h3>
-                                <p class="download-sub">Phone or tablet &nbsp;·&nbsp; APK</p>
+                                <h3 class="download-title">Google Play</h3>
+                                <p class="download-sub">Android &nbsp;·&nbsp; Managed updates</p>
                             </div>
                         </div>
-                        <p class="download-description">Turn any Android phone or tablet into a mobile POS. Sell on the floor, at the market, or in the field, and sync when you're back online.</p>
+                        <p class="download-description">The Google Play release is being prepared for smoother Android setup, automatic updates, and the same offline-first selling tools.</p>
                         <ul class="download-specs">
-                            <li><i class="fa-solid fa-check"></i> Android 8.0 (API 26)+</li>
-                            <li><i class="fa-solid fa-check"></i> APK direct download</li>
+                            <li><i class="fa-solid fa-clock"></i> Play Store release in progress</li>
+                            <li><i class="fa-solid fa-check"></i> Automatic updates when live</li>
                             <li><i class="fa-solid fa-check"></i> Bluetooth printers supported</li>
                         </ul>
                         <div class="download-actions">
-                            <a href="downloads/piki-pos-android.apk" class="btn btn-primary btn-block download-link" download>
+                            <span class="btn btn-ghost btn-block btn-disabled" aria-disabled="true">
+                                <i class="fa-brands fa-google-play"></i> Google Play coming soon
+                            </span>
+                            <span class="download-meta" id="playStoreMeta">Play Store &nbsp;·&nbsp; Not released yet</span>
+                        </div>
+                    </article>
+
+                    <article class="download-card reveal-left stagger-3" data-os="android">
+                        <div class="download-platform">
+                            <span class="platform-glyph"><i class="fa-brands fa-android"></i></span>
+                            <div>
+                                <h3 class="download-title">Android APK</h3>
+                                <p class="download-sub">Phone or tablet &nbsp;·&nbsp; Direct install</p>
+                            </div>
+                        </div>
+                        <p class="download-description">Use the APK when Play Store access is not available. It is still the full mobile POS for shop-floor and field selling.</p>
+                        <ul class="download-specs">
+                            <li><i class="fa-solid fa-check"></i> Android 8.0 (API 26)+</li>
+                            <li><i class="fa-solid fa-check"></i> Manual APK install</li>
+                            <li><i class="fa-solid fa-check"></i> Works offline after setup</li>
+                        </ul>
+                        <div class="download-actions">
+                            <a href="downloads/piki-pos-android.apk" class="btn btn-ghost btn-block download-link" download>
                                 <i class="fa-solid fa-download"></i> Download APK
                             </a>
                             <span class="download-meta" id="androidMeta">v1.0.0 &nbsp;·&nbsp; ~35 MB</span>
+                        </div>
+                    </article>
+
+                    <article class="download-card download-card-muted reveal-right stagger-4" data-os="ios">
+                        <div class="download-platform">
+                            <span class="platform-glyph"><i class="fa-brands fa-apple"></i></span>
+                            <div>
+                                <h3 class="download-title">iOS</h3>
+                                <p class="download-sub">iPhone and iPad &nbsp;·&nbsp; Coming soon</p>
+                            </div>
+                        </div>
+                        <p class="download-description">The iOS app is planned for teams that want Piki POS on Apple devices, with the same cloud sync and reporting flow.</p>
+                        <ul class="download-specs">
+                            <li><i class="fa-solid fa-clock"></i> App Store release in progress</li>
+                            <li><i class="fa-solid fa-check"></i> iPhone and iPad friendly</li>
+                            <li><i class="fa-solid fa-check"></i> Designed for cloud sync</li>
+                        </ul>
+                        <div class="download-actions">
+                            <span class="btn btn-ghost btn-block btn-disabled" aria-disabled="true">
+                                <i class="fa-solid fa-clock"></i> Coming soon
+                            </span>
+                            <span class="download-meta">App Store &nbsp;·&nbsp; Not released yet</span>
                         </div>
                     </article>
                 </div>
@@ -563,6 +607,6 @@
     </div>
 
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=20260620-darkdefault"></script>
+    <script src="app.js?v=20260620-stores"></script>
 </body>
 </html>

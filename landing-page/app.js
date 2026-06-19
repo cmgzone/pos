@@ -156,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const userAgent = navigator.userAgent.toLowerCase();
     const isWindows = userAgent.includes('windows');
     const isAndroid = userAgent.includes('android');
+    const isIos = /iphone|ipad|ipod/.test(userAgent);
 
     downloadCards.forEach((card) => {
         const os = card.getAttribute('data-os');
@@ -163,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const meta = card.querySelector('.download-meta');
 
         // Highlight the card that matches the visitor's OS
-        if ((os === 'windows' && isWindows) || (os === 'android' && isAndroid)) {
+        if ((os === 'windows' && isWindows) || (os === 'android' && isAndroid) || (os === 'ios' && isIos)) {
             card.classList.add('recommended');
         }
 

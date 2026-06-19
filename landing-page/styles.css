@@ -661,9 +661,9 @@ header.scrolled .header-container { padding: 0.75rem 2rem; }
 
 .downloads-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    max-width: 880px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+    max-width: 960px;
 }
 
 .download-card {
@@ -677,6 +677,7 @@ header.scrolled .header-container { padding: 0.75rem 2rem; }
 }
 .download-card:hover { border-color: var(--accent); transform: translateY(-3px); }
 .download-card.recommended { border-color: var(--accent); }
+.download-card-muted { opacity: 0.86; }
 
 .download-platform {
     display: flex;
@@ -730,6 +731,14 @@ header.scrolled .header-container { padding: 0.75rem 2rem; }
 
 .download-actions { display: grid; gap: 0.65rem; }
 .download-link { text-decoration: none; }
+.btn-disabled,
+.btn-disabled:hover {
+    cursor: not-allowed;
+    opacity: 0.72;
+    color: var(--text-dim);
+    border-color: var(--line);
+    transform: none;
+}
 .download-meta {
     text-align: center;
     font-family: var(--font-mono);
@@ -1251,7 +1260,7 @@ footer {
     .storefront-grid { grid-template-columns: 1fr; gap: 3rem; }
     .storefront-visual { max-width: 480px; }
 
-    .downloads-grid { grid-template-columns: 1fr; max-width: 520px; margin: 0 auto; }
+    .downloads-grid { max-width: 760px; margin: 0 auto; }
 
     .contact-grid { grid-template-columns: 1fr; gap: 3rem; }
 
@@ -1290,6 +1299,7 @@ footer {
     .screen-card-phone .screen-media img { width: min(78vw, 240px); }
 
     .section-head { margin-bottom: 3rem; }
+    .downloads-grid { grid-template-columns: 1fr; max-width: 520px; }
 
     .sticky-cta-bar { display: flex; }
 
