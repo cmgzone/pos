@@ -10,6 +10,16 @@ function buildUrl(path: string): string {
   return `${getApiBase()}${path}`;
 }
 
+async function readApiJson(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    throw new Error("Server returned an invalid response. Please try again.");
+  }
+}
+
 export async function fetchCatalog(
   businessId: string,
   branchId?: string
@@ -17,8 +27,10 @@ export async function fetchCatalog(
   const params = new URLSearchParams();
   if (branchId) params.set("branchId", branchId);
   const query = params.toString() ? `?${params.toString()}` : "";
-  const res = await fetch(buildUrl(`/public/catalog/${businessId}${query}`));
-  const json = await res.json();
+  const res = await fetch(
+    buildUrl(`/public/catalog/${encodeURIComponent(businessId)}${query}`)
+  );
+  const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Failed to load catalog");
   }
@@ -30,14 +42,14 @@ export async function placeOrder(
   payload: OrderPayload
 ): Promise<{ orderNumber: string }> {
   const res = await fetch(
-    buildUrl(`/public/catalog/${businessId}/orders`),
+    buildUrl(`/public/catalog/${encodeURIComponent(businessId)}/orders`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
   );
-  const json = await res.json();
+  const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Failed to place order");
   }
@@ -49,14 +61,23 @@ export async function trackOrder(
   orderNumber: string,
   phone: string
 ): Promise<Order> {
+  const cleanOrderNumber = orderNumber.trim().replace(/^#+\s*/, "");
+  const cleanPhone = phone.trim();
+  if (!cleanOrderNumber) {
+    throw new Error("Enter a valid order number.");
+  }
+  if (!cleanPhone) {
+    throw new Error("Enter the phone number used for the order.");
+  }
+  const params = new URLSearchParams({ phone: cleanPhone });
   const res = await fetch(
     buildUrl(
-      `/public/catalog/${businessId}/orders/${orderNumber}?phone=${encodeURIComponent(
-        phone
-      )}`
+      `/public/catalog/${encodeURIComponent(businessId)}/orders/${encodeURIComponent(
+        cleanOrderNumber
+      )}?${params.toString()}`
     )
   );
-  const json = await res.json();
+  const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Order not found");
   }

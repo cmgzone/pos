@@ -10044,12 +10044,20 @@ function renderPublicCatalogPage(catalog) {
       btn.textContent = 'Tracking...';
       btn.disabled = true;
       try {
-        const no = document.getElementById('tracking-order-number').value.trim();
+        const no = document.getElementById('tracking-order-number').value.trim().replace(/^#+\\s*/, '');
         const ph = document.getElementById('tracking-phone').value.trim();
+        if (!no) throw new Error('Enter a valid order number.');
+        if (!ph) throw new Error('Enter the phone number used for the order.');
         const res = await fetch('/api/public/catalog/' + encodeURIComponent(catalog.business.id) + '/orders/' + encodeURIComponent(no) + '?phone=' + encodeURIComponent(ph));
-        const data = await res.json();
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (_) {
+          throw new Error('Server returned an invalid response. Please try again.');
+        }
         if (!res.ok) throw new Error(data.message || data.error || 'Not found');
-        const order = data.order || {};
+        const order = data.data || data.order || {};
         const status = order.status || 'pending';
         const updated = order.updatedAt ? new Date(order.updatedAt).toLocaleString() : '';
         resDiv.className = 'track-result alert alert-success';
