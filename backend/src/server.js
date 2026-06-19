@@ -8328,6 +8328,9 @@ async function renderStorefrontSpaPage(catalog) {
 
 function injectStorefrontRootFallback(html, catalog) {
   const fallback = renderStorefrontRootFallback(catalog);
+  if (/<div id="__next">/i.test(html)) {
+    return html;
+  }
   if (/<div id="root">/i.test(html)) {
     return html.replace(
       /<div id="root">[\s\S]*<\/div>\s*<\/body>/i,

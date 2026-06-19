@@ -7,8 +7,8 @@ RUN apk add --no-cache postgresql-client
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Build the storefront web app (React SPA) first so its dist ships with the backend.
-# NODE_ENV=production is set above, so we must explicitly include devDependencies (vite, etc.).
+# Build the storefront web app (Next.js static export) first so its dist ships with the backend.
+# NODE_ENV=production is set above, so we must explicitly include devDependencies.
 COPY storefront-web/package*.json ./storefront-web/
 RUN cd storefront-web && npm ci --include=dev
 
