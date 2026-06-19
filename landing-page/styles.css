@@ -16,9 +16,9 @@
     --text-dim: #a89a82;
     --text-faint: #6f6657;
 
-    --accent: #ec4899;        /* brand pink — matches app darkAccent */
-    --accent-deep: #d72668;   /* app primary — used for filled buttons */
-    --accent-soft: rgba(236, 72, 153, 0.14);
+    --accent: #d72668;        /* canonical brand rose */
+    --accent-deep: #b81e5a;   /* darker rose for hover and active states */
+    --accent-soft: rgba(215, 38, 104, 0.14);
     --moss: #8a9a6b;          /* quiet success green, used sparingly */
 
     --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
@@ -192,11 +192,11 @@ code {
 .btn-block { width: 100%; padding: 0.85rem; }
 
 .btn-primary {
-    background: var(--accent-deep);
+    background: var(--accent);
     color: #fff;
 }
 .btn-primary:hover {
-    background: var(--accent);
+    background: var(--accent-deep);
     transform: translateY(-1px);
     box-shadow: 0 10px 24px -10px var(--accent-soft);
 }
