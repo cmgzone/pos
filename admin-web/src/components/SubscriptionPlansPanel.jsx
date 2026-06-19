@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { apiUrl } from '../utils/api'
 import { friendlyError } from '../utils/errors'
 
 const FEATURE_LABELS = {
@@ -256,7 +257,7 @@ export default function SubscriptionPlansPanel({ token }) {
     try {
       const headers = { Authorization: `Bearer ${token}` }
       const loadApi = async (url) => {
-        const response = await fetch(url, { headers })
+        const response = await fetch(apiUrl(url), { headers })
         const body = await response.json().catch(() => ({}))
         if (!response.ok || body.ok !== true) {
           throw new Error(body.error || `Could not load ${url}`)
@@ -580,7 +581,7 @@ export default function SubscriptionPlansPanel({ token }) {
       if (validationError) {
         throw new Error(validationError)
       }
-      const response = await fetch(`/api/platform/payment-gateways/${provider}`, {
+      const response = await fetch(apiUrl(`/api/platform/payment-gateways/${provider}`), {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -655,7 +656,7 @@ export default function SubscriptionPlansPanel({ token }) {
       if (validationError) {
         throw new Error(validationError)
       }
-      const response = await fetch(`/api/platform/message-gateways/${provider}`, {
+      const response = await fetch(apiUrl(`/api/platform/message-gateways/${provider}`), {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
