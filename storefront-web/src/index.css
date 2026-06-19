@@ -35,7 +35,12 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scroll-padding-top: 150px; }
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 150px;
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -43,8 +48,23 @@ body {
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  padding-bottom: 96px;
   line-height: 1.5;
+  overflow-x: hidden;
+}
+#root {
+  min-height: 100vh;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.app {
+  min-height: 100vh;
+  max-width: 100%;
+  overflow-x: clip;
+  padding-bottom: 96px;
+}
+[data-static-storefront] {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 img { display: block; max-width: 100%; }
 button { font-family: inherit; }
@@ -658,7 +678,7 @@ a { color: inherit; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
-  body { padding-bottom: 88px; }
+  .app { padding-bottom: 88px; }
   .store-cover { height: 160px; }
   .store-header-inner { margin-top: -48px; gap: 14px; }
   .store-logo { width: 84px; height: 84px; border-radius: 18px; border-width: 3px; }

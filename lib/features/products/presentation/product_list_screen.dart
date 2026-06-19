@@ -192,9 +192,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                       itemBuilder: (_, _) => Container(
                         height: 100,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.3,
-                          ),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
@@ -277,7 +278,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               ),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outline)),
+                border: Border(
+                  top: BorderSide(color: Theme.of(context).colorScheme.outline),
+                ),
               ),
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _productsFuture,
@@ -350,7 +353,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       onChanged: _setSearchQuery,
       decoration: InputDecoration(
         hintText: 'Search name, SKU, or barcode...',
-        prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        prefixIcon: Icon(
+          Icons.search,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         contentPadding: EdgeInsets.symmetric(vertical: 12),
       ),
     );
@@ -515,6 +521,22 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           plan: plan,
           title: 'Piki AI Product Import Check',
           actionLabel: 'Import Products',
+          minimumRequirements: const [
+            'New products only need a name column.',
+            'Existing products can be updated with sku, barcode, or product_id.',
+          ],
+          optionalColumns: const [
+            'price',
+            'cost',
+            'category',
+            'stock',
+            'low_stock',
+            'unit',
+            'brand',
+            'image_url',
+          ],
+          defaultsNote:
+              'Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
         ),
       );
     } catch (error) {
@@ -537,7 +559,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               importError,
               prefix: 'Could not import products.',
               fallback:
-                  'Use an .xlsx or .csv file with columns like name, price, cost, sku, barcode, category, stock, low_stock, unit, and track_stock.',
+                  'Use an .xlsx or .csv file with name for new products, or sku/barcode/product_id for updates. Other product columns are optional.',
             ),
           ),
           behavior: SnackBarBehavior.floating,
@@ -811,7 +833,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(
@@ -834,7 +858,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                           onPressed: () => setState(() => expiryDate = null),
                           icon: Icon(
                             Icons.close,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       IconButton(
@@ -1019,7 +1045,9 @@ class _ProductRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.6)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.6),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1131,7 +1159,9 @@ class _ProductRow extends StatelessWidget {
                         Text(
                           'Cost: ${ShopSettings.currency}${(product['cost'] as num).toStringAsFixed(2)}/${UnitUtils.label(saleUnit)}',
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 11,
                           ),
                         ),
@@ -1257,10 +1287,7 @@ class _ProductRow extends StatelessWidget {
                     product['name'] as String? ?? '',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                   ),
                   Text(
                     'SKU: ${product['sku'] ?? 'N/A'}',

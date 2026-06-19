@@ -229,7 +229,7 @@ class SaleImportService {
     );
     if (!hasTotalColumn && !hasItemColumn) {
       throw Exception(
-        'Add a Total column, or add product/service columns such as sku, barcode, product_name, or service_name.',
+        'Only one sale format is required: a total column for summary sales, or product/service columns such as sku, barcode, product_name, or service_name.',
       );
     }
   }

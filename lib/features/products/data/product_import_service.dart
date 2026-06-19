@@ -156,7 +156,7 @@ class ProductImportService {
       'product_id',
     ])) {
       throw Exception(
-        'Add at least one product identifier column: name, product_name, sku, barcode, or product_id.',
+        'Only one product identifier column is required: name for new products, or sku, barcode, or product_id for updates.',
       );
     }
   }

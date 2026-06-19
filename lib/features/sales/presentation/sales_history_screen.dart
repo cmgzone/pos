@@ -340,6 +340,22 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           plan: plan,
           title: 'Piki AI Sales Import Check',
           actionLabel: 'Import Sales',
+          minimumRequirements: const [
+            'Summary sales can use just a total column.',
+            'Product sales can use product_name, sku, barcode, product_id, or variant_id.',
+            'Service sales can use service_name or service_id.',
+          ],
+          optionalColumns: const [
+            'date',
+            'quantity',
+            'unit_price',
+            'payment_type',
+            'customer_name',
+            'due_date',
+            'reference',
+          ],
+          defaultsNote:
+              'Blank optional fields are allowed. Quantity defaults to 1, payment defaults to cash, and item price can come from the product/service.',
         ),
       );
     } catch (error) {
@@ -362,7 +378,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               importError,
               prefix: 'Could not import sales.',
               fallback:
-                  'Use an .xlsx or .csv file with columns like date, total, payment_type, sku, barcode, product_name, quantity, unit_price, customer_name, due_date, and reference.',
+                  'Use an .xlsx or .csv file with total for summary sales, or product/service identifier columns for itemized sales. Date, quantity, payment, customer, and reference fields are optional.',
             ),
           ),
           backgroundColor: AppColors.error,

@@ -91,6 +91,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           plan: plan,
           title: 'Piki AI Customer Import Check',
           actionLabel: 'Import Customers',
+          minimumRequirements: const ['Customers only need a name column.'],
+          optionalColumns: const ['phone', 'email'],
+          defaultsNote:
+              'Blank phone and email cells are allowed. Existing customers are matched by phone, email, or name when available.',
         ),
       );
     } catch (error) {
@@ -113,7 +117,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               importError,
               prefix: 'Could not import customers.',
               fallback:
-                  'Use an .xlsx or .csv file with columns like name, phone, and email.',
+                  'Use an .xlsx or .csv file with at least a name column. Phone and email are optional.',
             ),
           ),
           backgroundColor: AppColors.error,
@@ -713,11 +717,13 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         title: Text('Contacts'),
@@ -882,7 +888,9 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           contactLine: _contactLine(s),
           hasPhone: hasPhone,
           icon: Icons.storefront_outlined,
-          iconColor: hasPhone ? AppColors.success : Theme.of(context).colorScheme.onSurfaceVariant,
+          iconColor: hasPhone
+              ? AppColors.success
+              : Theme.of(context).colorScheme.onSurfaceVariant,
           trailing: totalSpend > 0
               ? _BalanceBadge(
                   label: 'Total Spend',
@@ -931,7 +939,9 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                 fontSize: 13,
               ),
             ),
@@ -1000,10 +1010,7 @@ class _ContactCard extends StatelessWidget {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                   SizedBox(height: 4),
                   Row(
@@ -1080,10 +1087,7 @@ class _ContactCard extends StatelessWidget {
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
               ),
               SizedBox(height: 4),
               Row(

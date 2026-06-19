@@ -416,6 +416,12 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
           plan: plan,
           title: 'Piki AI Expense Import Check',
           actionLabel: 'Import Expenses',
+          minimumRequirements: const [
+            'Expenses need title and amount columns.',
+          ],
+          optionalColumns: const ['date', 'category', 'note'],
+          defaultsNote:
+              'Blank optional fields are allowed. Missing dates use today, and new categories are created automatically.',
         ),
       );
     } catch (error) {
@@ -438,7 +444,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
               importError,
               prefix: 'Could not import expenses.',
               fallback:
-                  'Use an .xlsx or .csv file with columns like title, amount, date, category, and note.',
+                  'Use an .xlsx or .csv file with title and amount columns. Date, category, and note are optional.',
             ),
           ),
           behavior: SnackBarBehavior.floating,
@@ -619,7 +625,11 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           children: [
                             Text(
                               'Period:',
-                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                             ),
                             _PeriodChip(
                               label: 'Today',
@@ -745,7 +755,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                     Text(
                                       '${category['expense_count']} entries',
                                       style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -771,7 +783,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                             ? Text(
                                 'No profit or loss data for this date range',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                               )
                             : Column(
@@ -797,7 +811,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                     decoration: BoxDecoration(
                                       border: Border(
                                         bottom: BorderSide(
-                                          color: Theme.of(context).colorScheme.outline,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.outline,
                                           width: 0.5,
                                         ),
                                       ),
@@ -820,7 +836,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                             Text(
                                               '${day['sale_count'] ?? 0} sales',
                                               style: TextStyle(
-                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
                                                 fontSize: 12,
                                               ),
                                             ),
@@ -880,7 +898,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                             ? Text(
                                 'No expenses recorded for this date range',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                               )
                             : _DailyExpenseReportList(
@@ -898,7 +918,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                               ? Text(
                                   'No expenses recorded yet',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                                 )
                               : Column(
@@ -925,8 +947,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                                 Text(
                                                   '${expense['category_name'] ?? 'Uncategorized'} - ${_formatDate(expense['incurred_on'] as String? ?? '')}',
                                                   style: TextStyle(
-                                                    color:
-                                                        Theme.of(context).colorScheme.onSurfaceVariant,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
                                                     fontSize: 12,
                                                   ),
                                                 ),
@@ -979,7 +1002,9 @@ class _PeriodChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+              color: selected
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
@@ -1071,7 +1096,9 @@ class _DailyExpenseReportList extends StatelessWidget {
                         Text(
                           '$count',
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1220,7 +1247,10 @@ class _LegendDot extends StatelessWidget {
         SizedBox(width: 6),
         Text(
           label,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+          ),
         ),
       ],
     );
@@ -1237,7 +1267,10 @@ class _MiniMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return RichText(
       text: TextSpan(
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+        ),
         children: [
           TextSpan(text: '$label: '),
           TextSpan(
@@ -1282,10 +1315,7 @@ class _SectionCard extends StatelessWidget {
               SizedBox(width: 10),
               Text(
                 title,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
             ],
           ),

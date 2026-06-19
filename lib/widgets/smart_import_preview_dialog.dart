@@ -8,6 +8,9 @@ Future<bool> showSmartImportPreviewDialog(
   required SpreadsheetImportPlan plan,
   required String title,
   required String actionLabel,
+  required List<String> minimumRequirements,
+  List<String> optionalColumns = const [],
+  String? defaultsNote,
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
@@ -24,6 +27,12 @@ Future<bool> showSmartImportPreviewDialog(
               Text(
                 'Piki AI found ${plan.dataRowCount} data row${plan.dataRowCount == 1 ? '' : 's'}'
                 '${plan.fileName == null ? '' : ' in ${plan.fileName}'} and selected row ${plan.headerRowNumber} as the header.',
+              ),
+              const SizedBox(height: 14),
+              _ImportRequirementsCard(
+                minimumRequirements: minimumRequirements,
+                optionalColumns: optionalColumns,
+                defaultsNote: defaultsNote,
               ),
               const SizedBox(height: 14),
               const Text(
@@ -44,8 +53,12 @@ Future<bool> showSmartImportPreviewDialog(
                       .map(
                         (entry) => Chip(
                           label: Text('${entry.key} -> ${entry.value}'),
-                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                         ),
                       )
                       .toList(),
@@ -90,9 +103,13 @@ Future<bool> showSmartImportPreviewDialog(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                     child: Text(
                       row.entries
@@ -125,4 +142,73 @@ Future<bool> showSmartImportPreviewDialog(
     ),
   );
   return confirmed == true;
+}
+
+class _ImportRequirementsCard extends StatelessWidget {
+  final List<String> minimumRequirements;
+  final List<String> optionalColumns;
+  final String? defaultsNote;
+
+  const _ImportRequirementsCard({
+    required this.minimumRequirements,
+    required this.optionalColumns,
+    required this.defaultsNote,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Minimum columns',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          ...minimumRequirements.map(
+            (requirement) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: theme.colorScheme.primary,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(requirement)),
+                ],
+              ),
+            ),
+          ),
+          if (optionalColumns.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Optional: ${optionalColumns.join(', ')}',
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+          if (defaultsNote != null && defaultsNote!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              defaultsNote!,
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

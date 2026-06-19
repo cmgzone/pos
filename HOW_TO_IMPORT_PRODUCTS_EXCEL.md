@@ -24,20 +24,21 @@
 
 ### Required Columns:
 
-Your spreadsheet must have at least ONE of these identifier columns:
-- **name** - Product name (required for new products)
-- **sku** - Stock Keeping Unit code
-- **barcode** - Product barcode
+Your spreadsheet does not need every product field. Use only the minimum for the job:
+- **name** - Product name for new products
+- **sku** - Stock Keeping Unit code for updating existing products
+- **barcode** - Product barcode for updating existing products
+- **product_id** - Product ID for exact updates
 
 ### Recommended Columns:
 
 | Column Name | Description | Example | Required |
 |-------------|-------------|---------|----------|
-| `name` | Product name | "Coca Cola 500ml" | ✅ Yes (for new) |
-| `price` | Selling price | 50 | ✅ Recommended |
+| `name` | Product name | "Coca Cola 500ml" | ✅ Minimum for new products |
+| `price` | Selling price | 50 | ⚠️ Optional |
 | `cost` | Cost price | 35 | ⚠️ Optional |
-| `sku` | Product SKU | "CC-500" | ⚠️ Optional |
-| `barcode` | Barcode number | "123456789" | ⚠️ Optional |
+| `sku` | Product SKU | "CC-500" | ✅ Minimum for SKU updates |
+| `barcode` | Barcode number | "123456789" | ✅ Minimum for barcode updates |
 | `category` | Category name | "Beverages" | ⚠️ Optional |
 | `stock` | Current stock | 100 | ⚠️ Optional |
 | `low_stock` | Reorder level | 10 | ⚠️ Optional |
@@ -62,25 +63,36 @@ Your spreadsheet must have at least ONE of these identifier columns:
 
 ## 📝 Sample Excel Template
 
-### Example 1: Basic Product Import
+### Example 1: Basic Product Import (Minimum)
 
-| name | price | cost | sku | barcode | category | stock | low_stock | unit |
-|------|-------|------|-----|---------|----------|-------|-----------|------|
-| Coca Cola 500ml | 50 | 35 | CC-500 | 12345 | Beverages | 100 | 10 | pcs |
-| Fanta Orange 500ml | 50 | 35 | FO-500 | 12346 | Beverages | 80 | 10 | pcs |
-| Bread White | 60 | 45 | BR-001 | 12347 | Bakery | 50 | 5 | pcs |
-| Milk 1L | 120 | 90 | ML-001 | 12348 | Dairy | 30 | 5 | liter |
+| name |
+|------|
+| Coca Cola 500ml |
+| Fanta Orange 500ml |
+| Bread White |
+| Milk 1L |
 
-### Example 2: With Stock Units
+Missing price and stock import as `0`, low stock defaults to `5`, and unit defaults to `pcs`.
+
+### Example 2: With Useful Optional Fields
+
+| name | price | stock | category |
+|------|-------|-------|----------|
+| Coca Cola 500ml | 50 | 100 | Beverages |
+| Fanta Orange 500ml | 50 | 80 | Beverages |
+| Bread White | 60 | 50 | Bakery |
+| Milk 1L | 120 | 30 | Dairy |
+
+### Example 3: With Stock Units
 
 | name | price | stock | stock_unit | sale_unit | sale_to_stock_factor |
 |------|-------|-------|------------|-----------|---------------------|
 | Soda Cans | 50 | 144 | cans | pack | 6 |
 | Water Bottles | 30 | 240 | bottles | carton | 24 |
 
-### Example 3: Update Existing Products
+### Example 4: Update Existing Products
 
-To update existing products, include the `sku` or `barcode` that matches your existing inventory:
+To update existing products, include `sku`, `barcode`, or `product_id` that matches your existing inventory:
 
 | sku | price | stock |
 |-----|-------|-------|
@@ -195,14 +207,14 @@ Piki AI understands different column names:
 
 ## ⚠️ Common Issues & Solutions
 
-### Issue 1: "No name column found"
-**Solution:** Make sure your Excel has a column called `name`, `product_name`, or similar.
+### Issue 1: "Only one product identifier column is required"
+**Solution:** Add `name` for new products, or add `sku`, `barcode`, or `product_id` for updates.
 
-### Issue 2: "Price must be greater than zero"
-**Solution:** Check that price column has valid numbers, not text or empty cells.
+### Issue 2: Price is missing after import
+**Solution:** Add a `price`, `selling_price`, or `sale_price` column. If price is blank, Piki imports it as `0`.
 
 ### Issue 3: Products duplicated instead of updated
-**Solution:** Include `sku` or `barcode` column to match existing products.
+**Solution:** Include `sku`, `barcode`, or `product_id` column to match existing products.
 
 ### Issue 4: Categories not matching
 **Solution:** Use exact category names as they appear in your system (or new ones will be created).
@@ -251,16 +263,21 @@ Piki AI understands different column names:
 
 ## 📥 Download Sample Template
 
-Create an Excel file with these headers:
+Minimum new-product template:
 
 ```
-name | price | cost | sku | barcode | category | stock | low_stock | unit | track_stock
+name
 ```
 
 **Example data:**
 ```
-Coca Cola 500ml | 50 | 35 | CC-500 | 12345 | Beverages | 100 | 10 | pcs | TRUE
-Fanta Orange 500ml | 50 | 35 | FO-500 | 12346 | Beverages | 80 | 10 | pcs | TRUE
+Coca Cola 500ml
+Fanta Orange 500ml
+```
+
+Optional richer template:
+```
+name | price | cost | sku | barcode | category | stock | low_stock | unit | track_stock
 ```
 
 ---
@@ -321,7 +338,7 @@ To update existing products in bulk:
 
 **Minimum Required:**
 - `name` column (for new products)
-- OR `sku`/`barcode` (for updates)
+- OR `sku`/`barcode`/`product_id` (for updates)
 
 **AI Features:**
 - Smart column detection ✅

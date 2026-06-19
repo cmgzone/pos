@@ -8367,7 +8367,7 @@ function renderStorefrontRootFallback(catalog) {
       const description = limitText(item.description || item.summary, 120);
       const price = formatStorefrontFallbackPrice(item, catalog);
       return `
-          <article style="border:1px solid #e5e7eb;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 10px 24px -18px rgba(15,23,42,.38)">
+          <article style="min-width:0;border:1px solid #e5e7eb;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 10px 24px -18px rgba(15,23,42,.38)">
             <div style="height:150px;background:#f3f4f6;display:grid;place-items:center;color:#9ca3af;font-weight:800">
               ${
                 imageUrl
@@ -8391,11 +8391,11 @@ function renderStorefrontRootFallback(catalog) {
         </div>`;
 
   return `<div id="root">
-    <main data-static-storefront="true" style="min-height:100vh;background:#f6f7f9;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <main data-static-storefront="true" style="box-sizing:border-box;min-height:100vh;max-width:100%;overflow-x:hidden;background:#f6f7f9;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
       <style>
         @keyframes storefrontHeroFade { 0%, ${slideVisibleEnd}% { opacity: 1; transform: scale(1.08); } ${slideFadeEnd}%, 100% { opacity: 0; transform: scale(1.02); } }
       </style>
-      <section style="position:relative;overflow:hidden;background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff;padding:46px 20px 58px">
+      <section style="box-sizing:border-box;position:relative;overflow:hidden;max-width:100%;background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff;padding:46px 20px 58px">
         ${fallbackSlides}
         <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(17,24,39,.9),rgba(31,41,55,.72) 55%,rgba(0,0,0,.42));"></div>
         <div style="position:relative;max-width:1120px;margin:0 auto;display:grid;gap:22px">
@@ -8426,10 +8426,10 @@ function renderStorefrontRootFallback(catalog) {
           </div>
         </div>
       </section>
-      <section style="max-width:1120px;margin:-28px auto 0;padding:0 20px 48px">
+      <section style="box-sizing:border-box;width:min(1120px,100%);max-width:100%;margin:-28px auto 0;padding:0 20px 48px">
         ${
           visibleItems.length
-            ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px">${productCards}</div>`
+            ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:18px;min-width:0">${productCards}</div>`
             : emptyState
         }
       </section>
@@ -8550,7 +8550,7 @@ function renderPublicCatalogPage(catalog) {
       --wrap: min(1240px, 100% - 32px);
     }
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scroll-padding-top: 150px; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scroll-padding-top: 150px; overflow-x: hidden; }
     body {
       margin: 0;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -8560,6 +8560,7 @@ function renderPublicCatalogPage(catalog) {
       -moz-osx-font-smoothing: grayscale;
       padding-bottom: 96px;
       line-height: 1.5;
+      overflow-x: hidden;
     }
     img { display: block; max-width: 100%; }
     button { font-family: inherit; }
