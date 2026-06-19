@@ -4,6 +4,7 @@ const { query } = require('./db');
 const { normalizeCountryCode } = require('./subscriptionPlans');
 
 const SECRET_MASK_PREFIX = '********';
+const META_API_VERSION_PATTERN = /^v\d+\.\d+$/;
 
 let schemaReady = false;
 
@@ -159,6 +160,15 @@ async function saveMessageGateway(provider, input = {}, target = query) {
     ...(existing || {}),
     provider: cleanProvider,
   });
+  if (cleanProvider === 'whatsapp') {
+    const apiVersion = normalizeText(normalized.publicConfig?.apiVersion);
+    if (apiVersion && !META_API_VERSION_PATTERN.test(apiVersion)) {
+      throw createError(
+        400,
+        'WhatsApp API Version must look like v25.0. Use zero, not the letter O.',
+      );
+    }
+  }
 
   const result = await runQuery(
     target,

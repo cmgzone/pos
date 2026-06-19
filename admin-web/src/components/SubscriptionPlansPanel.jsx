@@ -32,6 +32,7 @@ const SELLING_MODE_LABELS = {
 }
 
 const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
+const META_API_VERSION_PATTERN = /^v\d+\.\d+$/
 
 const GATEWAY_FIELDS = {
   google_play: {
@@ -180,6 +181,10 @@ function messageGatewayConfigurationError(gateway) {
     const secretConfig = gateway.secretConfig || {}
     if (!isHttpsUrl(publicConfig.baseUrl)) {
       return 'WhatsApp Graph API URL must use HTTPS.'
+    }
+    const apiVersion = String(publicConfig.apiVersion || '').trim()
+    if (apiVersion && !META_API_VERSION_PATTERN.test(apiVersion)) {
+      return 'WhatsApp API Version must look like v25.0. Use zero, not the letter O.'
     }
     const signupConfigId =
       publicConfig.embeddedSignupConfigId ||
