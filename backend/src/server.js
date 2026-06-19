@@ -2810,7 +2810,8 @@ app.post('/api/business/whatsapp-connect/session', async (req, res, next) => {
     if (!platform.isActive || !platform.setupReady) {
       throw createHttpError(
         400,
-        'WhatsApp setup is not enabled yet. Contact Piki support.',
+        platform.setupBlockedReason ||
+          'WhatsApp setup is not enabled yet. Contact Piki support.',
       );
     }
     if (!platform.oauthRedirectUri) {
@@ -10842,11 +10843,21 @@ function messageGatewayReadinessErrors(gateway) {
       publicConfig.configId;
     const hasEmbeddedSignup =
       publicConfig.appId && signupConfigId && secretConfig.appSecret;
+    const embeddedSignupEligible =
+      publicConfig.embeddedSignupEligible === true ||
+      ['true', 'yes', '1', 'on'].includes(
+        String(publicConfig.embeddedSignupEligible || '').trim().toLowerCase(),
+      );
     const hasFallbackSender =
       publicConfig.phoneNumberId && secretConfig.accessToken;
     if (!hasEmbeddedSignup && !hasFallbackSender) {
       errors.push(
         'Embedded Signup App ID, Config ID, and App Secret, or fallback Phone Number ID and access token',
+      );
+    }
+    if (hasEmbeddedSignup && !embeddedSignupEligible && !hasFallbackSender) {
+      errors.push(
+        'Meta BSP/Tech Provider approval for Embedded Signup, or fallback Phone Number ID and access token',
       );
     }
   } else if (gateway.provider === 'africas_talking') {
@@ -11342,7 +11353,7 @@ function renderWhatsAppConnectPage() {
         .then(function (body) {
           platform = (body.data && body.data.platform) || {};
           if (!platform.isActive || !platform.setupReady) {
-            throw new Error("WhatsApp setup is not enabled yet. Contact Piki support.");
+            throw new Error(platform.setupBlockedReason || "WhatsApp setup is not enabled yet. Contact Piki support.");
           }
           setDetails(body.data || {});
           if (authCode) {

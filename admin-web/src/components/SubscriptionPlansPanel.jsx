@@ -62,6 +62,7 @@ const MESSAGE_GATEWAY_FIELDS = {
       ['apiVersion', 'API Version'],
       ['appId', 'Meta App ID'],
       ['embeddedSignupConfigId', 'Embedded Signup Config ID'],
+      ['embeddedSignupEligible', 'BSP/Tech Provider Approved (true/false)'],
       ['oauthRedirectUri', 'OAuth Redirect URI'],
       ['phoneNumberId', 'Fallback Phone Number ID'],
     ],

@@ -270,6 +270,12 @@ async function getBusinessWhatsAppConnectStatus(businessId, target = query) {
     normalizeText(publicConfig.embeddedSignupConfigId) ||
     normalizeText(publicConfig.businessLoginConfigurationId) ||
     normalizeText(publicConfig.configId);
+  const embeddedSignupEligible = normalizeConfigFlag(
+    publicConfig.embeddedSignupEligible,
+  );
+  const setupBlockedReason = embeddedSignupEligible
+    ? ''
+    : 'WhatsApp Embedded Signup requires Meta BSP or Tech Provider approval before store owners can connect their own numbers.';
 
   return {
     ...settings,
@@ -278,8 +284,15 @@ async function getBusinessWhatsAppConnectStatus(businessId, target = query) {
       appId: normalizeText(publicConfig.appId) || '',
       apiVersion: normalizeText(publicConfig.apiVersion) || 'v20.0',
       embeddedSignupConfigId: signupConfigId || '',
+      embeddedSignupEligible,
       oauthRedirectUri: normalizeText(publicConfig.oauthRedirectUri) || '',
-      setupReady: Boolean(publicConfig.appId && signupConfigId),
+      setupReady: Boolean(
+        publicConfig.appId &&
+          signupConfigId &&
+          publicConfig.oauthRedirectUri &&
+          embeddedSignupEligible,
+      ),
+      setupBlockedReason,
       docsUrl:
         'https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview',
     },
@@ -1062,6 +1075,13 @@ function normalizeConfigObject(input, existing = {}, { secret = false } = {}) {
     normalized[cleanKey] = typeof value === 'string' ? value.trim() : value;
   }
   return normalized;
+}
+
+function normalizeConfigFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  const clean = normalizeText(value).toLowerCase();
+  return clean === 'true' || clean === 'yes' || clean === '1' || clean === 'on';
 }
 
 function maskConfigObject(input = {}) {
