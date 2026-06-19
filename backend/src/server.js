@@ -8391,14 +8391,27 @@ function renderStorefrontRootFallback(catalog) {
         </div>`;
 
   return `<div id="root">
-    <main data-static-storefront="true" style="box-sizing:border-box;min-height:100vh;max-width:100%;overflow-x:hidden;background:#f6f7f9;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <main data-static-storefront="true" style="box-sizing:border-box;width:100%;max-width:100%;overflow-x:hidden;background:#f6f7f9;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
       <style>
         @keyframes storefrontHeroFade { 0%, ${slideVisibleEnd}% { opacity: 1; transform: scale(1.08); } ${slideFadeEnd}%, 100% { opacity: 0; transform: scale(1.02); } }
+        [data-static-storefront] * { box-sizing: border-box; }
+        [data-static-storefront] .static-store-hero { padding: clamp(32px, 4vw, 46px) 20px clamp(42px, 5vw, 56px); }
+        [data-static-storefront] .static-store-wrap { width: min(1120px, 100%); margin: 0 auto; }
+        [data-static-storefront] .static-store-grid-section { width: min(1120px, 100%); max-width: 100%; margin: -24px auto 0; padding: 0 20px 32px; }
+        [data-static-storefront] .static-store-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 260px)); justify-content: center; gap: 18px; min-width: 0; }
+        @media (max-width: 640px) {
+          [data-static-storefront] .static-store-hero { padding: 30px 16px 44px; }
+          [data-static-storefront] .static-store-grid-section { padding: 0 14px 28px; }
+          [data-static-storefront] .static-store-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        }
+        @media (max-width: 360px) {
+          [data-static-storefront] .static-store-grid { grid-template-columns: 1fr; }
+        }
       </style>
-      <section style="box-sizing:border-box;position:relative;overflow:hidden;max-width:100%;background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff;padding:46px 20px 58px">
+      <section class="static-store-hero" style="box-sizing:border-box;position:relative;overflow:hidden;max-width:100%;background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff">
         ${fallbackSlides}
         <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(17,24,39,.9),rgba(31,41,55,.72) 55%,rgba(0,0,0,.42));"></div>
-        <div style="position:relative;max-width:1120px;margin:0 auto;display:grid;gap:22px">
+        <div class="static-store-wrap" style="position:relative;display:grid;gap:22px">
           <div style="display:flex;align-items:center;gap:16px">
             <div style="width:64px;height:64px;border-radius:20px;background:#fff;display:grid;place-items:center;color:${escapeHtml(primaryColor)};font-weight:900;font-size:24px;overflow:hidden">
               ${
@@ -8426,10 +8439,10 @@ function renderStorefrontRootFallback(catalog) {
           </div>
         </div>
       </section>
-      <section style="box-sizing:border-box;width:min(1120px,100%);max-width:100%;margin:-28px auto 0;padding:0 20px 48px">
+      <section class="static-store-grid-section">
         ${
           visibleItems.length
-            ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:18px;min-width:0">${productCards}</div>`
+            ? `<div class="static-store-grid">${productCards}</div>`
             : emptyState
         }
       </section>
