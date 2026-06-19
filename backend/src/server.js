@@ -8395,13 +8395,13 @@ function renderStorefrontRootFallback(catalog) {
       <style>
         @keyframes storefrontHeroFade { 0%, ${slideVisibleEnd}% { opacity: 1; transform: scale(1.08); } ${slideFadeEnd}%, 100% { opacity: 0; transform: scale(1.02); } }
         [data-static-storefront] * { box-sizing: border-box; }
-        [data-static-storefront] .static-store-hero { padding: clamp(32px, 4vw, 46px) 20px clamp(42px, 5vw, 56px); }
+        [data-static-storefront] .static-store-hero { padding: clamp(24px, 3vw, 34px) 20px clamp(30px, 4vw, 42px); }
         [data-static-storefront] .static-store-wrap { width: min(1120px, 100%); margin: 0 auto; }
-        [data-static-storefront] .static-store-grid-section { width: min(1120px, 100%); max-width: 100%; margin: -24px auto 0; padding: 0 20px 32px; }
-        [data-static-storefront] .static-store-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 260px)); justify-content: center; gap: 18px; min-width: 0; }
+        [data-static-storefront] .static-store-grid-section { width: min(1120px, 100%); max-width: 100%; margin: -18px auto 0; padding: 0 20px 28px; }
+        [data-static-storefront] .static-store-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 252px)); justify-content: center; gap: 18px; min-width: 0; }
         @media (max-width: 640px) {
-          [data-static-storefront] .static-store-hero { padding: 30px 16px 44px; }
-          [data-static-storefront] .static-store-grid-section { padding: 0 14px 28px; }
+          [data-static-storefront] .static-store-hero { padding: 24px 14px 34px; }
+          [data-static-storefront] .static-store-grid-section { padding: 0 12px 24px; }
           [data-static-storefront] .static-store-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         }
         @media (max-width: 360px) {
@@ -8411,9 +8411,9 @@ function renderStorefrontRootFallback(catalog) {
       <section class="static-store-hero" style="box-sizing:border-box;position:relative;overflow:hidden;max-width:100%;background:linear-gradient(135deg,#111827 0%,#1f2937 62%,${escapeHtml(primaryColor)} 150%);color:#fff">
         ${fallbackSlides}
         <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(17,24,39,.9),rgba(31,41,55,.72) 55%,rgba(0,0,0,.42));"></div>
-        <div class="static-store-wrap" style="position:relative;display:grid;gap:22px">
+        <div class="static-store-wrap" style="position:relative;display:grid;gap:18px">
           <div style="display:flex;align-items:center;gap:16px">
-            <div style="width:64px;height:64px;border-radius:20px;background:#fff;display:grid;place-items:center;color:${escapeHtml(primaryColor)};font-weight:900;font-size:24px;overflow:hidden">
+            <div style="width:56px;height:56px;border-radius:18px;background:#fff;display:grid;place-items:center;color:${escapeHtml(primaryColor)};font-weight:900;font-size:22px;overflow:hidden">
               ${
                 logoUrl
                   ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(businessName)} logo" style="width:100%;height:100%;object-fit:cover">`
@@ -8422,18 +8422,18 @@ function renderStorefrontRootFallback(catalog) {
             </div>
             <div>
               <p style="margin:0 0 4px;color:rgba(255,255,255,.72);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.06em">Online Store</p>
-              <h1 style="margin:0;font-size:clamp(30px,5vw,56px);line-height:1.02">${escapeHtml(businessName)}</h1>
+              <h1 style="margin:0;font-size:clamp(28px,4.2vw,48px);line-height:1.02">${escapeHtml(businessName)}</h1>
             </div>
           </div>
           <div style="max-width:720px">
-            <p style="margin:0 0 10px;font-size:clamp(18px,2.6vw,26px);font-weight:800">${escapeHtml(tagline)}</p>
-            <p style="margin:0;color:rgba(255,255,255,.78);font-size:16px;line-height:1.7">${escapeHtml(description)}</p>
+            <p style="margin:0 0 8px;font-size:clamp(17px,2.2vw,24px);font-weight:800">${escapeHtml(tagline)}</p>
+            <p style="margin:0;color:rgba(255,255,255,.78);font-size:16px;line-height:1.55">${escapeHtml(description)}</p>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:10px">
-            <span style="border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800">${escapeHtml(itemCountLabel)}</span>
+            <span style="border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800">${escapeHtml(itemCountLabel)}</span>
             ${
               branchName
-                ? `<span style="border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800">${escapeHtml(branchName)}</span>`
+                ? `<span style="border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800">${escapeHtml(branchName)}</span>`
                 : ''
             }
           </div>
