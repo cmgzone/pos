@@ -9,6 +9,10 @@ const DEFAULT_PLATFORM_ADMIN_PASSWORD = 'superadmin123';
 const DEFAULT_PLATFORM_JWT_SECRET = 'velora-platform-jwt-super-secret-dev';
 const DEFAULT_EMAIL_OTP_SECRET = 'piki-pos-email-otp-dev-secret';
 const DEFAULT_DEV_ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
   'http://localhost:4000',
   'http://127.0.0.1:4000',
   'http://localhost:5173',

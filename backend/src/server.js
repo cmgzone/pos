@@ -4659,7 +4659,7 @@ function buildCorsOptions() {
     ),
   );
   return {
-    origin(origin, callback) {
+    origin(origin, callback, req) {
       // Allow requests with no Origin header (mobile apps, server-to-server).
       // Reject explicit null origins to reduce CSRF surface from file:// or redirects.
       if (origin === undefined) {
@@ -4670,6 +4670,16 @@ function buildCorsOptions() {
       if (allowedOrigins.has(normalizedOrigin)) {
         callback(null, true);
         return;
+      }
+      // Allow same-origin requests (when the storefront is served by this backend).
+      if (req) {
+        const host = req.get("host");
+        const proto = req.get("x-forwarded-proto") || req.protocol || "http";
+        const serverOrigin = `${proto}://${host}`.replace(/\/+$/, "");
+        if (serverOrigin === normalizedOrigin) {
+          callback(null, true);
+          return;
+        }
       }
       callback(createHttpError(403, 'Origin is not allowed'));
     },

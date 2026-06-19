@@ -2,6 +2,8 @@ import type { Catalog, Order, OrderPayload } from "./types";
 
 function getApiBase(): string {
   if (typeof window === "undefined") return "";
+  if (window.__STOREFRONT__?.businessId || window.__STOREFRONT_CATALOG__) return "";
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) return process.env.NEXT_PUBLIC_API_BASE_URL;
   return "/api";
 }
 
