@@ -1,3 +1,5 @@
+import type { CatalogItem } from "./types";
+
 export function formatPrice(
   amount: number,
   currencySymbol: string,
@@ -42,4 +44,19 @@ export function clamp(num: number, min: number, max: number): number {
 
 export function classNames(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");
+}
+
+export function getCatalogItemImages(
+  item: Pick<CatalogItem, "imageUrl" | "imageUrls">
+): string[] {
+  const seen = new Set<string>();
+  const urls = [item.imageUrl, ...(Array.isArray(item.imageUrls) ? item.imageUrls : [])];
+
+  return urls.reduce<string[]>((images, url) => {
+    const value = typeof url === "string" ? url.trim() : "";
+    if (!value || seen.has(value)) return images;
+    seen.add(value);
+    images.push(value);
+    return images;
+  }, []);
 }

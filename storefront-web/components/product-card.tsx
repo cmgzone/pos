@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Check, Tag, ImageOff } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { useStore } from "./store-provider";
 import { StaggerItem, HoverLift } from "./motion";
 import { QuickViewModal } from "./quick-view-modal";
@@ -39,7 +39,9 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
   const price = selectedVariant ? selectedVariant.price : item.price;
   const isOutOfStock = item.trackStock && item.stock <= 0 && !item.hasVariants;
-  const image = item.imageUrl || item.imageUrls?.[0];
+  const images = getCatalogItemImages(item);
+  const image = images[0];
+  const imageCount = images.length;
   const hasImage = image && !imageError;
   const accent = categoryColor(item.category);
 
@@ -105,6 +107,11 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             {item.variants && item.variants.length > 1 && (
               <span className="absolute bottom-2 left-2 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted">
                 {item.variants.length} options
+              </span>
+            )}
+            {imageCount > 1 && (
+              <span className="absolute bottom-2 right-2 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted">
+                {imageCount} photos
               </span>
             )}
           </div>

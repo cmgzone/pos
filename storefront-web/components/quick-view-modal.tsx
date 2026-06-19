@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { X, Plus, Package } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Plus, Package } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
-import { formatPrice } from "@/lib/utils";
+import { classNames, formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { ScaleIn } from "./motion";
 
 interface QuickViewModalProps {
@@ -25,8 +26,35 @@ export function QuickViewModal({
   onClose,
   onAdd,
 }: QuickViewModalProps) {
+  const images = useMemo(() => getCatalogItemImages(item), [item]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [imageError, setImageError] = useState(false);
   const price = selectedVariant ? selectedVariant.price : item.price;
-  const image = item.imageUrl || item.imageUrls?.[0];
+  const image = images[selectedImageIndex];
+  const hasMultipleImages = images.length > 1;
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
+    setImageError(false);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (selectedImageIndex >= images.length) {
+      setSelectedImageIndex(0);
+      setImageError(false);
+    }
+  }, [images.length, selectedImageIndex]);
+
+  const chooseImage = (index: number) => {
+    setSelectedImageIndex(index);
+    setImageError(false);
+  };
+
+  const stepImage = (offset: number) => {
+    if (!images.length) return;
+    setSelectedImageIndex((current) => (current + offset + images.length) % images.length);
+    setImageError(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -47,16 +75,63 @@ export function QuickViewModal({
 
         <div className="grid max-h-[80vh] overflow-y-auto sm:grid-cols-2">
           <div className="relative aspect-square bg-surface-elevated sm:aspect-auto">
-            {image ? (
+            {image && !imageError ? (
               <img
                 src={image}
                 alt={item.name}
+                onError={() => setImageError(true)}
                 className="h-full w-full object-cover"
               />
             ) : (
               <div className="flex h-full min-h-[240px] items-center justify-center">
                 <Package className="h-16 w-16 text-white/10" />
               </div>
+            )}
+            {hasMultipleImages && (
+              <>
+                <span className="absolute left-3 top-3 rounded-full bg-background/70 px-2 py-1 text-[11px] font-medium text-muted backdrop-blur">
+                  {selectedImageIndex + 1}/{images.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => stepImage(-1)}
+                  className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/70 text-foreground backdrop-blur transition hover:bg-background/90"
+                  aria-label="Previous product photo"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stepImage(1)}
+                  className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/70 text-foreground backdrop-blur transition hover:bg-background/90"
+                  aria-label="Next product photo"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto rounded-2xl bg-background/70 p-2 backdrop-blur">
+                  {images.map((url, index) => (
+                    <button
+                      key={`${url}-${index}`}
+                      type="button"
+                      onClick={() => chooseImage(index)}
+                      className={classNames(
+                        "h-12 w-12 shrink-0 overflow-hidden rounded-xl ring-1 transition",
+                        selectedImageIndex === index
+                          ? "ring-accent"
+                          : "ring-white/10 opacity-70 hover:opacity-100"
+                      )}
+                      aria-label={`Show product photo ${index + 1}`}
+                    >
+                      <img
+                        src={url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
