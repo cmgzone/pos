@@ -7,7 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // 0. Light / Dark theme toggle
     // ----------------------------------------------------------------------
     const themeToggle = document.getElementById('themeToggle');
-    const savedTheme = localStorage.getItem('piki-theme');
+    let savedTheme = null;
+    try {
+        savedTheme = localStorage.getItem('piki-theme');
+    } catch (_) {
+        // localStorage unavailable (e.g. sandboxed iframe)
+    }
 
     function applyTheme(theme) {
         if (theme === 'light') {
@@ -90,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             header.classList.remove('scrolled');
         }
-    });
+    }, { passive: true });
 
     // ----------------------------------------------------------------------
     // 1b. Sticky mobile CTA bar: show after hero, hide near contact/footer
@@ -283,12 +288,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function moneyFromMinor(amountMinor, currency) {
         const amount = Number(amountMinor || 0) / 100;
-        const hasDecimals = !['KES', 'UGX', 'TZS', 'NGN'].includes(String(currency || '').toUpperCase());
+        const isZeroDecimal = ['KES', 'UGX', 'TZS', 'NGN'].includes(String(currency || '').toUpperCase());
         return new Intl.NumberFormat('en', {
             style: 'currency',
             currency: currency || 'KES',
-            minimumFractionDigits: hasDecimals ? 2 : 0,
-            maximumFractionDigits: hasDecimals ? 2 : 0
+            minimumFractionDigits: isZeroDecimal ? 0 : 2,
+            maximumFractionDigits: isZeroDecimal ? 0 : 2
         }).format(amount);
     }
 
@@ -458,11 +463,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function escapeHtml(value) {
     return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 // --------------------------------------------------------------------------
