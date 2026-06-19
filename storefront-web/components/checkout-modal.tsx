@@ -11,11 +11,12 @@ import { ScaleIn } from "./motion";
 
 interface CheckoutModalProps {
   business: Business;
-  currency: string;
+  currencySymbol: string;
+  currencyCode: string;
   onClose: () => void;
 }
 
-export function CheckoutModal({ business, currency, onClose }: CheckoutModalProps) {
+export function CheckoutModal({ business, currencySymbol, currencyCode, onClose }: CheckoutModalProps) {
   const { cart, cartTotal, clearCart } = useStore();
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -216,7 +217,7 @@ export function CheckoutModal({ business, currency, onClose }: CheckoutModalProp
                 <div className="flex items-center justify-between border-t border-white/10 pt-4">
                   <span className="text-muted">Total</span>
                   <span className="text-2xl font-bold text-accent">
-                    {formatPrice(cartTotal, currency, currency)}
+                    {formatPrice(cartTotal, currencySymbol, currencyCode)}
                   </span>
                 </div>
 

@@ -8,7 +8,8 @@ import { ScaleIn } from "./motion";
 
 interface QuickViewModalProps {
   item: CatalogItem;
-  currency: string;
+  currencySymbol: string;
+  currencyCode: string;
   selectedVariant?: ProductVariant;
   onVariantChange: (variant: ProductVariant | undefined) => void;
   onClose: () => void;
@@ -17,7 +18,8 @@ interface QuickViewModalProps {
 
 export function QuickViewModal({
   item,
-  currency,
+  currencySymbol,
+  currencyCode,
   selectedVariant,
   onVariantChange,
   onClose,
@@ -88,7 +90,7 @@ export function QuickViewModal({
                           : "bg-surface-elevated ring-1 ring-white/10 hover:bg-white/5"
                       }`}
                     >
-                      {variant.name} — {formatPrice(variant.price, currency, currency)}
+                      {variant.name} — {formatPrice(variant.price, currencySymbol, currencyCode)}
                     </button>
                   ))}
                 </div>
@@ -97,7 +99,7 @@ export function QuickViewModal({
 
             <div className="mt-auto flex items-center justify-between pt-8">
               <span className="text-2xl font-bold text-accent">
-                {formatPrice(price, currency, currency)}
+                {formatPrice(price, currencySymbol, currencyCode)}
               </span>
               <button
                 onClick={() => {

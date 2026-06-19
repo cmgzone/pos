@@ -10,10 +10,11 @@ import { StaggerItem, HoverLift } from "./motion";
 
 interface ServiceCardProps {
   item: CatalogItem;
-  currency: string;
+  currencySymbol: string;
+  currencyCode: string;
 }
 
-export function ServiceCard({ item, currency }: ServiceCardProps) {
+export function ServiceCard({ item, currencySymbol, currencyCode }: ServiceCardProps) {
   const { addToCart } = useStore();
   const [added, setAdded] = useState(false);
 
@@ -60,7 +61,7 @@ export function ServiceCard({ item, currency }: ServiceCardProps) {
             <div className="mt-auto flex items-center justify-between pt-3">
               <div className="flex flex-col">
                 <span className="text-base font-bold text-accent">
-                  {formatPrice(item.price, currency, currency)}
+                  {formatPrice(item.price, currencySymbol, currencyCode)}
                 </span>
                 {duration && (
                   <span className="flex items-center gap-1 text-[10px] text-muted">

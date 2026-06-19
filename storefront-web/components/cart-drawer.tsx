@@ -7,10 +7,11 @@ import { formatPrice } from "@/lib/utils";
 
 interface CartDrawerProps {
   onCheckout: () => void;
-  currency: string;
+  currencySymbol: string;
+  currencyCode: string;
 }
 
-export function CartDrawer({ onCheckout, currency }: CartDrawerProps) {
+export function CartDrawer({ onCheckout, currencySymbol, currencyCode }: CartDrawerProps) {
   const {
     cart,
     isCartOpen,
@@ -103,7 +104,7 @@ export function CartDrawer({ onCheckout, currency }: CartDrawerProps) {
                               )}
                               <div className="mt-auto flex items-center justify-between">
                                 <span className="text-sm font-semibold text-accent">
-                                  {formatPrice(price * quantity, currency, currency)}
+                                  {formatPrice(price * quantity, currencySymbol, currencyCode)}
                                 </span>
                                 <div className="flex items-center gap-2">
                                   <button
@@ -144,7 +145,7 @@ export function CartDrawer({ onCheckout, currency }: CartDrawerProps) {
                     <div className="mb-4 flex items-center justify-between text-sm">
                       <span className="text-muted">Subtotal</span>
                       <span className="font-semibold">
-                        {formatPrice(cartTotal, currency, currency)}
+                        {formatPrice(cartTotal, currencySymbol, currencyCode)}
                       </span>
                     </div>
                     <button

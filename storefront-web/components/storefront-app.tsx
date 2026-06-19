@@ -191,7 +191,7 @@ function StorefrontInner() {
                 </div>
               </div>
             </FadeIn>
-            <ProductGrid items={filteredItems} currency={catalog.currencySymbol} />
+            <ProductGrid items={filteredItems} currencySymbol={catalog.currencySymbol} currencyCode={catalog.currencyCode} />
           </section>
         )}
       </main>
@@ -205,14 +205,16 @@ function StorefrontInner() {
 
       <CartDrawer
         onCheckout={() => setShowCheckout(true)}
-        currency={catalog?.currencySymbol || ""}
+        currencySymbol={catalog?.currencySymbol || ""}
+        currencyCode={catalog?.currencyCode || ""}
       />
 
       <AnimatePresence>
         {showCheckout && catalog && (
           <CheckoutModal
             business={catalog.business}
-            currency={catalog.currencySymbol}
+            currencySymbol={catalog.currencySymbol}
+            currencyCode={catalog.currencyCode}
             onClose={() => setShowCheckout(false)}
           />
         )}

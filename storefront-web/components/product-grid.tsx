@@ -7,17 +7,18 @@ import { ServiceCard } from "./service-card";
 
 interface ProductGridProps {
   items: CatalogItem[];
-  currency: string;
+  currencySymbol: string;
+  currencyCode: string;
 }
 
-export function ProductGrid({ items, currency }: ProductGridProps) {
+export function ProductGrid({ items, currencySymbol, currencyCode }: ProductGridProps) {
   return (
-    <StaggerContainer className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <StaggerContainer className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) =>
         item.itemType === "service" ? (
-          <ServiceCard key={item.id} item={item} currency={currency} />
+          <ServiceCard key={item.id} item={item} currencySymbol={currencySymbol} currencyCode={currencyCode} />
         ) : (
-          <ProductCard key={item.id} item={item} currency={currency} />
+          <ProductCard key={item.id} item={item} currencySymbol={currencySymbol} currencyCode={currencyCode} />
         )
       )}
     </StaggerContainer>

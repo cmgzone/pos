@@ -26,10 +26,11 @@ function categoryColor(category?: string | null): string {
 
 interface ProductCardProps {
   item: CatalogItem;
-  currency: string;
+  currencySymbol: string;
+  currencyCode: string;
 }
 
-export function ProductCard({ item, currency }: ProductCardProps) {
+export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardProps) {
   const { addToCart } = useStore();
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>();
   const [showQuickView, setShowQuickView] = useState(false);
@@ -123,7 +124,7 @@ export function ProductCard({ item, currency }: ProductCardProps) {
 
             <div className="mt-auto flex items-center justify-between pt-3">
               <span className="text-base font-bold text-accent">
-                {formatPrice(price, currency, currency)}
+                {formatPrice(price, currencySymbol, currencyCode)}
               </span>
               <button
                 onClick={handleAdd}
@@ -151,7 +152,8 @@ export function ProductCard({ item, currency }: ProductCardProps) {
       {showQuickView && (
         <QuickViewModal
           item={item}
-          currency={currency}
+          currencySymbol={currencySymbol}
+          currencyCode={currencyCode}
           selectedVariant={selectedVariant}
           onVariantChange={setSelectedVariant}
           onClose={() => setShowQuickView(false)}
