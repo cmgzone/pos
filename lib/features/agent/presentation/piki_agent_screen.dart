@@ -381,8 +381,11 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       minimumRequirements: const [
         'New products only need a name column.',
         'Existing products can be updated with sku, barcode, or product_id.',
+        'Variants can use parent_product_name plus variant_name.',
       ],
       optionalColumns: const [
+        'variant_name',
+        'parent_product_name',
         'price',
         'cost',
         'category',
@@ -397,7 +400,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         'is_featured',
       ],
       defaultsNote:
-          'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
+          'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs. Piki will attach clear sizes, colors, flavors, and packs as variants instead of duplicate products.',
     );
   }
 

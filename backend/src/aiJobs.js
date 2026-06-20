@@ -383,7 +383,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       safeHeaders.forEach((header, columnIndex) => {
         row[String(header || '').trim()] = cells[columnIndex] == null ? '' : String(cells[columnIndex]).trim();
       });
-      const productName = firstText(row, ['name', 'product_name', 'item', 'item_name']);
+      const productName = firstText(row, ['name', 'product_name', 'item', 'item_name', 'parent_product_name', 'parentProductName']);
       const price = parseNumber(firstText(row, ['price', 'selling_price', 'sale_price']));
       const cost = parseNumber(firstText(row, ['cost', 'unit_cost', 'buying_price']));
       const stock = parseNumber(firstText(row, ['stock', 'stock_received', 'opening_stock', 'quantity']));

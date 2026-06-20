@@ -9,6 +9,7 @@ import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import 'category_repository.dart';
 import 'product_repository.dart';
+import 'product_variant_repository.dart';
 
 class ProductImportResult {
   final int created;
@@ -33,6 +34,35 @@ class ProductImportResult {
 class ProductImportService {
   static const columnAliases = {
     'product_id': ['id', 'product id'],
+    'variant_id': ['variant id', 'product variant id', 'option id'],
+    'parent_product_id': [
+      'parent id',
+      'parent_product',
+      'base_product_id',
+      'main_product_id',
+    ],
+    'parent_product_name': [
+      'parent product',
+      'parent product name',
+      'base_product',
+      'base product',
+      'main product',
+      'product family',
+    ],
+    'variant_name': [
+      'variant',
+      'variation',
+      'variety',
+      'option',
+      'option name',
+      'size',
+      'colour',
+      'color',
+      'flavour',
+      'flavor',
+      'pack size',
+      'pack_size',
+    ],
     'name': [
       'product',
       'product_name',
@@ -106,6 +136,11 @@ class ProductImportService {
     'expiry_date': ['expires_on', 'expiry'],
     'batch_number': ['batch'],
   };
+  static const _productIdKeys = ['product_id'];
+  static const _variantIdKeys = ['variant_id'];
+  static const _parentProductIdKeys = ['parent_product_id'];
+  static const _parentProductNameKeys = ['parent_product_name'];
+  static const _variantNameKeys = ['variant_name'];
   static const _nameKeys = ['name', 'product_name', 'item', 'item_name'];
   static const _priceKeys = ['price', 'selling_price', 'sale_price'];
   static const _costKeys = ['cost', 'unit_cost', 'buying_price'];
@@ -276,7 +311,16 @@ class ProductImportService {
       rows: rows,
       fileName: fileName,
       columnAliases: columnAliases,
-      requiredAny: const ['name', 'sku', 'barcode', 'product_id'],
+      requiredAny: const [
+        'name',
+        'sku',
+        'barcode',
+        'product_id',
+        'variant_id',
+        'parent_product_id',
+        'parent_product_name',
+        'variant_name',
+      ],
       importLabel: 'products',
     );
   }
@@ -287,9 +331,13 @@ class ProductImportService {
       ..._skuKeys,
       ..._barcodeKeys,
       'product_id',
+      'variant_id',
+      'parent_product_id',
+      'parent_product_name',
+      'variant_name',
     ])) {
       throw Exception(
-        'Only one product identifier column is required: name for new products, or sku, barcode, or product_id for updates.',
+        'Only one product identifier column is required: name for new products, sku/barcode/product_id for updates, or parent_product_name plus variant_name for variants.',
       );
     }
   }
@@ -350,6 +398,55 @@ class ProductImportService {
     Map<String, String> row,
     Map<String, String> categoryCache,
   ) async {
+    if (_hasVariantIntent(row)) {
+      final parent = await _resolveParentProductForVariant(row, categoryCache);
+      final variantName = SpreadsheetImportReader.readText(
+        row,
+        _variantNameKeys,
+      );
+      final existingVariant = await _findExistingVariant(
+        row,
+        parentId: parent?['id'] as String?,
+        variantName: variantName,
+      );
+      final resolvedParent =
+          parent ?? await _parentProductForVariant(existingVariant);
+      if (resolvedParent == null) {
+        throw Exception(
+          'Parent product is required before importing this variant.',
+        );
+      }
+      return _importVariantRow(
+        row,
+        resolvedParent,
+        variantName: variantName,
+        existingVariant: existingVariant,
+      );
+    }
+
+    final existingVariant = await _findExistingVariant(row);
+    if (existingVariant != null) {
+      final parent = await _parentProductForVariant(existingVariant);
+      if (parent == null) {
+        throw Exception('Parent product was not found for this variant.');
+      }
+      return _importVariantRow(
+        row,
+        parent,
+        variantName: existingVariant['name'] as String?,
+        existingVariant: existingVariant,
+      );
+    }
+
+    final inferredVariant = await _inferVariantFromProductName(row);
+    if (inferredVariant != null) {
+      return _importVariantRow(
+        row,
+        inferredVariant.parent,
+        variantName: inferredVariant.variantName,
+      );
+    }
+
     final existing = await _findExistingProduct(row);
     final name = SpreadsheetImportReader.readText(row, _nameKeys);
     if (existing == null && (name == null || name.trim().isEmpty)) {
@@ -538,6 +635,467 @@ class ProductImportService {
       updated: true,
       stockBatchAdded: stockBatchAdded,
     );
+  }
+
+  static bool _hasVariantIntent(Map<String, String> row) {
+    return SpreadsheetImportReader.readText(row, _variantIdKeys) != null ||
+        SpreadsheetImportReader.readText(row, _variantNameKeys) != null ||
+        SpreadsheetImportReader.readText(row, _parentProductIdKeys) != null ||
+        SpreadsheetImportReader.readText(row, _parentProductNameKeys) != null;
+  }
+
+  static Future<_ProductRowImportResult> _importVariantRow(
+    Map<String, String> row,
+    Map<String, dynamic> parent, {
+    String? variantName,
+    Map<String, dynamic>? existingVariant,
+  }) async {
+    final parentId = parent['id'] as String?;
+    if (parentId == null || parentId.trim().isEmpty) {
+      throw Exception('Parent product is missing for this variant.');
+    }
+
+    final cleanVariantName =
+        _cleanText(variantName) ??
+        _cleanText(existingVariant?['name']) ??
+        _cleanText(SpreadsheetImportReader.readText(row, _nameKeys));
+    if (cleanVariantName == null) {
+      throw Exception('Variant name is required.');
+    }
+
+    final existing =
+        existingVariant ??
+        await _findExistingVariant(
+          row,
+          parentId: parentId,
+          variantName: cleanVariantName,
+        );
+    final stockReceived = SpreadsheetImportReader.readMoney(row, _stockAddKeys);
+    final stockValue = SpreadsheetImportReader.readMoney(row, _stockKeys);
+    final lowStock = SpreadsheetImportReader.readMoney(row, [
+      'low_stock',
+      'reorder_level',
+    ]);
+
+    if (existing == null) {
+      await ProductVariantRepository.create(
+        productId: parentId,
+        name: cleanVariantName,
+        price:
+            SpreadsheetImportReader.readMoney(row, _priceKeys) ??
+            _numberOr(parent['price'], 0),
+        cost: SpreadsheetImportReader.readMoney(row, _costKeys),
+        sku: SpreadsheetImportReader.readText(row, _skuKeys),
+        barcode: SpreadsheetImportReader.readText(row, _barcodeKeys),
+        stock: stockReceived ?? stockValue ?? 0,
+        lowStock: lowStock ?? _numberOr(parent['low_stock'], 0),
+      );
+      await ProductVariantRepository.setProductHasVariants(parentId, true);
+      await ProductVariantRepository.syncAggregateStock(parentId);
+      return const _ProductRowImportResult(created: true);
+    }
+
+    final updates = <String, dynamic>{'name': cleanVariantName};
+    _putIfPresent(
+      updates,
+      'price',
+      SpreadsheetImportReader.readMoney(row, _priceKeys),
+    );
+    _putIfPresent(
+      updates,
+      'cost',
+      SpreadsheetImportReader.readMoney(row, _costKeys),
+    );
+    _putIfPresent(
+      updates,
+      'sku',
+      SpreadsheetImportReader.readText(row, _skuKeys),
+    );
+    _putIfPresent(
+      updates,
+      'barcode',
+      SpreadsheetImportReader.readText(row, _barcodeKeys),
+    );
+    _putIfPresent(updates, 'low_stock', lowStock);
+    if (stockReceived != null && stockReceived > 0) {
+      updates['stock'] = _numberOr(existing['stock'], 0) + stockReceived;
+    } else if (stockValue != null) {
+      updates['stock'] = stockValue;
+    }
+
+    if (updates.isNotEmpty) {
+      await ProductVariantRepository.update(existing['id'] as String, updates);
+    }
+    await ProductVariantRepository.setProductHasVariants(parentId, true);
+    await ProductVariantRepository.syncAggregateStock(parentId);
+    return const _ProductRowImportResult(updated: true);
+  }
+
+  static Future<Map<String, dynamic>?> _resolveParentProductForVariant(
+    Map<String, String> row,
+    Map<String, String> categoryCache,
+  ) async {
+    final variantId = SpreadsheetImportReader.readText(row, _variantIdKeys);
+    if (variantId != null) {
+      final variant = await _findVariantById(variantId);
+      final parent = await _parentProductForVariant(variant);
+      if (parent != null) return parent;
+    }
+
+    final parentId =
+        SpreadsheetImportReader.readText(row, _parentProductIdKeys) ??
+        SpreadsheetImportReader.readText(row, _productIdKeys);
+    if (parentId != null) {
+      final parent = await ProductRepository.getById(parentId);
+      if (parent != null) return parent;
+    }
+
+    final explicitParentName = SpreadsheetImportReader.readText(
+      row,
+      _parentProductNameKeys,
+    );
+    if (explicitParentName != null) {
+      return await _findProductByExactName(explicitParentName) ??
+          await _createParentProductForVariant(
+            row,
+            categoryCache,
+            explicitParentName,
+          );
+    }
+
+    final variantName = SpreadsheetImportReader.readText(row, _variantNameKeys);
+    final productName = SpreadsheetImportReader.readText(row, _nameKeys);
+    if (variantName != null &&
+        productName != null &&
+        _normalizeName(productName) != _normalizeName(variantName)) {
+      final parentName =
+          _parentNameWithoutVariantSuffix(productName, variantName) ??
+          productName;
+      return await _findProductByExactName(parentName) ??
+          await _createParentProductForVariant(row, categoryCache, parentName);
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> _createParentProductForVariant(
+    Map<String, String> row,
+    Map<String, String> categoryCache,
+    String parentName,
+  ) async {
+    final categoryId = await _resolveCategoryId(row, categoryCache);
+    final imageFields = await _readHostedImageFields(
+      row,
+      productName: parentName,
+    );
+    final productId = await ProductRepository.create(
+      name: parentName,
+      price: SpreadsheetImportReader.readMoney(row, _priceKeys) ?? 0,
+      cost: SpreadsheetImportReader.readMoney(row, _costKeys),
+      brand: SpreadsheetImportReader.readText(row, ['brand']),
+      stock: 0,
+      lowStock:
+          SpreadsheetImportReader.readMoney(row, [
+            'low_stock',
+            'reorder_level',
+          ]) ??
+          5,
+      unit: UnitUtils.normalize(
+        SpreadsheetImportReader.readText(row, ['unit']) ?? 'pcs',
+      ),
+      stockUnit: UnitUtils.normalize(
+        SpreadsheetImportReader.readText(row, ['stock_unit']),
+      ),
+      saleUnit: UnitUtils.normalize(
+        SpreadsheetImportReader.readText(row, ['sale_unit']),
+      ),
+      saleToStockFactor:
+          _positiveNumber(row, ['sale_to_stock_factor', 'stock_factor']) ?? 1,
+      purchaseUnit: UnitUtils.normalize(
+        SpreadsheetImportReader.readText(row, ['purchase_unit']),
+      ),
+      purchaseToStockFactor:
+          _positiveNumber(row, ['purchase_to_stock_factor']) ?? 1,
+      imageUrl: imageFields.imageUrl,
+      description: SpreadsheetImportReader.readText(row, _descriptionKeys),
+      imageUrlsJson: imageFields.imageUrlsJson,
+      showOnline:
+          SpreadsheetImportReader.readBool(row, _showOnlineKeys) ?? true,
+      isFeatured:
+          SpreadsheetImportReader.readBool(row, _isFeaturedKeys) ?? false,
+      categoryId: categoryId,
+      trackStock:
+          SpreadsheetImportReader.readBool(row, [
+            'track_stock',
+            'tracks_stock',
+          ]) ??
+          true,
+      hasVariants: true,
+    );
+    final product = await ProductRepository.getById(productId);
+    if (product == null) {
+      throw Exception('Could not create parent product for variant.');
+    }
+    return product;
+  }
+
+  static Future<Map<String, dynamic>?> _parentProductForVariant(
+    Map<String, dynamic>? variant,
+  ) async {
+    final productId = variant?['product_id'] as String?;
+    if (productId == null || productId.trim().isEmpty) {
+      return null;
+    }
+    return ProductRepository.getById(productId);
+  }
+
+  static Future<Map<String, dynamic>?> _findExistingVariant(
+    Map<String, String> row, {
+    String? parentId,
+    String? variantName,
+  }) async {
+    final variantId = SpreadsheetImportReader.readText(row, _variantIdKeys);
+    if (variantId != null) {
+      final variant = await _findVariantById(variantId);
+      if (_variantMatchesParent(variant, parentId)) return variant;
+    }
+
+    final barcode = SpreadsheetImportReader.readText(row, _barcodeKeys);
+    if (barcode != null) {
+      final variant = await ProductVariantRepository.getByBarcode(barcode);
+      if (_variantMatchesParent(variant, parentId)) return variant;
+    }
+
+    final sku = SpreadsheetImportReader.readText(row, _skuKeys);
+    if (sku != null) {
+      final variant = await _findVariantByField(
+        field: 'sku',
+        value: sku,
+        parentId: parentId,
+      );
+      if (variant != null) return variant;
+    }
+
+    final cleanVariantName =
+        _cleanText(variantName) ??
+        SpreadsheetImportReader.readText(row, _variantNameKeys);
+    if (parentId != null && cleanVariantName != null) {
+      return _findVariantByField(
+        field: 'name',
+        value: cleanVariantName,
+        parentId: parentId,
+      );
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _findVariantById(String id) async {
+    final rows = await DatabaseService.rawQuery(
+      '''
+      SELECT pv.*, p.name AS parent_product_name
+      FROM product_variants pv
+      JOIN products p ON p.id = pv.product_id
+      WHERE pv.id = ?
+        AND pv.deleted_at IS NULL
+        AND p.deleted_at IS NULL
+        AND COALESCE(pv.branch_id, ?) = ?
+      LIMIT 1
+      ''',
+      [id, DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<Map<String, dynamic>?> _findVariantByField({
+    required String field,
+    required String value,
+    String? parentId,
+  }) async {
+    if (!const ['name', 'sku'].contains(field)) {
+      return null;
+    }
+    final args = <Object?>[
+      value.trim().toLowerCase(),
+      DatabaseService.defaultBranchId,
+      DatabaseService.currentBranchId,
+    ];
+    final parentClause = parentId == null ? '' : 'AND pv.product_id = ?';
+    if (parentId != null) {
+      args.add(parentId);
+    }
+    final rows = await DatabaseService.rawQuery('''
+      SELECT pv.*, p.name AS parent_product_name
+      FROM product_variants pv
+      JOIN products p ON p.id = pv.product_id
+      WHERE LOWER(TRIM(COALESCE(pv.$field, ''))) = ?
+        AND pv.deleted_at IS NULL
+        AND p.deleted_at IS NULL
+        AND COALESCE(pv.branch_id, ?) = ?
+        $parentClause
+      LIMIT 1
+      ''', args);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static bool _variantMatchesParent(
+    Map<String, dynamic>? variant,
+    String? parentId,
+  ) {
+    if (variant == null) return false;
+    return parentId == null || variant['product_id'] == parentId;
+  }
+
+  static Future<Map<String, dynamic>?> _findProductByExactName(
+    String name,
+  ) async {
+    final rows = await DatabaseService.rawQuery(
+      '''
+      SELECT *
+      FROM products
+      WHERE LOWER(TRIM(name)) = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      LIMIT 1
+      ''',
+      [
+        name.trim().toLowerCase(),
+        DatabaseService.defaultBranchId,
+        DatabaseService.currentBranchId,
+      ],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<_InferredProductVariant?> _inferVariantFromProductName(
+    Map<String, String> row,
+  ) async {
+    final productName = SpreadsheetImportReader.readText(row, _nameKeys);
+    if (productName == null) return null;
+
+    final parents = await DatabaseService.rawQuery(
+      '''
+      SELECT p.*, COALESCE(vc.active_variant_count, 0) AS active_variant_count
+      FROM products p
+      LEFT JOIN (
+        SELECT product_id, COUNT(*) AS active_variant_count
+        FROM product_variants
+        WHERE deleted_at IS NULL
+        GROUP BY product_id
+      ) vc ON vc.product_id = p.id
+      WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+      ORDER BY LENGTH(TRIM(p.name)) DESC
+      ''',
+      [DatabaseService.defaultBranchId, DatabaseService.currentBranchId],
+    );
+
+    for (final parent in parents) {
+      final parentName = _cleanText(parent['name']);
+      if (parentName == null) continue;
+      final variantName = _variantNameFromImportedProductName(
+        productName,
+        parentName,
+        parent,
+      );
+      if (variantName != null) {
+        return _InferredProductVariant(
+          parent: parent,
+          variantName: variantName,
+        );
+      }
+    }
+    return null;
+  }
+
+  static String? _variantNameFromImportedProductName(
+    String productName,
+    String parentName,
+    Map<String, dynamic> parent,
+  ) {
+    final cleanProduct = productName.trim();
+    final cleanParent = parentName.trim();
+    if (cleanProduct.length <= cleanParent.length) return null;
+    if (!cleanProduct.toLowerCase().startsWith(cleanParent.toLowerCase())) {
+      return null;
+    }
+    final boundary = cleanProduct.substring(
+      cleanParent.length,
+      cleanParent.length + 1,
+    );
+    if (RegExp(r'[A-Za-z0-9]').hasMatch(boundary)) {
+      return null;
+    }
+    final remainder = _trimVariantSeparators(
+      cleanProduct.substring(cleanParent.length),
+    );
+    if (remainder.isEmpty) return null;
+
+    final hasVariants =
+        _numberOr(parent['has_variants'], 0) > 0 ||
+        _numberOr(parent['active_variant_count'], 0) > 0;
+    if (hasVariants || _looksLikeVariantName(remainder)) {
+      return remainder;
+    }
+    return null;
+  }
+
+  static String _trimVariantSeparators(String value) {
+    return value
+        .replaceFirst(RegExp(r'^[\s\-_/|:()]+'), '')
+        .replaceFirst(RegExp(r'[\s\-_/|:()]+$'), '')
+        .trim();
+  }
+
+  static String? _parentNameWithoutVariantSuffix(
+    String productName,
+    String variantName,
+  ) {
+    final cleanProduct = productName.trim();
+    final cleanVariant = variantName.trim();
+    if (cleanProduct.length <= cleanVariant.length) return null;
+    if (!cleanProduct.toLowerCase().endsWith(cleanVariant.toLowerCase())) {
+      return null;
+    }
+    final parent = _trimVariantSeparators(
+      cleanProduct.substring(0, cleanProduct.length - cleanVariant.length),
+    );
+    return parent.isEmpty ? null : parent;
+  }
+
+  static bool _looksLikeVariantName(String value) {
+    final lower = value.toLowerCase();
+    return RegExp(
+          r'\b\d+(\.\d+)?\s*(ml|l|lt|ltr|litre|liter|g|kg|mg|oz|lb|pc|pcs|piece|pieces|pack|pkt|box|ct|cm|mm|m)\b',
+        ).hasMatch(lower) ||
+        RegExp(r'^\d+\s*x\s*\d+').hasMatch(lower) ||
+        RegExp(r'\b(xs|s|m|l|xl|xxl|small|medium|large)\b').hasMatch(lower) ||
+        RegExp(
+          r'\b(red|blue|green|black|white|yellow|pink|purple|brown|orange|grey|gray|gold|silver|clear)\b',
+        ).hasMatch(lower) ||
+        RegExp(
+          r'\b(vanilla|chocolate|strawberry|mint|lemon|mango|banana|plain|original|classic|spicy|hot|mild)\b',
+        ).hasMatch(lower) ||
+        RegExp(
+          r'\b(size|color|colour|flavor|flavour|pack|bottle|carton|crate|tin|can|refill|sachet|roll|rolls)\b',
+        ).hasMatch(lower);
+  }
+
+  static String _normalizeName(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  static String? _cleanText(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  static double _numberOr(Object? value, double fallback) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
   static Future<Map<String, dynamic>?> _findExistingProduct(
@@ -792,6 +1350,16 @@ class ProductImportService {
     }
     return result;
   }
+}
+
+class _InferredProductVariant {
+  final Map<String, dynamic> parent;
+  final String variantName;
+
+  const _InferredProductVariant({
+    required this.parent,
+    required this.variantName,
+  });
 }
 
 class _ProductImageFields {

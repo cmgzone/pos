@@ -690,8 +690,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       minimumRequirements: const [
         'New products only need a name column.',
         'Existing products can be updated with sku, barcode, or product_id.',
+        'Variants can use parent_product_name plus variant_name.',
       ],
       optionalColumns: const [
+        'variant_name',
+        'parent_product_name',
         'price',
         'cost',
         'category',
@@ -706,7 +709,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         'is_featured',
       ],
       defaultsNote:
-          'Piki prepared this draft in the cloud. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
+          'Piki prepared this draft in the cloud. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs. Piki will attach clear sizes, colors, flavors, and packs as variants instead of duplicate products.',
     );
     if (!confirmed) {
       return null;
@@ -734,7 +737,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             error,
             prefix: 'Could not import products.',
             fallback:
-                'Use an Excel, CSV, PDF, DOCX, TXT, or JSON file with product names. Existing products can be updated with sku, barcode, or product_id.',
+                'Use an Excel, CSV, PDF, DOCX, TXT, or JSON file with product names. Existing products can be updated with sku, barcode, or product_id. Variants can use parent_product_name plus variant_name.',
           ),
         ),
         behavior: SnackBarBehavior.floating,

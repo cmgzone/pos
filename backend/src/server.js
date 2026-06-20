@@ -3294,6 +3294,10 @@ const PRODUCT_IMPORT_TEXT_LIMIT = 42000;
 const PRODUCT_IMPORT_MAX_ROWS = 150;
 const PRODUCT_IMPORT_FIELDS = [
   'product_id',
+  'variant_id',
+  'parent_product_id',
+  'parent_product_name',
+  'variant_name',
   'name',
   'price',
   'cost',
@@ -3523,12 +3527,69 @@ function normalizeProductImportHeaders(headers) {
   return normalized;
 }
 
+function flattenProductImportRows(rawRows) {
+  if (!Array.isArray(rawRows)) return [];
+  const flattened = [];
+  for (const raw of rawRows) {
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      Array.isArray(raw.variants) &&
+      raw.variants.length > 0
+    ) {
+      const parent = { ...raw };
+      delete parent.variants;
+      const parentName = normalizeOptionalText(
+        valueForProductImportField(parent, 'name') ||
+          parent.product_name ||
+          parent.productName ||
+          parent.item ||
+          parent.item_name,
+      );
+      flattened.push(parent);
+      for (const variant of raw.variants) {
+        if (!variant || typeof variant !== 'object' || Array.isArray(variant)) {
+          continue;
+        }
+        const variantName = normalizeOptionalText(
+          valueForProductImportField(variant, 'variant_name') ||
+            variant.variant ||
+            variant.variation ||
+            variant.option ||
+            variant.size ||
+            variant.color ||
+            variant.colour ||
+            variant.flavor ||
+            variant.flavour ||
+            variant.name,
+        );
+        flattened.push({
+          ...parent,
+          ...variant,
+          name: parentName || valueForProductImportField(parent, 'name'),
+          parent_product_id:
+            valueForProductImportField(parent, 'product_id') ||
+            parent.parent_product_id ||
+            parent.parentProductId,
+          parent_product_name:
+            parentName || valueForProductImportField(parent, 'parent_product_name'),
+          variant_name: variantName,
+        });
+      }
+      continue;
+    }
+    flattened.push(raw);
+  }
+  return flattened;
+}
 function normalizeProductImportRows(parsed) {
-  const rawRows =
+  const sourceRows =
     (Array.isArray(parsed?.rows) && parsed.rows) ||
     (Array.isArray(parsed?.products) && parsed.products) ||
     (Array.isArray(parsed?.items) && parsed.items) ||
     [];
+  const rawRows = flattenProductImportRows(sourceRows);
   let headers = normalizeProductImportHeaders(parsed?.headers);
 
   if (headers.length === 0 && rawRows.some((row) => row && typeof row === 'object' && !Array.isArray(row))) {
@@ -3555,7 +3616,11 @@ function normalizeProductImportRows(parsed) {
       normalizeOptionalText(rowMap.name) ||
       normalizeOptionalText(rowMap.sku) ||
       normalizeOptionalText(rowMap.barcode) ||
-      normalizeOptionalText(rowMap.product_id)
+      normalizeOptionalText(rowMap.product_id) ||
+      normalizeOptionalText(rowMap.variant_id) ||
+      normalizeOptionalText(rowMap.parent_product_id) ||
+      normalizeOptionalText(rowMap.parent_product_name) ||
+      normalizeOptionalText(rowMap.variant_name)
     ) {
       rows.push(row);
     }
@@ -3571,6 +3636,10 @@ function valueForProductImportField(row, field) {
   if (!row || typeof row !== 'object') return null;
   const aliases = {
     product_id: ['productId', 'id'],
+    variant_id: ['variantId', 'product_variant_id', 'option_id'],
+    parent_product_id: ['parentProductId', 'parent_id', 'base_product_id', 'main_product_id'],
+    parent_product_name: ['parentProductName', 'parent_product', 'base_product', 'main_product', 'product_family'],
+    variant_name: ['variantName', 'variant', 'variation', 'variety', 'option', 'option_name', 'size', 'color', 'colour', 'flavor', 'flavour', 'pack_size'],
     stock_received: ['stockReceived', 'received_qty', 'quantity_received'],
     low_stock: ['lowStock', 'reorder_level', 'minimum_stock'],
     stock_unit: ['stockUnit', 'inventory_unit'],
@@ -3818,7 +3887,11 @@ function smartImportRowIsUsable(target, rowMap) {
         normalizeOptionalText(rowMap.name) ||
         normalizeOptionalText(rowMap.sku) ||
         normalizeOptionalText(rowMap.barcode) ||
-        normalizeOptionalText(rowMap.product_id)
+        normalizeOptionalText(rowMap.product_id) ||
+        normalizeOptionalText(rowMap.variant_id) ||
+        normalizeOptionalText(rowMap.parent_product_id) ||
+        normalizeOptionalText(rowMap.parent_product_name) ||
+        normalizeOptionalText(rowMap.variant_name)
       );
     case 'sales':
       return (
@@ -3851,11 +3924,12 @@ function normalizeSmartImportRows(parsed) {
   }
 
   const config = SMART_IMPORT_TARGETS[target];
-  const rawRows =
+  const sourceRows =
     (Array.isArray(parsed?.rows) && parsed.rows) ||
     (Array.isArray(parsed?.[target]) && parsed[target]) ||
     (Array.isArray(parsed?.items) && parsed.items) ||
     [];
+  const rawRows = target === 'products' ? flattenProductImportRows(sourceRows) : sourceRows;
   let headers = normalizeSmartImportHeaders(parsed?.headers, config);
 
   if (headers.length === 0 && rawRows.some((row) => row && typeof row === 'object' && !Array.isArray(row))) {
@@ -3949,6 +4023,7 @@ Routing rules:
 Extraction rules:
 - Use only facts visible in the file. Do not invent names, prices, contacts, dates, totals, or categories.
 - Keep values as strings. Use numeric strings for quantities, prices, totals, amounts, tax, discount, stock, and costs.
+- For product variants/varieties such as size, color, flavor, or pack, use product headers name, parent_product_name, and variant_name instead of creating duplicate full-name products.
 - Do not turn totals, terms, addresses, headers, payment instructions, or notes into item rows.
 - Limit products to ${PRODUCT_IMPORT_MAX_ROWS}, sales to ${SALES_IMPORT_MAX_ROWS}, customers to ${CUSTOMER_IMPORT_MAX_ROWS}, and expenses to ${EXPENSE_IMPORT_MAX_ROWS}.
 
@@ -4020,9 +4095,9 @@ Return JSON only, no markdown.
 JSON shape:
 {
   "summary": "short practical summary",
-  "headers": ["name", "price", "cost", "sku", "barcode", "category", "stock"],
+  "headers": ["name", "parent_product_name", "variant_name", "price", "cost", "sku", "barcode", "category", "stock"],
   "rows": [
-    ["Milk 500ml", "60", "45", "MILK-500", "123456789", "Dairy", "12"]
+    ["Fresh Milk", "Fresh Milk", "500ml", "60", "45", "MILK-500", "123456789", "Dairy", "12"]
   ],
   "warnings": ["Only include facts visible in the file."]
 }
@@ -4033,6 +4108,9 @@ ${PRODUCT_IMPORT_FIELDS.join(', ')}
 Rules:
 - Each row must represent one real product line from the file.
 - Include name whenever visible. Do not invent product names.
+- If a row is a variant/variety (size, color, flavor, pack), put the parent product in name and parent_product_name, and put only the option text in variant_name.
+- Example: Fresh Milk 500ml should use name Fresh Milk and variant_name 500ml; do not save the full text as a separate product when it is clearly a variant.
+- If you return products with nested variants, each variant must include a visible variant_name and only facts from the file.
 - Do not invent prices, cost, stock, barcode, SKU, expiry, or images. Leave unknown cells blank.
 - Use numeric strings for price, cost, stock, stock_received, low_stock, and conversion factors.
 - Use true/false for track_stock, show_online, and is_featured when visible or strongly implied.
@@ -4107,9 +4185,9 @@ Return JSON only, no markdown.
 JSON shape:
 {
   "summary": "short practical summary",
-  "headers": ["name", "price", "cost", "sku", "barcode", "category", "stock"],
+  "headers": ["name", "parent_product_name", "variant_name", "price", "cost", "sku", "barcode", "category", "stock"],
   "rows": [
-    ["Milk 500ml", "60", "45", "MILK-500", "123456789", "Dairy", "12"]
+    ["Fresh Milk", "Fresh Milk", "500ml", "60", "45", "MILK-500", "123456789", "Dairy", "12"]
   ],
   "warnings": ["Review blurry or low-confidence rows."]
 }
@@ -4120,6 +4198,8 @@ ${PRODUCT_IMPORT_FIELDS.join(', ')}
 Rules:
 - Use only facts visible in the image. Do not invent product names, prices, stock, barcode, SKU, or categories.
 - Each row must represent one real product line from the image.
+- If a visible line is a variant/variety (size, color, flavor, pack), put the parent product in name and parent_product_name, and put only the option text in variant_name.
+- Example: Fresh Milk 500ml should use name Fresh Milk and variant_name 500ml; do not save the full text as a separate product when it is clearly a variant.
 - If text is blurry or partially hidden, include the row only when the product name is reasonably clear and add a warning.
 - Use numeric strings for price, cost, stock, stock_received, low_stock, and conversion factors.
 - If the image is a receipt/invoice, extract product lines, not totals, taxes, payment lines, or customer details.
