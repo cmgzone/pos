@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart' as xl;
 import 'package:file_picker/file_picker.dart';
+import 'package:xml/xml.dart' as xml;
 
 class SpreadsheetFileRows {
   final List<List<String>> rows;
@@ -97,6 +99,20 @@ class _HeaderCandidate {
     required this.score,
     required this.dataRowCount,
   });
+}
+
+class _XlsxSheetRows {
+  final String name;
+  final List<List<String>> rows;
+
+  const _XlsxSheetRows({required this.name, required this.rows});
+}
+
+class _XlsxSheetEntry {
+  final String name;
+  final String path;
+
+  const _XlsxSheetEntry({required this.name, required this.path});
 }
 
 class SpreadsheetImportReader {
@@ -315,38 +331,62 @@ class SpreadsheetImportReader {
   }
 
   static List<List<String>> readExcelRows(Uint8List bytes) {
-    final book = xl.Excel.decodeBytes(bytes);
-    if (book.tables.isEmpty) {
-      return const [];
+    try {
+      final book = xl.Excel.decodeBytes(bytes);
+      if (book.tables.isEmpty) {
+        return const [];
+      }
+      final sheet = book.tables.values.firstWhere(
+        (table) =>
+            table.rows.any((row) => row.any((cell) => cell?.value != null)),
+        orElse: () => book.tables.values.first,
+      );
+      return sheet.rows
+          .map((row) => row.map((cell) => _excelCellText(cell?.value)).toList())
+          .toList();
+    } catch (_) {
+      final sheets = _readXlsxSheetsFromArchive(bytes);
+      if (sheets.isEmpty) {
+        return const [];
+      }
+      return sheets
+          .firstWhere(
+            (sheet) =>
+                sheet.rows.any((row) => row.any((cell) => cell.isNotEmpty)),
+            orElse: () => sheets.first,
+          )
+          .rows;
     }
-    final sheet = book.tables.values.firstWhere(
-      (table) =>
-          table.rows.any((row) => row.any((cell) => cell?.value != null)),
-      orElse: () => book.tables.values.first,
-    );
-    return sheet.rows
-        .map(
-          (row) =>
-              row.map((cell) => cell?.value?.toString().trim() ?? '').toList(),
-        )
-        .toList();
   }
 
   static String readExcelWorkbookText(Uint8List bytes) {
-    final book = xl.Excel.decodeBytes(bytes);
-    if (book.tables.isEmpty) {
-      return '';
-    }
-
-    final buffer = StringBuffer();
-    for (final entry in book.tables.entries) {
-      final sheet = entry.value;
-      final rows = sheet.rows
-          .map(
-            (row) => row
-                .map((cell) => cell?.value?.toString().trim() ?? '')
+    try {
+      final book = xl.Excel.decodeBytes(bytes);
+      if (book.tables.isEmpty) {
+        return '';
+      }
+      return _workbookPreviewText(
+        book.tables.entries.map(
+          (entry) => _XlsxSheetRows(
+            name: entry.key,
+            rows: entry.value.rows
+                .map(
+                  (row) =>
+                      row.map((cell) => _excelCellText(cell?.value)).toList(),
+                )
                 .toList(),
-          )
+          ),
+        ),
+      );
+    } catch (_) {
+      return _workbookPreviewText(_readXlsxSheetsFromArchive(bytes));
+    }
+  }
+
+  static String _workbookPreviewText(Iterable<_XlsxSheetRows> sheets) {
+    final buffer = StringBuffer();
+    for (final sheet in sheets) {
+      final rows = sheet.rows
           .where((row) => row.any((cell) => cell.trim().isNotEmpty))
           .toList();
       if (rows.isEmpty) continue;
@@ -354,7 +394,7 @@ class SpreadsheetImportReader {
       if (buffer.isNotEmpty) {
         buffer.writeln();
       }
-      buffer.writeln('Sheet: ${entry.key}');
+      buffer.writeln('Sheet: ${sheet.name}');
       final rowLimit = rows.length < 160 ? rows.length : 160;
       for (var index = 0; index < rowLimit; index += 1) {
         final cells = rows[index]
@@ -368,6 +408,250 @@ class SpreadsheetImportReader {
       }
     }
     return buffer.toString().trim();
+  }
+
+  static List<_XlsxSheetRows> _readXlsxSheetsFromArchive(Uint8List bytes) {
+    final archive = ZipDecoder().decodeBytes(bytes, verify: false);
+    final sharedStrings = _readXlsxSharedStrings(archive);
+    final sheetEntries = _readXlsxSheetEntries(archive);
+    final sheets = <_XlsxSheetRows>[];
+
+    if (sheetEntries.isNotEmpty) {
+      for (final entry in sheetEntries) {
+        final content = _archiveText(archive, entry.path);
+        if (content == null) continue;
+        sheets.add(
+          _XlsxSheetRows(
+            name: entry.name,
+            rows: _readXlsxSheetRows(content, sharedStrings),
+          ),
+        );
+      }
+      return sheets;
+    }
+
+    final worksheetFiles =
+        archive.files
+            .where((file) => file.name.startsWith('xl/worksheets/'))
+            .where((file) => file.name.toLowerCase().endsWith('.xml'))
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+    for (var index = 0; index < worksheetFiles.length; index += 1) {
+      sheets.add(
+        _XlsxSheetRows(
+          name: 'Sheet ${index + 1}',
+          rows: _readXlsxSheetRows(
+            utf8.decode(
+              worksheetFiles[index].content as List<int>,
+              allowMalformed: true,
+            ),
+            sharedStrings,
+          ),
+        ),
+      );
+    }
+    return sheets;
+  }
+
+  static List<String> _readXlsxSharedStrings(Archive archive) {
+    final content = _archiveText(archive, 'xl/sharedStrings.xml');
+    if (content == null || content.trim().isEmpty) {
+      return const <String>[];
+    }
+    final document = xml.XmlDocument.parse(content);
+    return _descendantElements(document, 'si').map((item) {
+      return _descendantElements(
+        item,
+        't',
+      ).map((text) => text.innerText).join();
+    }).toList();
+  }
+
+  static List<_XlsxSheetEntry> _readXlsxSheetEntries(Archive archive) {
+    final workbook = _archiveText(archive, 'xl/workbook.xml');
+    final relationships = _archiveText(archive, 'xl/_rels/workbook.xml.rels');
+    if (workbook == null || relationships == null) {
+      return const <_XlsxSheetEntry>[];
+    }
+
+    final targetById = <String, String>{};
+    final relDocument = xml.XmlDocument.parse(relationships);
+    for (final rel in _descendantElements(relDocument, 'Relationship')) {
+      final id = rel.getAttribute('Id')?.trim();
+      final target = rel.getAttribute('Target')?.trim();
+      if (id == null || id.isEmpty || target == null || target.isEmpty) {
+        continue;
+      }
+      targetById[id] = _normalizeXlsxPath(target);
+    }
+
+    final entries = <_XlsxSheetEntry>[];
+    final workbookDocument = xml.XmlDocument.parse(workbook);
+    for (final sheet in _descendantElements(workbookDocument, 'sheet')) {
+      final name = sheet.getAttribute('name')?.trim();
+      final relationshipId = sheet.attributes
+          .where((attribute) => attribute.name.local == 'id')
+          .map((attribute) => attribute.value.trim())
+          .where((value) => value.isNotEmpty)
+          .firstOrNull;
+      final path = targetById[relationshipId];
+      if (path == null || path.isEmpty) {
+        continue;
+      }
+      entries.add(
+        _XlsxSheetEntry(
+          name: name == null || name.isEmpty
+              ? 'Sheet ${entries.length + 1}'
+              : name,
+          path: path,
+        ),
+      );
+    }
+    return entries;
+  }
+
+  static List<List<String>> _readXlsxSheetRows(
+    String sheetXml,
+    List<String> sharedStrings,
+  ) {
+    final document = xml.XmlDocument.parse(sheetXml);
+    final rows = <List<String>>[];
+    for (final rowElement in _descendantElements(document, 'row')) {
+      final row = <String>[];
+      var nextColumn = 0;
+      for (final cell in _childElements(rowElement, 'c')) {
+        final columnIndex = _xlsxColumnIndex(
+          cell.getAttribute('r'),
+          fallback: nextColumn,
+        );
+        while (row.length < columnIndex) {
+          row.add('');
+        }
+        row.add(_xlsxCellValue(cell, sharedStrings));
+        nextColumn = columnIndex + 1;
+      }
+      rows.add(row);
+    }
+    return rows;
+  }
+
+  static String _xlsxCellValue(
+    xml.XmlElement cell,
+    List<String> sharedStrings,
+  ) {
+    final type = cell.getAttribute('t')?.trim();
+    if (type == 'inlineStr') {
+      return _descendantElements(
+        cell,
+        't',
+      ).map((text) => text.innerText).join();
+    }
+
+    final value =
+        _firstElement(_childElements(cell, 'v'))?.innerText.trim() ?? '';
+    if (value.isEmpty) {
+      return '';
+    }
+    if (type == 's') {
+      final index = int.tryParse(value);
+      if (index != null && index >= 0 && index < sharedStrings.length) {
+        return sharedStrings[index].trim();
+      }
+    }
+    if (type == 'b') {
+      return value == '1' ? 'true' : 'false';
+    }
+    return _formatNumericText(value);
+  }
+
+  static Iterable<xml.XmlElement> _descendantElements(
+    xml.XmlNode node,
+    String localName,
+  ) {
+    return node.descendants.whereType<xml.XmlElement>().where(
+      (element) => element.name.local == localName,
+    );
+  }
+
+  static Iterable<xml.XmlElement> _childElements(
+    xml.XmlElement node,
+    String localName,
+  ) {
+    return node.childElements.where(
+      (element) => element.name.local == localName,
+    );
+  }
+
+  static xml.XmlElement? _firstElement(Iterable<xml.XmlElement> elements) {
+    final iterator = elements.iterator;
+    return iterator.moveNext() ? iterator.current : null;
+  }
+
+  static String? _archiveText(Archive archive, String path) {
+    final file = archive.findFile(path);
+    if (file == null) {
+      return null;
+    }
+    return utf8.decode(file.content as List<int>, allowMalformed: true);
+  }
+
+  static String _normalizeXlsxPath(String target) {
+    final clean = target.replaceAll('\\', '/');
+    if (clean.startsWith('/')) {
+      return clean.substring(1);
+    }
+    if (clean.startsWith('xl/')) {
+      return clean;
+    }
+    return 'xl/$clean';
+  }
+
+  static int _xlsxColumnIndex(String? cellReference, {required int fallback}) {
+    if (cellReference == null || cellReference.isEmpty) {
+      return fallback;
+    }
+    var column = 0;
+    var foundLetter = false;
+    for (final codeUnit in cellReference.codeUnits) {
+      final upper = codeUnit >= 97 && codeUnit <= 122
+          ? codeUnit - 32
+          : codeUnit;
+      if (upper < 65 || upper > 90) {
+        break;
+      }
+      foundLetter = true;
+      column = (column * 26) + (upper - 64);
+    }
+    return foundLetter ? column - 1 : fallback;
+  }
+
+  static String _formatNumericText(String value) {
+    final number = double.tryParse(value);
+    if (number == null) {
+      return value.trim();
+    }
+    return _formatExcelNumber(number);
+  }
+
+  static String _excelCellText(xl.CellValue? value) {
+    if (value == null) {
+      return '';
+    }
+    return switch (value) {
+      xl.TextCellValue() => value.value.toString().trim(),
+      xl.IntCellValue() => value.value.toString(),
+      xl.DoubleCellValue() => _formatExcelNumber(value.value),
+      xl.BoolCellValue() => value.value ? 'true' : 'false',
+      xl.FormulaCellValue() => value.formula.trim(),
+      _ => value.toString().trim(),
+    };
+  }
+
+  static String _formatExcelNumber(double value) {
+    if (value.isFinite && value == value.roundToDouble()) {
+      return value.round().toString();
+    }
+    return value.toString();
   }
 
   static String _limitPreviewCell(String value) {
@@ -724,7 +1008,16 @@ class SpreadsheetImportReader {
         compactRight.length >= 4 &&
         (compactLeft.contains(compactRight) ||
             compactRight.contains(compactLeft))) {
-      return 88;
+      final shorter = compactLeft.length < compactRight.length
+          ? compactLeft.length
+          : compactRight.length;
+      final longer = compactLeft.length > compactRight.length
+          ? compactLeft.length
+          : compactRight.length;
+      final extraLength = longer - shorter;
+      if (extraLength <= 4 || shorter >= 8) {
+        return 88;
+      }
     }
 
     final distance = _levenshtein(compactLeft, compactRight);

@@ -110,7 +110,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             CompactHeaderButton(
               onPressed: _isImporting ? null : _importProductsFromFile,
               icon: Icons.upload_file_outlined,
-              label: _isImporting ? 'Importing...' : 'Piki Import',
+              label: _isImporting ? 'Importing...' : 'Import with Piki AI',
               filled: false,
             ),
           TrainingAnchor(
@@ -136,7 +136,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   value: _MobileProductPageAction.importProducts,
                   child: ListTile(
                     leading: Icon(Icons.upload_file_outlined),
-                    title: Text('Piki Import Products'),
+                    title: Text('Import with Piki AI'),
                   ),
                 ),
                 PopupMenuItem(
