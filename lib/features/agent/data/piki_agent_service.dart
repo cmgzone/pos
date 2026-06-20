@@ -118,6 +118,7 @@ class PikiAgentService {
   static const toolEnhanceProductImage = 'enhance_product_image';
   static const toolCreateService = 'create_service';
   static const toolEditProduct = 'edit_product';
+  static const toolDeleteProduct = 'delete_product';
   static const toolAddVariant = 'add_variant';
   static const toolRecordProductSale = 'record_product_sale';
   static const toolRecordServiceSale = 'record_service_sale';
@@ -319,6 +320,7 @@ class PikiAgentService {
     toolEnhanceProductImage: 'Enhance product image',
     toolCreateService: 'Create service',
     toolEditProduct: 'Edit product',
+    toolDeleteProduct: 'Delete product',
     toolAddVariant: 'Add variant',
     toolRecordProductSale: 'Record product sale',
     toolRecordServiceSale: 'Record service sale',
@@ -394,13 +396,16 @@ class PikiAgentService {
         'Create a service template when name and price are known. Returns created service details.',
     toolEditProduct:
         'Edit an existing product\'s details like price, cost, name, or low stock threshold. Returns updated product.',
+    toolDeleteProduct:
+        'Delete an existing product or matched variant from the catalog. Uses soft-delete and returns deleted item details.',
     toolAddVariant:
         'Add a variant (size, color, etc.) to an existing product. Returns created variant details.',
     toolRecordProductSale:
         'Record a product sale immediately against inventory. Returns sale confirmation with total.',
     toolRecordServiceSale:
         'Record a service sale immediately. Returns sale confirmation with total.',
-    toolCreateCategory: 'Create a product category. Returns category id and name.',
+    toolCreateCategory:
+        'Create a product category. Returns category id and name.',
     toolCreateExpenseCategory:
         'Create an expense category. Returns category id and name.',
     toolCreateCustomer:
@@ -409,25 +414,20 @@ class PikiAgentService {
         'Create a supplier record. Returns supplier id and name.',
     toolReconcileStock:
         'Set a product stock count after a physical count. Returns updated stock level.',
-    toolAddServiceField:
-        'Add a custom field to an existing service template.',
+    toolAddServiceField: 'Add a custom field to an existing service template.',
     toolCustomerSearch:
         'Look up customers by name, phone, or email. Returns items[] with name, phone, email, total_owed.',
     toolSupplierSearch:
         'Look up suppliers by name, phone, or email. Returns items[] with name, phone, email, address.',
     toolWebSearch:
         'Search live web results for current prices, market context, regulations, supplier information, or other external facts not stored in the POS. Returns results[] with title, snippet, url, imageUrl.',
-    toolAddToCart:
-        'Add products, variants, or services to the live POS cart.',
-    toolRemoveFromCart:
-        'Remove a line or quantity from the live POS cart.',
-    toolSetCartQuantity:
-        'Set an existing POS cart line to an exact quantity.',
+    toolAddToCart: 'Add products, variants, or services to the live POS cart.',
+    toolRemoveFromCart: 'Remove a line or quantity from the live POS cart.',
+    toolSetCartQuantity: 'Set an existing POS cart line to an exact quantity.',
     toolRepeatLast: 'Add the last sold item again.',
     toolClearCart: 'Empty the cart.',
     toolCheckout: 'Go to checkout screen.',
-    toolHoldSale:
-        'Save the current cart as a held sale and clear the cart.',
+    toolHoldSale: 'Save the current cart as a held sale and clear the cart.',
     toolTeachAlias:
         'Remember a cashier phrase, nickname, or local term for a product query.',
   };
@@ -467,6 +467,8 @@ class PikiAgentService {
         'name(string, required), price/base_price(number, required), category(string), description(string), duration_minutes(int)',
     toolEditProduct:
         'query/name(string, required), price(number), cost(number), new_name(string), low_stock(number), barcode(string)',
+    toolDeleteProduct:
+        'query/name/product_name(string, required), sku(string), barcode(string)',
     toolAddVariant:
         'query/product_name(string, required), variant_name/name(string, required), price(number, required), cost(number), sku(string), barcode(string), stock(number), low_stock(number)',
     toolRecordProductSale:
@@ -1176,6 +1178,8 @@ Example: ["detergent", "soap", "laundry"]
         return _createService(args ?? const <String, dynamic>{});
       case toolEditProduct:
         return _editProduct(args ?? const <String, dynamic>{});
+      case toolDeleteProduct:
+        return _deleteProduct(args ?? const <String, dynamic>{});
       case toolAddVariant:
         return _addVariant(args ?? const <String, dynamic>{});
       case toolRecordProductSale:
@@ -3427,6 +3431,7 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
         },
       ],
       toolCreateProduct ||
+      toolDeleteProduct ||
       toolCreateService ||
       toolRecordProductSale ||
       toolRecordServiceSale ||
@@ -3665,6 +3670,119 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
           'Updated ${isVariant ? 'variant' : 'product'} "${target['name']}" with new details.',
       'updates': updates,
     };
+  }
+
+  static Future<Map<String, dynamic>> _deleteProduct(
+    Map<String, dynamic> args,
+  ) async {
+    final query = _requiredStringArg(args, [
+      'query',
+      'name',
+      'product_name',
+      'sku',
+      'barcode',
+    ], 'Product query');
+    final products = await ProductRepository.searchForPos(query);
+    if (products.isEmpty) {
+      throw Exception('Could not find product matching "$query".');
+    }
+
+    final target = _resolveSingleDeleteTarget(products, query);
+    final isVariant = target['result_type'] == 'variant';
+    final productId = target['id'] as String?;
+    if (productId == null || productId.trim().isEmpty) {
+      throw Exception('Product id is missing for "$query".');
+    }
+
+    if (isVariant) {
+      final variantId = target['matched_variant_id'] as String?;
+      final variantName =
+          target['matched_variant_name']?.toString() ?? 'variant';
+      final productName = target['name']?.toString() ?? 'product';
+      if (variantId == null || variantId.trim().isEmpty) {
+        throw Exception('Variant id is missing for "$query".');
+      }
+      await ProductVariantRepository.delete(variantId);
+      await ProductVariantRepository.syncAggregateStock(productId);
+      return _enrichToolResult(toolDeleteProduct, {
+        'type': toolDeleteProduct,
+        'success': true,
+        'deleted_type': 'variant',
+        'product_id': productId,
+        'variant_id': variantId,
+        'product_name': productName,
+        'variant_name': variantName,
+        'summary':
+            'Deleted variant "$variantName" from product "$productName".',
+      }, args: args);
+    }
+
+    final productName = target['name']?.toString() ?? query;
+    await ProductRepository.delete(productId);
+    return _enrichToolResult(toolDeleteProduct, {
+      'type': toolDeleteProduct,
+      'success': true,
+      'deleted_type': 'product',
+      'product_id': productId,
+      'product_name': productName,
+      'summary': 'Deleted product "$productName".',
+    }, args: args);
+  }
+
+  static Map<String, dynamic> _resolveSingleDeleteTarget(
+    List<Map<String, dynamic>> products,
+    String query,
+  ) {
+    final normalizedQuery = _normalizeLookupText(query);
+    final exactMatches = products.where((row) {
+      final values = <String?>[
+        row['name']?.toString(),
+        row['sku']?.toString(),
+        row['barcode']?.toString(),
+        row['matched_variant_name']?.toString(),
+        row['matched_variant_sku']?.toString(),
+        row['matched_variant_barcode']?.toString(),
+        if (row['matched_variant_name'] != null)
+          '${row['name']} ${row['matched_variant_name']}',
+        if (row['matched_variant_name'] != null)
+          '${row['name']} - ${row['matched_variant_name']}',
+      ];
+      return values.any(
+        (value) => _normalizeLookupText(value) == normalizedQuery,
+      );
+    }).toList();
+
+    if (exactMatches.length == 1) return exactMatches.first;
+    if (exactMatches.isEmpty && products.length == 1) return products.first;
+
+    final matches = (exactMatches.isNotEmpty ? exactMatches : products)
+        .take(5)
+        .map(_deleteTargetLabel)
+        .join(', ');
+    throw Exception(
+      'I found more than one product matching "$query": $matches. Please use the exact product name, variant name, SKU, or barcode to delete.',
+    );
+  }
+
+  static String _deleteTargetLabel(Map<String, dynamic> row) {
+    final productName = row['name']?.toString() ?? 'Product';
+    if (row['result_type'] == 'variant') {
+      final variantName = row['matched_variant_name']?.toString();
+      if (variantName != null && variantName.trim().isNotEmpty) {
+        return '$productName - $variantName';
+      }
+    }
+    return productName;
+  }
+
+  static String _normalizeLookupText(Object? value) {
+    return value
+            ?.toString()
+            .trim()
+            .toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+            .replaceAll(RegExp(r'\s+'), ' ') ??
+        '';
   }
 
   static Future<Map<String, dynamic>> _addVariant(

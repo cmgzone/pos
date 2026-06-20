@@ -247,6 +247,7 @@ Response:
 - Use create_category and create_expense_category when you have the name.
 - Use create_customer and create_supplier when the user wants to add a new contact.
 - Use reconcile_stock when the user provides a physical count that differs from the system (e.g., "I counted 50 milks").
+- Use delete_product only when the user clearly asks to delete/remove a product or variant from Products, catalog, or inventory. If they mean the current sale/cart, use remove_from_cart instead. If the product is unclear, use answer mode to ask for the exact product name, variant name, SKU, or barcode.
 - Use customer_search and supplier_search to look up contact details.
 - Use enhance_product_image when the user asks to improve, enhance, clean up, upscale, or make a better product photo for an existing product. If the product has no image, explain that they need to add or capture one first.
 - Use predictive_restock when the user asks what will run out, forecast demand, or predict what to reorder.
@@ -259,14 +260,14 @@ Response:
 $webSearchRule
 - Do not use web_search for local POS facts like stock, sales, customers, suppliers, or expenses when a local tool can answer.
 - Use add_to_cart to add an item to the POS cart when the user asks to "sell", "add", or "buy" items in Sell Mode.
-- Use remove_from_cart when the cashier asks to remove, void, undo, or take an item off the cart.
+- Use remove_from_cart when the cashier asks to remove, void, undo, or take an item off the cart. Do not use delete_product for cart changes.
 - Use set_cart_quantity when the cashier asks to make a cart line an exact quantity.
 - Use repeat_last_item for phrases like "same again", "one more", or "add another".
 - Use clear_cart when the user asks to empty the cart.
 - Use checkout when the user wants to pay, charge, or proceed to the POS screen for the items in their cart.
 - Use hold_sale when the cashier wants to park, suspend, or hold the current sale.
 - Use teach_alias when the cashier teaches a nickname, local term, or shortcut phrase for a product.
-- For create_product, edit_product, add_variant, create_service, create_category, and create_expense_category, extract all available details (name, price, cost, stock, unit, color, etc.) from the user's message and pass them as arguments.
+- For create_product, edit_product, delete_product, add_variant, create_service, create_category, and create_expense_category, extract all available details (name, price, cost, stock, unit, color, SKU, barcode, etc.) from the user's message and pass them as arguments.
 - Use at most 3 tool calls per step.
 </tool_selection_rules>
 
@@ -774,6 +775,7 @@ How to use Piki POS:
 • draft_product: Safely draft a new product with an image from the web. ALWAYS use this instead of create_product when you are retrieving an image from the web. Extract name, price, image_url (MUST be a direct, raw http/https URL from the web search results' "imageUrl" field, never descriptive text), cost, stock.
 • enhance_product_image: Improve an existing product image using the configured OpenRouter image model. Use this when the user asks to enhance, clean up, improve, or make a better catalog photo for a product that already has an image.
 • edit_product: Edit an existing product or variant. Extract query/product name and changed fields such as price, cost, new_name, low_stock, or barcode.
+• delete_product: Delete an existing product or matched variant from the catalog. Extract query/product_name/name, SKU, or barcode. Use only when the user clearly wants to remove it from Products/catalog/inventory.
 • add_variant: Add a sellable variant to an existing product. Extract query/product_name, variant_name, price, cost, stock, low_stock, sku, and barcode when provided.
 • create_service: Create a new service type (e.g., "Car Wash", "Haircut"). Extract name, price, category (optional), description (optional).
 • record_product_sale: Record a product sale. Extract product_name, quantity (default 1), unit_price (use product price if not stated), payment_type (cash/card/mobile, default cash).
