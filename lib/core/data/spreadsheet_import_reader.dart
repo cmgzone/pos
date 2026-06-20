@@ -8,8 +8,17 @@ import 'package:file_picker/file_picker.dart';
 class SpreadsheetFileRows {
   final List<List<String>> rows;
   final String fileName;
+  final Uint8List? bytes;
+  final String extension;
+  final String? mimeType;
 
-  const SpreadsheetFileRows({required this.rows, required this.fileName});
+  const SpreadsheetFileRows({
+    required this.rows,
+    required this.fileName,
+    this.bytes,
+    this.extension = '',
+    this.mimeType,
+  });
 }
 
 class SpreadsheetImportPlan {
@@ -90,14 +99,29 @@ class _HeaderCandidate {
 
 class SpreadsheetImportReader {
   static const supportedExtensions = ['xlsx', 'csv'];
+  static const productImportExtensions = [
+    'xlsx',
+    'csv',
+    'tsv',
+    'pdf',
+    'txt',
+    'json',
+    'docx',
+  ];
+  static const documentImportExtensions = productImportExtensions;
+
+  static bool isSpreadsheetExtension(String extension) {
+    return const {'xlsx', 'csv', 'tsv'}.contains(extension.toLowerCase());
+  }
 
   static Future<SpreadsheetFileRows?> pickRows({
     required String dialogTitle,
+    List<String> allowedExtensions = supportedExtensions,
   }) async {
     final picked = await FilePicker.platform.pickFiles(
       dialogTitle: dialogTitle,
       type: FileType.custom,
-      allowedExtensions: supportedExtensions,
+      allowedExtensions: allowedExtensions,
       withData: true,
     );
     if (picked == null || picked.files.isEmpty) {
@@ -113,10 +137,17 @@ class SpreadsheetImportReader {
 
     final rows = switch (extension) {
       'csv' => readCsvRows(bytes),
+      'tsv' => readTsvRows(bytes),
       'xlsx' => readExcelRows(bytes),
-      _ => throw Exception('Choose an .xlsx or .csv file.'),
+      _ => <List<String>>[],
     };
-    return SpreadsheetFileRows(rows: rows, fileName: file.name);
+    return SpreadsheetFileRows(
+      rows: rows,
+      fileName: file.name,
+      bytes: bytes,
+      extension: extension,
+      mimeType: _mimeTypeForExtension(extension),
+    );
   }
 
   static int firstHeaderIndex(List<List<String>> rows) {
@@ -343,12 +374,23 @@ class SpreadsheetImportReader {
     return rows;
   }
 
+  static List<List<String>> readTsvRows(Uint8List bytes) {
+    var content = utf8.decode(bytes, allowMalformed: true);
+    if (content.startsWith('\uFEFF')) {
+      content = content.substring(1);
+    }
+    return content
+        .split(RegExp(r'\r?\n'))
+        .where((line) => line.trim().isNotEmpty)
+        .map((line) => line.split('\t').map((cell) => cell.trim()).toList())
+        .toList();
+  }
+
   static String _detectCsvSeparator(String content) {
     // Look at the first non-empty line and count unquoted commas vs semicolons.
-    final firstLine = content.split('\n').firstWhere(
-          (line) => line.trim().isNotEmpty,
-          orElse: () => '',
-        );
+    final firstLine = content
+        .split('\n')
+        .firstWhere((line) => line.trim().isNotEmpty, orElse: () => '');
     if (firstLine.isEmpty) return ',';
     final commas = _countUnquoted(firstLine, ',');
     final semicolons = _countUnquoted(firstLine, ';');
@@ -503,6 +545,20 @@ class SpreadsheetImportReader {
     return File(path).readAsBytes();
   }
 
+  static String _mimeTypeForExtension(String extension) {
+    return switch (extension.toLowerCase()) {
+      'xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'csv' => 'text/csv',
+      'tsv' => 'text/tab-separated-values',
+      'pdf' => 'application/pdf',
+      'json' => 'application/json',
+      'docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      _ => 'text/plain',
+    };
+  }
+
   static DateTime? _safeDate(int year, int month, int day) {
     if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) {
       return null;
@@ -576,6 +632,13 @@ class SpreadsheetImportReader {
     String normalized,
     Map<String, List<String>> columnAliases,
   ) {
+    for (final entry in columnAliases.entries) {
+      final canonical = normalizeHeader(entry.key);
+      if (normalized == canonical) {
+        return canonical;
+      }
+    }
+
     String? bestKey;
     var bestScore = 0;
     for (final entry in columnAliases.entries) {

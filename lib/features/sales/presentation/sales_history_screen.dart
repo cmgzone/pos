@@ -353,9 +353,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
             'customer_name',
             'due_date',
             'reference',
+            'tax',
+            'discount',
+            'note',
           ],
           defaultsNote:
-              'Blank optional fields are allowed. Quantity defaults to 1, payment defaults to cash, and item price can come from the product/service.',
+              'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Quantity defaults to 1, payment defaults to cash, and item price can come from the product/service.',
         ),
       );
     } catch (error) {
@@ -378,7 +381,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               importError,
               prefix: 'Could not import sales.',
               fallback:
-                  'Use an .xlsx or .csv file with total for summary sales, or product/service identifier columns for itemized sales. Date, quantity, payment, customer, and reference fields are optional.',
+                  'Use an Excel, CSV, PDF, DOCX, TXT, or JSON file with total for summary sales, or product/service identifier columns for itemized sales. Date, quantity, payment, customer, and reference fields are optional.',
             ),
           ),
           backgroundColor: AppColors.error,

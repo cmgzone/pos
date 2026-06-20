@@ -1,13 +1,7 @@
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:excel/excel.dart' as xl;
-import 'package:file_picker/file_picker.dart';
-
 import '../../../core/data/cloud_spreadsheet_import_planner.dart';
 import '../../../core/data/spreadsheet_import_reader.dart';
 import '../../../core/services/database_service.dart';
+import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../customers/data/customer_repository.dart';
@@ -109,7 +103,8 @@ class SaleImportService {
     'unit_cost': ['cost'],
     'unit': ['sale_unit'],
   };
-  static const supportedExtensions = ['xlsx', 'csv'];
+  static const supportedExtensions =
+      SpreadsheetImportReader.documentImportExtensions;
   static const _totalKeys = ['total', 'total_amount', 'amount', 'sale_total'];
   static const _productIdKeys = ['product_id'];
   static const _variantIdKeys = ['variant_id'];
@@ -143,30 +138,15 @@ class SaleImportService {
   static Future<SaleImportResult?> pickAndImportSales({
     Future<bool> Function(SpreadsheetImportPlan plan)? confirmPlan,
   }) async {
-    final picked = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Import Sales from Excel or CSV',
-      type: FileType.custom,
+    final file = await SpreadsheetImportReader.pickRows(
+      dialogTitle: 'Import Sales with Piki AI',
       allowedExtensions: supportedExtensions,
-      withData: true,
     );
-    if (picked == null || picked.files.isEmpty) {
+    if (file == null) {
       return null;
     }
 
-    final file = picked.files.single;
-    final extension = _extensionFor(file.name, file.path);
-    final bytes = file.bytes ?? await _readFileBytes(file.path);
-    if (bytes == null || bytes.isEmpty) {
-      throw Exception('Could not read the selected file.');
-    }
-
-    final rows = switch (extension) {
-      'csv' => _readCsvRows(bytes),
-      'xlsx' => _readExcelRows(bytes),
-      _ => throw Exception('Choose an .xlsx or .csv file.'),
-    };
-
-    final plan = await buildPlanWithCloud(rows, fileName: file.name);
+    final plan = await buildPlanForPickedFile(file);
     if (confirmPlan != null && !await confirmPlan(plan)) {
       return null;
     }
@@ -180,6 +160,15 @@ class SaleImportService {
     return importPlan(buildPlan(rows, fileName: fileName));
   }
 
+  static Future<SpreadsheetImportPlan> buildPlanForPickedFile(
+    SpreadsheetFileRows file,
+  ) async {
+    if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+      return buildPlanWithCloud(file.rows, fileName: file.fileName);
+    }
+    return buildPlanFromCloudFile(file);
+  }
+
   static SpreadsheetImportPlan buildPlan(
     List<List<String>> rows, {
     String? fileName,
@@ -187,6 +176,32 @@ class SaleImportService {
     final plan = _buildRawPlan(rows, fileName: fileName);
     _validatePlan(plan);
     return plan;
+  }
+
+  static Future<SpreadsheetImportPlan> buildPlanFromCloudFile(
+    SpreadsheetFileRows file,
+  ) async {
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Could not read the selected sales file.');
+    }
+
+    final cloud = await OpenRouterService.extractSalesImportRows(
+      fileName: file.fileName,
+      bytes: bytes,
+      mimeType: file.mimeType,
+      extension: file.extension,
+    );
+    final rows = _rowsFromCloudSalesFile(cloud);
+    final plan = _buildRawPlan(rows, fileName: file.fileName);
+    _validatePlan(plan);
+    return plan.copyWith(
+      warnings: _dedupe([
+        ...plan.warnings,
+        'Piki cloud AI extracted sales rows from ${file.fileName}. Review before importing.',
+        ..._cloudWarnings(cloud),
+      ]),
+    );
   }
 
   static Future<SpreadsheetImportPlan> buildPlanWithCloud(
@@ -921,104 +936,6 @@ class SaleImportService {
     return CustomerRepository.create(name: name, phone: phone);
   }
 
-  static List<List<String>> _readExcelRows(Uint8List bytes) {
-    final book = xl.Excel.decodeBytes(bytes);
-    if (book.tables.isEmpty) {
-      return const [];
-    }
-    final sheet = book.tables.values.firstWhere(
-      (table) =>
-          table.rows.any((row) => row.any((cell) => cell?.value != null)),
-      orElse: () => book.tables.values.first,
-    );
-    return sheet.rows
-        .map(
-          (row) =>
-              row.map((cell) => cell?.value?.toString().trim() ?? '').toList(),
-        )
-        .toList();
-  }
-
-  static List<List<String>> _readCsvRows(Uint8List bytes) {
-    var content = utf8.decode(bytes, allowMalformed: true);
-    if (content.startsWith('\uFEFF')) {
-      content = content.substring(1);
-    }
-    final separator = _detectCsvSeparator(content);
-    final rows = <List<String>>[];
-    var row = <String>[];
-    final buffer = StringBuffer();
-    var inQuotes = false;
-
-    for (var index = 0; index < content.length; index += 1) {
-      final char = content[index];
-      final next = index + 1 < content.length ? content[index + 1] : '';
-
-      if (char == '"') {
-        if (inQuotes && next == '"') {
-          buffer.write('"');
-          index += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-        continue;
-      }
-
-      if (char == separator && !inQuotes) {
-        row.add(buffer.toString().trim());
-        buffer.clear();
-        continue;
-      }
-
-      if ((char == '\n' || char == '\r') && !inQuotes) {
-        if (char == '\r' && next == '\n') {
-          index += 1;
-        }
-        row.add(buffer.toString().trim());
-        buffer.clear();
-        rows.add(row);
-        row = <String>[];
-        continue;
-      }
-
-      buffer.write(char);
-    }
-
-    if (buffer.isNotEmpty || row.isNotEmpty) {
-      row.add(buffer.toString().trim());
-      rows.add(row);
-    }
-    return rows;
-  }
-
-  static String _detectCsvSeparator(String content) {
-    final firstLine = content
-        .split('\n')
-        .firstWhere((line) => line.trim().isNotEmpty, orElse: () => '');
-    if (firstLine.isEmpty) return ',';
-    final commas = _countUnquoted(firstLine, ',');
-    final semicolons = _countUnquoted(firstLine, ';');
-    return semicolons > commas ? ';' : ',';
-  }
-
-  static int _countUnquoted(String line, String separator) {
-    var count = 0;
-    var inQuotes = false;
-    for (var i = 0; i < line.length; i += 1) {
-      final char = line[i];
-      if (char == '"') {
-        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
-          i += 1;
-          continue;
-        }
-        inQuotes = !inQuotes;
-      } else if (char == separator && !inQuotes) {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
   static Map<String, String> _rowMap(List<String> headers, List<String> row) {
     final values = <String, String>{};
     for (var index = 0; index < headers.length; index += 1) {
@@ -1199,19 +1116,78 @@ class SaleImportService {
     return paymentType.trim().toLowerCase() == 'cash';
   }
 
-  static String _extensionFor(String name, String? path) {
-    final source = path?.trim().isNotEmpty == true ? path! : name;
-    final index = source.lastIndexOf('.');
-    if (index < 0 || index == source.length - 1) {
-      return '';
+  static List<List<String>> _rowsFromCloudSalesFile(
+    Map<String, dynamic> cloud,
+  ) {
+    var headers =
+        (cloud['headers'] as List?)
+            ?.map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .toList() ??
+        <String>[];
+    final rows = <List<String>>[];
+    final rawRows = cloud['rows'];
+
+    if (rawRows is List) {
+      for (final item in rawRows) {
+        if (item is List) {
+          rows.add(
+            item.map((value) => value?.toString().trim() ?? '').toList(),
+          );
+          continue;
+        }
+        if (item is Map) {
+          final rowMap = Map<String, dynamic>.from(item);
+          if (headers.isEmpty) {
+            headers = rowMap.keys.map((key) => key.toString()).toList();
+          }
+          rows.add(
+            headers
+                .map((header) => rowMap[header]?.toString().trim() ?? '')
+                .toList(),
+          );
+        }
+      }
     }
-    return source.substring(index + 1).toLowerCase();
+
+    if (headers.isEmpty || rows.isEmpty) {
+      throw Exception('Piki could not find sales rows in this file.');
+    }
+    return [headers, ...rows];
   }
 
-  static Future<Uint8List?> _readFileBytes(String? path) async {
-    if (path == null || path.trim().isEmpty) {
-      return null;
+  static List<String> _cloudWarnings(Map<String, dynamic> cloud) {
+    final warnings = <String>[];
+    final summary = cloud['summary']?.toString().trim();
+    if (summary != null && summary.isNotEmpty) {
+      warnings.add(summary);
     }
-    return File(path).readAsBytes();
+    final rawWarnings = cloud['warnings'];
+    if (rawWarnings is List) {
+      warnings.addAll(
+        rawWarnings
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty),
+      );
+    }
+    if (cloud['sourceTextTruncated'] == true) {
+      warnings.add(
+        'The file was long, so Piki reviewed the first part of the extracted text.',
+      );
+    }
+    return warnings;
+  }
+
+  static List<String> _dedupe(List<String> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) {
+        continue;
+      }
+      result.add(trimmed);
+    }
+    return result;
   }
 }

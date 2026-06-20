@@ -110,7 +110,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             CompactHeaderButton(
               onPressed: _isImporting ? null : _importProductsFromFile,
               icon: Icons.upload_file_outlined,
-              label: _isImporting ? 'Importing...' : 'Import',
+              label: _isImporting ? 'Importing...' : 'Piki Import',
               filled: false,
             ),
           TrainingAnchor(
@@ -136,7 +136,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   value: _MobileProductPageAction.importProducts,
                   child: ListTile(
                     leading: Icon(Icons.upload_file_outlined),
-                    title: Text('Import Products'),
+                    title: Text('Piki Import Products'),
                   ),
                 ),
                 PopupMenuItem(
@@ -534,9 +534,13 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             'unit',
             'brand',
             'image_url',
+            'description',
+            'image_urls',
+            'show_online',
+            'is_featured',
           ],
           defaultsNote:
-              'Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
+              'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
         ),
       );
     } catch (error) {
@@ -559,7 +563,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               importError,
               prefix: 'Could not import products.',
               fallback:
-                  'Use an .xlsx or .csv file with name for new products, or sku/barcode/product_id for updates. Other product columns are optional.',
+                  'Use an Excel, CSV, PDF, DOCX, TXT, or JSON file with product names. Existing products can be updated with sku, barcode, or product_id.',
             ),
           ),
           behavior: SnackBarBehavior.floating,

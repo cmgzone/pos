@@ -8,6 +8,8 @@ const path = require('path');
 const { Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { Server } = require('socket.io');
+const mammoth = require('mammoth');
+const { PDFParse } = require('pdf-parse');
 
 const { config } = require('./config');
 const { query, withTransaction, withReadTransaction } = require('./db');
@@ -3279,6 +3281,544 @@ function normalizeImageAnalysisItems(items) {
     .filter((item) => item.name && item.name !== 'Item');
 }
 
+const PRODUCT_IMPORT_FILE_MAX_BYTES = 7 * 1024 * 1024;
+const PRODUCT_IMPORT_TEXT_LIMIT = 42000;
+const PRODUCT_IMPORT_MAX_ROWS = 150;
+const PRODUCT_IMPORT_FIELDS = [
+  'product_id',
+  'name',
+  'price',
+  'cost',
+  'sku',
+  'barcode',
+  'category',
+  'stock',
+  'stock_received',
+  'low_stock',
+  'unit',
+  'stock_unit',
+  'sale_unit',
+  'purchase_unit',
+  'sale_to_stock_factor',
+  'purchase_to_stock_factor',
+  'track_stock',
+  'brand',
+  'description',
+  'image_url',
+  'image_urls_json',
+  'show_online',
+  'is_featured',
+  'expiry_date',
+  'batch_number',
+];
+const PRODUCT_IMPORT_FIELD_SET = new Set(PRODUCT_IMPORT_FIELDS);
+const SALES_IMPORT_MAX_ROWS = 250;
+const SALES_IMPORT_FIELDS = [
+  'date',
+  'total',
+  'payment_type',
+  'tax',
+  'discount',
+  'customer_name',
+  'phone',
+  'due_date',
+  'reference',
+  'note',
+  'line_type',
+  'product_id',
+  'variant_id',
+  'sku',
+  'barcode',
+  'product',
+  'service_id',
+  'service',
+  'quantity',
+  'unit_price',
+  'unit_cost',
+  'unit',
+];
+const SALES_IMPORT_FIELD_SET = new Set(SALES_IMPORT_FIELDS);
+
+function normalizeProductFileExtension(input, fileName) {
+  const clean = normalizeOptionalText(input)
+    ?.toLowerCase()
+    .replace(/^\./, '');
+  if (clean) return clean;
+  const name = normalizeOptionalText(fileName) || '';
+  const match = name.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : '';
+}
+
+function decodeProductImportFile(body = {}) {
+  const fileBase64 = normalizeOptionalText(body.fileBase64 || body.file_base64);
+  if (!fileBase64) {
+    throw createHttpError(400, 'fileBase64 is required');
+  }
+  const normalizedBase64 = fileBase64.replace(/^data:[^,]+,/, '').replace(/\s/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalizedBase64)) {
+    throw createHttpError(400, 'The product file is not valid base64');
+  }
+  const bytes = Buffer.from(normalizedBase64, 'base64');
+  if (bytes.length === 0) {
+    throw createHttpError(400, 'The product file is empty');
+  }
+  if (bytes.length > PRODUCT_IMPORT_FILE_MAX_BYTES) {
+    throw createHttpError(413, 'Choose a product file below 7 MB.');
+  }
+  const fileName = limitText(body.fileName || body.file_name || 'product-file', 180);
+  return {
+    bytes,
+    fileName,
+    extension: normalizeProductFileExtension(body.extension, fileName),
+    mimeType: normalizeOptionalText(body.mimeType || body.mime_type),
+  };
+}
+
+async function extractTextFromProductImportFile(file) {
+  switch (file.extension) {
+    case 'pdf':
+      return extractPdfText(file.bytes);
+    case 'docx':
+      return extractDocxText(file.bytes);
+    case 'txt':
+    case 'csv':
+    case 'tsv':
+    case 'json':
+      return file.bytes.toString('utf8');
+    default:
+      throw createHttpError(
+        400,
+        'Unsupported product file type. Use Excel, CSV, PDF, DOCX, TXT, or JSON.',
+      );
+  }
+}
+
+async function extractPdfText(bytes) {
+  const parser = new PDFParse({ data: bytes });
+  try {
+    const result = await parser.getText();
+    return result?.text || '';
+  } finally {
+    await parser.destroy();
+  }
+}
+
+async function extractDocxText(bytes) {
+  const result = await mammoth.extractRawText({ buffer: bytes });
+  return result?.value || '';
+}
+
+function normalizeProductImportText(rawText) {
+  const text = normalizeOptionalText(rawText);
+  if (!text) {
+    throw createHttpError(
+      400,
+      'Piki could not read text from this file. If it is a scanned PDF, export it to Excel/CSV or text first.',
+    );
+  }
+  const cleaned = text.replace(/\u0000/g, '').replace(/[ \t]+/g, ' ').trim();
+  return {
+    text: cleaned.slice(0, PRODUCT_IMPORT_TEXT_LIMIT),
+    truncated: cleaned.length > PRODUCT_IMPORT_TEXT_LIMIT,
+  };
+}
+
+function normalizeProductImportHeaders(headers) {
+  const normalized = [];
+  if (Array.isArray(headers)) {
+    for (const header of headers) {
+      const key = String(header || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      if (PRODUCT_IMPORT_FIELD_SET.has(key) && !normalized.includes(key)) {
+        normalized.push(key);
+      }
+    }
+  }
+  return normalized;
+}
+
+function normalizeProductImportRows(parsed) {
+  const rawRows =
+    (Array.isArray(parsed?.rows) && parsed.rows) ||
+    (Array.isArray(parsed?.products) && parsed.products) ||
+    (Array.isArray(parsed?.items) && parsed.items) ||
+    [];
+  let headers = normalizeProductImportHeaders(parsed?.headers);
+
+  if (headers.length === 0 && rawRows.some((row) => row && typeof row === 'object' && !Array.isArray(row))) {
+    headers = PRODUCT_IMPORT_FIELDS.filter((field) =>
+      rawRows.some((row) => valueForProductImportField(row, field) != null),
+    );
+  }
+  if (headers.length === 0) {
+    headers = PRODUCT_IMPORT_FIELDS;
+  }
+
+  const rows = [];
+  for (const raw of rawRows.slice(0, PRODUCT_IMPORT_MAX_ROWS)) {
+    let row;
+    if (Array.isArray(raw)) {
+      row = headers.map((_, index) => normalizeProductImportCell(raw[index]));
+    } else if (raw && typeof raw === 'object') {
+      row = headers.map((field) => normalizeProductImportCell(valueForProductImportField(raw, field)));
+    } else {
+      continue;
+    }
+    const rowMap = Object.fromEntries(headers.map((field, index) => [field, row[index]]));
+    if (
+      normalizeOptionalText(rowMap.name) ||
+      normalizeOptionalText(rowMap.sku) ||
+      normalizeOptionalText(rowMap.barcode) ||
+      normalizeOptionalText(rowMap.product_id)
+    ) {
+      rows.push(row);
+    }
+  }
+
+  if (rows.length === 0) {
+    throw createHttpError(422, 'Piki could not find usable product rows in this file.');
+  }
+  return { headers, rows };
+}
+
+function valueForProductImportField(row, field) {
+  if (!row || typeof row !== 'object') return null;
+  const aliases = {
+    product_id: ['productId', 'id'],
+    stock_received: ['stockReceived', 'received_qty', 'quantity_received'],
+    low_stock: ['lowStock', 'reorder_level', 'minimum_stock'],
+    stock_unit: ['stockUnit', 'inventory_unit'],
+    sale_unit: ['saleUnit', 'selling_unit'],
+    purchase_unit: ['purchaseUnit', 'buying_unit'],
+    sale_to_stock_factor: ['saleToStockFactor', 'stock_factor', 'conversion'],
+    purchase_to_stock_factor: ['purchaseToStockFactor', 'purchase_factor'],
+    track_stock: ['trackStock', 'tracks_stock', 'stock_tracking'],
+    image_url: ['imageUrl', 'image', 'photo'],
+    image_urls_json: ['imageUrlsJson', 'imageUrls', 'images', 'photos'],
+    show_online: ['showOnline', 'online', 'catalog', 'publish'],
+    is_featured: ['isFeatured', 'featured'],
+    expiry_date: ['expiryDate', 'expires_on', 'expiry'],
+    batch_number: ['batchNumber', 'batch'],
+  };
+  for (const key of [field, ...(aliases[field] || [])]) {
+    if (row[key] != null) {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+function normalizeProductImportCell(value) {
+  if (value == null) return '';
+  if (Array.isArray(value)) {
+    return JSON.stringify(value.map((item) => String(item || '').trim()).filter(Boolean));
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value).trim();
+}
+
+function productImportWarnings(parsed, sourceTextTruncated) {
+  const warnings = [];
+  if (Array.isArray(parsed?.warnings)) {
+    warnings.push(
+      ...parsed.warnings
+        .map((item) => normalizeOptionalText(item))
+        .filter(Boolean)
+        .slice(0, 6),
+    );
+  }
+  if (sourceTextTruncated) {
+    warnings.push('The file was long, so Piki reviewed the first part of the extracted text.');
+  }
+  return warnings;
+}
+
+function normalizeSalesImportHeaders(headers) {
+  const normalized = [];
+  if (Array.isArray(headers)) {
+    for (const header of headers) {
+      const key = String(header || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      if (SALES_IMPORT_FIELD_SET.has(key) && !normalized.includes(key)) {
+        normalized.push(key);
+      }
+    }
+  }
+  return normalized;
+}
+
+function normalizeSalesImportRows(parsed) {
+  const rawRows =
+    (Array.isArray(parsed?.rows) && parsed.rows) ||
+    (Array.isArray(parsed?.sales) && parsed.sales) ||
+    (Array.isArray(parsed?.items) && parsed.items) ||
+    [];
+  let headers = normalizeSalesImportHeaders(parsed?.headers);
+
+  if (headers.length === 0 && rawRows.some((row) => row && typeof row === 'object' && !Array.isArray(row))) {
+    headers = SALES_IMPORT_FIELDS.filter((field) =>
+      rawRows.some((row) => valueForSalesImportField(row, field) != null),
+    );
+  }
+  if (headers.length === 0) {
+    headers = SALES_IMPORT_FIELDS;
+  }
+
+  const rows = [];
+  for (const raw of rawRows.slice(0, SALES_IMPORT_MAX_ROWS)) {
+    let row;
+    if (Array.isArray(raw)) {
+      row = headers.map((_, index) => normalizeProductImportCell(raw[index]));
+    } else if (raw && typeof raw === 'object') {
+      row = headers.map((field) => normalizeProductImportCell(valueForSalesImportField(raw, field)));
+    } else {
+      continue;
+    }
+    const rowMap = Object.fromEntries(headers.map((field, index) => [field, row[index]]));
+    if (
+      normalizeOptionalText(rowMap.total) ||
+      normalizeOptionalText(rowMap.product) ||
+      normalizeOptionalText(rowMap.service) ||
+      normalizeOptionalText(rowMap.sku) ||
+      normalizeOptionalText(rowMap.barcode) ||
+      normalizeOptionalText(rowMap.product_id) ||
+      normalizeOptionalText(rowMap.service_id)
+    ) {
+      rows.push(row);
+    }
+  }
+
+  if (rows.length === 0) {
+    throw createHttpError(422, 'Piki could not find usable sales rows in this file.');
+  }
+  return { headers, rows };
+}
+
+function valueForSalesImportField(row, field) {
+  if (!row || typeof row !== 'object') return null;
+  const aliases = {
+    payment_type: ['paymentType', 'payment_method', 'paymentMethod', 'method'],
+    customer_name: ['customerName', 'customer', 'client', 'client_name'],
+    due_date: ['dueDate', 'credit_due_date', 'kopesha_due_date'],
+    line_type: ['lineType', 'type', 'item_type'],
+    product_id: ['productId'],
+    variant_id: ['variantId'],
+    product: ['productName', 'product_name', 'item', 'item_name', 'name'],
+    service_id: ['serviceId'],
+    service: ['serviceName', 'service_name'],
+    unit_price: ['unitPrice', 'price', 'rate', 'selling_price'],
+    unit_cost: ['unitCost', 'cost'],
+  };
+  for (const key of [field, ...(aliases[field] || [])]) {
+    if (row[key] != null) {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+function salesImportWarnings(parsed, sourceTextTruncated) {
+  const warnings = [];
+  if (Array.isArray(parsed?.warnings)) {
+    warnings.push(
+      ...parsed.warnings
+        .map((item) => normalizeOptionalText(item))
+        .filter(Boolean)
+        .slice(0, 6),
+    );
+  }
+  if (sourceTextTruncated) {
+    warnings.push('The file was long, so Piki reviewed the first part of the extracted text.');
+  }
+  return warnings;
+}
+
+async function requestOpenRouterProductFileExtraction({
+  fetchImpl,
+  aiConfig,
+  fileName,
+  extension,
+  sourceText,
+  sourceTextTruncated,
+}) {
+  const prompt = `You are Piki cloud AI helping a POS owner import products from a catalog, invoice, quote, PDF, document, or product list.
+
+Extract products and map them to Piki POS product import fields.
+Return JSON only, no markdown.
+
+JSON shape:
+{
+  "summary": "short practical summary",
+  "headers": ["name", "price", "cost", "sku", "barcode", "category", "stock"],
+  "rows": [
+    ["Milk 500ml", "60", "45", "MILK-500", "123456789", "Dairy", "12"]
+  ],
+  "warnings": ["Only include facts visible in the file."]
+}
+
+Allowed headers:
+${PRODUCT_IMPORT_FIELDS.join(', ')}
+
+Rules:
+- Each row must represent one real product line from the file.
+- Include name whenever visible. Do not invent product names.
+- Do not invent prices, cost, stock, barcode, SKU, expiry, or images. Leave unknown cells blank.
+- Use numeric strings for price, cost, stock, stock_received, low_stock, and conversion factors.
+- Use true/false for track_stock, show_online, and is_featured when visible or strongly implied.
+- Use category when a section, department, or product group is visible.
+- Use description for short useful details that are not the product name.
+- Use image_url only for visible direct image URLs; use image_urls_json only for multiple image URLs.
+- Limit to the most relevant ${PRODUCT_IMPORT_MAX_ROWS} products.
+- If the file contains notes, totals, payment lines, customer details, supplier details, or terms, do not turn those into products.
+
+FILE:
+Name: ${fileName || 'product file'}
+Type: ${extension || 'unknown'}
+${sourceTextTruncated ? 'Note: source text was truncated before model review.' : ''}
+
+EXTRACTED TEXT:
+${sourceText}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${aiConfig.api_key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://pikipos.com',
+      'X-Title': 'Piki POS Product File Import',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4096,
+      temperature: 0.1,
+    }),
+  });
+
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'OpenRouter product import failed',
+    );
+  }
+
+  const content = extractOpenRouterTextContent(body);
+  const parsed = parseJsonObjectFromText(content);
+  if (!parsed) {
+    throw createHttpError(502, 'Piki AI did not return a valid product import plan.');
+  }
+  const normalized = normalizeProductImportRows(parsed);
+  return {
+    summary:
+      normalizeOptionalText(parsed.summary) ||
+      `Piki found ${normalized.rows.length} product row${normalized.rows.length === 1 ? '' : 's'} in the file.`,
+    headers: normalized.headers,
+    rows: normalized.rows,
+    warnings: productImportWarnings(parsed, sourceTextTruncated),
+    usage: body?.usage || {},
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+  };
+}
+
+async function requestOpenRouterSalesFileExtraction({
+  fetchImpl,
+  aiConfig,
+  fileName,
+  extension,
+  sourceText,
+  sourceTextTruncated,
+}) {
+  const prompt = `You are Piki cloud AI helping a POS owner import historical sales records from a receipt, invoice, POS export, PDF, document, or sales list.
+
+Extract sales rows and map them to Piki POS sales import fields.
+Return JSON only, no markdown.
+
+JSON shape:
+{
+  "summary": "short practical summary",
+  "headers": ["date", "total", "payment_type", "product", "quantity", "unit_price"],
+  "rows": [
+    ["2026-06-20", "120", "Cash", "Milk 500ml", "2", "60"]
+  ],
+  "warnings": ["Only include facts visible in the file."]
+}
+
+Allowed headers:
+${SALES_IMPORT_FIELDS.join(', ')}
+
+Rules:
+- Use one row per sale line when products/services are visible.
+- Use summary sale rows only when the file gives a sale total but not line items.
+- Do not invent products, services, customers, totals, prices, payment type, dates, or references.
+- Use line_type as product or service when known.
+- Use product, sku, barcode, product_id, or variant_id for product lines.
+- Use service or service_id for service lines.
+- Use customer_name and phone only when visible.
+- Use payment_type values like Cash, M-Pesa, Card, Kopesha, or the visible method.
+- Kopesha/credit rows need customer_name and due_date if visible.
+- Use numeric strings for total, tax, discount, quantity, unit_price, and unit_cost.
+- Do not turn subtotals, totals, terms, balances, addresses, or payment instructions into product lines.
+- Limit to the most relevant ${SALES_IMPORT_MAX_ROWS} rows.
+
+FILE:
+Name: ${fileName || 'sales file'}
+Type: ${extension || 'unknown'}
+${sourceTextTruncated ? 'Note: source text was truncated before model review.' : ''}
+
+EXTRACTED TEXT:
+${sourceText}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${aiConfig.api_key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://pikipos.com',
+      'X-Title': 'Piki POS Sales File Import',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4096,
+      temperature: 0.1,
+    }),
+  });
+
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'OpenRouter sales import failed',
+    );
+  }
+
+  const content = extractOpenRouterTextContent(body);
+  const parsed = parseJsonObjectFromText(content);
+  if (!parsed) {
+    throw createHttpError(502, 'Piki AI did not return a valid sales import plan.');
+  }
+  const normalized = normalizeSalesImportRows(parsed);
+  return {
+    summary:
+      normalizeOptionalText(parsed.summary) ||
+      `Piki found ${normalized.rows.length} sales row${normalized.rows.length === 1 ? '' : 's'} in the file.`,
+    headers: normalized.headers,
+    rows: normalized.rows,
+    warnings: salesImportWarnings(parsed, sourceTextTruncated),
+    usage: body?.usage || {},
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+  };
+}
+
 async function requestOpenRouterOrderImageAnalysis({
   fetchImpl,
   aiConfig,
@@ -3816,6 +4356,126 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
         confidence: result.confidence,
         items: result.items,
         raw: result.raw,
+      },
+      model: result.model,
+      usage: {
+        promptTokens: result.usage.prompt_tokens || 0,
+        completionTokens: result.usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/product-file/extract', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.products);
+    if (!hasBusinessFeature(businessContext, FEATURE_KEYS.products)) {
+      throw createHttpError(403, 'This employee cannot manage products');
+    }
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const file = decodeProductImportFile(req.body);
+    const rawText = await extractTextFromProductImportFile(file);
+    const source = normalizeProductImportText(rawText);
+    const fetch = (await import('node-fetch')).default;
+    const result = await requestOpenRouterProductFileExtraction({
+      fetchImpl: fetch,
+      aiConfig,
+      fileName: file.fileName,
+      extension: file.extension,
+      sourceText: source.text,
+      sourceTextTruncated: source.truncated,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        summary: result.summary,
+        headers: result.headers,
+        rows: result.rows,
+        warnings: result.warnings,
+        fileName: file.fileName,
+        extension: file.extension,
+        sourceTextTruncated: source.truncated,
+        model: result.model,
+      },
+      model: result.model,
+      usage: {
+        promptTokens: result.usage.prompt_tokens || 0,
+        completionTokens: result.usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/sales-file/extract', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.sales);
+    if (!hasBusinessFeature(businessContext, FEATURE_KEYS.sales)) {
+      throw createHttpError(403, 'This employee cannot manage sales');
+    }
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const file = decodeProductImportFile(req.body);
+    const rawText = await extractTextFromProductImportFile(file);
+    const source = normalizeProductImportText(rawText);
+    const fetch = (await import('node-fetch')).default;
+    const result = await requestOpenRouterSalesFileExtraction({
+      fetchImpl: fetch,
+      aiConfig,
+      fileName: file.fileName,
+      extension: file.extension,
+      sourceText: source.text,
+      sourceTextTruncated: source.truncated,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        summary: result.summary,
+        headers: result.headers,
+        rows: result.rows,
+        warnings: result.warnings,
+        fileName: file.fileName,
+        extension: file.extension,
+        sourceTextTruncated: source.truncated,
+        model: result.model,
       },
       model: result.model,
       usage: {

@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import '../../../core/data/cloud_spreadsheet_import_planner.dart';
 import '../../../core/data/spreadsheet_import_reader.dart';
 import '../../../core/services/database_service.dart';
+import '../../../core/services/openrouter_service.dart';
+import '../../../core/services/product_image_upload_service.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import 'category_repository.dart';
@@ -68,7 +72,11 @@ class ProductImportService {
     'purchase_to_stock_factor': ['purchase_factor'],
     'track_stock': ['tracks_stock', 'stock_tracking'],
     'brand': ['manufacturer'],
+    'description': ['details', 'product_details', 'long_description', 'notes'],
     'image_url': ['image', 'photo'],
+    'image_urls_json': ['images', 'image_urls', 'gallery', 'photos'],
+    'show_online': ['online', 'catalog', 'publish', 'visible_online'],
+    'is_featured': ['featured', 'feature', 'top_pick', 'promote'],
     'expiry_date': ['expires_on', 'expiry'],
     'batch_number': ['batch'],
   };
@@ -79,6 +87,33 @@ class ProductImportService {
   static const _barcodeKeys = ['barcode', 'product_barcode', 'item_barcode'];
   static const _categoryKeys = ['category', 'category_name'];
   static const _stockKeys = ['stock', 'opening_stock', 'initial_stock'];
+  static const _descriptionKeys = [
+    'description',
+    'details',
+    'product_details',
+    'notes',
+  ];
+  static const _imageUrlsKeys = [
+    'image_urls_json',
+    'image_urls',
+    'images',
+    'gallery',
+    'photos',
+  ];
+  static const _showOnlineKeys = [
+    'show_online',
+    'online',
+    'catalog',
+    'publish',
+    'visible_online',
+  ];
+  static const _isFeaturedKeys = [
+    'is_featured',
+    'featured',
+    'feature',
+    'top_pick',
+    'promote',
+  ];
   static const _stockAddKeys = [
     'stock_received',
     'add_stock',
@@ -91,12 +126,13 @@ class ProductImportService {
     Future<bool> Function(SpreadsheetImportPlan plan)? confirmPlan,
   }) async {
     final file = await SpreadsheetImportReader.pickRows(
-      dialogTitle: 'Import Products from Excel or CSV',
+      dialogTitle: 'Import Products with Piki AI',
+      allowedExtensions: SpreadsheetImportReader.productImportExtensions,
     );
     if (file == null) {
       return null;
     }
-    final plan = await buildPlanWithCloud(file.rows, fileName: file.fileName);
+    final plan = await buildPlanForPickedFile(file);
     if (confirmPlan != null && !await confirmPlan(plan)) {
       return null;
     }
@@ -110,6 +146,15 @@ class ProductImportService {
     return importPlan(buildPlan(rows, fileName: fileName));
   }
 
+  static Future<SpreadsheetImportPlan> buildPlanForPickedFile(
+    SpreadsheetFileRows file,
+  ) async {
+    if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+      return buildPlanWithCloud(file.rows, fileName: file.fileName);
+    }
+    return buildPlanFromCloudFile(file);
+  }
+
   static SpreadsheetImportPlan buildPlan(
     List<List<String>> rows, {
     String? fileName,
@@ -117,6 +162,32 @@ class ProductImportService {
     final plan = _buildRawPlan(rows, fileName: fileName);
     _validatePlan(plan);
     return plan;
+  }
+
+  static Future<SpreadsheetImportPlan> buildPlanFromCloudFile(
+    SpreadsheetFileRows file,
+  ) async {
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Could not read the selected product file.');
+    }
+
+    final cloud = await OpenRouterService.extractProductImportRows(
+      fileName: file.fileName,
+      bytes: bytes,
+      mimeType: file.mimeType,
+      extension: file.extension,
+    );
+    final rows = _rowsFromCloudProductFile(cloud);
+    final plan = _buildRawPlan(rows, fileName: file.fileName);
+    _validatePlan(plan);
+    return plan.copyWith(
+      warnings: _dedupe([
+        ...plan.warnings,
+        'Piki cloud AI extracted product rows from ${file.fileName}. Review before importing.',
+        ..._cloudWarnings(cloud),
+      ]),
+    );
   }
 
   static Future<SpreadsheetImportPlan> buildPlanWithCloud(
@@ -224,6 +295,10 @@ class ProductImportService {
     }
 
     final categoryId = await _resolveCategoryId(row, categoryCache);
+    final imageFields = await _readHostedImageFields(
+      row,
+      productName: name ?? existing?['name'] as String?,
+    );
     if (existing == null) {
       await ProductRepository.create(
         name: name!,
@@ -255,7 +330,13 @@ class ProductImportService {
         ),
         purchaseToStockFactor:
             _positiveNumber(row, ['purchase_to_stock_factor']) ?? 1,
-        imageUrl: SpreadsheetImportReader.readText(row, ['image_url', 'image']),
+        imageUrl: imageFields.imageUrl,
+        description: SpreadsheetImportReader.readText(row, _descriptionKeys),
+        imageUrlsJson: imageFields.imageUrlsJson,
+        showOnline:
+            SpreadsheetImportReader.readBool(row, _showOnlineKeys) ?? true,
+        isFeatured:
+            SpreadsheetImportReader.readBool(row, _isFeaturedKeys) ?? false,
         categoryId: categoryId,
         initialExpiryDate: ExpiryUtils.toStorageString(
           SpreadsheetImportReader.readDate(row, ['expiry_date', 'expires_on']),
@@ -306,11 +387,21 @@ class ProductImportService {
       'low_stock',
       SpreadsheetImportReader.readMoney(row, ['low_stock', 'reorder_level']),
     );
+    _putIfPresent(updates, 'image_url', imageFields.imageUrl);
     _putIfPresent(
       updates,
-      'image_url',
-      SpreadsheetImportReader.readText(row, ['image_url', 'image']),
+      'description',
+      SpreadsheetImportReader.readText(row, _descriptionKeys),
     );
+    _putIfPresent(updates, 'image_urls_json', imageFields.imageUrlsJson);
+    final showOnline = SpreadsheetImportReader.readBool(row, _showOnlineKeys);
+    if (showOnline != null) {
+      updates['show_online'] = showOnline ? 1 : 0;
+    }
+    final isFeatured = SpreadsheetImportReader.readBool(row, _isFeaturedKeys);
+    if (isFeatured != null) {
+      updates['is_featured'] = isFeatured ? 1 : 0;
+    }
     if (categoryId != null) {
       updates['category_id'] = categoryId;
     }
@@ -496,6 +587,159 @@ class ProductImportService {
       updates[key] = value;
     }
   }
+
+  static List<List<String>> _rowsFromCloudProductFile(
+    Map<String, dynamic> cloud,
+  ) {
+    var headers =
+        (cloud['headers'] as List?)
+            ?.map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .toList() ??
+        <String>[];
+    final rows = <List<String>>[];
+    final rawRows = cloud['rows'];
+
+    if (rawRows is List) {
+      for (final item in rawRows) {
+        if (item is List) {
+          rows.add(
+            item.map((value) => value?.toString().trim() ?? '').toList(),
+          );
+          continue;
+        }
+        if (item is Map) {
+          final rowMap = Map<String, dynamic>.from(item);
+          if (headers.isEmpty) {
+            headers = rowMap.keys.map((key) => key.toString()).toList();
+          }
+          rows.add(
+            headers
+                .map((header) => rowMap[header]?.toString().trim() ?? '')
+                .toList(),
+          );
+        }
+      }
+    }
+
+    if (headers.isEmpty || rows.isEmpty) {
+      throw Exception('Piki could not find product rows in this file.');
+    }
+    return [headers, ...rows];
+  }
+
+  static List<String> _cloudWarnings(Map<String, dynamic> cloud) {
+    final warnings = <String>[];
+    final summary = cloud['summary']?.toString().trim();
+    if (summary != null && summary.isNotEmpty) {
+      warnings.add(summary);
+    }
+    final rawWarnings = cloud['warnings'];
+    if (rawWarnings is List) {
+      warnings.addAll(
+        rawWarnings
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty),
+      );
+    }
+    if (cloud['sourceTextTruncated'] == true) {
+      warnings.add(
+        'The file was long, so Piki reviewed the first part of the extracted text.',
+      );
+    }
+    return warnings;
+  }
+
+  static Future<_ProductImageFields> _readHostedImageFields(
+    Map<String, String> row, {
+    String? productName,
+  }) async {
+    final primary = SpreadsheetImportReader.readText(row, [
+      'image_url',
+      'image',
+    ]);
+    final rawUrls = <String>[?primary, ..._readImageUrlList(row)];
+    final urls = <String>[];
+    for (final rawUrl in rawUrls) {
+      final clean = rawUrl.trim();
+      if (clean.isEmpty || urls.contains(clean)) {
+        continue;
+      }
+      final hosted = await _resolveImportImageUrl(
+        clean,
+        productName: productName,
+      );
+      if (!urls.contains(hosted)) {
+        urls.add(hosted);
+      }
+    }
+
+    return _ProductImageFields(
+      imageUrl: urls.isEmpty ? primary : urls.first,
+      imageUrlsJson: urls.isEmpty ? null : jsonEncode(urls),
+    );
+  }
+
+  static Future<String> _resolveImportImageUrl(
+    String value, {
+    String? productName,
+  }) async {
+    if (ProductImageUploadService.isRemoteImage(value)) {
+      return value;
+    }
+    return ProductImageUploadService.uploadProductImage(
+      imagePath: value,
+      productName: productName,
+    );
+  }
+
+  static List<String> _readImageUrlList(Map<String, String> row) {
+    final raw = SpreadsheetImportReader.readText(row, _imageUrlsKeys);
+    if (raw == null) {
+      return const [];
+    }
+
+    try {
+      final parsed = jsonDecode(raw);
+      if (parsed is List) {
+        return parsed
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
+      }
+    } catch (_) {
+      // Fall back to splitting pasted URL lists below.
+    }
+
+    return raw
+        .split(RegExp(r'[\n,;]+'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  static List<String> _dedupe(List<String> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) {
+        continue;
+      }
+      result.add(trimmed);
+    }
+    return result;
+  }
+}
+
+class _ProductImageFields {
+  final String? imageUrl;
+  final String? imageUrlsJson;
+
+  const _ProductImageFields({
+    required this.imageUrl,
+    required this.imageUrlsJson,
+  });
 }
 
 class _ProductRowImportResult {

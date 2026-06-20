@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -501,6 +502,148 @@ $userMessage
     }
   }
 
+  /// Uploads a catalog/invoice/product-list document to the backend, where it
+  /// is converted to text and mapped into product import rows by Piki cloud AI.
+  static Future<Map<String, dynamic>> extractProductImportRows({
+    required String fileName,
+    required Uint8List bytes,
+    String? mimeType,
+    String? extension,
+    bool consumeQuota = true,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+    if (bytes.isEmpty) {
+      throw Exception('Choose a product file first');
+    }
+    if (bytes.length > 7 * 1024 * 1024) {
+      throw Exception('Choose a product file below 7 MB.');
+    }
+
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final client = http.Client();
+
+    try {
+      final response = await client
+          .post(
+            _buildUri(backendUrl, 'ai/product-file/extract'),
+            headers: {
+              ..._authHeaders(license),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'fileName': fileName,
+              'mimeType': mimeType,
+              'extension': extension,
+              'fileBase64': base64Encode(bytes),
+              'consumeQuota': consumeQuota,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 429) {
+        throw Exception(
+          body['error'] as String? ?? 'AI rate limit reached. Try again later.',
+        );
+      }
+
+      if (response.statusCode == 403) {
+        throw Exception(
+          body['error'] as String? ??
+              'Piki AI document import is not enabled for this account.',
+        );
+      }
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        throw Exception(
+          body['error'] as String? ??
+              'Piki AI document import failed (${response.statusCode})',
+        );
+      }
+
+      return Map<String, dynamic>.from(body['data'] as Map? ?? {});
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Uploads a historical sales/receipt/invoice document to the backend, where
+  /// Piki cloud AI maps it into the existing sales import row format.
+  static Future<Map<String, dynamic>> extractSalesImportRows({
+    required String fileName,
+    required Uint8List bytes,
+    String? mimeType,
+    String? extension,
+    bool consumeQuota = true,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+    if (bytes.isEmpty) {
+      throw Exception('Choose a sales file first');
+    }
+    if (bytes.length > 7 * 1024 * 1024) {
+      throw Exception('Choose a sales file below 7 MB.');
+    }
+
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final client = http.Client();
+
+    try {
+      final response = await client
+          .post(
+            _buildUri(backendUrl, 'ai/sales-file/extract'),
+            headers: {
+              ..._authHeaders(license),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'fileName': fileName,
+              'mimeType': mimeType,
+              'extension': extension,
+              'fileBase64': base64Encode(bytes),
+              'consumeQuota': consumeQuota,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 429) {
+        throw Exception(
+          body['error'] as String? ?? 'AI rate limit reached. Try again later.',
+        );
+      }
+
+      if (response.statusCode == 403) {
+        throw Exception(
+          body['error'] as String? ??
+              'Piki AI sales import is not enabled for this account.',
+        );
+      }
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        throw Exception(
+          body['error'] as String? ??
+              'Piki AI sales import failed (${response.statusCode})',
+        );
+      }
+
+      return Map<String, dynamic>.from(body['data'] as Map? ?? {});
+    } finally {
+      client.close();
+    }
+  }
+
   static String _buildSystemPrompt() {
     final shopName = ShopSettings.shopName;
     final currency = ShopSettings.currency;
@@ -623,7 +766,6 @@ How to use Piki POS:
       } catch (_) {
         // Yesterday data is optional, skip if unavailable
       }
-
 
       // Stock overview
       final lowStockItems = await ProductRepository.getLowStock();

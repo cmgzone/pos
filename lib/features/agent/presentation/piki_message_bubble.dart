@@ -156,7 +156,9 @@ class PikiMessageBubble extends StatelessWidget {
     final suggestion = data['suggestion'] as String? ?? '';
     final action = data['action'] as String?;
 
-    final color = priority == 'high' ? AppColors.warning : Theme.of(context).colorScheme.secondary;
+    final color = priority == 'high'
+        ? AppColors.warning
+        : Theme.of(context).colorScheme.secondary;
     final isMobile = MediaQuery.sizeOf(context).width < 600;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final bubbleMaxWidth = isMobile ? screenWidth * 0.94 : double.infinity;
@@ -264,10 +266,7 @@ class PikiMessageBubble extends StatelessWidget {
                     side: BorderSide(color: color.withValues(alpha: 0.5)),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
-                  child: Text(
-                    'Take Action',
-                    style: TextStyle(fontSize: 12),
-                  ),
+                  child: Text('Take Action', style: TextStyle(fontSize: 12)),
                 ),
               ),
             ],
@@ -319,7 +318,9 @@ class PikiMessageBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
-          border: isMobile ? null : Border.all(color: Theme.of(context).colorScheme.outline),
+          border: isMobile
+              ? null
+              : Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,7 +355,9 @@ class PikiMessageBubble extends StatelessWidget {
                                   : labels[index],
                               style: TextStyle(
                                 fontSize: 9,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           );
@@ -594,11 +597,7 @@ class PikiMessageBubble extends StatelessWidget {
           children: [
             Text(
               message.content,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                height: 1.5,
-              ),
+              style: TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
             ),
             SizedBox(height: 6),
             Row(
@@ -662,7 +661,9 @@ class PikiMessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(20),
             bottomRight: Radius.circular(20),
           ),
-          border: isMobile ? null : Border.all(color: Theme.of(context).colorScheme.outline),
+          border: isMobile
+              ? null
+              : Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,7 +694,9 @@ class PikiMessageBubble extends StatelessWidget {
                 Text(
                   _timeLabel,
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                     fontSize: 10,
                   ),
                 ),
@@ -741,7 +744,9 @@ class PikiMessageBubble extends StatelessWidget {
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
-              border: isMobile ? null : Border.all(color: Theme.of(context).colorScheme.outline),
+              border: isMobile
+                  ? null
+                  : Border.all(color: Theme.of(context).colorScheme.outline),
             ),
             child: Column(
               children: steps.map((step) {
@@ -749,7 +754,11 @@ class PikiMessageBubble extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 7),
                   child: Row(
                     children: [
-                      Icon(step.icon, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      Icon(
+                        step.icon,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                       SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -765,7 +774,9 @@ class PikiMessageBubble extends StatelessWidget {
                             Text(
                               step.description,
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -801,7 +812,9 @@ class PikiMessageBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(18),
-          border: isMobile ? null : Border.all(color: Theme.of(context).colorScheme.outline),
+          border: isMobile
+              ? null
+              : Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1052,7 +1065,10 @@ class PikiMessageBubble extends StatelessWidget {
             Text(
               'By saving, you verify you have the right to use this image.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -1167,17 +1183,16 @@ class PikiMessageBubble extends StatelessWidget {
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(18),
-            border: isMobile ? null : Border.all(color: Theme.of(context).colorScheme.outline),
+            border: isMobile
+                ? null
+                : Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 message.content,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               ),
               SizedBox(height: 14),
               PikiSummaryCard(data: data),
@@ -1194,7 +1209,9 @@ class PikiMessageBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(18),
-          border: isMobile ? null : Border.all(color: Theme.of(context).colorScheme.outline),
+          border: isMobile
+              ? null
+              : Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1241,8 +1258,11 @@ class PikiMessageBubble extends StatelessWidget {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: (isLow ? AppColors.warning : Theme.of(context).colorScheme.secondary)
-                            .withValues(alpha: 0.12),
+                        color:
+                            (isLow
+                                    ? AppColors.warning
+                                    : Theme.of(context).colorScheme.secondary)
+                                .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -1250,7 +1270,9 @@ class PikiMessageBubble extends StatelessWidget {
                             ? Icons.warning_amber_rounded
                             : Icons.inventory_2_rounded,
                         size: 18,
-                        color: isLow ? AppColors.warning : Theme.of(context).colorScheme.secondary,
+                        color: isLow
+                            ? AppColors.warning
+                            : Theme.of(context).colorScheme.secondary,
                       ),
                     ),
                     SizedBox(width: 12),
@@ -1272,7 +1294,9 @@ class PikiMessageBubble extends StatelessWidget {
                             style: TextStyle(
                               color: isLow
                                   ? AppColors.warning
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                               fontSize: 11,
                             ),
                           ),
@@ -1383,9 +1407,7 @@ class PikiMessageBubble extends StatelessWidget {
           ),
           border: isMobile
               ? null
-              : Border.all(
-                  color: Color(0xFF6B4EE6).withValues(alpha: 0.25),
-                ),
+              : Border.all(color: Color(0xFF6B4EE6).withValues(alpha: 0.25)),
           boxShadow: [
             BoxShadow(
               color: Color(0xFF6B4EE6).withValues(alpha: 0.05),
@@ -1436,7 +1458,9 @@ class PikiMessageBubble extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 10,
                       ),
                     ),
@@ -1447,7 +1471,9 @@ class PikiMessageBubble extends StatelessWidget {
                 Text(
                   _timeLabel,
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                     fontSize: 10,
                   ),
                 ),
@@ -1499,7 +1525,9 @@ class PikiMessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1535,9 +1563,13 @@ class PikiMessageBubble extends StatelessWidget {
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1580,7 +1612,9 @@ class PikiMessageBubble extends StatelessWidget {
                             Text(
                               'Estimated total: ${ShopSettings.currency}${total.toStringAsFixed(2)}',
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -1647,7 +1681,9 @@ class PikiMessageBubble extends StatelessWidget {
                         : () => onSendPrompt!('cancel purchase draft'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.onSurface,
-                      side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 10,
@@ -1657,10 +1693,7 @@ class PikiMessageBubble extends StatelessWidget {
                       ),
                     ),
                     icon: Icon(Icons.close_rounded, size: 16),
-                    label: Text(
-                      'Cancel Draft',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    label: Text('Cancel Draft', style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),
@@ -1672,7 +1705,9 @@ class PikiMessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1742,7 +1777,9 @@ class PikiMessageBubble extends StatelessWidget {
                                       Text(
                                         citation['detail'] as String? ?? '',
                                         style: TextStyle(
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
                                           fontSize: 11,
                                           height: 1.4,
                                         ),
@@ -1874,6 +1911,38 @@ class PikiMessageBubble extends StatelessWidget {
                 : null,
           ),
         );
+      } else if (type == 'product_import' && success) {
+        final created = (result['created'] as num? ?? 0).toInt();
+        final updated = (result['updated'] as num? ?? 0).toInt();
+        final skipped = (result['skipped'] as num? ?? 0).toInt();
+        final rows = (result['rows'] as num? ?? created + updated + skipped)
+            .toInt();
+        cards.add(
+          _buildCard(
+            context,
+            icon: Icons.inventory_2_outlined,
+            color: AppColors.primary,
+            title: 'Products Imported',
+            subtitle: '$created created, $updated updated, $skipped skipped',
+            value: '$rows rows',
+          ),
+        );
+      } else if (type == 'sales_import' && success) {
+        final imported = (result['imported'] as num? ?? 0).toInt();
+        final skipped = (result['skipped'] as num? ?? 0).toInt();
+        final productLines = (result['product_lines'] as num? ?? 0).toInt();
+        final serviceLines = (result['service_lines'] as num? ?? 0).toInt();
+        cards.add(
+          _buildCard(
+            context,
+            icon: Icons.receipt_long_outlined,
+            color: AppColors.success,
+            title: 'Sales Imported',
+            subtitle:
+                '$productLines product lines, $serviceLines service lines, $skipped skipped',
+            value: '$imported saved',
+          ),
+        );
       } else if (type == 'add_service_field' && success) {
         cards.add(
           _buildCard(
@@ -1904,7 +1973,10 @@ class PikiMessageBubble extends StatelessWidget {
     ];
   }
 
-  Widget _buildWebSearchCard(BuildContext context, Map<String, dynamic> result) {
+  Widget _buildWebSearchCard(
+    BuildContext context,
+    Map<String, dynamic> result,
+  ) {
     final query = result['query'] as String? ?? 'web search';
     final results =
         (result['results'] as List?)
@@ -2005,7 +2077,10 @@ class PikiMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildImageDraftCard(BuildContext context, Map<String, dynamic> result) {
+  Widget _buildImageDraftCard(
+    BuildContext context,
+    Map<String, dynamic> result,
+  ) {
     final items =
         (result['items'] as List?)
             ?.whereType<Map>()
@@ -2019,7 +2094,11 @@ class PikiMessageBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.25)),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.secondary.withValues(alpha: 0.25),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2029,7 +2108,9 @@ class PikiMessageBubble extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.12),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -2068,7 +2149,10 @@ class PikiMessageBubble extends StatelessWidget {
           if (items.isEmpty)
             Text(
               'No clear item lines were detected. Try a closer, brighter photo.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             )
           else
             ...items
@@ -2529,7 +2613,7 @@ class _ThoughtNoteLine extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 5),
-            child:             Icon(
+            child: Icon(
               _iconForStage(note.stage),
               size: 11,
               color: _colorForStage(context, note.stage),
@@ -2610,11 +2694,7 @@ class _StepStatusIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (status) {
       case PikiStepStatus.done:
-        return Icon(
-          Icons.check_circle,
-          color: AppColors.success,
-          size: 20,
-        );
+        return Icon(Icons.check_circle, color: AppColors.success, size: 20);
       case PikiStepStatus.working:
         return SizedBox(
           width: 18,
@@ -2629,7 +2709,9 @@ class _StepStatusIcon extends StatelessWidget {
       case PikiStepStatus.pending:
         return Icon(
           Icons.circle_outlined,
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
           size: 20,
         );
     }
@@ -2737,7 +2819,9 @@ class _CopyButtonState extends State<_CopyButton> {
                 size: 14,
                 color: _copied
                     ? AppColors.success
-                    : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    : Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
               ),
             ),
           ),

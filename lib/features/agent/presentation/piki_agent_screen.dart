@@ -5,18 +5,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/data/spreadsheet_import_reader.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/speech_service.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../app/app_shell.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/piki_models.dart';
 import '../data/piki_provider.dart';
 import 'piki_message_bubble.dart';
+
+enum _PikiAttachmentAction {
+  cameraPhoto,
+  galleryPhoto,
+  importProducts,
+  importSales,
+}
+
+enum _PikiImportTarget { products, sales }
 
 class PikiAgentScreen extends ConsumerStatefulWidget {
   const PikiAgentScreen({super.key});
@@ -32,6 +43,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   bool _isListening = false;
   bool _voiceBusy = false;
   bool _imageBusy = false;
+  bool _fileImportBusy = false;
   bool _autoListening = false;
   bool _autoLoopRunning = false;
   int _autoListenToken = 0;
@@ -54,6 +66,16 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       'icon': Icons.assignment_outlined,
       'label': 'Catalog Orders',
       'prompt': 'Show pending catalog orders',
+    },
+    {
+      'icon': Icons.upload_file_outlined,
+      'label': 'Import Products',
+      'prompt': 'import products from file',
+    },
+    {
+      'icon': Icons.receipt_long_outlined,
+      'label': 'Import Sales',
+      'prompt': 'import sales records from file',
     },
     {
       'icon': Icons.auto_awesome_rounded,
@@ -152,6 +174,14 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   Future<void> _sendInternal({bool speakResponse = false}) async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
+    final importTarget = _importTargetFromText(text);
+    if (importTarget != null) {
+      _controller.clear();
+      await _pickImportFileForPiki(importTarget);
+      return;
+    }
+
     final beforeIds = ref
         .read(pikiMessagesProvider)
         .map((message) => message.id)
@@ -162,6 +192,54 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     if (speakResponse) {
       await _speakLatestAgentReply(beforeIds);
     }
+  }
+
+  Future<void> _sendPromptFromUi(String prompt) async {
+    final importTarget = _importTargetFromText(prompt);
+    if (importTarget != null) {
+      await _pickImportFileForPiki(importTarget);
+    } else {
+      await ref.read(pikiMessagesProvider.notifier).sendMessage(prompt);
+    }
+    _scrollToBottom();
+  }
+
+  _PikiImportTarget? _importTargetFromText(String text) {
+    final lower = text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    final wantsFile =
+        lower.contains('import') ||
+        lower.contains('upload') ||
+        lower.contains('excel') ||
+        lower.contains('spreadsheet') ||
+        lower.contains('pdf') ||
+        lower.contains('docx') ||
+        lower.contains('document') ||
+        lower.contains('file');
+    if (!wantsFile) {
+      return null;
+    }
+
+    final wantsProduct =
+        lower.contains('product') ||
+        lower.contains('products') ||
+        lower.contains('catalog') ||
+        lower.contains('online store') ||
+        lower.contains('item list');
+    if (wantsProduct) {
+      return _PikiImportTarget.products;
+    }
+
+    final wantsSales =
+        lower.contains('sales') ||
+        lower.contains('sale records') ||
+        lower.contains('sell records') ||
+        lower.contains('receipts') ||
+        lower.contains('transactions');
+    if (wantsSales) {
+      return _PikiImportTarget.sales;
+    }
+
+    return null;
   }
 
   Future<void> _toggleListening() async {
@@ -215,6 +293,23 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     }
   }
 
+  void _handleAttachmentAction(_PikiAttachmentAction action) {
+    switch (action) {
+      case _PikiAttachmentAction.cameraPhoto:
+        unawaited(_pickImageForPiki(ImageSource.camera));
+        break;
+      case _PikiAttachmentAction.galleryPhoto:
+        unawaited(_pickImageForPiki(ImageSource.gallery));
+        break;
+      case _PikiAttachmentAction.importProducts:
+        unawaited(_pickImportFileForPiki(_PikiImportTarget.products));
+        break;
+      case _PikiAttachmentAction.importSales:
+        unawaited(_pickImportFileForPiki(_PikiImportTarget.sales));
+        break;
+    }
+  }
+
   Future<void> _pickImageForPiki(ImageSource source) async {
     if (_imageBusy) return;
     setState(() => _imageBusy = true);
@@ -252,6 +347,103 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         setState(() => _imageBusy = false);
       }
     }
+  }
+
+  Future<void> _pickImportFileForPiki(_PikiImportTarget target) async {
+    if (_fileImportBusy) return;
+    setState(() => _fileImportBusy = true);
+    try {
+      final notifier = ref.read(pikiMessagesProvider.notifier);
+      switch (target) {
+        case _PikiImportTarget.products:
+          await notifier.importProductsFromFile(
+            confirmPlan: _confirmProductImportPlan,
+          );
+          break;
+        case _PikiImportTarget.sales:
+          await notifier.importSalesFromFile(
+            confirmPlan: _confirmSalesImportPlan,
+          );
+          break;
+      }
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Piki file import failed.',
+              fallback: AppErrorMessage.pikiFailed,
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _fileImportBusy = false);
+      }
+    }
+  }
+
+  Future<bool> _confirmProductImportPlan(SpreadsheetImportPlan plan) {
+    if (!mounted) return Future.value(false);
+    return showSmartImportPreviewDialog(
+      context,
+      plan: plan,
+      title: 'Piki Chat Product Import',
+      actionLabel: 'Import Products',
+      minimumRequirements: const [
+        'New products only need a name column.',
+        'Existing products can be updated with sku, barcode, or product_id.',
+      ],
+      optionalColumns: const [
+        'price',
+        'cost',
+        'category',
+        'stock',
+        'low_stock',
+        'unit',
+        'brand',
+        'image_url',
+        'description',
+        'image_urls',
+        'show_online',
+        'is_featured',
+      ],
+      defaultsNote:
+          'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
+    );
+  }
+
+  Future<bool> _confirmSalesImportPlan(SpreadsheetImportPlan plan) {
+    if (!mounted) return Future.value(false);
+    return showSmartImportPreviewDialog(
+      context,
+      plan: plan,
+      title: 'Piki Chat Sales Import',
+      actionLabel: 'Import Sales',
+      minimumRequirements: const [
+        'Summary sales can use just a total column.',
+        'Product sales can use product_name, sku, barcode, product_id, or variant_id.',
+        'Service sales can use service_name or service_id.',
+      ],
+      optionalColumns: const [
+        'date',
+        'quantity',
+        'unit_price',
+        'payment_type',
+        'customer_name',
+        'due_date',
+        'reference',
+        'tax',
+        'discount',
+        'note',
+      ],
+      defaultsNote:
+          'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Quantity defaults to 1, payment defaults to cash, and item price can come from the product/service.',
+    );
   }
 
   Future<void> _toggleAutoListening() async {
@@ -558,10 +750,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                       itemBuilder: (context, index) => PikiMessageBubble(
                         message: messages[index],
                         onSendPrompt: (prompt) {
-                          ref
-                              .read(pikiMessagesProvider.notifier)
-                              .sendMessage(prompt);
-                          _scrollToBottom();
+                          unawaited(_sendPromptFromUi(prompt));
                         },
                       ),
                     ),
@@ -597,8 +786,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                   ? _sellQuickActions
                   : _quickActions,
               onTap: (prompt) {
-                ref.read(pikiMessagesProvider.notifier).sendMessage(prompt);
-                _scrollToBottom();
+                unawaited(_sendPromptFromUi(prompt));
               },
             ),
 
@@ -608,11 +796,11 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               focusNode: _focusNode,
               mode: mode,
               isListening: _isListening || _voiceBusy,
-              isImageBusy: _imageBusy,
+              isAttachmentBusy: _imageBusy || _fileImportBusy,
               isAutoListening: _autoListening,
               onSend: _send,
               onMicTap: _toggleListening,
-              onImageSource: _pickImageForPiki,
+              onAttachmentAction: _handleAttachmentAction,
               onAutoListenTap: _toggleAutoListening,
               onSelectMode: (m) =>
                   ref.read(pikiModeProvider.notifier).state = m,
@@ -963,11 +1151,7 @@ class _InsightBar extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  size: 16,
-                  color: AppColors.primary,
-                ),
+                Icon(Icons.chevron_right, size: 16, color: AppColors.primary),
               ],
             ),
           ),
@@ -1009,7 +1193,9 @@ class _QuickActions extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest,
             side: BorderSide(color: Theme.of(context).colorScheme.outline),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
@@ -1029,11 +1215,11 @@ class _BottomBar extends StatelessWidget {
   final FocusNode focusNode;
   final PikiMode mode;
   final bool isListening;
-  final bool isImageBusy;
+  final bool isAttachmentBusy;
   final bool isAutoListening;
   final VoidCallback onSend;
   final VoidCallback onMicTap;
-  final ValueChanged<ImageSource> onImageSource;
+  final ValueChanged<_PikiAttachmentAction> onAttachmentAction;
   final VoidCallback onAutoListenTap;
   final ValueChanged<PikiMode> onSelectMode;
 
@@ -1042,11 +1228,11 @@ class _BottomBar extends StatelessWidget {
     required this.focusNode,
     required this.mode,
     required this.isListening,
-    required this.isImageBusy,
+    required this.isAttachmentBusy,
     required this.isAutoListening,
     required this.onSend,
     required this.onMicTap,
-    required this.onImageSource,
+    required this.onAttachmentAction,
     required this.onAutoListenTap,
     required this.onSelectMode,
   });
@@ -1087,7 +1273,9 @@ class _BottomBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outline)),
+          border: Border(
+            top: BorderSide(color: Theme.of(context).colorScheme.outline),
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1189,10 +1377,7 @@ class _BottomBar extends StatelessWidget {
                               size: 18,
                             ),
                             SizedBox(width: 12),
-                            Text(
-                              'Plan Mode',
-                              style: TextStyle(fontSize: 14),
-                            ),
+                            Text('Plan Mode', style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       ),
@@ -1206,10 +1391,7 @@ class _BottomBar extends StatelessWidget {
                               size: 18,
                             ),
                             SizedBox(width: 12),
-                            Text(
-                              'Fast Mode',
-                              style: TextStyle(fontSize: 14),
-                            ),
+                            Text('Fast Mode', style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       ),
@@ -1223,10 +1405,7 @@ class _BottomBar extends StatelessWidget {
                               size: 18,
                             ),
                             SizedBox(width: 12),
-                            Text(
-                              'Sell Mode',
-                              style: TextStyle(fontSize: 14),
-                            ),
+                            Text('Sell Mode', style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       ),
@@ -1240,10 +1419,7 @@ class _BottomBar extends StatelessWidget {
                               size: 18,
                             ),
                             SizedBox(width: 12),
-                            Text(
-                              'Advice Mode',
-                              style: TextStyle(fontSize: 14),
-                            ),
+                            Text('Advice Mode', style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       ),
@@ -1275,9 +1451,9 @@ class _BottomBar extends StatelessWidget {
                   ),
                   SizedBox(width: 4),
                 ],
-                _ImageSourceButton(
-                  isBusy: isImageBusy,
-                  onSelected: onImageSource,
+                _AttachmentButton(
+                  isBusy: isAttachmentBusy,
+                  onSelected: onAttachmentAction,
                 ),
                 SizedBox(width: 6),
                 Expanded(
@@ -1292,14 +1468,18 @@ class _BottomBar extends StatelessWidget {
                           ? 'Ask for business advice...'
                           : 'Ask Piki AI...',
                       hintStyle: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 14,
                       ),
                       filled: true,
-                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -1355,21 +1535,21 @@ class _BottomBar extends StatelessWidget {
   }
 }
 
-class _ImageSourceButton extends StatelessWidget {
+class _AttachmentButton extends StatelessWidget {
   final bool isBusy;
-  final ValueChanged<ImageSource> onSelected;
+  final ValueChanged<_PikiAttachmentAction> onSelected;
 
-  const _ImageSourceButton({required this.isBusy, required this.onSelected});
+  const _AttachmentButton({required this.isBusy, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<ImageSource>(
-      tooltip: 'Scan product or sale photo',
+    return PopupMenuButton<_PikiAttachmentAction>(
+      tooltip: 'Attach photo or import file',
       enabled: !isBusy,
       onSelected: onSelected,
       itemBuilder: (context) => const [
         PopupMenuItem(
-          value: ImageSource.camera,
+          value: _PikiAttachmentAction.cameraPhoto,
           child: Row(
             children: [
               Icon(Icons.photo_camera_outlined, size: 18),
@@ -1379,12 +1559,33 @@ class _ImageSourceButton extends StatelessWidget {
           ),
         ),
         PopupMenuItem(
-          value: ImageSource.gallery,
+          value: _PikiAttachmentAction.galleryPhoto,
           child: Row(
             children: [
               Icon(Icons.photo_library_outlined, size: 18),
               SizedBox(width: 12),
               Text('Choose photo'),
+            ],
+          ),
+        ),
+        PopupMenuDivider(),
+        PopupMenuItem(
+          value: _PikiAttachmentAction.importProducts,
+          child: Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 18),
+              SizedBox(width: 12),
+              Text('Import products file'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _PikiAttachmentAction.importSales,
+          child: Row(
+            children: [
+              Icon(Icons.receipt_long_outlined, size: 18),
+              SizedBox(width: 12),
+              Text('Import sales file'),
             ],
           ),
         ),
@@ -1405,7 +1606,7 @@ class _ImageSourceButton extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Icon(
-                  Icons.add_a_photo_outlined,
+                  Icons.attach_file_rounded,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
         ),
@@ -1449,13 +1650,17 @@ class _ModeToggle extends StatelessWidget {
             Icon(
               icon,
               size: 14,
-              color: isActive ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+              color: isActive
+                  ? color
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+                color: isActive
+                    ? color
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
               ),
@@ -1544,10 +1749,7 @@ class _SellCartBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               elevation: 0,
-              textStyle: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
+              textStyle: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
             ),
           ),
         ],
@@ -1627,7 +1829,9 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                     return Center(
                       child: Text(
                         'No past chats yet.',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     );
                   }
