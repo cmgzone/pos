@@ -124,6 +124,10 @@ class PikiImportDraftItem {
   final double? costPrice;
   final double? sellingPrice;
   final double? stockQuantity;
+  final String? imageUrl;
+  final String? imageMatchStatus;
+  final String? acceptedProductId;
+  final String? sourceRowKey;
   final Map<String, dynamic> row;
 
   const PikiImportDraftItem({
@@ -137,6 +141,10 @@ class PikiImportDraftItem {
     this.costPrice,
     this.sellingPrice,
     this.stockQuantity,
+    this.imageUrl,
+    this.imageMatchStatus,
+    this.acceptedProductId,
+    this.sourceRowKey,
   });
 
   factory PikiImportDraftItem.fromJson(Map<String, dynamic> json) {
@@ -150,6 +158,10 @@ class PikiImportDraftItem {
       costPrice: _readDouble(json['costPrice']),
       sellingPrice: _readDouble(json['sellingPrice']),
       stockQuantity: _readDouble(json['stockQuantity']),
+      imageUrl: json['imageUrl']?.toString(),
+      imageMatchStatus: json['imageMatchStatus']?.toString(),
+      acceptedProductId: json['acceptedProductId']?.toString(),
+      sourceRowKey: json['sourceRowKey']?.toString(),
       row: json['row'] is Map
           ? Map<String, dynamic>.from(json['row'] as Map)
           : const <String, dynamic>{},
@@ -266,6 +278,16 @@ class PikiAiJobService {
       'stockBatches': stockBatches,
       'skipped': skipped,
     });
+    return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
+  static Future<PikiAiJob> cancelJob(String jobId) async {
+    final body = await _postJson('ai/jobs/$jobId/cancel', const {});
+    return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
+  static Future<PikiAiJob> retryImportJob(String jobId) async {
+    final body = await _postJson('ai/imports/$jobId/retry', const {});
     return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
   }
 

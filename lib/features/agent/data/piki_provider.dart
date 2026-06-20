@@ -301,13 +301,16 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
   Future<void> analyzeImage({
     required String imagePath,
     String sourceLabel = 'photo',
+    String? instruction,
   }) async {
     final sessionId = await _ensureSession('Piki image scan');
     await _memoryLoadFuture;
 
     final label = sourceLabel.trim().isEmpty ? 'photo' : sourceLabel.trim();
-    final userText =
-        'Analyze this $label for a product or sale record before saving.';
+    final cleanInstruction = instruction?.trim() ?? '';
+    final userText = cleanInstruction.isEmpty
+        ? 'Analyze this $label for a product or sale record before saving.'
+        : 'Analyze this $label for a product or sale record before saving. $cleanInstruction';
     addMessage(
       PikiMessage(
         content: userText,
@@ -336,8 +339,9 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
         PikiAgentService.toolImageOrderDraft,
         args: {
           'image_source': imagePath,
-          'note':
-              'The owner wants to create a product or record a sale from this photo.',
+          'note': cleanInstruction.isEmpty
+              ? 'The owner wants to create a product or record a sale from this photo.'
+              : 'The owner wants to create a product or record a sale from this photo. Owner instruction: $cleanInstruction',
         },
       );
       removeMessagesWhere((message) => message.id == working.id);
@@ -407,13 +411,23 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
       allowedExtensions: SpreadsheetImportReader.documentImportExtensions,
     );
     if (file == null) return;
+    await importSmartFileAttachment(file: file, confirmPlan: confirmPlan);
+  }
 
+  Future<void> importSmartFileAttachment({
+    required SpreadsheetFileRows file,
+    String? instruction,
+    required Future<bool> Function(PikiSmartImportDraft draft) confirmPlan,
+  }) async {
+    final cleanInstruction = instruction?.trim() ?? '';
     final sessionId = await _ensureSession('Smart file upload');
     await _memoryLoadFuture;
+    final userText = cleanInstruction.isEmpty
+        ? 'Upload ${file.fileName}. Let Piki read it and put it where it belongs.'
+        : 'Upload ${file.fileName}. $cleanInstruction';
     addMessage(
       PikiMessage(
-        content:
-            'Upload ${file.fileName}. Let Piki read it and put it where it belongs.',
+        content: userText,
         sender: PikiSender.user,
         sessionId: sessionId,
       ),
@@ -435,7 +449,10 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
     addMessage(working);
 
     try {
-      final draft = await _buildSmartImportDraft(file);
+      final draft = await _buildSmartImportDraft(
+        file,
+        instruction: cleanInstruction,
+      );
       final confirmed = await confirmPlan(draft);
       if (!confirmed) {
         removeMessagesWhere((message) => message.id == working.id);
@@ -472,7 +489,7 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
       _ref
           .read(pikiBrainProvider)
           .rememberInteraction(
-            userInput: 'Smart upload ${file.fileName}',
+            userInput: userText,
             reply: content,
             tools: const ['smart_import'],
             results: [toolResult],
@@ -716,12 +733,16 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
   }
 
   Future<PikiSmartImportDraft> _buildSmartImportDraft(
-    SpreadsheetFileRows file,
-  ) async {
+    SpreadsheetFileRows file, {
+    String? instruction,
+  }) async {
     final bytes = file.bytes;
     if (bytes != null && bytes.isNotEmpty) {
       try {
-        return await _buildSmartImportDraftFromCloud(file);
+        return await _buildSmartImportDraftFromCloud(
+          file,
+          instruction: instruction,
+        );
       } catch (error) {
         if (!SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
           rethrow;
@@ -784,8 +805,9 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
   }
 
   Future<PikiSmartImportDraft> _buildSmartImportDraftFromCloud(
-    SpreadsheetFileRows file,
-  ) async {
+    SpreadsheetFileRows file, {
+    String? instruction,
+  }) async {
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
       throw Exception('Could not read the selected file.');
@@ -796,6 +818,7 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
       mimeType: file.mimeType,
       extension: file.extension,
       sourceText: file.extractedText,
+      instruction: instruction,
     );
     final target = _targetFromCloud(cloud['target']);
     final rows = _rowsFromCloudSmartFile(cloud);

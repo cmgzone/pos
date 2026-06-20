@@ -659,6 +659,7 @@ $userMessage
     String? mimeType,
     String? extension,
     String? sourceText,
+    String? instruction,
     bool consumeQuota = true,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
@@ -691,6 +692,8 @@ $userMessage
               'extension': extension,
               if (sourceText != null && sourceText.trim().isNotEmpty)
                 'sourceText': sourceText.trim(),
+              if (instruction != null && instruction.trim().isNotEmpty)
+                'instruction': instruction.trim(),
               'fileBase64': base64Encode(bytes),
               'consumeQuota': consumeQuota,
             }),

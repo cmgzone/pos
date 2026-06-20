@@ -22,6 +22,66 @@ import 'piki_message_bubble.dart';
 
 enum _PikiAttachmentAction { cameraPhoto, galleryPhoto, smartUpload }
 
+enum _PikiPendingAttachmentKind { file, image }
+
+class _PikiPendingAttachment {
+  final _PikiPendingAttachmentKind kind;
+  final SpreadsheetFileRows? file;
+  final String? imagePath;
+  final String fileName;
+  final int? sizeBytes;
+  final String sourceLabel;
+
+  const _PikiPendingAttachment._({
+    required this.kind,
+    required this.fileName,
+    required this.sourceLabel,
+    this.file,
+    this.imagePath,
+    this.sizeBytes,
+  });
+
+  factory _PikiPendingAttachment.file(SpreadsheetFileRows file) {
+    return _PikiPendingAttachment._(
+      kind: _PikiPendingAttachmentKind.file,
+      file: file,
+      fileName: file.fileName,
+      sizeBytes: file.bytes?.length,
+      sourceLabel: 'file',
+    );
+  }
+
+  factory _PikiPendingAttachment.image({
+    required String imagePath,
+    required String fileName,
+    required String sourceLabel,
+    int? sizeBytes,
+  }) {
+    return _PikiPendingAttachment._(
+      kind: _PikiPendingAttachmentKind.image,
+      imagePath: imagePath,
+      fileName: fileName,
+      sourceLabel: sourceLabel,
+      sizeBytes: sizeBytes,
+    );
+  }
+
+  String get typeLabel => kind == _PikiPendingAttachmentKind.file
+      ? 'Smart upload'
+      : sourceLabel == 'camera'
+      ? 'Camera photo'
+      : 'Photo';
+
+  String get sizeLabel {
+    final bytes = sizeBytes;
+    if (bytes == null || bytes <= 0) return '';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+  }
+}
+
 class PikiAgentScreen extends ConsumerStatefulWidget {
   const PikiAgentScreen({super.key});
 
@@ -40,6 +100,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   bool _autoListening = false;
   bool _autoLoopRunning = false;
   int _autoListenToken = 0;
+  final _pendingAttachments = <_PikiPendingAttachment>[];
 
   static const _autoListenWindow = Duration(seconds: 5);
   static const _autoListenRestartDelay = Duration(milliseconds: 650);
@@ -161,7 +222,57 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
 
   Future<void> _sendInternal({bool speakResponse = false}) async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    final attachments = List<_PikiPendingAttachment>.from(_pendingAttachments);
+    if (text.isEmpty && attachments.isEmpty) return;
+
+    if (attachments.isNotEmpty) {
+      final hasFile = attachments.any(
+        (item) => item.kind == _PikiPendingAttachmentKind.file,
+      );
+      final hasImage = attachments.any(
+        (item) => item.kind == _PikiPendingAttachmentKind.image,
+      );
+      setState(() {
+        _pendingAttachments.clear();
+        if (hasFile) _fileImportBusy = true;
+        if (hasImage) _imageBusy = true;
+      });
+      _controller.clear();
+      try {
+        for (final attachment in attachments) {
+          if (attachment.kind == _PikiPendingAttachmentKind.file) {
+            final file = attachment.file;
+            if (file == null) continue;
+            await ref
+                .read(pikiMessagesProvider.notifier)
+                .importSmartFileAttachment(
+                  file: file,
+                  instruction: text,
+                  confirmPlan: _confirmSmartImportPlan,
+                );
+          } else {
+            final imagePath = attachment.imagePath;
+            if (imagePath == null) continue;
+            await ref
+                .read(pikiMessagesProvider.notifier)
+                .analyzeImage(
+                  imagePath: imagePath,
+                  sourceLabel: attachment.sourceLabel,
+                  instruction: text,
+                );
+          }
+        }
+        _scrollToBottom();
+      } finally {
+        if (mounted) {
+          setState(() {
+            if (hasFile) _fileImportBusy = false;
+            if (hasImage) _imageBusy = false;
+          });
+        }
+      }
+      return;
+    }
 
     if (_shouldStartSmartUpload(text)) {
       _controller.clear();
@@ -282,13 +393,21 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         imageQuality: 82,
       );
       if (picked == null) return;
-      await ref
-          .read(pikiMessagesProvider.notifier)
-          .analyzeImage(
-            imagePath: picked.path,
-            sourceLabel: source == ImageSource.camera ? 'camera' : 'gallery',
+      final sizeBytes = await picked.length();
+      if (!mounted) return;
+      setState(() {
+        _pendingAttachments
+          ..clear()
+          ..add(
+            _PikiPendingAttachment.image(
+              imagePath: picked.path,
+              fileName: picked.name,
+              sourceLabel: source == ImageSource.camera ? 'camera' : 'gallery',
+              sizeBytes: sizeBytes,
+            ),
           );
-      _scrollToBottom();
+      });
+      _focusNode.requestFocus();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -313,10 +432,18 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     if (_fileImportBusy) return;
     setState(() => _fileImportBusy = true);
     try {
-      await ref
-          .read(pikiMessagesProvider.notifier)
-          .importSmartFile(confirmPlan: _confirmSmartImportPlan);
-      _scrollToBottom();
+      final file = await SpreadsheetImportReader.pickRows(
+        dialogTitle: 'Upload File to Piki',
+        allowedExtensions: SpreadsheetImportReader.documentImportExtensions,
+      );
+      if (file == null) return;
+      if (!mounted) return;
+      setState(() {
+        _pendingAttachments
+          ..clear()
+          ..add(_PikiPendingAttachment.file(file));
+      });
+      _focusNode.requestFocus();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -785,6 +912,10 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               isListening: _isListening || _voiceBusy,
               isAttachmentBusy: _imageBusy || _fileImportBusy,
               isAutoListening: _autoListening,
+              attachments: _pendingAttachments,
+              onRemoveAttachment: (index) {
+                setState(() => _pendingAttachments.removeAt(index));
+              },
               onSend: _send,
               onMicTap: _toggleListening,
               onAttachmentAction: _handleAttachmentAction,
@@ -1204,6 +1335,8 @@ class _BottomBar extends StatelessWidget {
   final bool isListening;
   final bool isAttachmentBusy;
   final bool isAutoListening;
+  final List<_PikiPendingAttachment> attachments;
+  final ValueChanged<int> onRemoveAttachment;
   final VoidCallback onSend;
   final VoidCallback onMicTap;
   final ValueChanged<_PikiAttachmentAction> onAttachmentAction;
@@ -1217,6 +1350,8 @@ class _BottomBar extends StatelessWidget {
     required this.isListening,
     required this.isAttachmentBusy,
     required this.isAutoListening,
+    required this.attachments,
+    required this.onRemoveAttachment,
     required this.onSend,
     required this.onMicTap,
     required this.onAttachmentAction,
@@ -1340,7 +1475,23 @@ class _BottomBar extends StatelessWidget {
               ),
               SizedBox(height: 10),
             ],
-
+            if (attachments.isNotEmpty) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var index = 0; index < attachments.length; index += 1)
+                      _PendingAttachmentChip(
+                        attachment: attachments[index],
+                        onRemove: () => onRemoveAttachment(index),
+                      ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 8),
+            ],
             // Input row
             Row(
               children: [
@@ -1447,6 +1598,11 @@ class _BottomBar extends StatelessWidget {
                   child: TextField(
                     controller: controller,
                     focusNode: focusNode,
+                    minLines: 1,
+                    maxLines: 6,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    textCapitalization: TextCapitalization.sentences,
                     style: TextStyle(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: mode == PikiMode.sell
@@ -1484,7 +1640,6 @@ class _BottomBar extends StatelessWidget {
                       ),
                     ),
                     onSubmitted: (_) => onSend(),
-                    textInputAction: TextInputAction.send,
                   ),
                 ),
                 SizedBox(width: 10),
@@ -1517,6 +1672,77 @@ class _BottomBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PendingAttachmentChip extends StatelessWidget {
+  final _PikiPendingAttachment attachment;
+  final VoidCallback onRemove;
+
+  const _PendingAttachmentChip({
+    required this.attachment,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final icon = attachment.kind == _PikiPendingAttachmentKind.file
+        ? Icons.description_outlined
+        : Icons.image_outlined;
+    final size = attachment.sizeLabel;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outline),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  attachment.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  size.isEmpty
+                      ? attachment.typeLabel
+                      : '${attachment.typeLabel} • $size',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            iconSize: 18,
+            tooltip: 'Remove attachment',
+            onPressed: onRemove,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
       ),
     );
   }

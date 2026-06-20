@@ -8,6 +8,7 @@ const path = require('path');
 const { Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { Server } = require('socket.io');
+const JSZip = require('jszip');
 const mammoth = require('mammoth');
 const { PDFParse } = require('pdf-parse');
 
@@ -3292,6 +3293,7 @@ function normalizeImageAnalysisItems(items) {
 const PRODUCT_IMPORT_FILE_MAX_BYTES = 7 * 1024 * 1024;
 const PRODUCT_IMPORT_TEXT_LIMIT = 42000;
 const PRODUCT_IMPORT_MAX_ROWS = 150;
+const PRODUCT_IMPORT_MAX_EMBEDDED_IMAGES = 40;
 const PRODUCT_IMPORT_FIELDS = [
   'product_id',
   'variant_id',
@@ -3444,6 +3446,12 @@ async function extractTextFromProductImportFile(file) {
     case 'tsv':
     case 'json':
       return file.bytes.toString('utf8');
+    case 'xlsx': {
+      const workbook = await extractXlsxProductImport(file.bytes);
+      return workbook.text;
+    }
+    case 'xls':
+      throw createHttpError(400, 'Legacy .xls files are not supported yet. Save the workbook as .xlsx, CSV, or PDF and upload again.');
     default:
       throw createHttpError(
         400,
@@ -3495,6 +3503,496 @@ async function extractDocxText(bytes) {
   return result?.value || '';
 }
 
+async function extractXlsxProductImport(bytes) {
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(bytes);
+  } catch (_) {
+    throw createHttpError(400, 'Piki could not read this Excel workbook. Save it as .xlsx and try again.');
+  }
+
+  const sharedStrings = await readXlsxSharedStrings(zip);
+  const sheetEntries = await readXlsxSheetEntries(zip);
+  const sheets = [];
+  const images = [];
+
+  for (const entry of sheetEntries) {
+    const sheetXml = await xlsxZipText(zip, entry.path);
+    if (!sheetXml) continue;
+    const rows = readXlsxSheetRows(sheetXml, sharedStrings);
+    sheets.push({ name: entry.name, path: entry.path, rows });
+    const sheetImages = await readXlsxSheetImages({
+      zip,
+      sheetXml,
+      sheetPath: entry.path,
+      sheetName: entry.name,
+      rows,
+    });
+    images.push(...sheetImages);
+  }
+
+  if (sheets.length === 0) {
+    throw createHttpError(400, 'Piki could not find readable sheets in this Excel workbook.');
+  }
+
+  return {
+    text: xlsxWorkbookPreviewText(sheets, images),
+    sheets,
+    images: images.slice(0, PRODUCT_IMPORT_MAX_EMBEDDED_IMAGES),
+  };
+}
+
+async function xlsxZipText(zip, filePath) {
+  const file = zip.file(filePath);
+  if (!file) return null;
+  return file.async('string');
+}
+
+async function xlsxZipBuffer(zip, filePath) {
+  const file = zip.file(filePath);
+  if (!file) return null;
+  return file.async('nodebuffer');
+}
+
+async function readXlsxSharedStrings(zip) {
+  const content = await xlsxZipText(zip, 'xl/sharedStrings.xml');
+  if (!content) return [];
+  const strings = [];
+  for (const match of content.matchAll(/<si\b[\s\S]*?<\/si>/g)) {
+    const textParts = [...match[0].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((part) => decodeXmlText(part[1]));
+    strings.push(textParts.join(''));
+  }
+  return strings;
+}
+
+async function readXlsxSheetEntries(zip) {
+  const workbook = await xlsxZipText(zip, 'xl/workbook.xml');
+  const relationships = await xlsxZipText(zip, 'xl/_rels/workbook.xml.rels');
+  if (!workbook || !relationships) {
+    return zip
+      .file(/xl\/worksheets\/sheet\d+\.xml$/)
+      .map((file, index) => ({ name: `Sheet ${index + 1}`, path: file.name }));
+  }
+
+  const rels = parseXlsxRelationships(relationships, 'xl/workbook.xml');
+  const entries = [];
+  for (const match of workbook.matchAll(/<sheet\b([^>]*)\/?>(?:<\/sheet>)?/g)) {
+    const attrs = parseXmlAttributes(match[1]);
+    const relationshipId = attrs.id || attrs['r:id'];
+    const target = rels.get(relationshipId)?.target;
+    if (!target) continue;
+    entries.push({
+      name: normalizeOptionalText(attrs.name) || `Sheet ${entries.length + 1}`,
+      path: target,
+    });
+  }
+  return entries;
+}
+
+function readXlsxSheetRows(sheetXml, sharedStrings) {
+  const rows = [];
+  let fallbackRow = 0;
+  for (const rowMatch of sheetXml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/g)) {
+    const rowAttrs = parseXmlAttributes(rowMatch[1]);
+    const declaredRow = Number(rowAttrs.r);
+    const rowIndex = Number.isFinite(declaredRow) && declaredRow > 0 ? declaredRow - 1 : fallbackRow;
+    const row = [];
+    let fallbackColumn = 0;
+    for (const cellMatch of rowMatch[2].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+      const attrs = parseXmlAttributes(cellMatch[1]);
+      const columnIndex = xlsxColumnIndex(attrs.r, fallbackColumn);
+      while (row.length < columnIndex) row.push('');
+      row[columnIndex] = xlsxCellValue(attrs, cellMatch[2], sharedStrings);
+      fallbackColumn = columnIndex + 1;
+    }
+    while (rows.length <= rowIndex) rows.push([]);
+    rows[rowIndex] = row.map((cell) => normalizeOptionalText(cell) || '');
+    fallbackRow = rowIndex + 1;
+  }
+  return rows;
+}
+
+function xlsxCellValue(attrs, cellXml, sharedStrings) {
+  const inlineText = [...cellXml.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)]
+    .map((part) => decodeXmlText(part[1]))
+    .join('');
+  if (attrs.t === 'inlineStr' || inlineText) {
+    return inlineText.trim();
+  }
+  const value = (cellXml.match(/<v\b[^>]*>([\s\S]*?)<\/v>/) || [])[1];
+  const clean = decodeXmlText(value || '').trim();
+  if (!clean) return '';
+  if (attrs.t === 's') {
+    const index = Number(clean);
+    return Number.isInteger(index) && index >= 0 && index < sharedStrings.length
+      ? String(sharedStrings[index] || '').trim()
+      : '';
+  }
+  if (attrs.t === 'b') return clean === '1' ? 'true' : 'false';
+  return clean;
+}
+
+async function readXlsxSheetImages({ zip, sheetXml, sheetPath, sheetName, rows }) {
+  const sheetRelsXml = await xlsxZipText(zip, xlsxRelsPath(sheetPath));
+  if (!sheetRelsXml) return [];
+  const sheetRels = parseXlsxRelationships(sheetRelsXml, sheetPath);
+  const images = [];
+  for (const drawingMatch of sheetXml.matchAll(/<drawing\b([^>]*)\/?>(?:<\/drawing>)?/g)) {
+    const attrs = parseXmlAttributes(drawingMatch[1]);
+    const relationshipId = attrs.id || attrs['r:id'];
+    const drawingPath = sheetRels.get(relationshipId)?.target;
+    if (!drawingPath) continue;
+    const drawingXml = await xlsxZipText(zip, drawingPath);
+    const drawingRelsXml = await xlsxZipText(zip, xlsxRelsPath(drawingPath));
+    if (!drawingXml || !drawingRelsXml) continue;
+    const drawingRels = parseXlsxRelationships(drawingRelsXml, drawingPath);
+    for (const anchorMatch of drawingXml.matchAll(/<(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)\b[\s\S]*?<\/(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)>/g)) {
+      const anchor = anchorMatch[0];
+      const embedId = (anchor.match(/<(?:a:)?blip\b[^>]*(?:r:embed|embed)="([^"]+)"/) || [])[1];
+      const media = drawingRels.get(embedId);
+      if (!media?.target || !isXlsxImagePath(media.target)) continue;
+      const bytes = await xlsxZipBuffer(zip, media.target);
+      if (!bytes || bytes.length === 0) continue;
+      const rowIndex = xlsxAnchorNumber(anchor, 'row');
+      const columnIndex = xlsxAnchorNumber(anchor, 'col');
+      const rowInfo = closestXlsxRowText(rows, rowIndex);
+      images.push({
+        id: `xlsx-image-${images.length + 1}`,
+        sheetName,
+        path: media.target,
+        rowIndex: rowInfo.rowIndex,
+        originalRowIndex: rowIndex,
+        columnIndex,
+        rowText: rowInfo.text,
+        uncertain: rowInfo.uncertain,
+        bytes,
+        mimeType: xlsxImageMimeType(media.target),
+        extension: xlsxImageExtension(media.target),
+      });
+    }
+  }
+  return images;
+}
+
+function xlsxWorkbookPreviewText(sheets, images) {
+  const imagesBySheetRow = new Map();
+  for (const image of images) {
+    const key = `${image.sheetName}:${image.rowIndex}`;
+    const list = imagesBySheetRow.get(key) || [];
+    list.push(image.id);
+    imagesBySheetRow.set(key, list);
+  }
+
+  const buffer = [];
+  for (const sheet of sheets) {
+    const rows = sheet.rows
+      .map((row, index) => ({ row, index }))
+      .filter((entry) => entry.row.some((cell) => normalizeOptionalText(cell)));
+    if (rows.length === 0) continue;
+    if (buffer.length > 0) buffer.push('');
+    buffer.push(`Sheet: ${sheet.name}`);
+    const rowLimit = Math.min(rows.length, 160);
+    for (let index = 0; index < rowLimit; index += 1) {
+      const entry = rows[index];
+      const cells = entry.row.slice(0, 24).map((cell) => limitText(String(cell || '').trim(), 120));
+      const markers = imagesBySheetRow.get(`${sheet.name}:${entry.index}`) || [];
+      if (markers.length > 0) {
+        cells.push(`embedded_image=${markers.join(',')}`);
+      }
+      buffer.push(`Row ${entry.index + 1}: ${cells.join(' | ')}`);
+    }
+    if (rows.length > rowLimit) buffer.push(`... ${rows.length - rowLimit} more row(s)`);
+  }
+  if (images.length > 0) {
+    buffer.push('', `Embedded images found: ${images.length}. Piki will attach images when it can confidently match them to product rows.`);
+  }
+  return buffer.join('\n').trim();
+}
+
+function parseXlsxRelationships(xmlText, basePath) {
+  const rels = new Map();
+  if (!xmlText) return rels;
+  for (const match of xmlText.matchAll(/<Relationship\b([^>]*)\/?>(?:<\/Relationship>)?/g)) {
+    const attrs = parseXmlAttributes(match[1]);
+    if (!attrs.id || !attrs.target || String(attrs.targetMode || '').toLowerCase() === 'external') continue;
+    rels.set(attrs.id, {
+      type: attrs.type || '',
+      target: normalizeXlsxRelationshipPath(basePath, attrs.target),
+    });
+  }
+  return rels;
+}
+
+function parseXmlAttributes(input) {
+  const attrs = {};
+  for (const match of String(input || '').matchAll(/([A-Za-z_][A-Za-z0-9_:.-]*)\s*=\s*"([^"]*)"/g)) {
+    const full = match[1];
+    const value = decodeXmlText(match[2]);
+    attrs[full] = value;
+    const local = full.includes(':') ? full.split(':').pop() : full;
+    attrs[local] = value;
+  }
+  return attrs;
+}
+
+function decodeXmlText(value) {
+  return String(value || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function normalizeXlsxRelationshipPath(basePath, target) {
+  const cleanTarget = String(target || '').replace(/\\/g, '/');
+  const source = cleanTarget.startsWith('/')
+    ? cleanTarget.slice(1)
+    : `${String(basePath || '').split('/').slice(0, -1).join('/')}/${cleanTarget}`;
+  const parts = [];
+  for (const part of source.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') parts.pop();
+    else parts.push(part);
+  }
+  return parts.join('/');
+}
+
+function xlsxRelsPath(partPath) {
+  const clean = String(partPath || '').replace(/\\/g, '/');
+  const segments = clean.split('/');
+  const fileName = segments.pop();
+  return [...segments, '_rels', `${fileName}.rels`].join('/');
+}
+
+function xlsxColumnIndex(cellReference, fallback = 0) {
+  const ref = normalizeOptionalText(cellReference);
+  if (!ref) return fallback;
+  let column = 0;
+  let sawLetter = false;
+  for (const char of ref) {
+    const code = char.toUpperCase().charCodeAt(0);
+    if (code < 65 || code > 90) break;
+    sawLetter = true;
+    column = column * 26 + (code - 64);
+  }
+  return sawLetter ? column - 1 : fallback;
+}
+
+function xlsxAnchorNumber(anchor, tagName) {
+  const from = anchor.match(/<(?:xdr:)?from>[\s\S]*?<\/(?:xdr:)?from>/);
+  const source = from ? from[0] : anchor;
+  const match = source.match(new RegExp(`<(?:xdr:)?${tagName}>(\\d+)<\\/(?:xdr:)?${tagName}>`));
+  return match ? Number(match[1]) : null;
+}
+
+function closestXlsxRowText(rows, rowIndex) {
+  const offsets = [0, 1, -1, 2, -2];
+  for (const offset of offsets) {
+    const index = Number.isInteger(rowIndex) ? rowIndex + offset : null;
+    if (index == null || index < 0 || index >= rows.length) continue;
+    const text = (rows[index] || [])
+      .map((cell) => normalizeOptionalText(cell))
+      .filter(Boolean)
+      .join(' | ');
+    if (text) return { rowIndex: index, text, uncertain: offset !== 0 };
+  }
+  return { rowIndex: Number.isInteger(rowIndex) ? rowIndex : -1, text: '', uncertain: true };
+}
+
+function isXlsxImagePath(filePath) {
+  return /\.(png|jpe?g|webp|gif)$/i.test(String(filePath || ''));
+}
+
+function xlsxImageExtension(filePath) {
+  const match = String(filePath || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  const extension = match ? match[1] : 'jpg';
+  return extension === 'jpeg' ? 'jpg' : extension;
+}
+
+function xlsxImageMimeType(filePath) {
+  switch (xlsxImageExtension(filePath)) {
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    default:
+      return 'image/jpeg';
+  }
+}
+async function uploadEmbeddedXlsxProductImages({ fetchImpl, job, images }) {
+  if (!Array.isArray(images) || images.length === 0) return [];
+  const uploaded = [];
+  for (const image of images.slice(0, PRODUCT_IMPORT_MAX_EMBEDDED_IMAGES)) {
+    try {
+      const upload = await uploadProductImageToBunny({
+        fetchImpl,
+        businessContext: { businessId: job.business_id },
+        branchId: job.branch_id,
+        productId: image.id,
+        productName: image.rowText || image.id,
+        image: {
+          bytes: image.bytes,
+          mimeType: image.mimeType,
+          extension: image.extension,
+        },
+      });
+      uploaded.push({
+        ...image,
+        imageUrl: upload.imageUrl,
+        imageMatchStatus: image.uncertain ? 'uncertain_anchor' : 'uploaded',
+      });
+    } catch (error) {
+      console.warn('Embedded Excel product image upload failed', {
+        jobId: job.id,
+        imageId: image.id,
+        message: error?.message || error,
+      });
+      uploaded.push({
+        ...image,
+        uploadError: error?.message || 'Image upload failed',
+      });
+    }
+  }
+  return uploaded;
+}
+
+function attachUploadedProductImagesToImportResult(result, uploadedImages) {
+  const imageCandidates = (Array.isArray(uploadedImages) ? uploadedImages : [])
+    .filter((image) => image?.imageUrl);
+  if (imageCandidates.length === 0) {
+    return {
+      result,
+      summary: { embeddedImages: Array.isArray(uploadedImages) ? uploadedImages.length : 0, uploadedImages: 0, attachedImages: 0 },
+    };
+  }
+
+  const headers = Array.isArray(result?.headers)
+    ? result.headers.map((header) => String(header || '').trim())
+    : [];
+  const rows = Array.isArray(result?.rows)
+    ? result.rows.map((row) => (Array.isArray(row) ? [...row] : []))
+    : [];
+  const warnings = Array.isArray(result?.warnings) ? [...result.warnings] : [];
+  const imageUrlIndex = ensureProductImportHeader(headers, rows, 'image_url');
+  const imageStatusIndex = ensureProductImportHeader(headers, rows, 'image_match_status');
+  const matchedRows = new Set();
+  let attachedImages = 0;
+  let uncertainImages = 0;
+
+  imageCandidates.forEach((image, imageIndex) => {
+    let best = { index: -1, score: 0 };
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      if (matchedRows.has(rowIndex)) continue;
+      const rowMap = productRowMap(headers, rows[rowIndex]);
+      const score = scoreEmbeddedImageForProductRow(image, rowMap);
+      if (score > best.score) best = { index: rowIndex, score };
+    }
+
+    let rowIndex = best.index;
+    let status = image.uncertain || best.score < 5 ? 'uncertain' : 'matched';
+    if (rowIndex < 0 || best.score < 2.25) {
+      const fallbackIndex = imageCandidates.length === rows.length ? imageIndex : -1;
+      if (fallbackIndex >= 0 && !matchedRows.has(fallbackIndex)) {
+        rowIndex = fallbackIndex;
+        status = 'uncertain';
+      }
+    }
+
+    if (rowIndex < 0 || matchedRows.has(rowIndex)) {
+      warnings.push(`Piki found an embedded image near "${limitText(image.rowText || image.id, 80)}" but could not safely match it to a product row.`);
+      return;
+    }
+
+    while (rows[rowIndex].length <= imageStatusIndex) rows[rowIndex].push('');
+    rows[rowIndex][imageUrlIndex] = image.imageUrl;
+    rows[rowIndex][imageStatusIndex] = status;
+    matchedRows.add(rowIndex);
+    attachedImages += 1;
+    if (status !== 'matched') {
+      uncertainImages += 1;
+      warnings.push(`Review the image attached to "${limitText(productRowMap(headers, rows[rowIndex]).name || image.rowText || 'this product', 80)}" because Piki matched it from nearby Excel content.`);
+    }
+  });
+
+  return {
+    result: {
+      ...result,
+      headers,
+      rows,
+      warnings: [...new Set(warnings.filter(Boolean))],
+    },
+    summary: {
+      embeddedImages: uploadedImages.length,
+      uploadedImages: imageCandidates.length,
+      attachedImages,
+      uncertainImages,
+      uploadErrors: uploadedImages.filter((image) => image?.uploadError).length,
+    },
+  };
+}
+
+function ensureProductImportHeader(headers, rows, field) {
+  let index = headers.findIndex((header) => String(header || '').trim().toLowerCase() === field);
+  if (index >= 0) return index;
+  headers.push(field);
+  index = headers.length - 1;
+  for (const row of rows) {
+    while (row.length <= index) row.push('');
+  }
+  return index;
+}
+
+function productRowMap(headers, row) {
+  const map = {};
+  headers.forEach((header, index) => {
+    const key = String(header || '').trim().toLowerCase();
+    if (key) map[key] = row[index] == null ? '' : String(row[index]).trim();
+  });
+  return map;
+}
+
+function scoreEmbeddedImageForProductRow(image, rowMap) {
+  const imageText = normalizeMatchText([image.rowText, image.id].filter(Boolean).join(' '));
+  const rowText = normalizeMatchText([
+    rowMap.name,
+    rowMap.product_name,
+    rowMap.item,
+    rowMap.parent_product_name,
+    rowMap.variant_name,
+    rowMap.unit,
+    rowMap.sku,
+    rowMap.barcode,
+  ].filter(Boolean).join(' '));
+  if (!imageText || !rowText) return 0;
+
+  let score = 0;
+  const name = normalizeMatchText(rowMap.name || rowMap.product_name || rowMap.item || rowMap.parent_product_name);
+  if (name && (imageText.includes(name) || rowText.includes(name))) score += 4;
+  for (const key of ['sku', 'barcode']) {
+    const value = normalizeMatchText(rowMap[key]);
+    if (value && imageText.includes(value)) score += 6;
+  }
+  const imageTokens = new Set(imageText.split(' ').filter((token) => token.length > 2));
+  const rowTokens = new Set(rowText.split(' ').filter((token) => token.length > 2));
+  let overlap = 0;
+  for (const token of rowTokens) {
+    if (imageTokens.has(token)) overlap += 1;
+  }
+  score += overlap / Math.max(rowTokens.size || 1, 1) * 4;
+  return score;
+}
+
+function normalizeMatchText(value) {
+  return normalizeOptionalText(value)
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || '';
+}
 function normalizeProductImportText(rawText) {
   const text = normalizeOptionalText(rawText);
   if (!text) {
@@ -3990,7 +4488,9 @@ async function requestOpenRouterSmartFileExtraction({
   extension,
   sourceText,
   sourceTextTruncated,
+  instruction = null,
 }) {
+  const ownerInstruction = normalizeOptionalText(instruction);
   const prompt = `You are Piki cloud AI helping a POS owner upload any business file and route it to the correct Piki POS import area.
 
 Classify the file as exactly one target and extract rows for that target.
@@ -4019,6 +4519,7 @@ Routing rules:
 - expenses: spending, bills, operating costs, expense ledgers with title/description and amount.
 - If several targets appear, choose the dominant rows that the owner likely wants imported and add a warning.
 - If the destination is unclear, return target "unknown" with no rows.
+${ownerInstruction ? `- Owner correction/instruction: ${ownerInstruction}` : ''}
 
 Extraction rules:
 - Use only facts visible in the file. Do not invent names, prices, contacts, dates, totals, or categories.
@@ -4905,7 +5406,7 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
 aiJobs.registerHandler('product_import', runProductImportAiJob);
 
 async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems }) {
-  const totalSteps = 6;
+  const totalSteps = 7;
   const step = async ({ completedSteps, currentStep, progress, eventType, title, message, toolName, level = 'info', metadata = null }) => {
     await updateJob(job.id, job.business_id, {
       completedSteps,
@@ -4951,8 +5452,13 @@ async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems 
 
   const fetch = (await import('node-fetch')).default;
   const sourceText = normalizeOptionalText(job.source_text);
+  let workbookAssets = null;
+  if (file.extension === 'xlsx') {
+    workbookAssets = await extractXlsxProductImport(file.bytes);
+  }
   let source = { text: '', truncated: false };
   let result;
+  let imageAttachSummary = null;
   if (isProductImportImageFile(file) && !sourceText) {
     await step({
       completedSteps: 2,
@@ -4972,7 +5478,7 @@ async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems 
       imageDataUrl: productImportImageDataUrl(file),
     });
   } else {
-    const rawText = sourceText || (await extractTextFromProductImportFile(file));
+    const rawText = sourceText || workbookAssets?.text || (await extractTextFromProductImportFile(file));
     source = normalizeProductImportText(rawText);
     await step({
       completedSteps: 2,
@@ -5005,14 +5511,36 @@ async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems 
     metadata: { headers: result.headers, warnings: result.warnings },
   });
 
+  if (workbookAssets?.images?.length) {
+    await step({
+      completedSteps: 4,
+      currentStep: 'Matching embedded images',
+      progress: 60,
+      eventType: 'image_matching',
+      title: 'Matching product images',
+      message: `Piki found ${workbookAssets.images.length} embedded image${workbookAssets.images.length === 1 ? '' : 's'} in the workbook.`,
+      toolName: 'match_embedded_images',
+      metadata: { embeddedImages: workbookAssets.images.length },
+    });
+    const uploadedImages = await uploadEmbeddedXlsxProductImages({
+      fetchImpl: fetch,
+      job,
+      images: workbookAssets.images,
+    });
+    const imageResult = attachUploadedProductImagesToImportResult(result, uploadedImages);
+    result = imageResult.result;
+    imageAttachSummary = imageResult.summary;
+  }
+
   await step({
-    completedSteps: 4,
+    completedSteps: 5,
     currentStep: 'Validating draft rows',
     progress: 64,
     eventType: 'validating_row',
-    title: 'Validating prices and required fields',
-    message: 'Piki is checking product names, prices, stock, and warnings.',
+    title: 'Checking draft rows',
+    message: 'Piki is checking product names, prices, stock, duplicates, and image warnings.',
     toolName: 'validate_product_rows',
+    metadata: imageAttachSummary,
   });
 
   const draftItems = await saveDraftItems({
@@ -5029,7 +5557,7 @@ async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems 
   });
 
   await step({
-    completedSteps: 5,
+    completedSteps: 6,
     currentStep: 'Preparing import draft',
     progress: 82,
     eventType: 'product_prepared',
@@ -5051,6 +5579,7 @@ async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems 
     model: result.model,
     usage: result.usage,
     draftCounts: counts,
+    imageAttachSummary,
   };
 
   await updateJob(job.id, job.business_id, {
@@ -5518,6 +6047,7 @@ app.post('/api/ai/smart-file/extract', async (req, res, next) => {
       extension: file.extension,
       sourceText: source.text,
       sourceTextTruncated: source.truncated,
+      instruction: normalizeOptionalText(req.body?.instruction),
     });
 
     res.json({

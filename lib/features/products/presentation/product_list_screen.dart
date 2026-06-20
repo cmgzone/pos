@@ -668,7 +668,17 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     if (job.isFailed) {
       throw Exception(job.errorMessage ?? 'Piki import failed.');
     }
-    if (!job.isWaitingForReview && job.status != 'completed') {
+    if (job.status == 'completed') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This Piki import was already completed.'),
+          ),
+        );
+      }
+      return null;
+    }
+    if (!job.isWaitingForReview) {
       throw Exception('Piki import is ${job.status.replaceAll('_', ' ')}.');
     }
 
@@ -1734,6 +1744,11 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
   Timer? _pollTimer;
   Object? _streamError;
   bool _returned = false;
+  Timer? _retryTimer;
+  int _retrySeconds = 0;
+  int _retryAttempts = 0;
+  bool _retryBusy = false;
+  bool _cancelBusy = false;
 
   @override
   void initState() {
@@ -1747,6 +1762,7 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
   void dispose() {
     _subscription?.cancel();
     _pollTimer?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 
@@ -1759,6 +1775,7 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
   }
 
   void _connectStream() {
+    _subscription?.cancel();
     _subscription = PikiAiJobService.streamJob(_job.id).listen(
       (update) {
         if (!mounted) return;
@@ -1769,7 +1786,7 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
           if (nextJob != null) _job = nextJob;
           if (event != null) _events = _mergeEvents(_events, [event]);
         });
-        _returnWhenReady();
+        _handleJobUpdate();
       },
       onError: (error) {
         if (!mounted) return;
@@ -1790,7 +1807,7 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
           _job = job;
           _events = _mergeEvents(_events, events);
         });
-        _returnWhenReady();
+        _handleJobUpdate();
       } catch (_) {}
     });
   }
@@ -1799,10 +1816,99 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
     if (_returned || !_job.isWaitingForReview) {
       return;
     }
+    _cancelRetryTimer();
     _returned = true;
     Future.delayed(const Duration(milliseconds: 850), () {
       if (mounted) Navigator.pop(context, _job);
     });
+  }
+
+  void _handleJobUpdate() {
+    _returnWhenReady();
+    _maybeScheduleAutoRetry();
+  }
+
+  void _maybeScheduleAutoRetry() {
+    if (!_job.isFailed ||
+        _retryBusy ||
+        _cancelBusy ||
+        _retryTimer != null ||
+        _retryAttempts >= 2 ||
+        !_isRecoverableFailure(_job.errorMessage)) {
+      return;
+    }
+    setState(() => _retrySeconds = 12);
+    _retryTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_retrySeconds <= 1) {
+        _cancelRetryTimer();
+        unawaited(_retryNow());
+        return;
+      }
+      setState(() => _retrySeconds -= 1);
+    });
+  }
+
+  bool _isRecoverableFailure(String? message) {
+    final lower = (message ?? '').toLowerCase();
+    if (lower.contains('validation') || lower.contains('unsupported')) {
+      return false;
+    }
+    return lower.contains('timeout') ||
+        lower.contains('network') ||
+        lower.contains('rate limit') ||
+        lower.contains('openrouter') ||
+        lower.contains('temporarily') ||
+        lower.contains('failed') ||
+        lower.contains('could not finish');
+  }
+
+  void _cancelRetryTimer() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    if (mounted && _retrySeconds != 0) {
+      setState(() => _retrySeconds = 0);
+    } else {
+      _retrySeconds = 0;
+    }
+  }
+
+  Future<void> _retryNow() async {
+    if (_retryBusy || _cancelBusy) return;
+    _cancelRetryTimer();
+    setState(() => _retryBusy = true);
+    try {
+      final retried = await PikiAiJobService.retryImportJob(_job.id);
+      if (!mounted) return;
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      setState(() {
+        _job = retried;
+        _streamError = null;
+        _returned = false;
+        _retryAttempts += 1;
+      });
+      _connectStream();
+    } catch (error) {
+      if (mounted) setState(() => _streamError = error);
+    } finally {
+      if (mounted) setState(() => _retryBusy = false);
+    }
+  }
+
+  Future<void> _cancelJob() async {
+    if (_cancelBusy || !_job.isRunning) return;
+    _cancelRetryTimer();
+    setState(() => _cancelBusy = true);
+    try {
+      final cancelled = await PikiAiJobService.cancelJob(_job.id);
+      if (!mounted) return;
+      setState(() => _job = cancelled);
+    } catch (error) {
+      if (mounted) setState(() => _streamError = error);
+    } finally {
+      if (mounted) setState(() => _cancelBusy = false);
+    }
   }
 
   List<PikiAiJobEvent> _mergeEvents(
@@ -1846,10 +1952,47 @@ class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
                 ),
               ),
             ],
+            if (_job.isFailed || _retrySeconds > 0) ...[
+              const SizedBox(height: 10),
+              Text(
+                _retrySeconds > 0
+                    ? 'Retrying this same import in $_retrySeconds seconds.'
+                    : (_job.errorMessage ??
+                          'Piki could not finish that request.'),
+                style: TextStyle(
+                  color: _job.isFailed
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ],
         ),
       ),
       actions: [
+        if (_retrySeconds > 0)
+          TextButton(
+            onPressed: _cancelRetryTimer,
+            child: const Text('Cancel retry'),
+          ),
+        if (_job.isFailed)
+          OutlinedButton.icon(
+            onPressed: _retryBusy ? null : () => unawaited(_retryNow()),
+            icon: _retryBusy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            label: const Text('Retry'),
+          ),
+        if (_job.isRunning)
+          TextButton(
+            onPressed: _cancelBusy ? null : () => unawaited(_cancelJob()),
+            child: Text(_cancelBusy ? 'Cancelling...' : 'Cancel job'),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(context, _job.isRunning ? null : _job),
           child: Text(_job.isRunning ? 'Hide panel' : 'Close'),

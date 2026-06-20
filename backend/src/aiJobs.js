@@ -98,6 +98,10 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         status TEXT NOT NULL DEFAULT 'needs_review',
         warnings_json TEXT,
         matched_product_id TEXT,
+        image_url TEXT,
+        image_match_status TEXT,
+        accepted_product_id TEXT,
+        source_row_key TEXT,
         row_json TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -107,6 +111,10 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       CREATE INDEX IF NOT EXISTS idx_ai_import_draft_items_job
       ON ai_import_draft_items (job_id, created_at ASC)
     `);
+    await run(target, 'ALTER TABLE ai_import_draft_items ADD COLUMN IF NOT EXISTS image_url TEXT');
+    await run(target, 'ALTER TABLE ai_import_draft_items ADD COLUMN IF NOT EXISTS image_match_status TEXT');
+    await run(target, 'ALTER TABLE ai_import_draft_items ADD COLUMN IF NOT EXISTS accepted_product_id TEXT');
+    await run(target, 'ALTER TABLE ai_import_draft_items ADD COLUMN IF NOT EXISTS source_row_key TEXT');
     schemaReady = true;
   }
 
@@ -387,7 +395,9 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       const price = parseNumber(firstText(row, ['price', 'selling_price', 'sale_price']));
       const cost = parseNumber(firstText(row, ['cost', 'unit_cost', 'buying_price']));
       const stock = parseNumber(firstText(row, ['stock', 'stock_received', 'opening_stock', 'quantity']));
-      const rowWarnings = validateDraftRow(row, { productName, price, cost });
+      const imageUrl = firstText(row, ['image_url', 'image', 'photo']);
+      const imageMatchStatus = firstText(row, ['image_match_status']);
+      const rowWarnings = validateDraftRow(row, { productName, price, cost, imageUrl, imageMatchStatus });
       const status = rowWarnings.some((item) => item.level === 'error')
         ? 'invalid'
         : rowWarnings.length > 0
@@ -397,16 +407,16 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         ...warnings.slice(0, 2).map((message) => ({ level: 'info', message })),
         ...rowWarnings,
       ];
-      const id = crypto.randomUUID();
+      const id = stableDraftItemId(job.id, index, row);
       const result = await query(
         `
         INSERT INTO ai_import_draft_items (
           id, job_id, business_id, branch_id, raw_text, product_name,
           category_name, barcode, sku, unit, cost_price, selling_price,
           stock_quantity, supplier_name, confidence, status, warnings_json,
-          matched_product_id, row_json
+          matched_product_id, image_url, image_match_status, source_row_key, row_json
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
         RETURNING *
         `,
         [
@@ -428,6 +438,9 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
           status,
           stringifyJson(draftWarnings),
           null,
+          imageUrl,
+          imageMatchStatus,
+          id,
           stringifyJson(row),
         ],
       );
@@ -526,6 +539,9 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
   async function completeJob(jobId, businessId, result = {}) {
     const existing = await getJob(jobId, businessId);
     if (!existing) return null;
+    if (existing.status === AI_JOB_STATUSES.completed) {
+      return existing;
+    }
     const mergedResult = {
       ...(existing.result || {}),
       importResult: result,
@@ -538,6 +554,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       resultJson: mergedResult,
     });
     if (row) {
+      await markDraftItemsAfterImport(jobId, businessId);
       await addEvent({
         jobId,
         businessId,
@@ -575,9 +592,9 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         jobId,
         businessId,
         branchId: row.branch_id,
-        eventType: 'job_started',
-        title: 'Piki task queued again',
-        message: 'Retrying the import job.',
+        eventType: 'job_retried',
+        title: 'Retrying now',
+        message: 'Piki is retrying the same import job.',
         progress: 1,
       });
       enqueue(jobId);
@@ -677,6 +694,10 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       status: row.status,
       warnings: parseJson(row.warnings_json) || [],
       matchedProductId: row.matched_product_id,
+      imageUrl: row.image_url,
+      imageMatchStatus: row.image_match_status,
+      acceptedProductId: row.accepted_product_id,
+      sourceRowKey: row.source_row_key,
       row: parseJson(row.row_json) || {},
       createdAt: toIso(row.created_at),
       updatedAt: toIso(row.updated_at),
@@ -705,6 +726,31 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
     return target.query(sql, params);
   }
 
+  async function markDraftItemsAfterImport(jobId, businessId) {
+    await query(
+      `
+      UPDATE ai_import_draft_items
+      SET status = CASE
+            WHEN status = 'invalid' THEN 'skipped'
+            WHEN status IN ('imported', 'skipped') THEN status
+            ELSE 'imported'
+          END,
+          updated_at = NOW()
+      WHERE job_id = $1 AND business_id = $2
+      `,
+      [jobId, businessId],
+    );
+  }
+
+  function stableDraftItemId(jobId, index, row) {
+    const hash = crypto
+      .createHash('sha256')
+      .update(`${index}:${JSON.stringify(row)}`)
+      .digest('hex')
+      .slice(0, 24);
+    return `${jobId}:${hash}`;
+  }
+
   function firstText(row, keys) {
     for (const key of keys) {
       const value = normalizeOptionalText(row[key]);
@@ -714,7 +760,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
   }
 }
 
-function validateDraftRow(row, { productName, price, cost }) {
+function validateDraftRow(row, { productName, price, cost, imageUrl, imageMatchStatus }) {
   const warnings = [];
   if (!productName) {
     warnings.push({ level: 'error', message: 'Product name is missing.' });
@@ -727,6 +773,9 @@ function validateDraftRow(row, { productName, price, cost }) {
   }
   if (normalizeText(row.barcode) && normalizeText(row.barcode).length < 4) {
     warnings.push({ level: 'warning', message: 'Barcode looks unusually short.' });
+  }
+  if (imageUrl && imageMatchStatus && imageMatchStatus !== 'matched') {
+    warnings.push({ level: 'warning', message: 'Product image was matched from nearby Excel content. Review before importing.' });
   }
   return warnings;
 }
