@@ -172,6 +172,25 @@ class ProductImportService {
     return importPlan(buildPlan(rows, fileName: fileName));
   }
 
+  static SpreadsheetImportPlan buildPlanFromCloudResult(
+    Map<String, dynamic> cloud, {
+    String? fileName,
+  }) {
+    final rows = _rowsFromCloudProductFile(cloud);
+    final plan = _buildRawPlan(
+      rows,
+      fileName: fileName ?? cloud['fileName']?.toString(),
+    );
+    _validatePlan(plan);
+    return plan.copyWith(
+      warnings: _dedupe([
+        ...plan.warnings,
+        'Piki prepared this import in the backend. Review before importing.',
+        ..._cloudWarnings(cloud),
+      ]),
+    );
+  }
+
   static Future<SpreadsheetImportPlan> buildPlanForPickedFile(
     SpreadsheetFileRows file,
   ) async {

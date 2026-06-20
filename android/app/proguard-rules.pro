@@ -7,4 +7,4 @@
 -keep class * implements io.flutter.plugin.common.PluginRegistry$PluginRegistrantCallback { *; }
 
 # MainActivity hosts the app's custom MethodChannel for device notifications.
--keep class com.example.pos_app.MainActivity { *; }
+-keep class com.piki.pos.MainActivity { *; }

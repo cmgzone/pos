@@ -70,6 +70,9 @@ const {
   startPikiProactiveWorker,
 } = require('./pikiProactive');
 const {
+  createAiJobsModule,
+} = require('./aiJobs');
+const {
   FEATURE_KEYS,
   applySellingModeToEntitlements,
   ensureSubscriptionSchema,
@@ -186,6 +189,11 @@ const CATALOG_CACHE_TABLES = new Set([
   'stock_transfers',
 ]);
 const CATALOG_CACHE_CODE_VERSION = '1';
+const aiJobs = createAiJobsModule({
+  query,
+  withTransaction,
+  normalizeOptionalText,
+});
 
 app.disable('x-powered-by');
 app.use(applySecurityHeaders);
@@ -3440,6 +3448,34 @@ async function extractTextFromProductImportFile(file) {
   }
 }
 
+function isProductImportImageFile(file) {
+  const extension = String(file?.extension || '').toLowerCase();
+  const mimeType = String(file?.mimeType || '').toLowerCase();
+  return (
+    mimeType.startsWith('image/') ||
+    ['png', 'jpg', 'jpeg', 'webp'].includes(extension)
+  );
+}
+
+function productImportImageMimeType(file) {
+  const mimeType = normalizeOptionalText(file?.mimeType);
+  if (mimeType && mimeType.toLowerCase().startsWith('image/')) {
+    return mimeType;
+  }
+  switch (String(file?.extension || '').toLowerCase()) {
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    default:
+      return 'image/jpeg';
+  }
+}
+
+function productImportImageDataUrl(file) {
+  return `data:${productImportImageMimeType(file)};base64,${file.bytes.toString('base64')}`;
+}
+
 async function extractPdfText(bytes) {
   const parser = new PDFParse({ data: bytes });
   try {
@@ -4051,6 +4087,96 @@ ${sourceText}`;
     headers: normalized.headers,
     rows: normalized.rows,
     warnings: productImportWarnings(parsed, sourceTextTruncated),
+    usage: body?.usage || {},
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+  };
+}
+
+async function requestOpenRouterProductImageFileExtraction({
+  fetchImpl,
+  aiConfig,
+  fileName,
+  extension,
+  imageDataUrl,
+}) {
+  const prompt = `You are Piki cloud AI helping a POS owner import products from an image, screenshot, supplier invoice photo, receipt photo, or WhatsApp price list screenshot.
+
+Extract visible product rows and map them to Piki POS product import fields.
+Return JSON only, no markdown.
+
+JSON shape:
+{
+  "summary": "short practical summary",
+  "headers": ["name", "price", "cost", "sku", "barcode", "category", "stock"],
+  "rows": [
+    ["Milk 500ml", "60", "45", "MILK-500", "123456789", "Dairy", "12"]
+  ],
+  "warnings": ["Review blurry or low-confidence rows."]
+}
+
+Allowed headers:
+${PRODUCT_IMPORT_FIELDS.join(', ')}
+
+Rules:
+- Use only facts visible in the image. Do not invent product names, prices, stock, barcode, SKU, or categories.
+- Each row must represent one real product line from the image.
+- If text is blurry or partially hidden, include the row only when the product name is reasonably clear and add a warning.
+- Use numeric strings for price, cost, stock, stock_received, low_stock, and conversion factors.
+- If the image is a receipt/invoice, extract product lines, not totals, taxes, payment lines, or customer details.
+- Limit to the most relevant ${PRODUCT_IMPORT_MAX_ROWS} products.
+
+FILE:
+Name: ${fileName || 'product image'}
+Type: ${extension || 'image'}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${aiConfig.api_key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://pikipos.com',
+      'X-Title': 'Piki POS Product Image Import',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageDataUrl } },
+          ],
+        },
+      ],
+      max_tokens: 4096,
+      temperature: 0.1,
+    }),
+  });
+
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'OpenRouter product image import failed',
+    );
+  }
+
+  const content = extractOpenRouterTextContent(body);
+  const parsed = parseJsonObjectFromText(content);
+  if (!parsed) {
+    throw createHttpError(502, 'Piki AI did not return a valid product image import plan.');
+  }
+  const normalized = normalizeProductImportRows(parsed);
+  return {
+    summary:
+      normalizeOptionalText(parsed.summary) ||
+      `Piki found ${normalized.rows.length} product row${normalized.rows.length === 1 ? '' : 's'} in the image.`,
+    headers: normalized.headers,
+    rows: normalized.rows,
+    warnings: [
+      'Piki used cloud vision to read this image. Review blurry or unclear rows before importing.',
+      ...productImportWarnings(parsed, false),
+    ],
     usage: body?.usage || {},
     model: aiConfig.model || 'openai/gpt-4o-mini',
   };
@@ -4696,6 +4822,466 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
   }
 });
 
+aiJobs.registerHandler('product_import', runProductImportAiJob);
+
+async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems }) {
+  const totalSteps = 6;
+  const step = async ({ completedSteps, currentStep, progress, eventType, title, message, toolName, level = 'info', metadata = null }) => {
+    await updateJob(job.id, job.business_id, {
+      completedSteps,
+      totalSteps,
+      currentStep,
+      progress,
+    });
+    await addEvent({
+      jobId: job.id,
+      businessId: job.business_id,
+      branchId: job.branch_id,
+      eventType,
+      level,
+      title,
+      message,
+      toolName,
+      progress,
+      metadata,
+    });
+  };
+
+  await step({
+    completedSteps: 1,
+    currentStep: 'Reading uploaded file',
+    progress: 12,
+    eventType: 'file_parsed',
+    title: 'Reading uploaded file',
+    message: job.source_file_name ? `Reading ${job.source_file_name}` : 'Reading the uploaded file',
+    toolName: 'parse_uploaded_file',
+  });
+
+  const file = decodeProductImportFile({
+    fileBase64: job.source_file_base64,
+    fileName: job.source_file_name,
+    mimeType: job.source_mime_type,
+    extension: job.source_extension,
+  });
+
+  const aiConfig = await loadPlatformAiConfig();
+  if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    throw createHttpError(403, 'AI is not enabled by the platform administrator');
+  }
+
+  const fetch = (await import('node-fetch')).default;
+  const sourceText = normalizeOptionalText(job.source_text);
+  let source = { text: '', truncated: false };
+  let result;
+  if (isProductImportImageFile(file) && !sourceText) {
+    await step({
+      completedSteps: 2,
+      currentStep: 'Reading product image',
+      progress: 28,
+      eventType: 'ai_extracting',
+      title: 'Reading product image',
+      message: 'Piki is using cloud vision to extract product rows.',
+      toolName: 'extract_products_from_image',
+      metadata: { image: true },
+    });
+    result = await requestOpenRouterProductImageFileExtraction({
+      fetchImpl: fetch,
+      aiConfig,
+      fileName: file.fileName,
+      extension: file.extension,
+      imageDataUrl: productImportImageDataUrl(file),
+    });
+  } else {
+    const rawText = sourceText || (await extractTextFromProductImportFile(file));
+    source = normalizeProductImportText(rawText);
+    await step({
+      completedSteps: 2,
+      currentStep: 'Extracting product rows',
+      progress: 28,
+      eventType: 'ai_extracting',
+      title: 'Extracting products',
+      message: 'Piki is mapping visible file content into product rows.',
+      toolName: 'extract_products_from_text',
+      metadata: { sourceTextTruncated: source.truncated },
+    });
+    result = await requestOpenRouterProductFileExtraction({
+      fetchImpl: fetch,
+      aiConfig,
+      fileName: file.fileName,
+      extension: file.extension,
+      sourceText: source.text,
+      sourceTextTruncated: source.truncated,
+    });
+  }
+
+  await step({
+    completedSteps: 3,
+    currentStep: `Found ${result.rows.length} possible products`,
+    progress: 52,
+    eventType: 'products_found',
+    title: `Found ${result.rows.length} possible products`,
+    message: result.summary,
+    toolName: 'extract_products_from_text',
+    metadata: { headers: result.headers, warnings: result.warnings },
+  });
+
+  await step({
+    completedSteps: 4,
+    currentStep: 'Validating draft rows',
+    progress: 64,
+    eventType: 'validating_row',
+    title: 'Validating prices and required fields',
+    message: 'Piki is checking product names, prices, stock, and warnings.',
+    toolName: 'validate_product_rows',
+  });
+
+  const draftItems = await saveDraftItems({
+    job,
+    headers: result.headers,
+    rows: result.rows,
+    warnings: result.warnings,
+  });
+
+  const duplicateSummary = await annotateProductDraftDuplicates({
+    job,
+    draftItems,
+    addEvent,
+  });
+
+  await step({
+    completedSteps: 5,
+    currentStep: 'Preparing import draft',
+    progress: 82,
+    eventType: 'product_prepared',
+    title: 'Preparing product draft',
+    message: 'Piki saved draft rows for review before anything is imported.',
+    toolName: 'create_import_draft_item',
+    metadata: duplicateSummary,
+  });
+
+  const counts = await loadProductDraftCounts(job.id, job.business_id);
+  const summary = {
+    summary: result.summary,
+    headers: result.headers,
+    rows: result.rows,
+    warnings: result.warnings,
+    fileName: file.fileName,
+    extension: file.extension,
+    sourceTextTruncated: source.truncated,
+    model: result.model,
+    usage: result.usage,
+    draftCounts: counts,
+  };
+
+  await updateJob(job.id, job.business_id, {
+    status: 'waiting_for_review',
+    progress: 100,
+    completedSteps: totalSteps,
+    totalSteps,
+    currentStep: 'Draft ready for review',
+    completedAt: new Date().toISOString(),
+    resultJson: summary,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId: job.branch_id,
+    eventType: 'review_required',
+    title: 'Draft ready for review',
+    message: `Review ${counts.total} product row${counts.total === 1 ? '' : 's'} before importing.`,
+    toolName: 'create_import_draft_item',
+    progress: 100,
+    metadata: counts,
+  });
+}
+
+async function annotateProductDraftDuplicates({ job, draftItems, addEvent }) {
+  let duplicateCount = 0;
+  let emitted = 0;
+  for (const item of draftItems) {
+    const match = await findMatchingProductForDraft(job, item);
+    if (!match) {
+      if (item.productName && emitted < 8) {
+        emitted += 1;
+        await addEvent({
+          jobId: job.id,
+          businessId: job.business_id,
+          branchId: job.branch_id,
+          eventType: 'duplicate_check',
+          title: 'Checking duplicate',
+          message: `No existing match found for ${item.productName}`,
+          toolName: 'match_existing_products',
+          entityType: 'product',
+          entityName: item.productName,
+          progress: 70,
+        });
+      }
+      continue;
+    }
+    duplicateCount += 1;
+    await query(
+      `UPDATE ai_import_draft_items
+       SET matched_product_id = $3,
+           status = CASE WHEN status = 'invalid' THEN status ELSE 'duplicate' END,
+           updated_at = NOW()
+       WHERE id = $1 AND business_id = $2`,
+      [item.id, job.business_id, match.id],
+    );
+    if (emitted < 12) {
+      emitted += 1;
+      await addEvent({
+        jobId: job.id,
+        businessId: job.business_id,
+        branchId: job.branch_id,
+        eventType: 'duplicate_check',
+        level: 'warning',
+        title: 'Possible duplicate found',
+        message: `${item.productName || item.sku || item.barcode} may match ${match.name}`,
+        toolName: 'match_existing_products',
+        entityType: 'product',
+        entityId: match.id,
+        entityName: match.name,
+        progress: 72,
+      });
+    }
+  }
+  return { duplicates: duplicateCount, checked: draftItems.length };
+}
+
+async function findMatchingProductForDraft(job, item) {
+  const clauses = [];
+  const params = [job.business_id, job.branch_id || 'main_branch'];
+  function addMatch(column, value) {
+    const normalized = normalizeOptionalText(value);
+    if (!normalized) return;
+    params.push(normalized.toLowerCase());
+    clauses.push(`LOWER(TRIM(COALESCE(${column}, ''))) = $${params.length}`);
+  }
+  addMatch('barcode', item.barcode);
+  addMatch('sku', item.sku);
+  addMatch('name', item.productName);
+  if (clauses.length === 0) {
+    return null;
+  }
+  const result = await query(
+    `SELECT id, name
+     FROM products
+     WHERE business_id = $1
+       AND deleted_at IS NULL
+       AND COALESCE(branch_id, 'main_branch') = COALESCE($2, 'main_branch')
+       AND (${clauses.join(' OR ')})
+     LIMIT 1`,
+    params,
+  );
+  return result.rows[0] || null;
+}
+
+async function loadProductDraftCounts(jobId, businessId) {
+  const result = await query(
+    `SELECT
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE status = 'ready')::int AS ready,
+       COUNT(*) FILTER (WHERE status = 'needs_review')::int AS needs_review,
+       COUNT(*) FILTER (WHERE status = 'duplicate')::int AS duplicates,
+       COUNT(*) FILTER (WHERE status = 'invalid')::int AS invalid
+     FROM ai_import_draft_items
+     WHERE job_id = $1 AND business_id = $2`,
+    [jobId, businessId],
+  );
+  const row = result.rows[0] || {};
+  return {
+    total: Number(row.total || 0),
+    ready: Number(row.ready || 0),
+    needsReview: Number(row.needs_review || 0),
+    duplicates: Number(row.duplicates || 0),
+    invalid: Number(row.invalid || 0),
+  };
+}
+
+function resolveAiJobBranchId(req, businessContext) {
+  const requested = normalizeOptionalText(req.body?.branchId || req.query?.branchId);
+  const scope = resolveDataScope(businessContext, requested);
+  if (requested) {
+    return requested;
+  }
+  if (scope.branchIds?.length === 1) {
+    return scope.branchIds[0];
+  }
+  return 'main_branch';
+}
+
+app.post('/api/ai/imports', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const importType = normalizeOptionalText(req.body?.importType || req.body?.jobType) || 'products';
+    if (!['products', 'product_import'].includes(importType)) {
+      throw createHttpError(400, 'Only product AI import jobs are supported in this version');
+    }
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.products);
+    if (!hasBusinessFeature(businessContext, FEATURE_KEYS.products)) {
+      throw createHttpError(403, 'This employee cannot manage products');
+    }
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const branchId = resolveAiJobBranchId(req, businessContext);
+    const file = decodeProductImportFile(req.body);
+    const sourceText = importSourceTextFromBody(req.body);
+    const job = await aiJobs.createJob({
+      businessId: businessContext.businessId,
+      branchId,
+      userId: businessContext.userId,
+      jobType: 'product_import',
+      title: 'Piki product import',
+      sourceFileName: file.fileName,
+      sourceFileBase64: file.bytes.toString('base64'),
+      sourceMimeType: file.mimeType,
+      sourceExtension: file.extension,
+      sourceText,
+      instruction: normalizeOptionalText(req.body?.instruction),
+      totalSteps: 6,
+    });
+    res.status(202).json({ ok: true, job });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/ai/jobs', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const statusParam = normalizeOptionalText(req.query?.status);
+    const statuses = statusParam === 'active'
+      ? ['queued', 'running', 'waiting_for_review']
+      : statusParam
+        ? statusParam.split(',').map((item) => item.trim()).filter(Boolean)
+        : null;
+    const jobs = await aiJobs.listJobs(businessContext.businessId, { statuses });
+    res.json({ ok: true, jobs });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/ai/jobs/:jobId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.getJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job not found');
+    res.json({ ok: true, job });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/ai/jobs/:jobId/events', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.getJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job not found');
+    const events = await aiJobs.getEvents(req.params.jobId, businessContext.businessId, {
+      after: normalizeOptionalText(req.query?.after),
+    });
+    res.json({ ok: true, events });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/ai/jobs/:jobId/events/stream', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.getJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job not found');
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write(`event: job\ndata: ${JSON.stringify({ type: 'job', job })}\n\n`);
+    const events = await aiJobs.getEvents(req.params.jobId, businessContext.businessId, {
+      after: normalizeOptionalText(req.query?.after),
+    });
+    for (const event of events) {
+      res.write(`event: event\ndata: ${JSON.stringify({ type: 'event', event })}\n\n`);
+    }
+    aiJobs.stream(req.params.jobId, res);
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/ai/imports/:jobId/draft-items', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.getJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job not found');
+    const items = await aiJobs.getDraftItems(req.params.jobId, businessContext.businessId);
+    res.json({ ok: true, job, items });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/jobs/:jobId/cancel', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.cancelJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job not found');
+    res.json({ ok: true, job });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/imports/:jobId/retry', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.retryJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job is not retryable');
+    res.json({ ok: true, job });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+app.post('/api/ai/imports/:jobId/confirm', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.products);
+    const job = await aiJobs.completeJob(req.params.jobId, businessContext.businessId, {
+      created: Number(req.body?.created || 0),
+      updated: Number(req.body?.updated || 0),
+      stockBatches: Number(req.body?.stockBatches || 0),
+      skipped: Number(req.body?.skipped || 0),
+    });
+    if (!job) throw createHttpError(404, 'AI job not found');
+    res.json({ ok: true, job });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
 app.post('/api/ai/product-file/extract', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -5656,15 +6242,17 @@ Promise.all([
   ensureStorefrontBrandSchema(),
   ensureProductStorefrontSchema(),
   ensureQuotationsSchema(),
+  aiJobs.ensureSchema(),
 ])
-  .then(() =>
-    startPikiProactiveWorker({
+  .then(async () => {
+    await aiJobs.enqueueQueuedJobs();
+    return startPikiProactiveWorker({
       query,
       withTransaction,
       intervalMs: Number(process.env.PIKI_PROACTIVE_INTERVAL_MS || 15 * 60 * 1000),
       initialDelayMs: Number(process.env.PIKI_PROACTIVE_INITIAL_DELAY_MS || 10 * 1000),
-    }),
-  )
+    });
+  })
   .catch((error) => {
     console.error('Could not initialize backend schema:', error.message);
   });

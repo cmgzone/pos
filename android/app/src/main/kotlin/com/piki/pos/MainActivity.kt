@@ -1,4 +1,4 @@
-package com.example.pos_app
+package com.piki.pos
 
 import android.Manifest
 import android.app.NotificationChannel

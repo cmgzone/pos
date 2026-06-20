@@ -19,7 +19,7 @@ subprojects {
         val android = extensions.findByType<com.android.build.gradle.BaseExtension>()
         if (android != null) {
             if (android.namespace == null) {
-                android.namespace = "com.example.${project.name.replace("-", ".")}"
+                android.namespace = "com.piki.pos.${project.name.replace("-", ".")}"
             }
             android.compileSdkVersion(36)
         }

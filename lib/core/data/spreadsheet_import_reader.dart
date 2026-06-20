@@ -125,6 +125,10 @@ class SpreadsheetImportReader {
     'txt',
     'json',
     'docx',
+    'png',
+    'jpg',
+    'jpeg',
+    'webp',
   ];
   static const documentImportExtensions = productImportExtensions;
 
@@ -895,6 +899,9 @@ class SpreadsheetImportReader {
       'json' => 'application/json',
       'docx' =>
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
       _ => 'text/plain',
     };
   }

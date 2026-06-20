@@ -77,7 +77,7 @@ const config = {
     process.env.PUBLIC_CATALOG_ROOT_DOMAIN?.trim().toLowerCase() ||
     'pikipos.com',
   googlePlayPackageName:
-    process.env.GOOGLE_PLAY_PACKAGE_NAME?.trim() || 'com.example.pos_app',
+    process.env.GOOGLE_PLAY_PACKAGE_NAME?.trim() || 'com.piki.pos',
   googlePlayServiceAccountEmail:
     process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL?.trim() || '',
   googlePlayServiceAccountPrivateKey: String(

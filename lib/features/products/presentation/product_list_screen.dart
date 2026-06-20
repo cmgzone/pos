@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/data/spreadsheet_import_reader.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
+import '../../../core/services/database_service.dart';
+import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
@@ -11,6 +15,7 @@ import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/empty_state_widget.dart';
+import '../../../widgets/piki_activity_panel.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../purchases/presentation/purchase_management_screen.dart';
@@ -46,6 +51,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   String _searchQuery = '';
   String? _selectedCategory;
   bool _isImporting = false;
+  List<PikiAiJob> _activePikiJobs = const [];
   late Future<List<Map<String, dynamic>>> _productsFuture;
   late Future<List<Map<String, dynamic>>> _expiryAlertsFuture;
 
@@ -53,6 +59,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   void initState() {
     super.initState();
     _reloadProductFutures();
+    _loadActivePikiJobs();
   }
 
   @override
@@ -175,6 +182,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       body: Column(
         children: [
           _buildSearchAndFilter(categoriesAsync, isMobile),
+          if (_activePikiJobs.isNotEmpty) _buildPikiJobBanner(isMobile),
           Divider(height: 1),
 
           // Product table
@@ -506,6 +514,65 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     }
   }
 
+  Future<void> _loadActivePikiJobs() async {
+    try {
+      final jobs = await PikiAiJobService.listActiveJobs();
+      if (!mounted) return;
+      setState(() {
+        _activePikiJobs = jobs
+            .where((job) => job.jobType == 'product_import')
+            .toList(growable: false);
+      });
+    } catch (_) {
+      // Active job hints are helpful, but they should not block product browsing.
+    }
+  }
+
+  Widget _buildPikiJobBanner(bool isMobile) {
+    final theme = Theme.of(context);
+    final job = _activePikiJobs.first;
+    final count = _activePikiJobs.length;
+    final actionLabel = job.isWaitingForReview ? 'Review' : 'Open';
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.fromLTRB(
+        isMobile ? 12 : 24,
+        10,
+        isMobile ? 12 : 24,
+        0,
+      ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.auto_awesome, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Piki has $count active product import task${count == 1 ? '' : 's'}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _isImporting ? null : () => _resumePikiJob(job),
+            icon: Icon(
+              job.isWaitingForReview
+                  ? Icons.fact_check_outlined
+                  : Icons.bolt_outlined,
+            ),
+            label: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _importProductsFromFile() async {
     if (_isImporting) {
       return;
@@ -515,34 +582,23 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     ProductImportResult? result;
     Object? importError;
     try {
-      result = await ProductImportService.pickAndImportProducts(
-        confirmPlan: (plan) => showSmartImportPreviewDialog(
-          context,
-          plan: plan,
-          title: 'Piki AI Product Import Check',
-          actionLabel: 'Import Products',
-          minimumRequirements: const [
-            'New products only need a name column.',
-            'Existing products can be updated with sku, barcode, or product_id.',
-          ],
-          optionalColumns: const [
-            'price',
-            'cost',
-            'category',
-            'stock',
-            'low_stock',
-            'unit',
-            'brand',
-            'image_url',
-            'description',
-            'image_urls',
-            'show_online',
-            'is_featured',
-          ],
-          defaultsNote:
-              'Excel, CSV, PDF, DOCX, TXT, and JSON files are supported. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
-        ),
+      final file = await SpreadsheetImportReader.pickRows(
+        dialogTitle: 'Import Products with Piki AI',
+        allowedExtensions: SpreadsheetImportReader.productImportExtensions,
       );
+      if (file == null) {
+        return;
+      }
+      final job = await PikiAiJobService.createProductImportJob(
+        file,
+        branchId: DatabaseService.currentBranchId,
+      );
+      final completedJob = await _showPikiJobActivity(job);
+      if (completedJob == null) {
+        await _loadActivePikiJobs();
+        return;
+      }
+      result = await _reviewAndImportPikiJob(completedJob);
     } catch (error) {
       importError = error;
     } finally {
@@ -551,32 +607,145 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       }
     }
 
-    if (!mounted) {
-      return;
-    }
-
+    await _loadActivePikiJobs();
+    if (!mounted) return;
     if (importError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppErrorMessage.withContext(
-              importError,
-              prefix: 'Could not import products.',
-              fallback:
-                  'Use an Excel, CSV, PDF, DOCX, TXT, or JSON file with product names. Existing products can be updated with sku, barcode, or product_id.',
-            ),
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.error,
-        ),
-      );
+      _showProductImportError(importError);
       return;
+    }
+    if (result != null) {
+      await _handleProductImportComplete(result);
+    }
+  }
+
+  Future<void> _resumePikiJob(PikiAiJob job) async {
+    if (_isImporting) {
+      return;
+    }
+    setState(() => _isImporting = true);
+    ProductImportResult? result;
+    Object? importError;
+    try {
+      result = await _reviewAndImportPikiJob(job);
+    } catch (error) {
+      importError = error;
+    } finally {
+      if (mounted) {
+        setState(() => _isImporting = false);
+      }
     }
 
-    if (result == null) {
+    await _loadActivePikiJobs();
+    if (!mounted) return;
+    if (importError != null) {
+      _showProductImportError(importError);
       return;
     }
-    final importResult = result;
+    if (result != null) {
+      await _handleProductImportComplete(result);
+    }
+  }
+
+  Future<PikiAiJob?> _showPikiJobActivity(PikiAiJob job) {
+    return showDialog<PikiAiJob>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _PikiJobActivityDialog(initialJob: job),
+    );
+  }
+
+  Future<ProductImportResult?> _reviewAndImportPikiJob(
+    PikiAiJob initialJob,
+  ) async {
+    var job = await PikiAiJobService.getJob(initialJob.id);
+    if (job.isRunning) {
+      final watchedJob = await _showPikiJobActivity(job);
+      if (watchedJob == null) {
+        return null;
+      }
+      job = await PikiAiJobService.getJob(watchedJob.id);
+    }
+    if (job.isFailed) {
+      throw Exception(job.errorMessage ?? 'Piki import failed.');
+    }
+    if (!job.isWaitingForReview && job.status != 'completed') {
+      throw Exception('Piki import is ${job.status.replaceAll('_', ' ')}.');
+    }
+
+    await PikiAiJobService.getDraftItems(job.id);
+    final cloud = job.result;
+    if (cloud == null) {
+      throw Exception('Piki did not save import rows for this job.');
+    }
+    final plan = ProductImportService.buildPlanFromCloudResult(
+      cloud,
+      fileName: job.sourceFileName,
+    );
+    if (!mounted) return null;
+    final confirmed = await showSmartImportPreviewDialog(
+      context,
+      plan: plan,
+      title: 'Piki AI Product Import Check',
+      actionLabel: 'Import Products',
+      minimumRequirements: const [
+        'New products only need a name column.',
+        'Existing products can be updated with sku, barcode, or product_id.',
+      ],
+      optionalColumns: const [
+        'price',
+        'cost',
+        'category',
+        'stock',
+        'low_stock',
+        'unit',
+        'brand',
+        'image_url',
+        'description',
+        'image_urls',
+        'show_online',
+        'is_featured',
+      ],
+      defaultsNote:
+          'Piki prepared this draft in the cloud. Blank optional fields are allowed. Missing price and stock import as 0; low stock defaults to 5 and unit defaults to pcs.',
+    );
+    if (!confirmed) {
+      return null;
+    }
+    final result = await ProductImportService.importPlan(plan);
+    try {
+      await PikiAiJobService.markImportCompleted(
+        job.id,
+        created: result.created,
+        updated: result.updated,
+        stockBatches: result.stockBatches,
+        skipped: result.skipped,
+      );
+    } catch (_) {
+      // The local import already succeeded. A later refresh can still show the job.
+    }
+    return result;
+  }
+
+  void _showProductImportError(Object error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'Could not import products.',
+            fallback:
+                'Use an Excel, CSV, PDF, DOCX, TXT, or JSON file with product names. Existing products can be updated with sku, barcode, or product_id.',
+          ),
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.error,
+      ),
+    );
+  }
+
+  Future<void> _handleProductImportComplete(
+    ProductImportResult importResult,
+  ) async {
     _refreshProducts();
     ref.invalidate(categoriesProvider);
     if (!mounted) {
@@ -1542,6 +1711,147 @@ class _StatChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PikiJobActivityDialog extends StatefulWidget {
+  final PikiAiJob initialJob;
+
+  const _PikiJobActivityDialog({required this.initialJob});
+
+  @override
+  State<_PikiJobActivityDialog> createState() => _PikiJobActivityDialogState();
+}
+
+class _PikiJobActivityDialogState extends State<_PikiJobActivityDialog> {
+  late PikiAiJob _job;
+  List<PikiAiJobEvent> _events = const [];
+  StreamSubscription<PikiAiJobUpdate>? _subscription;
+  Timer? _pollTimer;
+  Object? _streamError;
+  bool _returned = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _job = widget.initialJob;
+    _loadSavedEvents();
+    _connectStream();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadSavedEvents() async {
+    try {
+      final events = await PikiAiJobService.getEvents(_job.id);
+      if (!mounted) return;
+      setState(() => _events = _mergeEvents(_events, events));
+    } catch (_) {}
+  }
+
+  void _connectStream() {
+    _subscription = PikiAiJobService.streamJob(_job.id).listen(
+      (update) {
+        if (!mounted) return;
+        final nextJob = update.job;
+        final event = update.event;
+        setState(() {
+          _streamError = null;
+          if (nextJob != null) _job = nextJob;
+          if (event != null) _events = _mergeEvents(_events, [event]);
+        });
+        _returnWhenReady();
+      },
+      onError: (error) {
+        if (!mounted) return;
+        setState(() => _streamError = error);
+        _startPollingFallback();
+      },
+      cancelOnError: true,
+    );
+  }
+
+  void _startPollingFallback() {
+    _pollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final job = await PikiAiJobService.getJob(_job.id);
+        final events = await PikiAiJobService.getEvents(_job.id);
+        if (!mounted) return;
+        setState(() {
+          _job = job;
+          _events = _mergeEvents(_events, events);
+        });
+        _returnWhenReady();
+      } catch (_) {}
+    });
+  }
+
+  void _returnWhenReady() {
+    if (_returned || !_job.isWaitingForReview) {
+      return;
+    }
+    _returned = true;
+    Future.delayed(const Duration(milliseconds: 850), () {
+      if (mounted) Navigator.pop(context, _job);
+    });
+  }
+
+  List<PikiAiJobEvent> _mergeEvents(
+    List<PikiAiJobEvent> current,
+    List<PikiAiJobEvent> incoming,
+  ) {
+    final byId = <String, PikiAiJobEvent>{
+      for (final event in current) event.id: event,
+    };
+    for (final event in incoming) {
+      byId[event.id] = event;
+    }
+    final merged = byId.values.toList()
+      ..sort(
+        (a, b) => (a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
+      );
+    return merged;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width > 720;
+    return AlertDialog(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      title: const Text('Piki import activity'),
+      content: SizedBox(
+        width: isWide ? 640 : double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PikiActivityPanel(job: _job, events: _events),
+            if (_streamError != null && _job.isRunning) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Live updates disconnected. Piki is still working in the backend.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, _job.isRunning ? null : _job),
+          child: Text(_job.isRunning ? 'Hide panel' : 'Close'),
+        ),
+      ],
     );
   }
 }
