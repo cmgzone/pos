@@ -3338,6 +3338,49 @@ const SALES_IMPORT_FIELDS = [
   'unit',
 ];
 const SALES_IMPORT_FIELD_SET = new Set(SALES_IMPORT_FIELDS);
+const CUSTOMER_IMPORT_MAX_ROWS = 300;
+const CUSTOMER_IMPORT_FIELDS = [
+  'customer_id',
+  'name',
+  'phone',
+  'email',
+];
+const CUSTOMER_IMPORT_FIELD_SET = new Set(CUSTOMER_IMPORT_FIELDS);
+const EXPENSE_IMPORT_MAX_ROWS = 300;
+const EXPENSE_IMPORT_FIELDS = [
+  'title',
+  'amount',
+  'date',
+  'category',
+  'note',
+];
+const EXPENSE_IMPORT_FIELD_SET = new Set(EXPENSE_IMPORT_FIELDS);
+const SMART_IMPORT_TARGETS = {
+  products: {
+    label: 'products',
+    fields: PRODUCT_IMPORT_FIELDS,
+    fieldSet: PRODUCT_IMPORT_FIELD_SET,
+    maxRows: PRODUCT_IMPORT_MAX_ROWS,
+  },
+  sales: {
+    label: 'sales',
+    fields: SALES_IMPORT_FIELDS,
+    fieldSet: SALES_IMPORT_FIELD_SET,
+    maxRows: SALES_IMPORT_MAX_ROWS,
+  },
+  customers: {
+    label: 'customers',
+    fields: CUSTOMER_IMPORT_FIELDS,
+    fieldSet: CUSTOMER_IMPORT_FIELD_SET,
+    maxRows: CUSTOMER_IMPORT_MAX_ROWS,
+  },
+  expenses: {
+    label: 'expenses',
+    fields: EXPENSE_IMPORT_FIELDS,
+    fieldSet: EXPENSE_IMPORT_FIELD_SET,
+    maxRows: EXPENSE_IMPORT_MAX_ROWS,
+  },
+};
 
 function normalizeProductFileExtension(input, fileName) {
   const clean = normalizeOptionalText(input)
@@ -3639,6 +3682,286 @@ function salesImportWarnings(parsed, sourceTextTruncated) {
     warnings.push('The file was long, so Piki reviewed the first part of the extracted text.');
   }
   return warnings;
+}
+
+function normalizeSmartImportTarget(value) {
+  const clean = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!clean) return '';
+  if (['product', 'products', 'catalog', 'inventory', 'stock', 'items', 'item_list'].includes(clean)) {
+    return 'products';
+  }
+  if (['sale', 'sales', 'sales_records', 'transactions', 'receipts', 'receipt', 'pos_sales'].includes(clean)) {
+    return 'sales';
+  }
+  if (['customer', 'customers', 'contacts', 'contact', 'clients', 'client'].includes(clean)) {
+    return 'customers';
+  }
+  if (['expense', 'expenses', 'spend', 'spending', 'costs', 'operating_costs'].includes(clean)) {
+    return 'expenses';
+  }
+  return SMART_IMPORT_TARGETS[clean] ? clean : '';
+}
+
+function normalizeSmartImportHeaders(headers, config) {
+  const normalized = [];
+  if (Array.isArray(headers)) {
+    for (const header of headers) {
+      const key = String(header || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      if (config.fieldSet.has(key) && !normalized.includes(key)) {
+        normalized.push(key);
+      }
+    }
+  }
+  return normalized;
+}
+
+function valueForCustomerImportField(row, field) {
+  if (!row || typeof row !== 'object') return null;
+  const aliases = {
+    customer_id: ['customerId', 'client_id', 'id'],
+    name: ['customerName', 'customer_name', 'client', 'client_name', 'contact_name', 'full_name'],
+    phone: ['customerPhone', 'customer_phone', 'mobile', 'phone_number', 'tel', 'telephone'],
+    email: ['customerEmail', 'customer_email', 'email_address', 'mail'],
+  };
+  for (const key of [field, ...(aliases[field] || [])]) {
+    if (row[key] != null) {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+function valueForExpenseImportField(row, field) {
+  if (!row || typeof row !== 'object') return null;
+  const aliases = {
+    title: ['expense', 'expense_title', 'description', 'details', 'item', 'name'],
+    amount: ['total', 'cost', 'value', 'paid', 'expense_amount'],
+    date: ['incurred_on', 'expense_date', 'paid_on', 'transaction_date'],
+    category: ['category_name', 'type', 'expense_type'],
+    note: ['notes', 'remarks', 'comment'],
+  };
+  for (const key of [field, ...(aliases[field] || [])]) {
+    if (row[key] != null) {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+function valueForSmartImportField(row, target, field) {
+  switch (target) {
+    case 'products':
+      return valueForProductImportField(row, field);
+    case 'sales':
+      return valueForSalesImportField(row, field);
+    case 'customers':
+      return valueForCustomerImportField(row, field);
+    case 'expenses':
+      return valueForExpenseImportField(row, field);
+    default:
+      return null;
+  }
+}
+
+function smartImportRowIsUsable(target, rowMap) {
+  switch (target) {
+    case 'products':
+      return (
+        normalizeOptionalText(rowMap.name) ||
+        normalizeOptionalText(rowMap.sku) ||
+        normalizeOptionalText(rowMap.barcode) ||
+        normalizeOptionalText(rowMap.product_id)
+      );
+    case 'sales':
+      return (
+        normalizeOptionalText(rowMap.total) ||
+        normalizeOptionalText(rowMap.product) ||
+        normalizeOptionalText(rowMap.service) ||
+        normalizeOptionalText(rowMap.sku) ||
+        normalizeOptionalText(rowMap.barcode) ||
+        normalizeOptionalText(rowMap.product_id) ||
+        normalizeOptionalText(rowMap.service_id)
+      );
+    case 'customers':
+      return normalizeOptionalText(rowMap.name);
+    case 'expenses':
+      return normalizeOptionalText(rowMap.title) && normalizeOptionalText(rowMap.amount);
+    default:
+      return false;
+  }
+}
+
+function normalizeSmartImportRows(parsed) {
+  const target = normalizeSmartImportTarget(
+    parsed?.target || parsed?.importTarget || parsed?.import_type || parsed?.type,
+  );
+  if (!target || !SMART_IMPORT_TARGETS[target]) {
+    throw createHttpError(
+      422,
+      'Piki could not decide where this file belongs. Try a file with clearer product, sales, customer, or expense headings.',
+    );
+  }
+
+  const config = SMART_IMPORT_TARGETS[target];
+  const rawRows =
+    (Array.isArray(parsed?.rows) && parsed.rows) ||
+    (Array.isArray(parsed?.[target]) && parsed[target]) ||
+    (Array.isArray(parsed?.items) && parsed.items) ||
+    [];
+  let headers = normalizeSmartImportHeaders(parsed?.headers, config);
+
+  if (headers.length === 0 && rawRows.some((row) => row && typeof row === 'object' && !Array.isArray(row))) {
+    headers = config.fields.filter((field) =>
+      rawRows.some((row) => valueForSmartImportField(row, target, field) != null),
+    );
+  }
+  if (headers.length === 0) {
+    headers = config.fields;
+  }
+
+  const rows = [];
+  for (const raw of rawRows.slice(0, config.maxRows)) {
+    let row;
+    if (Array.isArray(raw)) {
+      row = headers.map((_, index) => normalizeProductImportCell(raw[index]));
+    } else if (raw && typeof raw === 'object') {
+      row = headers.map((field) => normalizeProductImportCell(valueForSmartImportField(raw, target, field)));
+    } else {
+      continue;
+    }
+    const rowMap = Object.fromEntries(headers.map((field, index) => [field, row[index]]));
+    if (smartImportRowIsUsable(target, rowMap)) {
+      rows.push(row);
+    }
+  }
+
+  if (rows.length === 0) {
+    throw createHttpError(422, `Piki classified this as ${config.label}, but could not find usable rows.`);
+  }
+  return { target, headers, rows };
+}
+
+function smartImportWarnings(parsed, sourceTextTruncated) {
+  const warnings = [];
+  if (Array.isArray(parsed?.warnings)) {
+    warnings.push(
+      ...parsed.warnings
+        .map((item) => normalizeOptionalText(item))
+        .filter(Boolean)
+        .slice(0, 6),
+    );
+  }
+  const confidence = Number(parsed?.confidence);
+  if (Number.isFinite(confidence) && confidence < 0.65) {
+    warnings.push('Piki was not fully confident about the destination, so review the preview carefully.');
+  }
+  if (sourceTextTruncated) {
+    warnings.push('The file was long, so Piki reviewed the first part of the extracted text.');
+  }
+  return warnings;
+}
+
+async function requestOpenRouterSmartFileExtraction({
+  fetchImpl,
+  aiConfig,
+  fileName,
+  extension,
+  sourceText,
+  sourceTextTruncated,
+}) {
+  const prompt = `You are Piki cloud AI helping a POS owner upload any business file and route it to the correct Piki POS import area.
+
+Classify the file as exactly one target and extract rows for that target.
+Return JSON only, no markdown.
+
+JSON shape:
+{
+  "target": "products" | "sales" | "customers" | "expenses" | "unknown",
+  "confidence": 0.0,
+  "summary": "short practical summary",
+  "headers": ["canonical_field"],
+  "rows": [["cell value"]],
+  "warnings": ["short warning for the cashier"]
+}
+
+Targets and allowed headers:
+- products: ${PRODUCT_IMPORT_FIELDS.join(', ')}
+- sales: ${SALES_IMPORT_FIELDS.join(', ')}
+- customers: ${CUSTOMER_IMPORT_FIELDS.join(', ')}
+- expenses: ${EXPENSE_IMPORT_FIELDS.join(', ')}
+
+Routing rules:
+- products: catalog items, stock lists, price lists, product spreadsheets, supplier product catalogs, inventory lists.
+- sales: receipts, POS exports, historical sales, paid invoices, transaction lists, service/product sale records.
+- customers: customer/contact/client lists with names and optional phone/email.
+- expenses: spending, bills, operating costs, expense ledgers with title/description and amount.
+- If several targets appear, choose the dominant rows that the owner likely wants imported and add a warning.
+- If the destination is unclear, return target "unknown" with no rows.
+
+Extraction rules:
+- Use only facts visible in the file. Do not invent names, prices, contacts, dates, totals, or categories.
+- Keep values as strings. Use numeric strings for quantities, prices, totals, amounts, tax, discount, stock, and costs.
+- Do not turn totals, terms, addresses, headers, payment instructions, or notes into item rows.
+- Limit products to ${PRODUCT_IMPORT_MAX_ROWS}, sales to ${SALES_IMPORT_MAX_ROWS}, customers to ${CUSTOMER_IMPORT_MAX_ROWS}, and expenses to ${EXPENSE_IMPORT_MAX_ROWS}.
+
+FILE:
+Name: ${fileName || 'business file'}
+Type: ${extension || 'unknown'}
+${sourceTextTruncated ? 'Note: source text was truncated before model review.' : ''}
+
+EXTRACTED TEXT:
+${sourceText}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${aiConfig.api_key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://pikipos.com',
+      'X-Title': 'Piki POS Smart File Import',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4096,
+      temperature: 0.05,
+    }),
+  });
+
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'OpenRouter smart import failed',
+    );
+  }
+
+  const content = extractOpenRouterTextContent(body);
+  const parsed = parseJsonObjectFromText(content);
+  if (!parsed) {
+    throw createHttpError(502, 'Piki AI did not return a valid smart import plan.');
+  }
+  const normalized = normalizeSmartImportRows(parsed);
+  return {
+    target: normalized.target,
+    confidence: Number(parsed.confidence) || null,
+    summary:
+      normalizeOptionalText(parsed.summary) ||
+      `Piki classified the file as ${SMART_IMPORT_TARGETS[normalized.target].label} and found ${normalized.rows.length} row${normalized.rows.length === 1 ? '' : 's'}.`,
+    headers: normalized.headers,
+    rows: normalized.rows,
+    warnings: smartImportWarnings(parsed, sourceTextTruncated),
+    usage: body?.usage || {},
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+  };
 }
 
 async function requestOpenRouterProductFileExtraction({
@@ -4468,6 +4791,64 @@ app.post('/api/ai/sales-file/extract', async (req, res, next) => {
     res.json({
       ok: true,
       data: {
+        summary: result.summary,
+        headers: result.headers,
+        rows: result.rows,
+        warnings: result.warnings,
+        fileName: file.fileName,
+        extension: file.extension,
+        sourceTextTruncated: source.truncated,
+        model: result.model,
+      },
+      model: result.model,
+      usage: {
+        promptTokens: result.usage.prompt_tokens || 0,
+        completionTokens: result.usage.completion_tokens || 0,
+      },
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/smart-file/extract', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+
+    const consumeQuota = req.body?.consumeQuota !== false;
+    const rateCheck = await checkAiRateLimit(businessContext, { consumeQuota });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const file = decodeProductImportFile(req.body);
+    const rawText = await extractTextFromProductImportFile(file);
+    const source = normalizeProductImportText(rawText);
+    const fetch = (await import('node-fetch')).default;
+    const result = await requestOpenRouterSmartFileExtraction({
+      fetchImpl: fetch,
+      aiConfig,
+      fileName: file.fileName,
+      extension: file.extension,
+      sourceText: source.text,
+      sourceTextTruncated: source.truncated,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        target: result.target,
+        confidence: result.confidence,
         summary: result.summary,
         headers: result.headers,
         rows: result.rows,

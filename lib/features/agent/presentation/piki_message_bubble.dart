@@ -1943,6 +1943,35 @@ class PikiMessageBubble extends StatelessWidget {
             value: '$imported saved',
           ),
         );
+      } else if (type == 'customer_import' && success) {
+        final created = (result['created'] as num? ?? 0).toInt();
+        final updated = (result['updated'] as num? ?? 0).toInt();
+        final skipped = (result['skipped'] as num? ?? 0).toInt();
+        cards.add(
+          _buildCard(
+            context,
+            icon: Icons.people_alt_outlined,
+            color: Theme.of(context).colorScheme.secondary,
+            title: 'Customers Imported',
+            subtitle: '$created created, $updated updated, $skipped skipped',
+            value: '${created + updated} saved',
+          ),
+        );
+      } else if (type == 'expense_import' && success) {
+        final imported = (result['imported'] as num? ?? 0).toInt();
+        final skipped = (result['skipped'] as num? ?? 0).toInt();
+        final categories = (result['categories_created'] as num? ?? 0).toInt();
+        cards.add(
+          _buildCard(
+            context,
+            icon: Icons.money_off_outlined,
+            color: AppColors.warning,
+            title: 'Expenses Imported',
+            subtitle:
+                '$imported imported, $categories categories created, $skipped skipped',
+            value: '$imported saved',
+          ),
+        );
       } else if (type == 'add_service_field' && success) {
         cards.add(
           _buildCard(

@@ -20,14 +20,7 @@ import '../data/piki_models.dart';
 import '../data/piki_provider.dart';
 import 'piki_message_bubble.dart';
 
-enum _PikiAttachmentAction {
-  cameraPhoto,
-  galleryPhoto,
-  importProducts,
-  importSales,
-}
-
-enum _PikiImportTarget { products, sales }
+enum _PikiAttachmentAction { cameraPhoto, galleryPhoto, smartUpload }
 
 class PikiAgentScreen extends ConsumerStatefulWidget {
   const PikiAgentScreen({super.key});
@@ -69,13 +62,8 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     },
     {
       'icon': Icons.upload_file_outlined,
-      'label': 'Import Products',
-      'prompt': 'import products from file',
-    },
-    {
-      'icon': Icons.receipt_long_outlined,
-      'label': 'Import Sales',
-      'prompt': 'import sales records from file',
+      'label': 'Smart Upload',
+      'prompt': 'upload file to piki',
     },
     {
       'icon': Icons.auto_awesome_rounded,
@@ -175,10 +163,9 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    final importTarget = _importTargetFromText(text);
-    if (importTarget != null) {
+    if (_shouldStartSmartUpload(text)) {
       _controller.clear();
-      await _pickImportFileForPiki(importTarget);
+      await _pickSmartUploadForPiki();
       return;
     }
 
@@ -195,18 +182,19 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
   }
 
   Future<void> _sendPromptFromUi(String prompt) async {
-    final importTarget = _importTargetFromText(prompt);
-    if (importTarget != null) {
-      await _pickImportFileForPiki(importTarget);
+    if (_shouldStartSmartUpload(prompt)) {
+      await _pickSmartUploadForPiki();
     } else {
       await ref.read(pikiMessagesProvider.notifier).sendMessage(prompt);
     }
     _scrollToBottom();
   }
 
-  _PikiImportTarget? _importTargetFromText(String text) {
+  bool _shouldStartSmartUpload(String text) {
     final lower = text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-    final wantsFile =
+    return lower.contains('smart upload') ||
+        lower.contains('upload to piki') ||
+        lower.contains('upload file') ||
         lower.contains('import') ||
         lower.contains('upload') ||
         lower.contains('excel') ||
@@ -215,31 +203,6 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         lower.contains('docx') ||
         lower.contains('document') ||
         lower.contains('file');
-    if (!wantsFile) {
-      return null;
-    }
-
-    final wantsProduct =
-        lower.contains('product') ||
-        lower.contains('products') ||
-        lower.contains('catalog') ||
-        lower.contains('online store') ||
-        lower.contains('item list');
-    if (wantsProduct) {
-      return _PikiImportTarget.products;
-    }
-
-    final wantsSales =
-        lower.contains('sales') ||
-        lower.contains('sale records') ||
-        lower.contains('sell records') ||
-        lower.contains('receipts') ||
-        lower.contains('transactions');
-    if (wantsSales) {
-      return _PikiImportTarget.sales;
-    }
-
-    return null;
   }
 
   Future<void> _toggleListening() async {
@@ -301,11 +264,8 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       case _PikiAttachmentAction.galleryPhoto:
         unawaited(_pickImageForPiki(ImageSource.gallery));
         break;
-      case _PikiAttachmentAction.importProducts:
-        unawaited(_pickImportFileForPiki(_PikiImportTarget.products));
-        break;
-      case _PikiAttachmentAction.importSales:
-        unawaited(_pickImportFileForPiki(_PikiImportTarget.sales));
+      case _PikiAttachmentAction.smartUpload:
+        unawaited(_pickSmartUploadForPiki());
         break;
     }
   }
@@ -349,23 +309,13 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     }
   }
 
-  Future<void> _pickImportFileForPiki(_PikiImportTarget target) async {
+  Future<void> _pickSmartUploadForPiki() async {
     if (_fileImportBusy) return;
     setState(() => _fileImportBusy = true);
     try {
-      final notifier = ref.read(pikiMessagesProvider.notifier);
-      switch (target) {
-        case _PikiImportTarget.products:
-          await notifier.importProductsFromFile(
-            confirmPlan: _confirmProductImportPlan,
-          );
-          break;
-        case _PikiImportTarget.sales:
-          await notifier.importSalesFromFile(
-            confirmPlan: _confirmSalesImportPlan,
-          );
-          break;
-      }
+      await ref
+          .read(pikiMessagesProvider.notifier)
+          .importSmartFile(confirmPlan: _confirmSmartImportPlan);
       _scrollToBottom();
     } catch (error) {
       if (!mounted) return;
@@ -387,12 +337,46 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     }
   }
 
+  Future<bool> _confirmSmartImportPlan(PikiSmartImportDraft draft) {
+    if (!mounted) return Future.value(false);
+    switch (draft.target) {
+      case PikiSmartImportTarget.products:
+        return _confirmProductImportPlan(draft.plan);
+      case PikiSmartImportTarget.sales:
+        return _confirmSalesImportPlan(draft.plan);
+      case PikiSmartImportTarget.customers:
+        return showSmartImportPreviewDialog(
+          context,
+          plan: draft.plan,
+          title: 'Piki Smart Upload: Customers',
+          actionLabel: 'Import Customers',
+          minimumRequirements: const ['Customers only need a name column.'],
+          optionalColumns: const ['phone', 'email'],
+          defaultsNote:
+              'Piki classified this file as customers. Existing customers are matched by phone, email, or name when available.',
+        );
+      case PikiSmartImportTarget.expenses:
+        return showSmartImportPreviewDialog(
+          context,
+          plan: draft.plan,
+          title: 'Piki Smart Upload: Expenses',
+          actionLabel: 'Import Expenses',
+          minimumRequirements: const [
+            'Expenses need title and amount columns.',
+          ],
+          optionalColumns: const ['date', 'category', 'note'],
+          defaultsNote:
+              'Piki classified this file as expenses. Missing dates use today, and new categories are created automatically.',
+        );
+    }
+  }
+
   Future<bool> _confirmProductImportPlan(SpreadsheetImportPlan plan) {
     if (!mounted) return Future.value(false);
     return showSmartImportPreviewDialog(
       context,
       plan: plan,
-      title: 'Piki Chat Product Import',
+      title: 'Piki Smart Upload: Products',
       actionLabel: 'Import Products',
       minimumRequirements: const [
         'New products only need a name column.',
@@ -422,7 +406,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
     return showSmartImportPreviewDialog(
       context,
       plan: plan,
-      title: 'Piki Chat Sales Import',
+      title: 'Piki Smart Upload: Sales',
       actionLabel: 'Import Sales',
       minimumRequirements: const [
         'Summary sales can use just a total column.',
@@ -1570,22 +1554,12 @@ class _AttachmentButton extends StatelessWidget {
         ),
         PopupMenuDivider(),
         PopupMenuItem(
-          value: _PikiAttachmentAction.importProducts,
+          value: _PikiAttachmentAction.smartUpload,
           child: Row(
             children: [
-              Icon(Icons.inventory_2_outlined, size: 18),
+              Icon(Icons.upload_file_outlined, size: 18),
               SizedBox(width: 12),
-              Text('Import products file'),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: _PikiAttachmentAction.importSales,
-          child: Row(
-            children: [
-              Icon(Icons.receipt_long_outlined, size: 18),
-              SizedBox(width: 12),
-              Text('Import sales file'),
+              Text('Smart upload file'),
             ],
           ),
         ),

@@ -6,7 +6,9 @@ import '../../../core/data/spreadsheet_import_reader.dart';
 import '../../../core/services/openrouter_service.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../customers/data/customer_import_service.dart';
 import '../../products/data/product_import_service.dart';
+import '../../reports/data/expense_import_service.dart';
 import '../../sales/data/sale_import_service.dart';
 import 'piki_agent_service.dart';
 import 'piki_brain_service.dart';
@@ -14,6 +16,39 @@ import 'piki_chat_repository.dart';
 import 'piki_memory_service.dart';
 import 'piki_models.dart';
 import 'piki_proactive_service.dart';
+
+enum PikiSmartImportTarget { products, sales, customers, expenses }
+
+class PikiSmartImportDraft {
+  final PikiSmartImportTarget target;
+  final SpreadsheetImportPlan plan;
+  final String fileName;
+
+  const PikiSmartImportDraft({
+    required this.target,
+    required this.plan,
+    required this.fileName,
+  });
+}
+
+class _SmartImportResult {
+  final PikiSmartImportTarget target;
+  final Object result;
+
+  const _SmartImportResult({required this.target, required this.result});
+}
+
+class _SmartTargetCandidate {
+  final PikiSmartImportTarget target;
+  final SpreadsheetImportPlan plan;
+  final int score;
+
+  const _SmartTargetCandidate({
+    required this.target,
+    required this.plan,
+    required this.score,
+  });
+}
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
@@ -364,6 +399,107 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
     }
   }
 
+  Future<void> importSmartFile({
+    required Future<bool> Function(PikiSmartImportDraft draft) confirmPlan,
+  }) async {
+    final file = await SpreadsheetImportReader.pickRows(
+      dialogTitle: 'Upload File to Piki',
+      allowedExtensions: SpreadsheetImportReader.documentImportExtensions,
+    );
+    if (file == null) return;
+
+    final sessionId = await _ensureSession('Smart file upload');
+    await _memoryLoadFuture;
+    addMessage(
+      PikiMessage(
+        content:
+            'Upload ${file.fileName}. Let Piki read it and put it where it belongs.',
+        sender: PikiSender.user,
+        sessionId: sessionId,
+      ),
+    );
+
+    final statusNotifier = _ref.read(pikiStatusProvider.notifier);
+    statusNotifier.state = AgentStatus.working;
+    final working = PikiMessage(
+      content: 'Reading ${file.fileName} and deciding where it belongs...',
+      sender: PikiSender.agent,
+      sessionId: sessionId,
+      messageType: PikiMessageType.working,
+      steps: [
+        PikiAgentService.buildStepForTool(
+          PikiAgentService.toolImageOrderDraft,
+        ).copyWith(status: PikiStepStatus.working),
+      ],
+    );
+    addMessage(working);
+
+    try {
+      final draft = await _buildSmartImportDraft(file);
+      final confirmed = await confirmPlan(draft);
+      if (!confirmed) {
+        removeMessagesWhere((message) => message.id == working.id);
+        addMessage(
+          PikiMessage(
+            content: 'Smart upload was cancelled. I did not change anything.',
+            sender: PikiSender.agent,
+            sessionId: sessionId,
+          ),
+        );
+        return;
+      }
+
+      final result = await _importSmartDraft(draft);
+      unawaited(_ref.read(syncControllerProvider.notifier).refreshLocalState());
+      removeMessagesWhere((message) => message.id == working.id);
+
+      final content = _smartImportSummary(result);
+      final toolResult = _smartImportToolResult(result, draft);
+      addMessage(
+        PikiMessage(
+          content: content,
+          sender: PikiSender.agent,
+          sessionId: sessionId,
+          messageType: PikiMessageType.aiResponse,
+          attachedData: {
+            'type': toolResult['type'],
+            'model': OpenRouterService.modelName,
+            'tool_results': [toolResult],
+          },
+          suggestions: _smartImportSuggestions(draft.target),
+        ),
+      );
+      _ref
+          .read(pikiBrainProvider)
+          .rememberInteraction(
+            userInput: 'Smart upload ${file.fileName}',
+            reply: content,
+            tools: const ['smart_import'],
+            results: [toolResult],
+          );
+      _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+        text: _smartImportInsight(result, draft),
+      );
+    } catch (error) {
+      removeMessagesWhere((message) => message.id == working.id);
+      addMessage(
+        PikiMessage(
+          content: AppErrorMessage.withContext(
+            error,
+            prefix: 'Piki could not finish that upload.',
+            fallback:
+                'Try a clearer Excel, CSV, PDF, DOCX, TXT, or JSON file with product, sales, customer, or expense rows.',
+          ),
+          sender: PikiSender.agent,
+          sessionId: sessionId,
+          messageType: PikiMessageType.error,
+        ),
+      );
+    } finally {
+      statusNotifier.state = AgentStatus.idle;
+    }
+  }
+
   Future<void> importProductsFromFile({
     required Future<bool> Function(SpreadsheetImportPlan plan) confirmPlan,
   }) async {
@@ -579,6 +715,394 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
     }
   }
 
+  Future<PikiSmartImportDraft> _buildSmartImportDraft(
+    SpreadsheetFileRows file,
+  ) async {
+    if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+      final candidates = _rankSpreadsheetTargets(file);
+      final errors = <String>[];
+      for (final candidate in candidates) {
+        try {
+          final plan = await _buildPlanWithCloudForTarget(
+            candidate.target,
+            file.rows,
+            fileName: file.fileName,
+          );
+          return PikiSmartImportDraft(
+            target: candidate.target,
+            plan: plan.copyWith(
+              warnings: _dedupeStrings([
+                ...plan.warnings,
+                'Piki smart upload classified this spreadsheet as ${_targetLabel(candidate.target)}.',
+              ]),
+            ),
+            fileName: file.fileName,
+          );
+        } catch (error) {
+          errors.add(_shortError(error));
+        }
+      }
+      throw Exception(
+        errors.isEmpty
+            ? 'Piki could not decide where this spreadsheet belongs.'
+            : 'Piki could not safely map this spreadsheet. ${errors.first}',
+      );
+    }
+
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Could not read the selected file.');
+    }
+    final cloud = await OpenRouterService.extractSmartImportRows(
+      fileName: file.fileName,
+      bytes: bytes,
+      mimeType: file.mimeType,
+      extension: file.extension,
+    );
+    final target = _targetFromCloud(cloud['target']);
+    final rows = _rowsFromCloudSmartFile(cloud);
+    final plan = _buildPlanForTarget(target, rows, fileName: file.fileName);
+    return PikiSmartImportDraft(
+      target: target,
+      plan: plan.copyWith(
+        warnings: _dedupeStrings([
+          ...plan.warnings,
+          'Piki smart upload classified this file as ${_targetLabel(target)}.',
+          ..._cloudWarnings(cloud),
+        ]),
+      ),
+      fileName: file.fileName,
+    );
+  }
+
+  List<_SmartTargetCandidate> _rankSpreadsheetTargets(
+    SpreadsheetFileRows file,
+  ) {
+    final candidates = <_SmartTargetCandidate>[];
+    for (final target in PikiSmartImportTarget.values) {
+      try {
+        final plan = _buildPlanForTarget(
+          target,
+          file.rows,
+          fileName: file.fileName,
+        );
+        candidates.add(
+          _SmartTargetCandidate(
+            target: target,
+            plan: plan,
+            score: _scoreSmartTarget(target, plan, file.fileName),
+          ),
+        );
+      } catch (_) {
+        // A failed local plan means this target is not a likely fit.
+      }
+    }
+    candidates.sort((a, b) => b.score.compareTo(a.score));
+    return candidates;
+  }
+
+  int _scoreSmartTarget(
+    PikiSmartImportTarget target,
+    SpreadsheetImportPlan plan,
+    String fileName,
+  ) {
+    final fields = plan.headers.toSet();
+    final raw = [
+      fileName,
+      ...plan.rawHeaders,
+      ...plan.sampleRows
+          .take(2)
+          .expand((row) => row.entries.take(4).map((entry) => entry.value)),
+    ].join(' ').toLowerCase();
+
+    var score = plan.mappedColumns.length * 10 + plan.dataRowCount;
+    bool hasAny(Iterable<String> values) => values.any(fields.contains);
+    bool textHas(Iterable<String> words) => words.any(raw.contains);
+
+    switch (target) {
+      case PikiSmartImportTarget.products:
+        if (hasAny(['sku', 'barcode', 'price', 'cost', 'stock', 'category'])) {
+          score += 65;
+        }
+        if (textHas(['product', 'catalog', 'inventory', 'stock', 'sku'])) {
+          score += 50;
+        }
+        break;
+      case PikiSmartImportTarget.sales:
+        if (hasAny(['total', 'payment_type', 'date', 'reference'])) {
+          score += 80;
+        }
+        if (hasAny(['product', 'service', 'quantity', 'unit_price'])) {
+          score += 35;
+        }
+        if (textHas(['sales', 'receipt', 'transaction', 'invoice'])) {
+          score += 55;
+        }
+        break;
+      case PikiSmartImportTarget.customers:
+        if (hasAny(['phone', 'email', 'customer_id'])) {
+          score += 90;
+        } else {
+          score -= 35;
+        }
+        if (textHas(['customer', 'contact', 'client', 'phone', 'email'])) {
+          score += 70;
+        }
+        break;
+      case PikiSmartImportTarget.expenses:
+        if (hasAny(['amount', 'category', 'date', 'note'])) {
+          score += 70;
+        }
+        if (fields.contains('title') && fields.contains('amount')) {
+          score += 45;
+        }
+        if (textHas(['expense', 'expenses', 'spending', 'paid', 'bill'])) {
+          score += 75;
+        }
+        break;
+    }
+    return score;
+  }
+
+  Future<SpreadsheetImportPlan> _buildPlanWithCloudForTarget(
+    PikiSmartImportTarget target,
+    List<List<String>> rows, {
+    required String fileName,
+  }) {
+    switch (target) {
+      case PikiSmartImportTarget.products:
+        return ProductImportService.buildPlanWithCloud(
+          rows,
+          fileName: fileName,
+        );
+      case PikiSmartImportTarget.sales:
+        return SaleImportService.buildPlanWithCloud(rows, fileName: fileName);
+      case PikiSmartImportTarget.customers:
+        return CustomerImportService.buildPlanWithCloud(
+          rows,
+          fileName: fileName,
+        );
+      case PikiSmartImportTarget.expenses:
+        return ExpenseImportService.buildPlanWithCloud(
+          rows,
+          fileName: fileName,
+        );
+    }
+  }
+
+  SpreadsheetImportPlan _buildPlanForTarget(
+    PikiSmartImportTarget target,
+    List<List<String>> rows, {
+    required String fileName,
+  }) {
+    switch (target) {
+      case PikiSmartImportTarget.products:
+        return ProductImportService.buildPlan(rows, fileName: fileName);
+      case PikiSmartImportTarget.sales:
+        return SaleImportService.buildPlan(rows, fileName: fileName);
+      case PikiSmartImportTarget.customers:
+        return CustomerImportService.buildPlan(rows, fileName: fileName);
+      case PikiSmartImportTarget.expenses:
+        return ExpenseImportService.buildPlan(rows, fileName: fileName);
+    }
+  }
+
+  Future<_SmartImportResult> _importSmartDraft(
+    PikiSmartImportDraft draft,
+  ) async {
+    switch (draft.target) {
+      case PikiSmartImportTarget.products:
+        return _SmartImportResult(
+          target: draft.target,
+          result: await ProductImportService.importPlan(draft.plan),
+        );
+      case PikiSmartImportTarget.sales:
+        return _SmartImportResult(
+          target: draft.target,
+          result: await SaleImportService.importPlan(draft.plan),
+        );
+      case PikiSmartImportTarget.customers:
+        return _SmartImportResult(
+          target: draft.target,
+          result: await CustomerImportService.importPlan(draft.plan),
+        );
+      case PikiSmartImportTarget.expenses:
+        return _SmartImportResult(
+          target: draft.target,
+          result: await ExpenseImportService.importPlan(draft.plan),
+        );
+    }
+  }
+
+  PikiSmartImportTarget _targetFromCloud(Object? value) {
+    final clean = value.toString().trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      '_',
+    );
+    return switch (clean) {
+      'products' ||
+      'product' ||
+      'catalog' ||
+      'inventory' => PikiSmartImportTarget.products,
+      'sales' ||
+      'sale' ||
+      'transactions' ||
+      'receipts' => PikiSmartImportTarget.sales,
+      'customers' ||
+      'customer' ||
+      'contacts' ||
+      'clients' => PikiSmartImportTarget.customers,
+      'expenses' ||
+      'expense' ||
+      'spending' ||
+      'costs' => PikiSmartImportTarget.expenses,
+      _ => throw Exception('Piki could not decide where this file belongs.'),
+    };
+  }
+
+  List<List<String>> _rowsFromCloudSmartFile(Map<String, dynamic> cloud) {
+    final headers =
+        (cloud['headers'] as List?)?.map((item) => item.toString()).toList() ??
+        const <String>[];
+    final rows =
+        (cloud['rows'] as List?)
+            ?.whereType<List>()
+            .map((row) => row.map((cell) => cell?.toString() ?? '').toList())
+            .toList() ??
+        const <List<String>>[];
+    if (headers.isEmpty || rows.isEmpty) {
+      throw Exception('Piki could not find import rows in this file.');
+    }
+    return [headers, ...rows];
+  }
+
+  List<String> _cloudWarnings(Map<String, dynamic> cloud) {
+    final warnings = <String>[];
+    final summary = cloud['summary']?.toString().trim();
+    if (summary != null && summary.isNotEmpty) {
+      warnings.add(summary);
+    }
+    final rawWarnings = cloud['warnings'];
+    if (rawWarnings is List) {
+      warnings.addAll(
+        rawWarnings
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty),
+      );
+    }
+    if (cloud['sourceTextTruncated'] == true) {
+      warnings.add(
+        'The file was long, so Piki reviewed the first part of the extracted text.',
+      );
+    }
+    return _dedupeStrings(warnings);
+  }
+
+  List<String> _dedupeStrings(Iterable<String> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      final clean = value.trim();
+      if (clean.isEmpty) continue;
+      final key = clean.toLowerCase();
+      if (seen.add(key)) {
+        result.add(clean);
+      }
+    }
+    return result;
+  }
+
+  String _shortError(Object error) {
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  String _targetLabel(PikiSmartImportTarget target) {
+    return switch (target) {
+      PikiSmartImportTarget.products => 'products',
+      PikiSmartImportTarget.sales => 'sales records',
+      PikiSmartImportTarget.customers => 'customers',
+      PikiSmartImportTarget.expenses => 'expenses',
+    };
+  }
+
+  List<String> _smartImportSuggestions(PikiSmartImportTarget target) {
+    return switch (target) {
+      PikiSmartImportTarget.products => const [
+        'Show product catalog',
+        'Check low stock items',
+      ],
+      PikiSmartImportTarget.sales => const [
+        "Show today's sales summary",
+        'Show sales report',
+      ],
+      PikiSmartImportTarget.customers => const [
+        'Show top customers who owe money',
+        'Search customers',
+      ],
+      PikiSmartImportTarget.expenses => const [
+        'Show expense summary',
+        'Show profit summary',
+      ],
+    };
+  }
+
+  String _smartImportInsight(
+    _SmartImportResult result,
+    PikiSmartImportDraft draft,
+  ) {
+    return switch (result.target) {
+      PikiSmartImportTarget.products =>
+        'Imported ${(result.result as ProductImportResult).imported} product row${(result.result as ProductImportResult).imported == 1 ? '' : 's'} from ${draft.fileName}.',
+      PikiSmartImportTarget.sales =>
+        'Imported ${(result.result as SaleImportResult).imported} sale row${(result.result as SaleImportResult).imported == 1 ? '' : 's'} from ${draft.fileName}.',
+      PikiSmartImportTarget.customers =>
+        'Imported ${(result.result as CustomerImportResult).imported} customer row${(result.result as CustomerImportResult).imported == 1 ? '' : 's'} from ${draft.fileName}.',
+      PikiSmartImportTarget.expenses =>
+        'Imported ${(result.result as ExpenseImportResult).imported} expense row${(result.result as ExpenseImportResult).imported == 1 ? '' : 's'} from ${draft.fileName}.',
+    };
+  }
+
+  String _smartImportSummary(_SmartImportResult smart) {
+    return switch (smart.target) {
+      PikiSmartImportTarget.products => _productImportSummary(
+        smart.result as ProductImportResult,
+      ),
+      PikiSmartImportTarget.sales => _salesImportSummary(
+        smart.result as SaleImportResult,
+      ),
+      PikiSmartImportTarget.customers => _customerImportSummary(
+        smart.result as CustomerImportResult,
+      ),
+      PikiSmartImportTarget.expenses => _expenseImportSummary(
+        smart.result as ExpenseImportResult,
+      ),
+    };
+  }
+
+  Map<String, dynamic> _smartImportToolResult(
+    _SmartImportResult smart,
+    PikiSmartImportDraft draft,
+  ) {
+    return switch (smart.target) {
+      PikiSmartImportTarget.products => _productImportToolResult(
+        smart.result as ProductImportResult,
+        draft.plan,
+      ),
+      PikiSmartImportTarget.sales => _salesImportToolResult(
+        smart.result as SaleImportResult,
+        draft.plan,
+      ),
+      PikiSmartImportTarget.customers => _customerImportToolResult(
+        smart.result as CustomerImportResult,
+        draft.plan,
+      ),
+      PikiSmartImportTarget.expenses => _expenseImportToolResult(
+        smart.result as ExpenseImportResult,
+        draft.plan,
+      ),
+    };
+  }
+
   String _productImportSummary(ProductImportResult result) {
     final pieces = <String>[
       '${result.created} created',
@@ -608,6 +1132,31 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
         ? ''
         : '\n\nRows needing attention:\n${result.errors.take(4).map((error) => '- $error').join('\n')}';
     return 'Sales import complete: ${pieces.join(', ')}.${errors.isEmpty ? '' : errors}';
+  }
+
+  String _customerImportSummary(CustomerImportResult result) {
+    final pieces = <String>[
+      '${result.created} created',
+      '${result.updated} updated',
+      if (result.skipped > 0) '${result.skipped} skipped',
+    ];
+    final errors = result.errors.isEmpty
+        ? ''
+        : '\n\nRows needing attention:\n${result.errors.take(4).map((error) => '- $error').join('\n')}';
+    return 'Customer import complete: ${pieces.join(', ')}.${errors.isEmpty ? '' : errors}';
+  }
+
+  String _expenseImportSummary(ExpenseImportResult result) {
+    final pieces = <String>[
+      '${result.imported} imported',
+      if (result.categoriesCreated > 0)
+        '${result.categoriesCreated} categor${result.categoriesCreated == 1 ? 'y' : 'ies'} created',
+      if (result.skipped > 0) '${result.skipped} skipped',
+    ];
+    final errors = result.errors.isEmpty
+        ? ''
+        : '\n\nRows needing attention:\n${result.errors.take(4).map((error) => '- $error').join('\n')}';
+    return 'Expense import complete: ${pieces.join(', ')}.${errors.isEmpty ? '' : errors}';
   }
 
   Map<String, dynamic> _productImportToolResult(
@@ -640,6 +1189,38 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
       'product_lines': result.productLines,
       'service_lines': result.serviceLines,
       'summary_only': result.summaryOnly,
+      'skipped': result.skipped,
+      'errors': result.errors,
+    };
+  }
+
+  Map<String, dynamic> _customerImportToolResult(
+    CustomerImportResult result,
+    SpreadsheetImportPlan plan,
+  ) {
+    return {
+      'type': 'customer_import',
+      'success': true,
+      'file_name': result.fileName ?? plan.fileName,
+      'rows': plan.dataRowCount,
+      'created': result.created,
+      'updated': result.updated,
+      'skipped': result.skipped,
+      'errors': result.errors,
+    };
+  }
+
+  Map<String, dynamic> _expenseImportToolResult(
+    ExpenseImportResult result,
+    SpreadsheetImportPlan plan,
+  ) {
+    return {
+      'type': 'expense_import',
+      'success': true,
+      'file_name': result.fileName ?? plan.fileName,
+      'rows': plan.dataRowCount,
+      'imported': result.imported,
+      'categories_created': result.categoriesCreated,
       'skipped': result.skipped,
       'errors': result.errors,
     };

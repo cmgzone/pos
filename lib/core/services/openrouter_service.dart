@@ -644,6 +644,77 @@ $userMessage
     }
   }
 
+  /// Uploads a business document to the backend so Piki can classify it as
+  /// products, sales, customers, or expenses and return canonical import rows.
+  static Future<Map<String, dynamic>> extractSmartImportRows({
+    required String fileName,
+    required Uint8List bytes,
+    String? mimeType,
+    String? extension,
+    bool consumeQuota = true,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+    if (bytes.isEmpty) {
+      throw Exception('Choose a file first');
+    }
+    if (bytes.length > 7 * 1024 * 1024) {
+      throw Exception('Choose a file below 7 MB.');
+    }
+
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final client = http.Client();
+
+    try {
+      final response = await client
+          .post(
+            _buildUri(backendUrl, 'ai/smart-file/extract'),
+            headers: {
+              ..._authHeaders(license),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'deviceId': deviceId,
+              'fileName': fileName,
+              'mimeType': mimeType,
+              'extension': extension,
+              'fileBase64': base64Encode(bytes),
+              'consumeQuota': consumeQuota,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 429) {
+        throw Exception(
+          body['error'] as String? ?? 'AI rate limit reached. Try again later.',
+        );
+      }
+
+      if (response.statusCode == 403) {
+        throw Exception(
+          body['error'] as String? ??
+              'Piki AI smart import is not enabled for this account.',
+        );
+      }
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        throw Exception(
+          body['error'] as String? ??
+              'Piki AI smart import failed (${response.statusCode})',
+        );
+      }
+
+      return Map<String, dynamic>.from(body['data'] as Map? ?? {});
+    } finally {
+      client.close();
+    }
+  }
+
   static String _buildSystemPrompt() {
     final shopName = ShopSettings.shopName;
     final currency = ShopSettings.currency;
