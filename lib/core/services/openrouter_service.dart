@@ -509,6 +509,7 @@ $userMessage
     required Uint8List bytes,
     String? mimeType,
     String? extension,
+    String? sourceText,
     bool consumeQuota = true,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
@@ -539,6 +540,8 @@ $userMessage
               'fileName': fileName,
               'mimeType': mimeType,
               'extension': extension,
+              if (sourceText != null && sourceText.trim().isNotEmpty)
+                'sourceText': sourceText.trim(),
               'fileBase64': base64Encode(bytes),
               'consumeQuota': consumeQuota,
             }),
@@ -580,6 +583,7 @@ $userMessage
     required Uint8List bytes,
     String? mimeType,
     String? extension,
+    String? sourceText,
     bool consumeQuota = true,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
@@ -610,6 +614,8 @@ $userMessage
               'fileName': fileName,
               'mimeType': mimeType,
               'extension': extension,
+              if (sourceText != null && sourceText.trim().isNotEmpty)
+                'sourceText': sourceText.trim(),
               'fileBase64': base64Encode(bytes),
               'consumeQuota': consumeQuota,
             }),
@@ -651,6 +657,7 @@ $userMessage
     required Uint8List bytes,
     String? mimeType,
     String? extension,
+    String? sourceText,
     bool consumeQuota = true,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
@@ -681,6 +688,8 @@ $userMessage
               'fileName': fileName,
               'mimeType': mimeType,
               'extension': extension,
+              if (sourceText != null && sourceText.trim().isNotEmpty)
+                'sourceText': sourceText.trim(),
               'fileBase64': base64Encode(bytes),
               'consumeQuota': consumeQuota,
             }),

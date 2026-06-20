@@ -49,13 +49,34 @@ class ProductImportService {
       'sale_price',
       'retail_price',
       'sell price',
+      'selling price',
+      'selling price kes',
+      'sale price kes',
+      'retail price kes',
       'amount',
     ],
-    'cost': ['unit_cost', 'buying_price', 'purchase_price', 'buy price'],
+    'cost': [
+      'unit_cost',
+      'buying_price',
+      'purchase_price',
+      'buy price',
+      'cost price',
+      'cost price kes',
+      'unit cost kes',
+    ],
     'sku': ['product_sku', 'item_sku', 'stock_code', 'code'],
     'barcode': ['product_barcode', 'item_barcode', 'bar_code'],
     'category': ['category_name', 'group', 'department'],
-    'stock': ['opening_stock', 'initial_stock', 'qty', 'quantity'],
+    'stock': [
+      'opening_stock',
+      'initial_stock',
+      'qty',
+      'quantity',
+      'stock_qty',
+      'stock quantity',
+      'stock on hand',
+      'on hand',
+    ],
     'stock_received': [
       'add_stock',
       'stock_in',
@@ -63,7 +84,12 @@ class ProductImportService {
       'quantity_received',
       'received_qty',
     ],
-    'low_stock': ['reorder_level', 'minimum_stock', 'min_stock'],
+    'low_stock': [
+      'reorder_level',
+      'minimum_stock',
+      'min_stock',
+      'reorder level',
+    ],
     'unit': ['base_unit'],
     'stock_unit': ['stock unit', 'inventory_unit', 'inventory unit'],
     'sale_unit': ['sale unit', 'selling_unit', 'selling unit'],
@@ -149,10 +175,26 @@ class ProductImportService {
   static Future<SpreadsheetImportPlan> buildPlanForPickedFile(
     SpreadsheetFileRows file,
   ) async {
-    if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
-      return buildPlanWithCloud(file.rows, fileName: file.fileName);
+    if (file.bytes != null && file.bytes!.isNotEmpty) {
+      try {
+        return await buildPlanFromCloudFile(file);
+      } catch (error) {
+        if (!SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+          rethrow;
+        }
+        final fallback = await buildPlanWithCloud(
+          file.rows,
+          fileName: file.fileName,
+        );
+        return fallback.copyWith(
+          warnings: _dedupe([
+            ...fallback.warnings,
+            'Piki cloud extraction was unavailable, so Piki used spreadsheet column mapping instead.',
+          ]),
+        );
+      }
     }
-    return buildPlanFromCloudFile(file);
+    return buildPlanWithCloud(file.rows, fileName: file.fileName);
   }
 
   static SpreadsheetImportPlan buildPlan(
@@ -177,6 +219,7 @@ class ProductImportService {
       bytes: bytes,
       mimeType: file.mimeType,
       extension: file.extension,
+      sourceText: file.extractedText,
     );
     final rows = _rowsFromCloudProductFile(cloud);
     final plan = _buildRawPlan(rows, fileName: file.fileName);

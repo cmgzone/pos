@@ -163,10 +163,26 @@ class SaleImportService {
   static Future<SpreadsheetImportPlan> buildPlanForPickedFile(
     SpreadsheetFileRows file,
   ) async {
-    if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
-      return buildPlanWithCloud(file.rows, fileName: file.fileName);
+    if (file.bytes != null && file.bytes!.isNotEmpty) {
+      try {
+        return await buildPlanFromCloudFile(file);
+      } catch (error) {
+        if (!SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+          rethrow;
+        }
+        final fallback = await buildPlanWithCloud(
+          file.rows,
+          fileName: file.fileName,
+        );
+        return fallback.copyWith(
+          warnings: _dedupe([
+            ...fallback.warnings,
+            'Piki cloud extraction was unavailable, so Piki used spreadsheet column mapping instead.',
+          ]),
+        );
+      }
     }
-    return buildPlanFromCloudFile(file);
+    return buildPlanWithCloud(file.rows, fileName: file.fileName);
   }
 
   static SpreadsheetImportPlan buildPlan(
@@ -191,6 +207,7 @@ class SaleImportService {
       bytes: bytes,
       mimeType: file.mimeType,
       extension: file.extension,
+      sourceText: file.extractedText,
     );
     final rows = _rowsFromCloudSalesFile(cloud);
     final plan = _buildRawPlan(rows, fileName: file.fileName);

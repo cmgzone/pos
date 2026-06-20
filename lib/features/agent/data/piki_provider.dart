@@ -718,6 +718,38 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
   Future<PikiSmartImportDraft> _buildSmartImportDraft(
     SpreadsheetFileRows file,
   ) async {
+    final bytes = file.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      try {
+        return await _buildSmartImportDraftFromCloud(file);
+      } catch (error) {
+        if (!SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+          rethrow;
+        }
+        final fallback = await _buildSmartImportDraftFromSpreadsheet(file);
+        return PikiSmartImportDraft(
+          target: fallback.target,
+          plan: fallback.plan.copyWith(
+            warnings: _dedupeStrings([
+              ...fallback.plan.warnings,
+              'Piki cloud extraction was unavailable, so Piki used spreadsheet column mapping instead.',
+            ]),
+          ),
+          fileName: fallback.fileName,
+        );
+      }
+    }
+
+    if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
+      return _buildSmartImportDraftFromSpreadsheet(file);
+    }
+
+    throw Exception('Could not read the selected file.');
+  }
+
+  Future<PikiSmartImportDraft> _buildSmartImportDraftFromSpreadsheet(
+    SpreadsheetFileRows file,
+  ) async {
     if (SpreadsheetImportReader.isSpreadsheetExtension(file.extension)) {
       final candidates = _rankSpreadsheetTargets(file);
       final errors = <String>[];
@@ -748,7 +780,12 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
             : 'Piki could not safely map this spreadsheet. ${errors.first}',
       );
     }
+    throw Exception('Could not read the selected file.');
+  }
 
+  Future<PikiSmartImportDraft> _buildSmartImportDraftFromCloud(
+    SpreadsheetFileRows file,
+  ) async {
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
       throw Exception('Could not read the selected file.');
@@ -758,6 +795,7 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
       bytes: bytes,
       mimeType: file.mimeType,
       extension: file.extension,
+      sourceText: file.extractedText,
     );
     final target = _targetFromCloud(cloud['target']);
     final rows = _rowsFromCloudSmartFile(cloud);

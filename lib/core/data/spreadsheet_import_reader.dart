@@ -11,6 +11,7 @@ class SpreadsheetFileRows {
   final Uint8List? bytes;
   final String extension;
   final String? mimeType;
+  final String? extractedText;
 
   const SpreadsheetFileRows({
     required this.rows,
@@ -18,6 +19,7 @@ class SpreadsheetFileRows {
     this.bytes,
     this.extension = '',
     this.mimeType,
+    this.extractedText,
   });
 }
 
@@ -141,12 +143,21 @@ class SpreadsheetImportReader {
       'xlsx' => readExcelRows(bytes),
       _ => <List<String>>[],
     };
+    final extractedText = switch (extension) {
+      'xlsx' => readExcelWorkbookText(bytes),
+      'csv' ||
+      'tsv' ||
+      'txt' ||
+      'json' => utf8.decode(bytes, allowMalformed: true),
+      _ => null,
+    };
     return SpreadsheetFileRows(
       rows: rows,
       fileName: file.name,
       bytes: bytes,
       extension: extension,
       mimeType: _mimeTypeForExtension(extension),
+      extractedText: extractedText,
     );
   }
 
@@ -319,6 +330,51 @@ class SpreadsheetImportReader {
               row.map((cell) => cell?.value?.toString().trim() ?? '').toList(),
         )
         .toList();
+  }
+
+  static String readExcelWorkbookText(Uint8List bytes) {
+    final book = xl.Excel.decodeBytes(bytes);
+    if (book.tables.isEmpty) {
+      return '';
+    }
+
+    final buffer = StringBuffer();
+    for (final entry in book.tables.entries) {
+      final sheet = entry.value;
+      final rows = sheet.rows
+          .map(
+            (row) => row
+                .map((cell) => cell?.value?.toString().trim() ?? '')
+                .toList(),
+          )
+          .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+          .toList();
+      if (rows.isEmpty) continue;
+
+      if (buffer.isNotEmpty) {
+        buffer.writeln();
+      }
+      buffer.writeln('Sheet: ${entry.key}');
+      final rowLimit = rows.length < 160 ? rows.length : 160;
+      for (var index = 0; index < rowLimit; index += 1) {
+        final cells = rows[index]
+            .take(24)
+            .map((cell) => _limitPreviewCell(cell.trim()))
+            .join(' | ');
+        buffer.writeln('Row ${index + 1}: $cells');
+      }
+      if (rows.length > rowLimit) {
+        buffer.writeln('... ${rows.length - rowLimit} more row(s)');
+      }
+    }
+    return buffer.toString().trim();
+  }
+
+  static String _limitPreviewCell(String value) {
+    if (value.length <= 120) {
+      return value;
+    }
+    return '${value.substring(0, 117)}...';
   }
 
   static List<List<String>> readCsvRows(Uint8List bytes) {

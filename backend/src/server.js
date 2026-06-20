@@ -3417,6 +3417,10 @@ function decodeProductImportFile(body = {}) {
   };
 }
 
+function importSourceTextFromBody(body = {}) {
+  return normalizeOptionalText(body.sourceText || body.source_text);
+}
+
 async function extractTextFromProductImportFile(file) {
   switch (file.extension) {
     case 'pdf':
@@ -4716,7 +4720,9 @@ app.post('/api/ai/product-file/extract', async (req, res, next) => {
     }
 
     const file = decodeProductImportFile(req.body);
-    const rawText = await extractTextFromProductImportFile(file);
+    const rawText =
+      importSourceTextFromBody(req.body) ||
+      (await extractTextFromProductImportFile(file));
     const source = normalizeProductImportText(rawText);
     const fetch = (await import('node-fetch')).default;
     const result = await requestOpenRouterProductFileExtraction({
@@ -4776,7 +4782,9 @@ app.post('/api/ai/sales-file/extract', async (req, res, next) => {
     }
 
     const file = decodeProductImportFile(req.body);
-    const rawText = await extractTextFromProductImportFile(file);
+    const rawText =
+      importSourceTextFromBody(req.body) ||
+      (await extractTextFromProductImportFile(file));
     const source = normalizeProductImportText(rawText);
     const fetch = (await import('node-fetch')).default;
     const result = await requestOpenRouterSalesFileExtraction({
@@ -4832,7 +4840,9 @@ app.post('/api/ai/smart-file/extract', async (req, res, next) => {
     }
 
     const file = decodeProductImportFile(req.body);
-    const rawText = await extractTextFromProductImportFile(file);
+    const rawText =
+      importSourceTextFromBody(req.body) ||
+      (await extractTextFromProductImportFile(file));
     const source = normalizeProductImportText(rawText);
     const fetch = (await import('node-fetch')).default;
     const result = await requestOpenRouterSmartFileExtraction({

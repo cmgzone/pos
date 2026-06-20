@@ -37,4 +37,58 @@ void main() {
       ['Bread', '55'],
     ]);
   });
+
+  test('messy Excel product price sheet headers map to product fields', () {
+    final plan = ProductImportService.buildPlan([
+      [
+        'Product ID',
+        'SKU',
+        'Product Name',
+        'Category',
+        'Unit',
+        'Cost Price (KES)',
+        'Selling Price (KES)',
+        'Stock Qty',
+        'Reorder Level',
+        'Barcode',
+      ],
+      [
+        'P0001',
+        'SKU-0001',
+        'Bottled Water 500ml',
+        'Beverages',
+        'Each',
+        '190',
+        '240',
+        '106',
+        '30',
+        '616100000001',
+      ],
+    ], fileName: 'product_categories_price_test_data.xlsx');
+
+    expect(
+      plan.headers,
+      containsAll([
+        'product_id',
+        'sku',
+        'name',
+        'category',
+        'unit',
+        'cost',
+        'price',
+        'stock',
+        'low_stock',
+        'barcode',
+      ]),
+    );
+
+    final row = SpreadsheetImportReader.rowMap(plan.headers, plan.rows[1]);
+    expect(row['product_id'], 'P0001');
+    expect(row['name'], 'Bottled Water 500ml');
+    expect(row['cost'], '190');
+    expect(row['price'], '240');
+    expect(row['stock'], '106');
+    expect(row['low_stock'], '30');
+    expect(row['barcode'], '616100000001');
+  });
 }
