@@ -8,6 +8,7 @@ void main() {
   Future<void> pumpProductForm(
     WidgetTester tester, {
     Map<String, dynamic>? product,
+    String? initialName,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -18,7 +19,7 @@ void main() {
         ],
         child: MaterialApp(
           theme: ThemeData(useMaterial3: true),
-          home: ProductFormScreen(product: product),
+          home: ProductFormScreen(product: product, initialName: initialName),
         ),
       ),
     );
@@ -61,7 +62,6 @@ void main() {
     expect(find.text('Low-stock alert will trigger at 5 g.'), findsOneWidget);
     expect(find.text('Selling Price per kg *'), findsOneWidget);
 
-
     // Enter selling price to pass step 1 validation
     await tester.enterText(find.byType(TextFormField).first, '10.0');
     await tester.pumpAndSettle();
@@ -73,6 +73,14 @@ void main() {
 
     expect(find.text('Current Stock (g)'), findsOneWidget);
     expect(find.text('Low Stock Alert (g)'), findsOneWidget);
+  });
+
+  testWidgets('prefills a new product name from POS search text', (
+    tester,
+  ) async {
+    await pumpProductForm(tester, initialName: '  Blue Soap  ');
+
+    expect(find.widgetWithText(TextFormField, 'Blue Soap'), findsOneWidget);
   });
 
   testWidgets('loads saved conversion settings when editing a product', (
@@ -114,7 +122,6 @@ void main() {
     expect(find.text('Low-stock alert will trigger at 500 g.'), findsOneWidget);
     expect(find.text('Selling Price per kg *'), findsOneWidget);
 
-
     // Go to Step 2 (Inventory)
     await tester.ensureVisible(find.text('Continue'));
     await tester.tap(find.text('Continue'));
@@ -124,4 +131,3 @@ void main() {
     expect(find.text('Low Stock Alert (g)'), findsOneWidget);
   });
 }
-

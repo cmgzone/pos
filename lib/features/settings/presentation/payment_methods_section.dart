@@ -17,6 +17,15 @@ class PaymentMethodsSection extends ConsumerStatefulWidget {
 }
 
 class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
+  static const _providerOptions = <String, String>{
+    PaymentMethodRepository.providerCash: 'Cash',
+    PaymentMethodRepository.providerMpesa: 'M-Pesa',
+    PaymentMethodRepository.providerKopesha: 'Kopesha',
+    PaymentMethodRepository.providerCard: 'Card',
+    PaymentMethodRepository.providerBankTransfer: 'Bank Transfer',
+    PaymentMethodRepository.providerOther: 'Other',
+  };
+
   final _mpesaDisplayNameController = TextEditingController(text: 'M-Pesa');
   final _mpesaShortcodeController = TextEditingController();
   final _mpesaAccountReferenceController = TextEditingController();
@@ -33,6 +42,22 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
 
   bool _testingConnection = false;
   Map<String, dynamic>? _connectionResult;
+
+  String _providerSubtitle(String providerKey) {
+    return switch (providerKey) {
+      PaymentMethodRepository.providerCash => 'Affects cash drawer',
+      PaymentMethodRepository.providerMpesa => 'Uses M-Pesa checkout flow',
+      PaymentMethodRepository.providerKopesha => 'Credit payment (Kopesha)',
+      PaymentMethodRepository.providerCard => 'Card or terminal payment',
+      PaymentMethodRepository.providerBankTransfer =>
+        'Bank or transfer payment',
+      _ => 'Digital/External payment',
+    };
+  }
+
+  String _defaultNameForProvider(String providerKey) {
+    return _providerOptions[providerKey] ?? 'Other';
+  }
 
   @override
   void initState() {
@@ -195,7 +220,32 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
     );
     bool isCashDrawer = isEditing ? (existing['is_cash_drawer'] == 1) : false;
     bool isCredit = isEditing ? (existing['is_credit'] == 1) : false;
+    String providerKey = isEditing
+        ? PaymentMethodRepository.providerKeyFor(existing)
+        : PaymentMethodRepository.providerOther;
     bool saving = false;
+
+    void applyProviderKey(String key, {bool updateName = false}) {
+      providerKey = PaymentMethodRepository.normalizeProviderKey(key);
+      switch (providerKey) {
+        case PaymentMethodRepository.providerCash:
+          isCashDrawer = true;
+          isCredit = false;
+          break;
+        case PaymentMethodRepository.providerKopesha:
+          isCashDrawer = false;
+          isCredit = true;
+          break;
+        default:
+          isCashDrawer = false;
+          isCredit = false;
+      }
+      if (updateName && nameController.text.trim().isEmpty) {
+        nameController.text = _defaultNameForProvider(providerKey);
+      }
+    }
+
+    applyProviderKey(providerKey);
 
     final result = await showDialog<bool>(
       context: context,
@@ -219,6 +269,36 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                   ),
                 ),
                 SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: providerKey,
+                  decoration: const InputDecoration(labelText: 'Type'),
+                  items: _providerOptions.entries
+                      .map(
+                        (entry) => DropdownMenuItem<String>(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setDialogState(
+                      () => applyProviderKey(value, updateName: !isEditing),
+                    );
+                  },
+                ),
+                SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _providerSubtitle(providerKey),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
                 SwitchListTile(
                   title: Text('Affects Cash Drawer'),
                   subtitle: Text(
@@ -227,7 +307,13 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                   value: isCashDrawer,
                   onChanged: (val) => setDialogState(() {
                     isCashDrawer = val;
-                    if (val) isCredit = false;
+                    if (val) {
+                      isCredit = false;
+                      providerKey = PaymentMethodRepository.providerCash;
+                    } else if (providerKey ==
+                        PaymentMethodRepository.providerCash) {
+                      providerKey = PaymentMethodRepository.providerOther;
+                    }
                   }),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -241,6 +327,10 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                     isCredit = val;
                     if (val) {
                       isCashDrawer = false;
+                      providerKey = PaymentMethodRepository.providerKopesha;
+                    } else if (providerKey ==
+                        PaymentMethodRepository.providerKopesha) {
+                      providerKey = PaymentMethodRepository.providerOther;
                     }
                   }),
                   contentPadding: EdgeInsets.zero,
@@ -266,6 +356,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                             name: nameController.text.trim(),
                             isCashDrawer: isCashDrawer,
                             isCredit: isCredit,
+                            providerKey: providerKey,
                             isActive: existing['is_active'] == 1,
                             sortOrder: existing['sort_order'],
                           );
@@ -274,6 +365,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                             name: nameController.text.trim(),
                             isCashDrawer: isCashDrawer,
                             isCredit: isCredit,
+                            providerKey: providerKey,
                           );
                         }
                         if (context.mounted) Navigator.pop(ctx, true);
@@ -322,6 +414,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
         name: method['name'],
         isCashDrawer: method['is_cash_drawer'] == 1,
         isCredit: method['is_credit'] == 1,
+        providerKey: PaymentMethodRepository.providerKeyFor(method),
         isActive: isActive,
         sortOrder: method['sort_order'],
       );
@@ -374,7 +467,8 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
             content: Text(
               AppErrorMessage.from(
                 e,
-                fallback: 'Could not delete this payment method. Please try again.',
+                fallback:
+                    'Could not delete this payment method. Please try again.',
               ),
             ),
             backgroundColor: AppColors.error,
@@ -387,8 +481,9 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   Color _cardBackground() =>
       context.isDarkMode ? AppColors.darkSurface : AppColors.surface;
 
-  Color _inputBackground() =>
-      context.isDarkMode ? AppColors.darkBackground : AppColors.surfaceHighlight;
+  Color _inputBackground() => context.isDarkMode
+      ? AppColors.darkBackground
+      : AppColors.surfaceHighlight;
 
   Color _cardBorder() =>
       context.isDarkMode ? AppColors.darkBorder : AppColors.border;
@@ -396,8 +491,9 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   Color _textPrimary() =>
       context.isDarkMode ? AppColors.darkTextPrimary : AppColors.textPrimary;
 
-  Color _textSecondary() =>
-      context.isDarkMode ? AppColors.darkTextSecondary : AppColors.textSecondary;
+  Color _textSecondary() => context.isDarkMode
+      ? AppColors.darkTextSecondary
+      : AppColors.textSecondary;
 
   Color _textMuted() =>
       context.isDarkMode ? AppColors.darkTextMuted : AppColors.textSecondary;
@@ -456,10 +552,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               const SizedBox(height: 4),
               Text(
                 'Configure how customers pay your business.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: _textSecondary(),
-                ),
+                style: TextStyle(fontSize: 14, color: _textSecondary()),
               ),
             ],
           ),
@@ -595,10 +688,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                 ),
                 Text(
                   gateway.subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _textSecondary(),
-                  ),
+                  style: TextStyle(fontSize: 12, color: _textSecondary()),
                 ),
               ],
             ),
@@ -642,12 +732,17 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               final isActive = method['is_active'] == 1;
               final isCashDrawer = method['is_cash_drawer'] == 1;
               final isCredit = method['is_credit'] == 1;
+              final providerKey = PaymentMethodRepository.providerKeyFor(
+                method,
+              );
 
-              String subtitle = 'Digital/External payment';
-              if (isCashDrawer) {
-                subtitle = 'Affects cash drawer';
-              } else if (isCredit) {
-                subtitle = 'Credit payment (Kopesha)';
+              var subtitle = _providerSubtitle(providerKey);
+              if (providerKey == PaymentMethodRepository.providerOther) {
+                if (isCashDrawer) {
+                  subtitle = 'Affects cash drawer';
+                } else if (isCredit) {
+                  subtitle = 'Credit payment (Kopesha)';
+                }
               }
 
               final isLast = methods.last == method;
@@ -688,10 +783,12 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                           activeThumbColor: _accentColor(),
                         ),
                         IconButton(
-                          icon: Icon(Icons.edit_outlined,
-                              size: 18, color: _textSecondary()),
-                          onPressed: () =>
-                              _showAddPaymentMethodDialog(method),
+                          icon: Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: _textSecondary(),
+                          ),
+                          onPressed: () => _showAddPaymentMethodDialog(method),
                           tooltip: 'Edit',
                         ),
                         IconButton(
@@ -756,65 +853,56 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
 
   Widget _buildMpesaHeaderCard() {
     return _buildSectionCard(
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: _accentColor().withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.phone_android_outlined,
-              color: _accentColor(),
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 420;
+          final title = _MpesaHeaderTitle(
+            accentColor: _accentColor(),
+            textPrimary: _textPrimary(),
+            textSecondary: _textSecondary(),
+          );
+          final toggle = _MpesaEnableToggle(
+            enabled: _mpesaActive,
+            saving: _savingMpesa,
+            accentColor: _accentColor(),
+            textSecondary: _textSecondary(),
+            fillWidth: compact,
+            onChanged: (value) => setState(() => _mpesaActive = value),
+          );
+
+          if (compact) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'M-Pesa',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: _textPrimary(),
+                title,
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
-                ),
-                Text(
-                  'Business Collection',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: _textSecondary(),
+                  decoration: BoxDecoration(
+                    color: _inputBackground(),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _cardBorder().withValues(alpha: 0.5),
+                    ),
                   ),
+                  child: toggle,
                 ),
               ],
-            ),
-          ),
-          Row(
+            );
+          }
+
+          return Row(
             children: [
-              Text(
-                'Enable M-Pesa',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: _textSecondary(),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Switch(
-                value: _mpesaActive,
-                onChanged: _savingMpesa
-                    ? null
-                    : (value) => setState(() => _mpesaActive = value),
-                activeThumbColor: _accentColor(),
-              ),
+              Expanded(child: title),
+              const SizedBox(width: 16),
+              toggle,
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -926,10 +1014,10 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   }
 
   Widget _buildStatusCard() {
-    final connected = _connectionResult != null &&
-        _connectionResult!['success'] == true;
-    final failed = _connectionResult != null &&
-        _connectionResult!['success'] != true;
+    final connected =
+        _connectionResult != null && _connectionResult!['success'] == true;
+    final failed =
+        _connectionResult != null && _connectionResult!['success'] != true;
 
     return _buildSectionCard(
       child: Row(
@@ -942,10 +1030,10 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               color: _testingConnection
                   ? Colors.amber
                   : connected
-                      ? _successColor()
-                      : failed
-                          ? AppColors.error
-                          : _textMuted(),
+                  ? _successColor()
+                  : failed
+                  ? AppColors.error
+                  : _textMuted(),
             ),
           ),
           const SizedBox(width: 10),
@@ -954,20 +1042,20 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               _testingConnection
                   ? 'Testing connection...'
                   : connected
-                      ? 'Connection active'
-                      : failed
-                          ? 'Connection failed'
-                          : 'Connection not verified',
+                  ? 'Connection active'
+                  : failed
+                  ? 'Connection failed'
+                  : 'Connection not verified',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: _testingConnection
                     ? Colors.amber
                     : connected
-                        ? _successColor()
-                        : failed
-                            ? AppColors.error
-                            : _textMuted(),
+                    ? _successColor()
+                    : failed
+                    ? AppColors.error
+                    : _textMuted(),
               ),
             ),
           ),
@@ -975,10 +1063,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
             Expanded(
               child: Text(
                 _connectionResult!['message']?.toString() ?? '',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.error,
-                ),
+                style: TextStyle(fontSize: 11, color: AppColors.error),
                 textAlign: TextAlign.end,
               ),
             ),
@@ -1015,63 +1100,81 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   }
 
   Widget _buildConfigActionBar() {
-    return Row(
-      children: [
-        OutlinedButton.icon(
-          onPressed: _testingConnection ? null : _testConnection,
-          icon: _testingConnection
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: _textSecondary(),
-                  ),
-                )
-              : Icon(Icons.wifi_find_outlined, size: 18),
-          label: Text(_testingConnection ? 'Testing...' : 'Test Connection'),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: _cardBorder()),
-            foregroundColor: _textSecondary(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-        ),
-        const Spacer(),
-        TextButton(
-          onPressed: _savingMpesa
-              ? null
-              : () => setState(() => _configuringMpesa = false),
-          style: TextButton.styleFrom(foregroundColor: _textSecondary()),
-          child: const Text('Cancel'),
-        ),
-        const SizedBox(width: 12),
-        FilledButton.icon(
-          onPressed: _savingMpesa ? null : _saveMpesaSettings,
-          icon: _savingMpesa
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Icon(Icons.check, size: 18),
-          label: Text(_savingMpesa ? 'Saving...' : 'Save Configuration'),
-          style: FilledButton.styleFrom(
-            backgroundColor: _accentColor(),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          ),
-        ),
-      ],
+    final testButton = OutlinedButton.icon(
+      onPressed: _testingConnection ? null : _testConnection,
+      icon: _testingConnection
+          ? SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _textSecondary(),
+              ),
+            )
+          : Icon(Icons.wifi_find_outlined, size: 18),
+      label: Text(_testingConnection ? 'Testing...' : 'Test Connection'),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: _cardBorder()),
+        foregroundColor: _textSecondary(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+    final cancelButton = TextButton(
+      onPressed: _savingMpesa
+          ? null
+          : () => setState(() => _configuringMpesa = false),
+      style: TextButton.styleFrom(foregroundColor: _textSecondary()),
+      child: const Text('Cancel'),
+    );
+    final saveButton = FilledButton.icon(
+      onPressed: _savingMpesa ? null : _saveMpesaSettings,
+      icon: _savingMpesa
+          ? SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Icon(Icons.check, size: 18),
+      label: Text(_savingMpesa ? 'Saving...' : 'Save Configuration'),
+      style: FilledButton.styleFrom(
+        backgroundColor: _accentColor(),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 520) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              saveButton,
+              const SizedBox(height: 10),
+              testButton,
+              const SizedBox(height: 4),
+              Align(alignment: Alignment.center, child: cancelButton),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            testButton,
+            const Spacer(),
+            cancelButton,
+            const SizedBox(width: 12),
+            saveButton,
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildSectionCard({
-    String? title,
-    required Widget child,
-  }) {
+  Widget _buildSectionCard({String? title, required Widget child}) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1126,9 +1229,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
           decoration: BoxDecoration(
             color: _inputBackground(),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: _cardBorder().withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: _cardBorder().withValues(alpha: 0.5)),
           ),
           child: TextField(
             controller: controller,
@@ -1146,11 +1247,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                 vertical: 12,
               ),
               suffixIcon: obscure
-                  ? Icon(
-                      Icons.lock_outline,
-                      size: 16,
-                      color: _textSecondary(),
-                    )
+                  ? Icon(Icons.lock_outline, size: 16, color: _textSecondary())
                   : null,
               suffixIconConstraints: const BoxConstraints(
                 minWidth: 40,
@@ -1185,9 +1282,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
           decoration: BoxDecoration(
             color: _inputBackground(),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: _cardBorder().withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: _cardBorder().withValues(alpha: 0.5)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonFormField<String>(
@@ -1213,6 +1308,110 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
         AppErrorMessage.from(err, fallback: AppErrorMessage.loadFailed),
         style: TextStyle(color: AppColors.error),
       ),
+    );
+  }
+}
+
+class _MpesaHeaderTitle extends StatelessWidget {
+  final Color accentColor;
+  final Color textPrimary;
+  final Color textSecondary;
+
+  const _MpesaHeaderTitle({
+    required this.accentColor,
+    required this.textPrimary,
+    required this.textSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: accentColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            Icons.phone_android_outlined,
+            color: accentColor,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'M-Pesa',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Business Collection',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MpesaEnableToggle extends StatelessWidget {
+  final bool enabled;
+  final bool saving;
+  final Color accentColor;
+  final Color textSecondary;
+  final bool fillWidth;
+  final ValueChanged<bool> onChanged;
+
+  const _MpesaEnableToggle({
+    required this.enabled,
+    required this.saving,
+    required this.accentColor,
+    required this.textSecondary,
+    required this.fillWidth,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = Text(
+      'Enable M-Pesa',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 13,
+        color: textSecondary,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+    return Row(
+      mainAxisSize: fillWidth ? MainAxisSize.max : MainAxisSize.min,
+      children: [
+        if (fillWidth) Expanded(child: label) else label,
+        const SizedBox(width: 8),
+        Switch(
+          value: enabled,
+          onChanged: saving ? null : onChanged,
+          activeThumbColor: accentColor,
+        ),
+      ],
     );
   }
 }

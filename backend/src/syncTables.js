@@ -616,6 +616,7 @@ const syncTables = [
     columns: [
       'id',
       'name',
+      'provider_key',
       'is_cash_drawer',
       'is_credit',
       'is_active',

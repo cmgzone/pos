@@ -37,10 +37,16 @@ class SubscriptionPlansSection extends StatefulWidget {
 }
 
 class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
-  static const _panelColor = Color(0xFF17121F);
-  static const _pink = Color(0xFFFF2A6D);
-  static const _fuchsia = Color(0xFFC72DFF);
-  static const _mobileShellColor = Color(0xFF090B13);
+  static const _pageBackground = Color(0xFFF6F7F9);
+  static const _surface = Color(0xFFFFFFFF);
+  static const _surfaceSoft = Color(0xFFF1F4F8);
+  static const _ink = Color(0xFF20242D);
+  static const _muted = Color(0xFF667085);
+  static const _border = Color(0xFFE2E7EF);
+  static const _accent = Color(0xFFD72668);
+  static const _success = Color(0xFF447A61);
+  static const _blue = Color(0xFF3A6EA5);
+  static const _amber = Color(0xFFA66A24);
 
   String? _selectedMarketKey;
   String? _selectedPlanCode;
@@ -118,8 +124,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       _message = null;
     });
     try {
-      final resolvedCountry =
-          countryCode ?? await _resolveCountryFallback();
+      final resolvedCountry = countryCode ?? await _resolveCountryFallback();
       final catalog = await SubscriptionService.fetchPlans(
         countryCode: resolvedCountry,
         provider: marketKey?.split(':').last ?? widget.initialProvider,
@@ -413,41 +418,21 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         final pagePadding = desktop
             ? const EdgeInsets.fromLTRB(28, 24, 28, 28)
             : const EdgeInsets.fromLTRB(16, 16, 16, 18);
-        return Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF060611), Color(0xFF160817), Color(0xFF09090E)],
-            ),
-          ),
+        return ColoredBox(
+          color: _pageBackground,
           child: SafeArea(
-            child: Stack(
-              children: [
-                Positioned(
-                  left: -160,
-                  bottom: 60,
-                  child: _orb(360, _fuchsia.withValues(alpha: 0.22)),
+            child: SingleChildScrollView(
+              padding: pagePadding,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxWidth),
+                  child: _loading
+                      ? _loadingPanel()
+                      : desktop
+                      ? _desktopSubscriptionFrame(context)
+                      : _mobileSubscriptionFrame(context),
                 ),
-                Positioned(
-                  right: -180,
-                  bottom: 40,
-                  child: _orb(430, _pink.withValues(alpha: 0.28)),
-                ),
-                SingleChildScrollView(
-                  padding: pagePadding,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: maxWidth),
-                      child: _loading
-                          ? _loadingPanel()
-                          : desktop
-                          ? _desktopSubscriptionFrame(context)
-                          : _mobileSubscriptionFrame(context),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         );
@@ -539,24 +524,16 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       width: double.infinity,
       padding: EdgeInsets.all(premium ? 24 : 18),
       decoration: BoxDecoration(
-        color: premium
-            ? const Color(0xFF080A12).withValues(alpha: 0.96)
-            : _mobileShellColor,
-        borderRadius: BorderRadius.circular(premium ? 28 : 24),
-        border: Border.all(
-          color: premium
-              ? Colors.white.withValues(alpha: 0.14)
-              : Colors.white.withValues(alpha: 0.14),
-        ),
-        boxShadow: premium || Theme.of(context).brightness == Brightness.light
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: premium ? 0.38 : 0.18),
-                  blurRadius: premium ? 30 : 20,
-                  offset: Offset(0, premium ? 16 : 10),
-                ),
-              ]
-            : null,
+        color: _surface,
+        borderRadius: BorderRadius.circular(premium ? 24 : 18),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: _ink.withValues(alpha: 0.08),
+            blurRadius: premium ? 28 : 18,
+            offset: Offset(0, premium ? 14 : 8),
+          ),
+        ],
       ),
       child: child,
     );
@@ -566,26 +543,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return Container(
       height: 260,
       decoration: BoxDecoration(
-        color: _panelColor,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: _surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _border),
       ),
-      child: const Center(child: CircularProgressIndicator(color: _pink)),
-    );
-  }
-
-  Widget _orb(double size, Color color) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: 0.0)],
-          ),
-        ),
-      ),
+      child: const Center(child: CircularProgressIndicator(color: _accent)),
     );
   }
 
@@ -593,20 +555,14 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return Container(
       constraints: const BoxConstraints(minHeight: 700),
       decoration: BoxDecoration(
-        color: const Color(0xFF080A12).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        color: _surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.65),
-            blurRadius: 42,
-            offset: const Offset(0, 24),
-          ),
-          BoxShadow(
-            color: _pink.withValues(alpha: 0.18),
-            blurRadius: 60,
-            spreadRadius: -18,
-            offset: const Offset(0, 28),
+            color: _ink.withValues(alpha: 0.10),
+            blurRadius: 34,
+            offset: const Offset(0, 18),
           ),
         ],
       ),
@@ -618,7 +574,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
             _desktopSidebar(),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+                padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -666,101 +622,120 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   }
 
   Widget _desktopSidebar() {
-    const items = [
-      (Icons.space_dashboard_outlined, 'Overview'),
-      (Icons.receipt_long_outlined, 'Sales'),
-      (Icons.inventory_2_outlined, 'Products'),
-      (Icons.groups_outlined, 'Customers'),
-      (Icons.analytics_outlined, 'Reports'),
-      (Icons.auto_awesome_outlined, 'AI Assistant'),
-      (Icons.payments_outlined, 'Payments'),
-      (Icons.workspace_premium_outlined, 'Subscription'),
-    ];
+    final planName = _selectedPlan()?.name ?? _currentPlanCode() ?? 'No plan';
+    final market = _selectedMarket();
+    final license = LicenseService.currentSnapshot;
     return Container(
-      width: 222,
+      width: 260,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.28),
-        border: Border(
-          right: BorderSide(color: Colors.white.withValues(alpha: 0.09)),
-        ),
+        color: _surfaceSoft,
+        border: const Border(right: BorderSide(color: _border)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              _WindowDot(color: Color(0xFFFF5F57)),
-              SizedBox(width: 8),
-              _WindowDot(color: Color(0xFFFFBD2E)),
-              SizedBox(width: 8),
-              _WindowDot(color: Color(0xFF28C840)),
-            ],
-          ),
-          const SizedBox(height: 34),
-          const Row(
             children: [
-              Icon(Icons.shopping_bag_rounded, color: _pink, size: 24),
-              SizedBox(width: 10),
-              Text(
-                'Piki POS',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 17,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _border),
+                ),
+                child: const Icon(Icons.shopping_bag_outlined, color: _accent),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Piki POS',
+                  style: TextStyle(
+                    color: _ink,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 28),
-          ...items.map((item) {
-            final active = item.$2 == 'Subscription';
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-              decoration: BoxDecoration(
-                gradient: active
-                    ? LinearGradient(
-                        colors: [
-                          _pink.withValues(alpha: 0.42),
-                          _fuchsia.withValues(alpha: 0.08),
-                        ],
-                      )
-                    : null,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    item.$1,
-                    color: active ? Colors.white : Colors.white54,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      item.$2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: active ? Colors.white : Colors.white60,
-                        fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-          const SizedBox(height: 24),
-          _sidebarPremiumCard(),
+          const SizedBox(height: 26),
+          _sidebarMetric(
+            icon: Icons.workspace_premium_outlined,
+            label: 'Selected plan',
+            value: planName,
+            color: _blue,
+          ),
+          const SizedBox(height: 12),
+          _sidebarMetric(
+            icon: Icons.verified_user_outlined,
+            label: 'License status',
+            value: _licenseStatusLabel(license.accessStatus),
+            color: _success,
+          ),
+          const SizedBox(height: 12),
+          _sidebarMetric(
+            icon: Icons.public_outlined,
+            label: 'Market',
+            value: market?.displayLabel ?? 'Not selected',
+            color: _amber,
+          ),
           const SizedBox(height: 18),
-          Row(
-            children: const [
-              Icon(Icons.settings_outlined, color: Colors.white54, size: 18),
-              SizedBox(width: 12),
-              Text('Settings', style: TextStyle(color: Colors.white60)),
-            ],
+          _sidebarPremiumCard(),
+          const Spacer(),
+          const Text(
+            'Plan changes apply after payment confirmation. Your local shop data stays on this device and syncs when cloud access is available.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sidebarMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -772,30 +747,23 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.08),
-            _pink.withValues(alpha: 0.10),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        color: const Color(0xFFFFFAF2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF0D9B5)),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.workspace_premium_rounded, color: _pink),
+          Icon(Icons.support_agent_outlined, color: _amber),
           SizedBox(height: 10),
           Text(
-            'Piki Premium',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+            'Need help choosing?',
+            style: TextStyle(color: _ink, fontWeight: FontWeight.w900),
           ),
           SizedBox(height: 8),
           Text(
-            'Unlock the full power of your business.',
-            style: TextStyle(color: Color(0xB8F9DDF0), fontSize: 12),
+            'Start with the plan that matches your selling mode. You can move up later.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
           ),
         ],
       ),
@@ -806,14 +774,14 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return Container(
       constraints: const BoxConstraints(maxWidth: 430),
       decoration: BoxDecoration(
-        color: _mobileShellColor,
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        color: _surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.55),
-            blurRadius: 34,
-            offset: const Offset(0, 18),
+            color: _ink.withValues(alpha: 0.10),
+            blurRadius: 26,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -824,7 +792,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _mobileHeaderBar(context),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             _headlineBlock(context, compact: true),
             const SizedBox(height: 14),
             _countryAndBillingRow(compact: true),
@@ -852,7 +820,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         if (widget.onOpenApp != null)
           IconButton(
             onPressed: _canSkipToPos ? widget.onOpenApp : null,
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            icon: const Icon(Icons.arrow_back_rounded, color: _ink),
           )
         else
           const SizedBox(width: 4),
@@ -868,7 +836,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         Text(
           'Choose your plan',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            color: Colors.white,
+            color: _ink,
             fontWeight: FontWeight.w900,
             height: 1.05,
             fontSize: compact ? 24 : 30,
@@ -878,7 +846,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         Text(
           'Pick the perfect plan for your business.',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.62),
+            color: _muted,
             fontSize: compact ? 13 : 15,
             fontWeight: FontWeight.w600,
           ),
@@ -915,17 +883,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           width: compact ? 44 : 52,
           height: compact ? 44 : 52,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_pink, _fuchsia]),
+            color: const Color(0xFFFFEEF5),
             borderRadius: BorderRadius.circular(compact ? 16 : 20),
-            boxShadow: [
-              BoxShadow(
-                color: _pink.withValues(alpha: 0.35),
-                blurRadius: 22,
-                offset: const Offset(0, 10),
-              ),
-            ],
+            border: Border.all(color: const Color(0xFFF7CFE0)),
           ),
-          child: const Icon(Icons.auto_awesome, color: Colors.white),
+          child: const Icon(Icons.workspace_premium_outlined, color: _accent),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -935,7 +897,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               Text(
                 'Piki Premium',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
+                  color: _ink,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -943,7 +905,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               Text(
                 widget.afterSignup ? 'Upgrade your POS' : 'Manage your POS',
                 style: const TextStyle(
-                  color: Color(0xB8F9DDF0),
+                  color: _muted,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -955,8 +917,8 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           OutlinedButton(
             onPressed: canSkip ? widget.onOpenApp : null,
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white,
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+              foregroundColor: _ink,
+              side: const BorderSide(color: _border),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -979,9 +941,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.055),
+        color: _surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        border: Border.all(color: _border),
       ),
       child: Row(
         children: [
@@ -991,16 +953,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
             child: Text(
               label,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-              ),
+              style: const TextStyle(color: _ink, fontWeight: FontWeight.w900),
             ),
           ),
-          Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: Colors.white.withValues(alpha: 0.7),
-          ),
+          const Icon(Icons.keyboard_arrow_down_rounded, color: _muted),
         ],
       ),
     );
@@ -1020,9 +976,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.055),
+        color: _surface,
         borderRadius: BorderRadius.circular(compact ? 16 : 20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: _border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1031,7 +987,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           Text(
             'Secure payments with',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.62),
+              color: _muted,
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
@@ -1073,14 +1029,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         vertical: compact ? 9 : 12,
       ),
       decoration: BoxDecoration(
-        color: selected
-            ? _pink.withValues(alpha: 0.13)
-            : Colors.black.withValues(alpha: 0.22),
+        color: selected ? const Color(0xFFFFEEF5) : _surfaceSoft,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: selected
-              ? _pink.withValues(alpha: 0.7)
-              : Colors.white.withValues(alpha: 0.18),
+          color: selected ? _accent.withValues(alpha: 0.45) : _border,
         ),
       ),
       child: Row(
@@ -1095,7 +1047,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           Text(
             market.providerLabel,
             style: TextStyle(
-              color: Colors.white,
+              color: _ink,
               fontSize: compact ? 11 : 14,
               fontWeight: FontWeight.w900,
             ),
@@ -1114,13 +1066,13 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       return _softPanel(
         Row(
           children: [
-            const Icon(Icons.calendar_month_outlined, color: Colors.white70),
+            const Icon(Icons.calendar_month_outlined, color: _muted),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 label,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: _ink,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1138,9 +1090,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return Container(
       height: 54,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: _surfaceSoft,
         borderRadius: BorderRadius.circular(27),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: _border),
       ),
       child: Stack(
         children: [
@@ -1155,11 +1107,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [_pink, _fuchsia]),
+                  color: _ink,
                   borderRadius: BorderRadius.circular(23),
                   boxShadow: [
                     BoxShadow(
-                      color: _pink.withValues(alpha: 0.3),
+                      color: _ink.withValues(alpha: 0.12),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -1204,9 +1156,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                     child: AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 180),
                       style: TextStyle(
-                        color: selected
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.6),
+                        color: selected ? Colors.white : _muted,
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1240,7 +1190,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           const Text(
             'What do you sell?',
             style: TextStyle(
-              color: Colors.white,
+              color: _ink,
               fontWeight: FontWeight.w900,
               fontSize: 14,
             ),
@@ -1265,13 +1215,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
                         color: selected
-                            ? _pink.withValues(alpha: 0.15)
-                            : Colors.white.withValues(alpha: 0.04),
+                            ? const Color(0xFFEFF8F3)
+                            : _surfaceSoft,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: selected
-                              ? _pink.withValues(alpha: 0.6)
-                              : Colors.white.withValues(alpha: 0.08),
+                          color: selected ? _success : _border,
                           width: selected ? 1.5 : 1,
                         ),
                       ),
@@ -1281,13 +1229,13 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                           Icon(
                             _sellingModeIcon(mode),
                             size: 20,
-                            color: selected ? Colors.white : Colors.white60,
+                            color: selected ? _success : _muted,
                           ),
                           const SizedBox(height: 6),
                           Text(
                             _sellingModeLabel(mode),
                             style: TextStyle(
-                              color: selected ? Colors.white : Colors.white60,
+                              color: selected ? _ink : _muted,
                               fontWeight: FontWeight.w800,
                               fontSize: 12,
                             ),
@@ -1393,48 +1341,23 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           constraints: const BoxConstraints(minHeight: 292),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: selected
-                ? LinearGradient(
-                    colors: [
-                      _pink.withValues(alpha: 0.22),
-                      _fuchsia.withValues(alpha: 0.08),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : LinearGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: 0.05),
-                      Colors.white.withValues(alpha: 0.01),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+            color: selected ? const Color(0xFFFFFBFD) : _surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected
-                  ? _pink.withValues(alpha: 0.85)
-                  : Colors.white.withValues(alpha: 0.14),
-              width: selected ? 1.6 : 1,
+              color: selected ? _accent : _border,
+              width: selected ? 1.7 : 1,
             ),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: _pink.withValues(alpha: 0.25),
-                      blurRadius: 36,
-                      spreadRadius: -2,
-                      offset: const Offset(0, 12),
-                    ),
-                    BoxShadow(
-                      color: _fuchsia.withValues(alpha: 0.15),
-                      blurRadius: 36,
-                      spreadRadius: -2,
-                      offset: const Offset(0, -12),
+                      color: _accent.withValues(alpha: 0.13),
+                      blurRadius: 22,
+                      offset: const Offset(0, 10),
                     ),
                   ]
                 : [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
+                      color: _ink.withValues(alpha: 0.05),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -1459,7 +1382,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                     child: Text(
                       plan.name,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: _ink,
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1475,18 +1398,18 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xB8F9DDF0),
+                  color: _muted,
                   fontSize: 13,
                   height: 1.3,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 14),
-              Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
+              const Divider(color: _border, height: 1),
               const SizedBox(height: 16),
               _priceLine(price, billingPeriod, large: true),
               const SizedBox(height: 16),
-              Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
+              const Divider(color: _border, height: 1),
               const SizedBox(height: 16),
               ..._featurePreview(plan).map(
                 (feature) => Padding(
@@ -1505,7 +1428,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: _ink,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1531,39 +1454,18 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                           );
                           _message = null;
                         }),
-                  style:
-                      OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        backgroundColor: selected
-                            ? null
-                            : Colors.black.withValues(alpha: 0.16),
-                        side: BorderSide(
-                          color: selected
-                              ? Colors.transparent
-                              : _fuchsia.withValues(alpha: 0.65),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ).copyWith(
-                        backgroundColor: selected
-                            ? const WidgetStatePropertyAll(null)
-                            : null,
-                      ),
-                  child: Ink(
-                    decoration: selected
-                        ? BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [_pink, _fuchsia],
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          )
-                        : null,
-                    child: Center(
-                      child: Text(
-                        _isFreePrice(price) ? 'Try for free' : 'Subscribe',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: selected ? Colors.white : _ink,
+                    backgroundColor: selected ? _accent : _surfaceSoft,
+                    side: BorderSide(color: selected ? _accent : _border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _isFreePrice(price) ? 'Try for free' : 'Subscribe',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                   ),
                 ),
@@ -1599,31 +1501,17 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          gradient: selected
-              ? LinearGradient(
-                  colors: [
-                    _pink.withValues(alpha: 0.20),
-                    _fuchsia.withValues(alpha: 0.10),
-                  ],
-                )
-              : LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.07),
-                    Colors.white.withValues(alpha: 0.025),
-                  ],
-                ),
+          color: selected ? const Color(0xFFFFFBFD) : _surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected
-                ? _pink.withValues(alpha: 0.85)
-                : Colors.white.withValues(alpha: 0.12),
+            color: selected ? _accent : _border,
             width: selected ? 1.5 : 1,
           ),
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: _pink.withValues(alpha: 0.22),
-                    blurRadius: 22,
+                    color: _accent.withValues(alpha: 0.12),
+                    blurRadius: 18,
                     offset: const Offset(0, 10),
                   ),
                 ]
@@ -1643,7 +1531,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                       Text(
                         plan.name,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: _ink,
                           fontSize: 16,
                           fontWeight: FontWeight.w900,
                         ),
@@ -1654,7 +1542,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.62),
+                          color: _muted,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1669,7 +1557,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                   selected
                       ? Icons.check_circle_rounded
                       : Icons.chevron_right_rounded,
-                  color: selected ? _pink : Colors.white70,
+                  color: selected ? _accent : _muted,
                 ),
               ],
             ),
@@ -1694,17 +1582,15 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: selected
-              ? const [_pink, _fuchsia]
-              : [
-                  Colors.white.withValues(alpha: 0.12),
-                  Colors.white.withValues(alpha: 0.04),
-                ],
-        ),
+        color: selected ? const Color(0xFFFFEEF5) : _surfaceSoft,
         borderRadius: BorderRadius.circular(size * 0.32),
+        border: Border.all(color: selected ? _accent : _border),
       ),
-      child: Icon(_planIcon(plan), color: Colors.white, size: size * 0.52),
+      child: Icon(
+        _planIcon(plan),
+        color: selected ? _accent : _blue,
+        size: size * 0.52,
+      ),
     );
   }
 
@@ -1722,17 +1608,16 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         Text(
           amount,
           style: TextStyle(
-            color: Colors.white,
+            color: _ink,
             fontSize: large ? 26 : 13.5,
             fontWeight: FontWeight.w900,
-            letterSpacing: -0.4,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           price == null ? 'price' : '/${_periodShortLabel(billingPeriod)}',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.56),
+            color: _muted,
             fontSize: large ? 13 : 11,
             fontWeight: FontWeight.w700,
           ),
@@ -1748,16 +1633,14 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         vertical: compact ? 4 : 7,
       ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [_pink, _fuchsia]),
+        color: const Color(0xFFEFF8F3),
         borderRadius: BorderRadius.circular(compact ? 6 : 9),
-        boxShadow: [
-          BoxShadow(color: _pink.withValues(alpha: 0.35), blurRadius: 16),
-        ],
+        border: Border.all(color: const Color(0xFFCBE7D6)),
       ),
       child: Text(
         'Most Popular',
         style: TextStyle(
-          color: Colors.white,
+          color: _success,
           fontSize: compact ? 9 : 11,
           fontWeight: FontWeight.w900,
         ),
@@ -1800,7 +1683,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     return _softPanel(
       const Row(
         children: [
-          Icon(Icons.verified_user_outlined, color: Colors.white),
+          Icon(Icons.verified_user_outlined, color: _success),
           SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1808,19 +1691,12 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               children: [
                 Text(
                   'Cancel anytime',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: TextStyle(color: _ink, fontWeight: FontWeight.w900),
                 ),
                 SizedBox(height: 2),
                 Text(
                   'Your shop data remains safe when you change plans.',
-                  style: TextStyle(
-                    color: Color(0xB8F9DDF0),
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
+                  style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
                 ),
               ],
             ),
@@ -1859,7 +1735,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     final summary = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: _surfaceSoft,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1871,7 +1747,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                 Text(
                   _sellingModeLabel(selectedMode ?? ''),
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
+                    color: _muted,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1880,7 +1756,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
                 Text(
                   plan?.name ?? 'Choose plan',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: _ink,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1893,7 +1769,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               Text(
                 price?.displayAmount ?? '-',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: _ink,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1901,7 +1777,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
               Text(
                 '/${_periodShortLabel(billingPeriod ?? 'monthly')}',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.52),
+                  color: _muted,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1922,9 +1798,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           child: FilledButton.icon(
             onPressed: canCheckout ? _startCheckout : null,
             style: FilledButton.styleFrom(
-              backgroundColor: _pink,
-              disabledBackgroundColor: Colors.white.withValues(alpha: 0.10),
+              backgroundColor: _ink,
+              disabledBackgroundColor: _surfaceSoft,
               foregroundColor: Colors.white,
+              disabledForegroundColor: _muted,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
@@ -1974,9 +1851,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.055),
+        color: _surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+        border: Border.all(color: _border),
       ),
       child: child,
     );
@@ -1987,7 +1864,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       width: double.infinity,
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.12),
+        color: AppColors.error.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
       ),
@@ -1999,7 +1876,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
             child: Text(
               message,
               style: const TextStyle(
-                color: Color(0xFFFFB1B1),
+                color: AppColors.error,
                 fontSize: 12,
                 height: 1.35,
                 fontWeight: FontWeight.w700,
@@ -2025,7 +1902,6 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           color: color,
           fontSize: 9,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.5,
         ),
       ),
     );
@@ -2302,7 +2178,22 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       case 'flutterwave':
         return const Color(0xFFFFB020);
       default:
-        return Colors.white70;
+        return _muted;
+    }
+  }
+
+  String _licenseStatusLabel(LicenseAccessStatus status) {
+    switch (status) {
+      case LicenseAccessStatus.active:
+        return 'Active';
+      case LicenseAccessStatus.grace:
+        return 'Grace period';
+      case LicenseAccessStatus.expired:
+        return 'Expired';
+      case LicenseAccessStatus.invalid:
+        return 'Needs refresh';
+      case LicenseAccessStatus.localOnly:
+        return 'Local only';
     }
   }
 
@@ -2342,93 +2233,5 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       default:
         return Icons.auto_awesome_outlined;
     }
-  }
-}
-
-class _WindowDot extends StatelessWidget {
-  final Color color;
-
-  const _WindowDot({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-  }
-}
-
-class _ShimmeringAiTag extends StatefulWidget {
-  const _ShimmeringAiTag();
-
-  @override
-  State<_ShimmeringAiTag> createState() => _ShimmeringAiTagState();
-}
-
-class _ShimmeringAiTagState extends State<_ShimmeringAiTag>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: const [
-                Color(0xFFFF2A6D),
-                Color(0xFFC72DFF),
-                Color(0xFFFF2A6D),
-              ],
-              stops: [0.0, _controller.value, 1.0],
-            ),
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFFF2A6D).withValues(alpha: 0.15),
-                blurRadius: 10,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.auto_awesome, size: 15, color: Colors.white),
-              SizedBox(width: 8),
-              Text(
-                'AI SHOP ASSISTANT INCLUDED',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 }

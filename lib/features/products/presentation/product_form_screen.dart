@@ -23,8 +23,9 @@ import 'product_variants_screen.dart';
 
 class ProductFormScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? product;
+  final String? initialName;
 
-  const ProductFormScreen({super.key, this.product});
+  const ProductFormScreen({super.key, this.product, this.initialName});
 
   @override
   ConsumerState<ProductFormScreen> createState() => _ProductFormScreenState();
@@ -80,7 +81,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   void initState() {
     super.initState();
     final p = widget.product;
-    _nameController = TextEditingController(text: p?['name'] as String? ?? '');
+    final initialName = !_isEditing ? widget.initialName?.trim() : null;
+    _nameController = TextEditingController(
+      text: p?['name'] as String? ?? initialName ?? '',
+    );
     _priceController = TextEditingController(
       text: p != null ? (p['price'] as num).toString() : '',
     );
@@ -426,15 +430,41 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         productName: _nameController.text.trim(),
       );
       if (!mounted) return;
-      setState(() => _replaceProductImageUrl(imagePath, enhancedPath));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Image enhanced using ${OpenRouterService.imageModelName}.',
+      setState(() {
+        _replaceProductImageUrl(imagePath, enhancedPath);
+        _isEnhancingImage = false;
+        _isUploadingImage = true;
+      });
+
+      try {
+        final hostedUrl = await ProductImageUploadService.uploadProductImage(
+          imagePath: enhancedPath,
+          productId: widget.product?['id'] as String?,
+          productName: _nameController.text.trim(),
+        );
+        if (!mounted) return;
+        setState(() => _replaceProductImageUrl(enhancedPath, hostedUrl));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Image enhanced with ${OpenRouterService.imageModelName} and uploaded to the online catalog.',
+            ),
+            backgroundColor: AppColors.success,
           ),
-          backgroundColor: AppColors.success,
-        ),
-      );
+        );
+      } catch (uploadError) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Image enhanced locally. ${AppErrorMessage.from(uploadError, fallback: 'Could not upload the enhanced image to Bunny.')}',
+            ),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      } finally {
+        if (mounted) setState(() => _isUploadingImage = false);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

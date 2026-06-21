@@ -614,6 +614,7 @@ async function matchManualPayment({
   amount,
   checkoutCode,
   saleId = null,
+  previewOnly = false,
 }) {
   const cleanBusinessId = normalizeText(businessId);
   if (!cleanBusinessId) {
@@ -696,6 +697,12 @@ async function matchManualPayment({
 
     if (!candidate) {
       return null;
+    }
+
+    if (previewOnly) {
+      return normalizeManualMpesaPaymentRow(candidate, {
+        statusOverride: 'matched',
+      });
     }
 
     const updated = await markManualMpesaPaymentClaimed(
@@ -1035,7 +1042,7 @@ async function updateSaleForManualMpesaPayment(client, payment, saleId) {
   );
 }
 
-function normalizeManualMpesaPaymentRow(row) {
+function normalizeManualMpesaPaymentRow(row, { statusOverride } = {}) {
   const metadata = manualMpesaMetadata(row);
   return {
     id: row.id,
@@ -1046,7 +1053,7 @@ function normalizeManualMpesaPaymentRow(row) {
     currency: 'KES',
     amountMinor: Math.round(Number(row.amount || 0) * 100),
     phoneNumber: row.phone_number,
-    status: row.status === 'claimed' ? 'paid' : 'pending',
+    status: statusOverride || (row.status === 'claimed' ? 'paid' : 'pending'),
     externalReference: row.bill_ref_number || null,
     checkoutRequestId: null,
     receiptNumber: row.transaction_code,

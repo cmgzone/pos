@@ -6,6 +6,59 @@ const _uuid = Uuid();
 
 class PaymentMethodRepository {
   static const _tableName = 'payment_methods';
+  static const providerCash = 'cash';
+  static const providerKopesha = 'kopesha';
+  static const providerMpesa = 'mpesa';
+  static const providerCard = 'card';
+  static const providerBankTransfer = 'bank_transfer';
+  static const providerOther = 'other';
+
+  static String normalizeProviderKey(String? value) {
+    final key = (value ?? '').trim().toLowerCase().replaceAll('-', '_');
+    return switch (key) {
+      providerCash => providerCash,
+      'credit' || providerKopesha => providerKopesha,
+      'm_pesa' || 'mpesa' => providerMpesa,
+      providerCard => providerCard,
+      'bank' || 'transfer' || providerBankTransfer => providerBankTransfer,
+      _ => providerOther,
+    };
+  }
+
+  static String inferProviderKey({
+    required String name,
+    required bool isCashDrawer,
+    required bool isCredit,
+    String? providerKey,
+  }) {
+    final stored = (providerKey ?? '').trim();
+    if (stored.isNotEmpty) {
+      final normalized = normalizeProviderKey(stored);
+      if (normalized != providerOther) return normalized;
+    }
+
+    final lowerName = name.trim().toLowerCase();
+    if (isCashDrawer || lowerName.contains('cash')) return providerCash;
+    if (isCredit || lowerName.contains('kopesha')) return providerKopesha;
+    if (lowerName.contains('mpesa') || lowerName.contains('m-pesa')) {
+      return providerMpesa;
+    }
+    if (lowerName.contains('card')) return providerCard;
+    if (lowerName.contains('bank') || lowerName.contains('transfer')) {
+      return providerBankTransfer;
+    }
+    return providerOther;
+  }
+
+  static String providerKeyFor(Map<String, dynamic>? method) {
+    if (method == null) return providerOther;
+    return inferProviderKey(
+      name: method['name']?.toString() ?? '',
+      isCashDrawer: method['is_cash_drawer'] == 1,
+      isCredit: method['is_credit'] == 1,
+      providerKey: method['provider_key']?.toString(),
+    );
+  }
 
   static Future<List<Map<String, dynamic>>> getAll({
     bool activeOnly = false,
@@ -22,9 +75,16 @@ class PaymentMethodRepository {
     required String name,
     required bool isCashDrawer,
     bool isCredit = false,
+    String? providerKey,
   }) async {
     final id = _uuid.v4();
     final now = DateTime.now().toIso8601String();
+    final normalizedProviderKey = inferProviderKey(
+      name: name,
+      isCashDrawer: isCashDrawer,
+      isCredit: isCredit,
+      providerKey: providerKey,
+    );
 
     // Find highest sort order
     final existing = await getAll();
@@ -33,6 +93,7 @@ class PaymentMethodRepository {
     await DatabaseService.insert(_tableName, {
       'id': id,
       'name': name.trim(),
+      'provider_key': normalizedProviderKey,
       'is_cash_drawer': isCashDrawer ? 1 : 0,
       'is_credit': isCredit ? 1 : 0,
       'is_active': 1,
@@ -52,9 +113,17 @@ class PaymentMethodRepository {
     required bool isActive,
     required int sortOrder,
     bool isCredit = false,
+    String? providerKey,
   }) async {
+    final normalizedProviderKey = inferProviderKey(
+      name: name,
+      isCashDrawer: isCashDrawer,
+      isCredit: isCredit,
+      providerKey: providerKey,
+    );
     await DatabaseService.update(_tableName, {
       'name': name.trim(),
+      'provider_key': normalizedProviderKey,
       'is_cash_drawer': isCashDrawer ? 1 : 0,
       'is_credit': isCredit ? 1 : 0,
       'is_active': isActive ? 1 : 0,

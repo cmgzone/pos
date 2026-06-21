@@ -1132,6 +1132,7 @@ CREATE TABLE IF NOT EXISTS payment_methods (
   id text PRIMARY KEY,
   business_id text,
   name text NOT NULL,
+  provider_key text,
   is_cash_drawer integer NOT NULL DEFAULT 0,
   is_credit integer NOT NULL DEFAULT 0,
   is_active integer NOT NULL DEFAULT 1,
@@ -1149,6 +1150,17 @@ CREATE INDEX IF NOT EXISTS idx_payment_methods_business_active
   ON payment_methods(business_id, is_active) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_payment_methods_sort_order 
   ON payment_methods(business_id, sort_order, name) WHERE deleted_at IS NULL;
+ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS provider_key text;
+UPDATE payment_methods
+SET provider_key = CASE
+  WHEN is_cash_drawer = 1 THEN 'cash'
+  WHEN is_credit = 1 OR lower(name) LIKE '%kopesha%' THEN 'kopesha'
+  WHEN lower(name) LIKE '%mpesa%' OR lower(name) LIKE '%m-pesa%' THEN 'mpesa'
+  WHEN lower(name) LIKE '%card%' THEN 'card'
+  WHEN lower(name) LIKE '%bank%' OR lower(name) LIKE '%transfer%' THEN 'bank_transfer'
+  ELSE 'other'
+END
+WHERE provider_key IS NULL OR btrim(provider_key) = '';
 
 -- Add is_cash_drawer column to sales table
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_cash_drawer integer NOT NULL DEFAULT 0;

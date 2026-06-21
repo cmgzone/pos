@@ -45,6 +45,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _backupExportCancelled = 'Backup export cancelled';
   static const _backupImportCancelled = 'Backup import cancelled';
+  static const double _settingsTileMinWidth = 314;
+  static const double _fieldPairGap = 20;
+  static const double _fieldPairMinColumnWidth = 280;
 
   late TextEditingController _nameController;
   late TextEditingController _addressController;
@@ -400,34 +403,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text('Add Staff Account'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Full name',
-                    prefixIcon: Icon(Icons.person_outline),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 420,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildField(
+                    'Full name',
+                    'e.g. Jane Njeri',
+                    nameController,
+                    Icons.person_outline,
                   ),
-                ),
-                SizedBox(height: 12),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
+                  SizedBox(height: 16),
+                  _buildField(
+                    'Email',
+                    'e.g. jane@example.com',
+                    emailController,
+                    Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
                   ),
-                ),
-                SizedBox(height: 12),
-                TextField(
-                  controller: passwordController,
-                  obscureText: !showPassword,
-                  decoration: InputDecoration(
-                    labelText: 'Temporary password',
-                    prefixIcon: Icon(Icons.lock_outline),
+                  SizedBox(height: 16),
+                  _buildField(
+                    'Temporary password',
+                    'Set a first login password',
+                    passwordController,
+                    Icons.lock_outline,
+                    obscureText: !showPassword,
                     suffixIcon: IconButton(
                       tooltip: showPassword ? 'Hide password' : 'Show password',
                       icon: Icon(
@@ -439,29 +444,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           setDialogState(() => showPassword = !showPassword),
                     ),
                   ),
-                ),
-                SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: role,
-                  decoration: InputDecoration(
-                    labelText: 'Role',
-                    prefixIcon: Icon(Icons.verified_user_outlined),
+                  SizedBox(height: 16),
+                  _buildSelectField<String>(
+                    label: 'Role',
+                    value: role,
+                    icon: Icons.verified_user_outlined,
+                    items: RolePermissions.allRoles
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(RolePermissions.label(value)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => role = value);
+                      }
+                    },
                   ),
-                  items: RolePermissions.allRoles
-                      .map(
-                        (value) => DropdownMenuItem(
-                          value: value,
-                          child: Text(RolePermissions.label(value)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => role = value);
-                    }
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -1014,17 +1017,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text('Change Password'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: currentController,
-                  obscureText: !showCurrentPassword,
-                  decoration: InputDecoration(
-                    labelText: 'Current password',
-                    prefixIcon: Icon(Icons.lock_clock_outlined),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 420,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildField(
+                    'Current password',
+                    'Enter current password',
+                    currentController,
+                    Icons.lock_clock_outlined,
+                    obscureText: !showCurrentPassword,
                     suffixIcon: IconButton(
                       tooltip: showCurrentPassword
                           ? 'Hide password'
@@ -1039,14 +1046,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                   ),
-                ),
-                SizedBox(height: 12),
-                TextField(
-                  controller: newController,
-                  obscureText: !showNewPassword,
-                  decoration: InputDecoration(
-                    labelText: 'New password',
-                    prefixIcon: Icon(Icons.lock_outline),
+                  SizedBox(height: 16),
+                  _buildField(
+                    'New password',
+                    'Enter new password',
+                    newController,
+                    Icons.lock_outline,
+                    obscureText: !showNewPassword,
                     suffixIcon: IconButton(
                       tooltip: showNewPassword
                           ? 'Hide password'
@@ -1061,14 +1067,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                   ),
-                ),
-                SizedBox(height: 12),
-                TextField(
-                  controller: confirmController,
-                  obscureText: !showConfirmPassword,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm new password',
-                    prefixIcon: Icon(Icons.verified_user_outlined),
+                  SizedBox(height: 16),
+                  _buildField(
+                    'Confirm new password',
+                    'Re-enter new password',
+                    confirmController,
+                    Icons.verified_user_outlined,
+                    obscureText: !showConfirmPassword,
                     suffixIcon: IconButton(
                       tooltip: showConfirmPassword
                           ? 'Hide password'
@@ -1083,8 +1088,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -1977,54 +1982,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             Icons.location_on_outlined,
           ),
           SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildField(
-                  'Phone Number',
-                  'e.g. (555) 123-4567',
-                  _phoneController,
-                  Icons.phone_outlined,
-                ),
-              ),
-              SizedBox(width: 20),
-              Expanded(
-                child: _buildField(
-                  'Email',
-                  'e.g. shop@example.com',
-                  _emailController,
-                  Icons.email_outlined,
-                ),
-              ),
-            ],
+          _buildResponsiveFieldPair(
+            first: _buildField(
+              'Phone Number',
+              'e.g. (555) 123-4567',
+              _phoneController,
+              Icons.phone_outlined,
+            ),
+            second: _buildField(
+              'Email',
+              'e.g. shop@example.com',
+              _emailController,
+              Icons.email_outlined,
+            ),
           ),
           SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildField(
-                  'Tax Rate (%)',
-                  '8.0',
-                  _taxController,
-                  Icons.percent,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d+\.?\d{0,2}'),
-                    ),
-                  ],
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-              SizedBox(width: 20),
-              Expanded(
-                child: _buildField(
-                  'Currency Symbol',
-                  '\$',
-                  _currencyController,
-                  Icons.attach_money,
-                ),
-              ),
-            ],
+          _buildResponsiveFieldPair(
+            first: _buildField(
+              'Tax Rate (%)',
+              '8.0',
+              _taxController,
+              Icons.percent,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+              ],
+              keyboardType: TextInputType.number,
+            ),
+            second: _buildField(
+              'Currency Symbol',
+              '\$',
+              _currencyController,
+              Icons.attach_money,
+            ),
           ),
         ]),
         SizedBox(height: 16),
@@ -2064,16 +2053,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           SizedBox(height: 16),
-          DropdownButtonFormField<ThemeMode>(
-            key: ValueKey(themeMode),
-            initialValue: themeMode,
-            decoration: InputDecoration(
-              labelText: 'Appearance',
-              prefixIcon: Icon(Icons.brightness_6_outlined),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
+          _buildSelectField<ThemeMode>(
+            label: 'Appearance',
+            value: themeMode,
+            icon: Icons.brightness_6_outlined,
             items: items,
             onChanged: (mode) {
               if (mode != null) {
@@ -2170,59 +2153,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ]),
         SizedBox(height: 16),
         _buildCard([
-          Row(
-            children: [
-              Expanded(
-                child: _buildField(
-                  'KRA PIN',
-                  'e.g. P000000000A',
-                  _kraPinController,
-                  Icons.badge_outlined,
-                ),
-              ),
-              SizedBox(width: 20),
-              Expanded(
-                child: _buildField(
-                  'VAT Number (optional)',
-                  'Leave blank if same as PIN',
-                  _etimsVatNumberController,
-                  Icons.receipt_outlined,
-                ),
-              ),
-            ],
+          _buildResponsiveFieldPair(
+            first: _buildField(
+              'KRA PIN',
+              'e.g. P000000000A',
+              _kraPinController,
+              Icons.badge_outlined,
+            ),
+            second: _buildField(
+              'VAT Number (optional)',
+              'Leave blank if same as PIN',
+              _etimsVatNumberController,
+              Icons.receipt_outlined,
+            ),
           ),
           SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _etimsSolutionType == 'VSCU' ? 'VSCU' : 'OSCU',
-                  decoration: InputDecoration(
-                    labelText: 'Solution Type',
-                    prefixIcon: Icon(Icons.memory_outlined),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'OSCU', child: Text('OSCU')),
-                    DropdownMenuItem(value: 'VSCU', child: Text('VSCU')),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) {
-                      return;
-                    }
-                    setState(() => _etimsSolutionType = value);
-                  },
-                ),
-              ),
-              SizedBox(width: 20),
-              Expanded(
-                child: _buildField(
-                  'Branch Code',
-                  'e.g. 00',
-                  _etimsBranchCodeController,
-                  Icons.store_outlined,
-                ),
-              ),
-            ],
+          _buildResponsiveFieldPair(
+            first: _buildSelectField(
+              label: 'Solution Type',
+              value: _etimsSolutionType == 'VSCU' ? 'VSCU' : 'OSCU',
+              icon: Icons.memory_outlined,
+              items: const [
+                DropdownMenuItem(value: 'OSCU', child: Text('OSCU')),
+                DropdownMenuItem(value: 'VSCU', child: Text('VSCU')),
+              ],
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+                setState(() => _etimsSolutionType = value);
+              },
+            ),
+            second: _buildField(
+              'Branch Code',
+              'e.g. 00',
+              _etimsBranchCodeController,
+              Icons.store_outlined,
+            ),
           ),
           SizedBox(height: 20),
           _buildField(
@@ -2435,7 +2402,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final twoColumns = constraints.maxWidth >= 560;
+            final twoColumns =
+                constraints.maxWidth >= (_settingsTileMinWidth * 2) + 12;
             final cardWidth = twoColumns
                 ? (constraints.maxWidth - 12) / 2
                 : constraints.maxWidth;
@@ -2640,7 +2608,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final twoColumns = constraints.maxWidth >= 560;
+            final twoColumns =
+                constraints.maxWidth >= (_settingsTileMinWidth * 2) + 12;
             final cardWidth = twoColumns
                 ? (constraints.maxWidth - 12) / 2
                 : constraints.maxWidth;
@@ -3298,32 +3267,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     // Role dropdown
                     SizedBox(
                       width: isWide ? 180 : double.infinity,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: selectedRole,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: 'Role',
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        items: RolePermissions.allRoles
-                            .map(
-                              (role) => DropdownMenuItem(
-                                value: role,
-                                child: Text(RolePermissions.label(role)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FieldLabel('Role'),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: selectedRole,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
                               ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null && value != selectedRole) {
-                            _updateTeamRole(userId, value);
-                          }
-                        },
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            items: RolePermissions.allRoles
+                                .map(
+                                  (role) => DropdownMenuItem(
+                                    value: role,
+                                    child: Text(RolePermissions.label(role)),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null && value != selectedRole) {
+                                _updateTeamRole(userId, value);
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     if (isWide)
@@ -4091,9 +4066,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildCard(List<Widget> children) {
     final colors = Theme.of(context).colorScheme;
+    final compact = MediaQuery.sizeOf(context).width < 480;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(compact ? 16 : 24),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -4114,17 +4090,112 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     int maxLines = 1,
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
+    bool obscureText = false,
+    Widget? suffixIcon,
   }) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        alignLabelWithHint: maxLines > 1,
-        prefixIcon: Icon(icon, size: 20),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel(label),
+        SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
+          obscureText: obscureText,
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, size: 20),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 42,
+              minHeight: 48,
+            ),
+            suffixIcon: suffixIcon,
+            alignLabelWithHint: maxLines > 1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectField<T>({
+    required String label,
+    required T value,
+    required IconData icon,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel(label),
+        SizedBox(height: 8),
+        DropdownButtonFormField<T>(
+          initialValue: value,
+          isExpanded: true,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, size: 20),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 42,
+              minHeight: 48,
+            ),
+          ),
+          items: items,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResponsiveFieldPair({
+    required Widget first,
+    required Widget second,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumns =
+            constraints.maxWidth >=
+            (_fieldPairMinColumnWidth * 2) + _fieldPairGap;
+        if (!twoColumns) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              first,
+              SizedBox(height: _fieldPairGap),
+              second,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            SizedBox(width: _fieldPairGap),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text,
+      softWrap: true,
+      overflow: TextOverflow.visible,
+      style: theme.textTheme.labelLarge?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -4145,6 +4216,7 @@ class _SettingsMiniPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 480;
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -4158,7 +4230,7 @@ class _SettingsMiniPage extends StatelessWidget {
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(compact ? 16 : 24),
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxWidth),

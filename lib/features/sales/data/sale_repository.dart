@@ -422,6 +422,43 @@ class SaleRepository {
     return effectiveSaleId;
   }
 
+  static Future<void> updatePaymentLinkStatus({
+    required String saleId,
+    required String status,
+    String? error,
+  }) async {
+    final rows = await DatabaseService.rawQuery(
+      'SELECT payment_metadata_json FROM $_salesTable WHERE id = ?',
+      [saleId],
+    );
+    if (rows.isEmpty) return;
+
+    final metadata = <String, dynamic>{};
+    final rawMetadata = rows.first['payment_metadata_json'];
+    if (rawMetadata is String && rawMetadata.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawMetadata);
+        if (decoded is Map) {
+          metadata.addAll(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {
+        metadata['previousPaymentMetadataText'] = rawMetadata;
+      }
+    }
+
+    metadata['providerSaleLinkStatus'] = status;
+    metadata['providerSaleLinkUpdatedAt'] = DateTime.now().toIso8601String();
+    if (error != null && error.trim().isNotEmpty) {
+      metadata['providerSaleLinkError'] = error.trim();
+    } else {
+      metadata.remove('providerSaleLinkError');
+    }
+
+    await DatabaseService.update(_salesTable, {
+      'payment_metadata_json': jsonEncode(metadata),
+    }, saleId);
+  }
+
   /// Get all sales, optionally filtered by date range
   static Future<List<Map<String, dynamic>>> getAll({
     String? startDate,

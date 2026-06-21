@@ -67,6 +67,7 @@ class PosPayment {
   final String provider;
   final String status;
   final int amountMinor;
+  final String? phoneNumber;
   final String? receiptNumber;
   final String? externalReference;
   final Map<String, dynamic> metadata;
@@ -76,6 +77,7 @@ class PosPayment {
     required this.provider,
     required this.status,
     required this.amountMinor,
+    required this.phoneNumber,
     required this.receiptNumber,
     required this.externalReference,
     required this.metadata,
@@ -87,6 +89,7 @@ class PosPayment {
       provider: json['provider']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
       amountMinor: (json['amountMinor'] as num? ?? 0).round(),
+      phoneNumber: json['phoneNumber']?.toString(),
       receiptNumber: json['receiptNumber']?.toString(),
       externalReference: json['externalReference']?.toString(),
       metadata: json['metadata'] is Map<String, dynamic>
@@ -209,6 +212,7 @@ class PosPaymentService {
     String? phoneNumber,
     double? amount,
     String? checkoutCode,
+    bool previewOnly = false,
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
@@ -223,6 +227,7 @@ class PosPaymentService {
         if (amount != null) 'amountMinor': (amount * 100).round(),
         if (checkoutCode != null && checkoutCode.trim().isNotEmpty)
           'checkoutCode': checkoutCode.trim(),
+        if (previewOnly) 'previewOnly': true,
       },
       options: Options(headers: headers),
     );

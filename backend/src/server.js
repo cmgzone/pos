@@ -2719,6 +2719,7 @@ app.post('/api/payments/mpesa/claim-c2b', async (req, res, next) => {
         : req.body?.amountMinor != null
           ? Number(req.body.amountMinor) / 100
           : null;
+    const previewOnly = req.body?.previewOnly === true;
     const payment = await matchManualPayment({
       businessId: businessContext.businessId,
       referenceCode: req.body?.referenceCode,
@@ -2726,13 +2727,16 @@ app.post('/api/payments/mpesa/claim-c2b', async (req, res, next) => {
       amount,
       checkoutCode: req.body?.checkoutCode,
       saleId: req.body?.saleId,
+      previewOnly,
     });
-    notifyBusinessRealtimeChange({
-      businessId: businessContext.businessId,
-      sourceDeviceId: businessContext.deviceId,
-      reason: 'payment',
-      tables: ['sales'],
-    });
+    if (!previewOnly && payment) {
+      notifyBusinessRealtimeChange({
+        businessId: businessContext.businessId,
+        sourceDeviceId: businessContext.deviceId,
+        reason: 'payment',
+        tables: ['sales'],
+      });
+    }
     res.json({ ok: true, data: payment });
   } catch (error) {
     next(normalizeRouteError(error));

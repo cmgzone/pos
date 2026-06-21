@@ -10,6 +10,7 @@ import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
 import '../../settings/data/payment_method_provider.dart';
+import '../../settings/data/payment_method_repository.dart';
 
 class PaymentCheckoutDialog extends ConsumerStatefulWidget {
   final double total;
@@ -29,6 +30,269 @@ class PaymentCheckoutDialog extends ConsumerStatefulWidget {
   @override
   ConsumerState<PaymentCheckoutDialog> createState() =>
       _PaymentCheckoutDialogState();
+}
+
+Future<bool> showMpesaPaymentConfirmationDialog(
+  BuildContext context, {
+  required PosPayment payment,
+  required double expectedTotal,
+  String title = 'Confirm M-Pesa Payment',
+  String confirmLabel = 'Confirm Sale',
+}) async {
+  final payerName = _mpesaPayerName(payment);
+  final phoneNumber = _mpesaPhoneNumber(payment);
+  final reference = _mpesaReference(payment);
+  final billRef = _mpesaMetadataText(payment, const [
+    'billRefNumber',
+    'BillRefNumber',
+    'AccountReference',
+  ]);
+  final paidAmount = _mpesaPaidAmount(payment, expectedTotal);
+  final result = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      final media = MediaQuery.of(ctx);
+      final isCompact = media.size.width < 560;
+      return AlertDialog(
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 12 : 40,
+          vertical: isCompact ? 12 : 24,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.verified_outlined, color: AppColors.success),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: media.size.height * 0.68),
+          child: SizedBox(
+            width: isCompact ? media.size.width - 56 : 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppColors.success.withValues(alpha: 0.24),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          payerName ?? 'Name not supplied by M-Pesa',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: isCompact ? 20 : 24,
+                            fontWeight: FontWeight.w900,
+                            color: payerName == null
+                                ? Theme.of(ctx).colorScheme.onSurfaceVariant
+                                : AppColors.success,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          payerName == null
+                              ? 'Confirm using phone, amount, and M-Pesa code.'
+                              : 'Confirm this is the customer paying.',
+                          style: TextStyle(
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 14),
+                  _MpesaPaymentDetailRow(
+                    icon: Icons.payments_outlined,
+                    label: 'Paid Amount',
+                    value:
+                        '${ShopSettings.currency}${paidAmount.toStringAsFixed(2)}',
+                  ),
+                  _MpesaPaymentDetailRow(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'M-Pesa Code',
+                    value: reference,
+                  ),
+                  if (phoneNumber != null)
+                    _MpesaPaymentDetailRow(
+                      icon: Icons.phone_android_outlined,
+                      label: 'Phone',
+                      value: phoneNumber,
+                    ),
+                  if (billRef != null)
+                    _MpesaPaymentDetailRow(
+                      icon: Icons.tag_outlined,
+                      label: 'Account',
+                      value: billRef,
+                    ),
+                  if ((paidAmount - expectedTotal).abs() > 0.01) ...[
+                    SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Sale total is ${ShopSettings.currency}${expectedTotal.toStringAsFixed(2)}. Check this amount before confirming.',
+                        style: TextStyle(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Not This Payment'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: Icon(Icons.check_circle_outline),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+            label: Text(confirmLabel),
+          ),
+        ],
+      );
+    },
+  );
+  return result == true;
+}
+
+String? _mpesaPayerName(PosPayment payment) {
+  final explicit = _mpesaMetadataText(payment, const [
+    'customerName',
+    'CustomerName',
+    'payerName',
+    'PayerName',
+  ]);
+  if (explicit != null) return explicit;
+
+  final raw = _metadataMap(payment.metadata['rawPayload']);
+  final nested = _metadataMap(payment.metadata['metadata']);
+  final first = _firstNonEmpty([
+    _mapText(raw, 'FirstName'),
+    _mapText(nested, 'FirstName'),
+  ]);
+  final middle = _firstNonEmpty([
+    _mapText(raw, 'MiddleName'),
+    _mapText(nested, 'MiddleName'),
+  ]);
+  final last = _firstNonEmpty([
+    _mapText(raw, 'LastName'),
+    _mapText(nested, 'LastName'),
+  ]);
+  final combined = [
+    first,
+    middle,
+    last,
+  ].where((part) => part != null && part.trim().isNotEmpty).join(' ');
+  return combined.trim().isEmpty ? null : combined.trim();
+}
+
+String? _mpesaPhoneNumber(PosPayment payment) {
+  return _firstNonEmpty([
+    payment.phoneNumber,
+    _mpesaMetadataText(payment, const [
+      'phoneNumber',
+      'PhoneNumber',
+      'MSISDN',
+      'phone_number',
+    ]),
+  ]);
+}
+
+String _mpesaReference(PosPayment payment) {
+  return _firstNonEmpty([
+        payment.receiptNumber,
+        _mpesaMetadataText(payment, const [
+          'mpesaReceiptNumber',
+          'MpesaReceiptNumber',
+          'TransID',
+          'TransactionCode',
+        ]),
+        payment.externalReference,
+      ]) ??
+      payment.id;
+}
+
+double _mpesaPaidAmount(PosPayment payment, double fallback) {
+  if (payment.amountMinor > 0) {
+    return payment.amountMinor / 100;
+  }
+  final rawAmount = _mpesaMetadataText(payment, const [
+    'amount',
+    'Amount',
+    'TransAmount',
+  ]);
+  return double.tryParse(rawAmount ?? '') ?? fallback;
+}
+
+String? _mpesaMetadataText(PosPayment payment, List<String> keys) {
+  final maps = <Map<dynamic, dynamic>>[
+    payment.metadata,
+    if (_metadataMap(payment.metadata['metadata']) != null)
+      _metadataMap(payment.metadata['metadata'])!,
+    if (_metadataMap(payment.metadata['rawPayload']) != null)
+      _metadataMap(payment.metadata['rawPayload'])!,
+  ];
+  for (final map in maps) {
+    for (final key in keys) {
+      final value = _mapText(map, key);
+      if (value != null) return value;
+    }
+  }
+  return null;
+}
+
+Map<dynamic, dynamic>? _metadataMap(Object? value) {
+  return value is Map ? value : null;
+}
+
+String? _mapText(Map<dynamic, dynamic>? map, String key) {
+  if (map == null) return null;
+  Object? value = map[key];
+  if (value == null) {
+    for (final entry in map.entries) {
+      if (entry.key.toString().toLowerCase() == key.toLowerCase()) {
+        value = entry.value;
+        break;
+      }
+    }
+  }
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+String? _firstNonEmpty(Iterable<String?> values) {
+  for (final value in values) {
+    final clean = value?.trim();
+    if (clean != null && clean.isNotEmpty) return clean;
+  }
+  return null;
 }
 
 class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
@@ -209,9 +473,20 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
 
   bool _isCashMethod(Map<String, dynamic>? method) {
     if (method == null) return false;
-    final isDrawer = method['is_cash_drawer'] == 1;
-    final name = (method['name'] as String? ?? '').toLowerCase();
-    return isDrawer || name.contains('cash');
+    return PaymentMethodRepository.providerKeyFor(method) ==
+        PaymentMethodRepository.providerCash;
+  }
+
+  bool _isKopeshaMethod(Map<String, dynamic>? method) {
+    if (method == null) return false;
+    return PaymentMethodRepository.providerKeyFor(method) ==
+        PaymentMethodRepository.providerKopesha;
+  }
+
+  bool _isMpesaMethod(Map<String, dynamic>? method) {
+    if (method == null) return false;
+    return PaymentMethodRepository.providerKeyFor(method) ==
+        PaymentMethodRepository.providerMpesa;
   }
 
   ({double tendered, double change, bool hasEnoughCash}) _cashSummary() {
@@ -286,16 +561,54 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     });
 
     try {
-      final payment = await PosPaymentService.matchManualMpesa(
+      final previewPayment = await PosPaymentService.matchManualMpesa(
         referenceCode: referenceCode.isEmpty ? null : referenceCode,
         phoneNumber: phoneNumber.isEmpty ? null : phoneNumber,
         amount: widget.total,
         checkoutCode: _manualMpesaCheckoutCode,
+        previewOnly: true,
       );
       if (!mounted) return;
 
-      if (payment != null && payment.isPaid) {
+      if (previewPayment != null) {
         _manualMpesaPollTimer?.cancel();
+        setState(() {
+          _manualMpesaStatus =
+              'M-Pesa payment found. Review the payer details.';
+        });
+        final confirmed = await showMpesaPaymentConfirmationDialog(
+          context,
+          payment: previewPayment,
+          expectedTotal: widget.total,
+          title: 'Confirm Manual M-Pesa',
+          confirmLabel: 'Confirm Sale',
+        );
+        if (!mounted) return;
+        if (!confirmed) {
+          setState(() {
+            _manualMpesaStatus =
+                'Matched M-Pesa payment was not accepted. Check the code or wait for another payment.';
+          });
+          return;
+        }
+
+        setState(() {
+          _manualMpesaStatus = 'Confirming M-Pesa payment...';
+        });
+        final payment = await PosPaymentService.matchManualMpesa(
+          referenceCode: previewPayment.receiptNumber ?? referenceCode,
+          phoneNumber: phoneNumber.isEmpty ? null : phoneNumber,
+          amount: widget.total,
+          checkoutCode: _manualMpesaCheckoutCode,
+        );
+        if (!mounted) return;
+        if (payment == null || !payment.isPaid) {
+          setState(() {
+            _manualMpesaStatus =
+                'That M-Pesa payment could not be confirmed. Try checking again.';
+          });
+          return;
+        }
         Navigator.pop(context, {
           'type': 'mpesa_manual',
           'payment': payment,
@@ -327,43 +640,28 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   }
 
   IconData _getPaymentIcon(Map<String, dynamic> method) {
-    final name = (method['name'] as String).toLowerCase();
-    if (method['is_credit'] == 1 || name.contains('kopesha')) {
-      return Icons.account_balance_wallet_outlined;
-    }
-    if (method['is_cash_drawer'] == 1 || name.contains('cash')) {
-      return Icons.payments_outlined;
-    }
-    if (name.contains('mpesa') || name.contains('m-pesa')) {
-      return Icons.phone_android_outlined;
-    }
-    if (name.contains('card')) {
-      return Icons.credit_card_outlined;
-    }
-    if (name.contains('bank') || name.contains('transfer')) {
-      return Icons.account_balance_outlined;
-    }
-    return Icons.payment_outlined;
+    return switch (PaymentMethodRepository.providerKeyFor(method)) {
+      PaymentMethodRepository.providerKopesha =>
+        Icons.account_balance_wallet_outlined,
+      PaymentMethodRepository.providerCash => Icons.payments_outlined,
+      PaymentMethodRepository.providerMpesa => Icons.phone_android_outlined,
+      PaymentMethodRepository.providerCard => Icons.credit_card_outlined,
+      PaymentMethodRepository.providerBankTransfer =>
+        Icons.account_balance_outlined,
+      _ => Icons.payment_outlined,
+    };
   }
 
   Color _getPaymentColor(Map<String, dynamic> method) {
-    final name = (method['name'] as String).toLowerCase();
-    if (method['is_credit'] == 1 || name.contains('kopesha')) {
-      return AppColors.warning;
-    }
-    if (method['is_cash_drawer'] == 1 || name.contains('cash')) {
-      return AppColors.success;
-    }
-    if (name.contains('mpesa') || name.contains('m-pesa')) {
-      return Theme.of(context).colorScheme.secondary;
-    }
-    if (name.contains('card')) {
-      return AppColors.primaryLight;
-    }
-    if (name.contains('bank') || name.contains('transfer')) {
-      return AppColors.primary;
-    }
-    return AppColors.primary;
+    return switch (PaymentMethodRepository.providerKeyFor(method)) {
+      PaymentMethodRepository.providerKopesha => AppColors.warning,
+      PaymentMethodRepository.providerCash => AppColors.success,
+      PaymentMethodRepository.providerMpesa => Theme.of(
+        context,
+      ).colorScheme.secondary,
+      PaymentMethodRepository.providerCard => AppColors.primaryLight,
+      _ => AppColors.primary,
+    };
   }
 
   @override
@@ -518,20 +816,12 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
 
                     // Initialize default selection to Cash or first method
                     _selectedMethod ??= methods.firstWhere(
-                      (m) => m['is_cash_drawer'] == 1,
+                      (m) => _isCashMethod(m),
                       orElse: () => methods.first,
                     );
 
-                    final isKopeshaSelected =
-                        _selectedMethod?['is_credit'] == 1;
-                    final isMpesaSelected =
-                        _selectedMethod != null &&
-                        (() {
-                          final name = (_selectedMethod!['name'] as String)
-                              .toLowerCase();
-                          return name.contains('mpesa') ||
-                              name.contains('m-pesa');
-                        })();
+                    final isKopeshaSelected = _isKopeshaMethod(_selectedMethod);
+                    final isMpesaSelected = _isMpesaMethod(_selectedMethod);
                     final isCashSelected = _isCashMethod(_selectedMethod);
 
                     return Column(
@@ -558,10 +848,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                 setState(() {
                                   _selectedMethod = method;
                                   _cashError = null;
-                                  final methodName = (method['name'] as String)
-                                      .toLowerCase();
-                                  if (!methodName.contains('mpesa') &&
-                                      !methodName.contains('m-pesa')) {
+                                  if (!_isMpesaMethod(method)) {
                                     _manualMpesaPollTimer?.cancel();
                                   }
                                   if (_isCashMethod(method) &&
@@ -713,13 +1000,13 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                 // Customer Header
                 if (isCompact) ...[
                   Text(
-                    _selectedMethod?['is_credit'] == 1
+                    _isKopeshaMethod(_selectedMethod)
                         ? 'Customer (Required for Kopesha)'
                         : 'Customer (Optional)',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color: _selectedMethod?['is_credit'] == 1
+                      color: _isKopeshaMethod(_selectedMethod)
                           ? AppColors.warning
                           : Theme.of(context).colorScheme.onSurface,
                     ),
@@ -737,13 +1024,13 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                     children: [
                       Expanded(
                         child: Text(
-                          _selectedMethod?['is_credit'] == 1
+                          _isKopeshaMethod(_selectedMethod)
                               ? 'Customer (Required for Kopesha)'
                               : 'Customer (Optional)',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
-                            color: _selectedMethod?['is_credit'] == 1
+                            color: _isKopeshaMethod(_selectedMethod)
                                 ? AppColors.warning
                                 : Theme.of(context).colorScheme.onSurface,
                           ),
@@ -1033,13 +1320,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                 child: ElevatedButton.icon(
                   onPressed: canPay
                       ? () {
-                          final isKopesha = _selectedMethod!['is_credit'] == 1;
-                          final isMpesa = (_selectedMethod!['name'] as String)
-                              .toLowerCase();
-                          if (isKopesha) {
+                          if (_isKopeshaMethod(_selectedMethod)) {
                             _handleKopeshaCheckout();
-                          } else if (isMpesa.contains('mpesa') ||
-                              isMpesa.contains('m-pesa')) {
+                          } else if (_isMpesaMethod(_selectedMethod)) {
                             _handleMpesaCheckout();
                           } else {
                             _handleOtherPaymentCheckout(_selectedMethod!);
@@ -1364,6 +1647,56 @@ class _PaymentMethodButton extends StatelessWidget {
             if (isSelected) Icon(Icons.check_circle, color: color, size: 16),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MpesaPaymentDetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _MpesaPaymentDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 2),
+                SelectableText(
+                  value,
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

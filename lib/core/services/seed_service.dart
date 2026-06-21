@@ -245,6 +245,7 @@ class SeedService {
       {
         'id': _uuid.v4(),
         'name': 'Cash',
+        'provider_key': 'cash',
         'is_cash_drawer': 1,
         'is_credit': 0,
         'is_active': 1,
@@ -256,6 +257,7 @@ class SeedService {
       {
         'id': _uuid.v4(),
         'name': 'Kopesha',
+        'provider_key': 'kopesha',
         'is_cash_drawer': 0,
         'is_credit': 1,
         'is_active': 1,
@@ -267,6 +269,7 @@ class SeedService {
       {
         'id': _uuid.v4(),
         'name': 'M-Pesa',
+        'provider_key': 'mpesa',
         'is_cash_drawer': 0,
         'is_credit': 0,
         'is_active': 1,
@@ -278,6 +281,7 @@ class SeedService {
       {
         'id': _uuid.v4(),
         'name': 'Card',
+        'provider_key': 'card',
         'is_cash_drawer': 0,
         'is_credit': 0,
         'is_active': 1,
@@ -289,6 +293,7 @@ class SeedService {
       {
         'id': _uuid.v4(),
         'name': 'Bank Transfer',
+        'provider_key': 'bank_transfer',
         'is_cash_drawer': 0,
         'is_credit': 0,
         'is_active': 1,

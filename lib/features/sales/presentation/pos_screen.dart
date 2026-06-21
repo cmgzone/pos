@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/cash_drawer_service.dart';
@@ -38,6 +37,7 @@ import '../data/quotation_repository.dart';
 import '../data/sale_repository.dart';
 import '../../app/app_shell.dart';
 import '../../customers/data/customer_repository.dart';
+import '../../settings/data/payment_method_repository.dart';
 import '../../services/data/service_repository.dart';
 import '../../services/data/service_provider.dart';
 
@@ -88,8 +88,6 @@ final quotationCustomerSearchProvider =
     });
 
 final _quotationCustomerQueryProvider = StateProvider<String>((ref) => '');
-
-const _uuid = Uuid();
 
 class PosScreen extends ConsumerWidget {
   const PosScreen({super.key});
@@ -1213,9 +1211,14 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   }
 
   Future<void> _openProductForm({String? initialSearch}) async {
-    final result = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const ProductFormScreen()));
+    final initialName = initialSearch?.trim();
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ProductFormScreen(
+          initialName: initialName?.isEmpty == true ? null : initialName,
+        ),
+      ),
+    );
     if (result == true) {
       ref.invalidate(filteredProductsProvider);
       ref.invalidate(productsProvider(null));
@@ -1775,7 +1778,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         padding: const EdgeInsets.only(bottom: 8),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: gridColumns,
-                          mainAxisExtent: 128,
+                          mainAxisExtent: 144,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
                         ),
@@ -1796,7 +1799,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       padding: const EdgeInsets.only(bottom: 8),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: gridColumns,
-                        mainAxisExtent: 128,
+                        mainAxisExtent: 144,
                         crossAxisSpacing: 10,
                         mainAxisSpacing: 10,
                       ),
@@ -2714,7 +2717,10 @@ class _CartSide extends ConsumerWidget {
     final tax = ref.watch(cartTaxProvider);
     final discount = ref.watch(discountProvider);
     final total = ref.watch(cartTotalProvider);
-    final profit = ref.watch(cartProfitProvider);
+    final canViewProfit = SessionService.canAccessFeature(
+      UserAccessProfile.featureProfitLoss,
+    );
+    final profit = canViewProfit ? ref.watch(cartProfitProvider) : 0.0;
     final heldSalesAsync = ref.watch(heldSalesProvider);
     final heldSaleCount = heldSalesAsync.valueOrNull?.length ?? 0;
     final currentShiftAsync = ref.watch(currentShiftProvider);
@@ -2725,10 +2731,6 @@ class _CartSide extends ConsumerWidget {
     final requiresManagedShift = ShiftRepository.roleRequiresManagedShift(
       SessionService.currentUserRole,
     );
-    final cashCheckoutBlocked =
-        currentShiftAsync.isLoading ||
-        (hasOpenShift && currentSummaryAsync.isLoading);
-
     ref.listen(pikiNavigateProvider, (_, next) {
       if (next != PikiNavTarget.pos) return;
       ref.read(pikiNavigateProvider.notifier).state = PikiNavTarget.none;
@@ -2924,7 +2926,10 @@ class _CartSide extends ConsumerWidget {
                             : Divider(height: 24),
                         itemBuilder: (context, index) {
                           final item = cart[index];
-                          return _CartItemRow(item: item);
+                          return _CartItemRow(
+                            item: item,
+                            showProfit: canViewProfit,
+                          );
                         },
                       ),
               ),
@@ -2958,22 +2963,23 @@ class _CartSide extends ConsumerWidget {
                                     isPrimary: true,
                                   ),
                                 ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: _CompactCartAmount(
-                                    label: 'Profit',
-                                    value:
-                                        '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
-                                    valueColor: AppColors.success,
+                                if (canViewProfit) ...[
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: _CompactCartAmount(
+                                      label: 'Profit',
+                                      value:
+                                          '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                                      valueColor: AppColors.success,
+                                    ),
                                   ),
-                                ),
+                                ],
                                 SizedBox(width: 8),
                                 SizedBox(
                                   height: 40,
                                   child: ElevatedButton.icon(
-                                    onPressed: cashCheckoutBlocked
-                                        ? () => _handleBlockedCheckout(context)
-                                        : () => _processCheckout(context, ref),
+                                    onPressed: () =>
+                                        _processCheckout(context, ref),
                                     icon: Icon(Icons.payment, size: 16),
                                     label: FittedBox(
                                       fit: BoxFit.scaleDown,
@@ -3214,33 +3220,36 @@ class _CartSide extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                            SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Total Profit',
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Flexible(
-                                  child: Text(
-                                    '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
-                                    textAlign: TextAlign.end,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                            if (canViewProfit) ...[
+                              SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Total Profit',
                                     style: TextStyle(
-                                      color: AppColors.success,
-                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                  SizedBox(width: 12),
+                                  Flexible(
+                                    child: Text(
+                                      '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
+                                      textAlign: TextAlign.end,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: AppColors.success,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             SizedBox(height: 16),
                             Row(
                               children: [
@@ -3300,9 +3309,8 @@ class _CartSide extends ConsumerWidget {
                               children: [
                                 Expanded(
                                   child: ElevatedButton.icon(
-                                    onPressed: cashCheckoutBlocked
-                                        ? () => _handleBlockedCheckout(context)
-                                        : () => _processCheckout(context, ref),
+                                    onPressed: () =>
+                                        _processCheckout(context, ref),
                                     icon: Icon(Icons.payment),
                                     label: Text(
                                       'Checkout • ${ShopSettings.currency}${total.toStringAsFixed(2)}',
@@ -4195,14 +4203,6 @@ class _CartSide extends ConsumerWidget {
     return result ?? false;
   }
 
-  void _handleBlockedCheckout(BuildContext context) {
-    _showSnackBar(
-      context,
-      'Shift status is still loading. Try the cash payment again in a moment.',
-      backgroundColor: AppColors.warning,
-    );
-  }
-
   Future<Map<String, dynamic>?> _requireOpenShift(BuildContext context) async {
     final userId = currentShiftActorId();
     final role = SessionService.currentUserRole;
@@ -4352,7 +4352,9 @@ class _CartSide extends ConsumerWidget {
         return;
       }
 
-      final isCashDrawer = paymentMethod['is_cash_drawer'] == 1;
+      final isCashDrawer =
+          PaymentMethodRepository.providerKeyFor(paymentMethod) ==
+          PaymentMethodRepository.providerCash;
       final paymentName = paymentMethod['name'] as String;
 
       if (isCashDrawer) {
@@ -4449,30 +4451,25 @@ class _CartSide extends ConsumerWidget {
         return;
       }
 
-      final saleId = _uuid.v4();
-      try {
-        await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
-      } catch (error) {
-        if (convertFromQuotationId != null) {
-          ref.read(activeQuotationIdProvider.notifier).state = null;
-        }
-        if (context.mounted) {
-          _showSnackBar(
-            context,
-            AppErrorMessage.withContext(
-              error,
-              prefix: 'Payment link failed. Sale was not saved.',
-              fallback:
-                  'Could not link the M-Pesa payment to the sale. The sale was not created.',
-            ),
-            backgroundColor: AppColors.error,
-          );
-        }
+      final confirmed = await showMpesaPaymentConfirmationDialog(
+        context,
+        payment: payment,
+        expectedTotal: total,
+        title: 'Confirm M-Pesa Payment',
+        confirmLabel: 'Complete Sale',
+      );
+      if (!context.mounted) return;
+      if (!confirmed) {
+        _showSnackBar(
+          context,
+          'M-Pesa payment was confirmed, but the sale was not saved.',
+          backgroundColor: AppColors.warning,
+        );
         return;
       }
 
       if (!context.mounted) return;
-      await _completeSale(
+      final saleId = await _completeSale(
         context,
         ref,
         paymentType: 'M-Pesa',
@@ -4484,10 +4481,15 @@ class _CartSide extends ConsumerWidget {
         paymentReference:
             payment.receiptNumber ?? payment.externalReference ?? payment.id,
         paymentStatus: 'paid',
-        paymentMetadata: payment.metadata,
+        paymentMetadata: {
+          ...payment.metadata,
+          'posPaymentId': payment.id,
+          'providerSaleLinkStatus': 'pending_reconcile',
+        },
         convertFromQuotationId: convertFromQuotationId,
-        preAllocatedSaleId: saleId,
       );
+      if (!context.mounted || saleId == null) return;
+      await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
     } catch (error) {
       if (context.mounted) {
         _showSnackBar(
@@ -4510,27 +4512,8 @@ class _CartSide extends ConsumerWidget {
     Map<String, dynamic>? customer,
     String? convertFromQuotationId,
   }) async {
-    final saleId = _uuid.v4();
-    try {
-      await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
-    } catch (error) {
-      if (context.mounted) {
-        _showSnackBar(
-          context,
-          AppErrorMessage.withContext(
-            error,
-            prefix: 'Payment link failed. Sale was not saved.',
-            fallback:
-                'Could not link the M-Pesa payment to the sale. The sale was not created.',
-          ),
-          backgroundColor: AppColors.error,
-        );
-      }
-      return;
-    }
-
     if (!context.mounted) return;
-    await _completeSale(
+    final saleId = await _completeSale(
       context,
       ref,
       paymentType: 'M-Pesa',
@@ -4542,10 +4525,47 @@ class _CartSide extends ConsumerWidget {
       paymentReference:
           payment.receiptNumber ?? payment.externalReference ?? payment.id,
       paymentStatus: 'paid',
-      paymentMetadata: {...payment.metadata, 'source': 'manual_c2b'},
+      paymentMetadata: {
+        ...payment.metadata,
+        'source': 'manual_c2b',
+        'posPaymentId': payment.id,
+        'providerSaleLinkStatus': 'pending_reconcile',
+      },
       convertFromQuotationId: convertFromQuotationId,
-      preAllocatedSaleId: saleId,
     );
+    if (!context.mounted || saleId == null) return;
+    await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
+  }
+
+  Future<void> _linkSavedMpesaPayment(
+    BuildContext context, {
+    required PosPayment payment,
+    required String saleId,
+  }) async {
+    try {
+      await PosPaymentService.linkSale(paymentId: payment.id, saleId: saleId);
+      await SaleRepository.updatePaymentLinkStatus(
+        saleId: saleId,
+        status: 'linked',
+      );
+    } catch (error) {
+      await SaleRepository.updatePaymentLinkStatus(
+        saleId: saleId,
+        status: 'pending_reconcile',
+        error: AppErrorMessage.from(error, fallback: 'Payment link failed'),
+      );
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        AppErrorMessage.withContext(
+          error,
+          prefix: 'Sale saved, but M-Pesa link is pending.',
+          fallback:
+              'Sale saved, but the M-Pesa payment needs reconciliation from payments.',
+        ),
+        backgroundColor: AppColors.warning,
+      );
+    }
   }
 
   Future<PosPayment?> _waitForMpesaPayment(
@@ -4620,8 +4640,9 @@ class _CartSide extends ConsumerWidget {
         )
         .toList();
 
+    final String saleId;
     try {
-      final saleId = await SaleRepository.createSale(
+      saleId = await SaleRepository.createSale(
         saleId: preAllocatedSaleId,
         totalAmount: total,
         tax: tax,
@@ -4643,82 +4664,6 @@ class _CartSide extends ConsumerWidget {
         paymentStatus: paymentStatus,
         paymentMetadata: paymentMetadata,
       );
-
-      _clearCurrentSale(ref);
-      ref.invalidate(filteredProductsProvider);
-      ref.invalidate(posTodayStatsProvider);
-      ref.invalidate(posRecentSalesProvider);
-      invalidateShiftProviders(ref);
-
-      // ── Mark any linked service orders as paid ─────────────────────────
-      final serviceOrderIds = cart
-          .where(
-            (item) =>
-                item.serviceOrderId != null && item.serviceOrderId!.isNotEmpty,
-          )
-          .map((item) => item.serviceOrderId!)
-          .toSet();
-      for (final orderId in serviceOrderIds) {
-        await ServiceRepository.attachSaleToOrder(orderId, saleId);
-      }
-      if (serviceOrderIds.isNotEmpty) {
-        ref.invalidate(serviceOrdersProvider);
-      }
-      final etimsResult = await EtimsService.submitSaleIfEnabled(saleId);
-      // ──────────────────────────────────────────────────────────────────
-
-      // ── Mark linked quotation as converted (only after successful payment)
-      if (convertFromQuotationId != null && convertFromQuotationId.isNotEmpty) {
-        try {
-          await QuotationRepository.markConverted(
-            convertFromQuotationId,
-            saleId: saleId,
-          );
-          ref.read(lastSavedQuotationProvider.notifier).state = null;
-          bumpQuotationsList(ref);
-        } catch (error) {
-          // Don't fail the sale; surface a warning so admin can fix manually.
-          if (context.mounted) {
-            _showSnackBar(
-              context,
-              AppErrorMessage.withContext(
-                error,
-                prefix: 'Sale saved, but quotation status was not updated.',
-                fallback: 'Sale saved, but quotation status was not updated.',
-              ),
-              backgroundColor: AppColors.warning,
-            );
-          }
-        } finally {
-          ref.read(activeQuotationIdProvider.notifier).state = null;
-        }
-      }
-      // ──────────────────────────────────────────────────────────────────
-
-      if (context.mounted) {
-        await _openCashDrawerAfterSale(context, isCashDrawer);
-      }
-
-      if (context.mounted) {
-        _showSaleSuccessDialog(
-          context,
-          saleId: saleId,
-          total: total,
-          subtotal: subtotal,
-          tax: tax,
-          discount: discount,
-          saleItems: saleItems,
-          paymentType: paymentType,
-          customerName: customerName,
-          amountTendered: amountTendered ?? 0,
-          changeGiven: changeGiven ?? 0,
-          balanceDue: isCredit ? total : 0,
-          dueDate: dueDate,
-          cashierName: SessionService.currentUserName,
-          etimsResult: etimsResult,
-        );
-      }
-      return saleId;
     } catch (e) {
       ref.read(activeQuotationIdProvider.notifier).state = null;
       if (context.mounted) {
@@ -4730,6 +4675,112 @@ class _CartSide extends ConsumerWidget {
       }
       return null;
     }
+
+    _clearCurrentSale(ref);
+    ref.invalidate(filteredProductsProvider);
+    ref.invalidate(posTodayStatsProvider);
+    ref.invalidate(posRecentSalesProvider);
+    invalidateShiftProviders(ref);
+
+    // ── Mark any linked service orders as paid ─────────────────────────
+    final serviceOrderIds = cart
+        .where(
+          (item) =>
+              item.serviceOrderId != null && item.serviceOrderId!.isNotEmpty,
+        )
+        .map((item) => item.serviceOrderId!)
+        .toSet();
+    if (serviceOrderIds.isNotEmpty) {
+      try {
+        for (final orderId in serviceOrderIds) {
+          await ServiceRepository.attachSaleToOrder(orderId, saleId);
+        }
+      } catch (error) {
+        if (context.mounted) {
+          _showSnackBar(
+            context,
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Sale saved, but service order was not updated.',
+              fallback: 'Sale saved, but service order was not updated.',
+            ),
+            backgroundColor: AppColors.warning,
+          );
+        }
+      } finally {
+        ref.invalidate(serviceOrdersProvider);
+      }
+    }
+    EtimsSubmissionResult? etimsResult;
+    try {
+      etimsResult = await EtimsService.submitSaleIfEnabled(saleId);
+    } catch (error) {
+      if (context.mounted) {
+        _showSnackBar(
+          context,
+          AppErrorMessage.withContext(
+            error,
+            prefix: 'Sale saved, but eTIMS was not submitted.',
+            fallback: 'Sale saved, but eTIMS was not submitted.',
+          ),
+          backgroundColor: AppColors.warning,
+        );
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────
+
+    // ── Mark linked quotation as converted (only after successful payment)
+    if (convertFromQuotationId != null && convertFromQuotationId.isNotEmpty) {
+      try {
+        await QuotationRepository.markConverted(
+          convertFromQuotationId,
+          saleId: saleId,
+        );
+        ref.read(lastSavedQuotationProvider.notifier).state = null;
+        bumpQuotationsList(ref);
+      } catch (error) {
+        // Don't fail the sale; surface a warning so admin can fix manually.
+        if (context.mounted) {
+          _showSnackBar(
+            context,
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Sale saved, but quotation status was not updated.',
+              fallback: 'Sale saved, but quotation status was not updated.',
+            ),
+            backgroundColor: AppColors.warning,
+          );
+        }
+      } finally {
+        ref.read(activeQuotationIdProvider.notifier).state = null;
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────
+
+    if (context.mounted) {
+      await _openCashDrawerAfterSale(context, isCashDrawer);
+    }
+
+    if (context.mounted) {
+      _showSaleSuccessDialog(
+        context,
+        saleId: saleId,
+        total: total,
+        subtotal: subtotal,
+        tax: tax,
+        discount: discount,
+        saleItems: saleItems,
+        paymentType: paymentType,
+        customerName: customerName,
+        amountTendered: amountTendered ?? 0,
+        changeGiven: changeGiven ?? 0,
+        balanceDue: isCredit ? total : 0,
+        dueDate: dueDate,
+        cashierName: SessionService.currentUserName,
+        etimsResult: etimsResult,
+      );
+    }
+    return saleId;
   }
 
   Future<void> _openCashDrawerAfterSale(
@@ -4740,12 +4791,29 @@ class _CartSide extends ConsumerWidget {
       return;
     }
 
-    final result = await CashDrawerService.openAfterCashSale();
-    if (!context.mounted || result.success) {
-      return;
-    }
+    try {
+      final result = await CashDrawerService.openAfterCashSale();
+      if (!context.mounted || result.success) {
+        return;
+      }
 
-    _showSnackBar(context, result.message, backgroundColor: AppColors.warning);
+      _showSnackBar(
+        context,
+        result.message,
+        backgroundColor: AppColors.warning,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        AppErrorMessage.withContext(
+          error,
+          prefix: 'Sale saved, but cash drawer did not open.',
+          fallback: 'Sale saved, but cash drawer did not open.',
+        ),
+        backgroundColor: AppColors.warning,
+      );
+    }
   }
 
   void _showSaleSuccessDialog(
@@ -5542,7 +5610,14 @@ class _QuotationCartSideState extends ConsumerState<_QuotationCartSide> {
                 : ListView(
                     padding: EdgeInsets.all(isMobileCart ? 12 : 16),
                     children: [
-                      ...cart.map((item) => _CartItemRow(item: item)),
+                      ...cart.map(
+                        (item) => _CartItemRow(
+                          item: item,
+                          showProfit: SessionService.canAccessFeature(
+                            UserAccessProfile.featureProfitLoss,
+                          ),
+                        ),
+                      ),
                       SizedBox(height: 16),
                       // Summary
                       _SummaryRow(
@@ -6157,7 +6232,9 @@ String _formatHeldTimestamp(String? rawValue) {
 
 class _CartItemRow extends ConsumerWidget {
   final CartItem item;
-  const _CartItemRow({required this.item});
+  final bool showProfit;
+
+  const _CartItemRow({required this.item, required this.showProfit});
 
   Future<void> _editQuantity(BuildContext context, WidgetRef ref) async {
     if (item.isService) {
@@ -6283,15 +6360,17 @@ class _CartItemRow extends ConsumerWidget {
               fontSize: 11,
             ),
           ),
-        SizedBox(height: 2),
-        Text(
-          'Profit: ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
-          style: TextStyle(
-            color: AppColors.success,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
+        if (showProfit) ...[
+          SizedBox(height: 2),
+          Text(
+            'Profit: ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
+            style: TextStyle(
+              color: AppColors.success,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -6397,6 +6476,7 @@ class _CartItemRow extends ConsumerWidget {
         if (compact) {
           return _MobileCartItemCard(
             item: item,
+            showProfit: showProfit,
             onEditQuantity: () => _editQuantity(context, ref),
             quantityControls: _buildQuantityControls(context, ref),
           );
@@ -6441,11 +6521,13 @@ class _CartItemRow extends ConsumerWidget {
 
 class _MobileCartItemCard extends StatelessWidget {
   final CartItem item;
+  final bool showProfit;
   final VoidCallback onEditQuantity;
   final Widget quantityControls;
 
   const _MobileCartItemCard({
     required this.item,
+    required this.showProfit,
     required this.onEditQuantity,
     required this.quantityControls,
   });
@@ -6531,12 +6613,13 @@ class _MobileCartItemCard extends StatelessWidget {
                     '${ShopSettings.currency}${item.total.toStringAsFixed(2)}',
                 color: AppColors.primaryLight,
               ),
-              _CartMetaChip(
-                icon: Icons.trending_up,
-                label:
-                    'Profit ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
-                color: AppColors.success,
-              ),
+              if (showProfit)
+                _CartMetaChip(
+                  icon: Icons.trending_up,
+                  label:
+                      'Profit ${ShopSettings.currency}${item.profit.toStringAsFixed(2)}',
+                  color: AppColors.success,
+                ),
               if (!item.isService && item.tracksStock)
                 _CartMetaChip(
                   icon: Icons.inventory_outlined,
@@ -6886,9 +6969,11 @@ class _ProductCardState extends State<_ProductCard> {
               width: 1,
             ),
           ),
-          child: Stack(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -6933,30 +7018,37 @@ class _ProductCardState extends State<_ProductCard> {
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: stockBadgeColor.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    stockLabel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: stockBadgeColor,
+              Spacer(),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 150),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: stockBadgeColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      stockLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: stockBadgeColor,
+                      ),
                     ),
                   ),
                 ),

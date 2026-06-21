@@ -1049,6 +1049,7 @@ class DatabaseService {
       CREATE TABLE IF NOT EXISTS payment_methods (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        provider_key TEXT,
         is_cash_drawer INTEGER NOT NULL DEFAULT 0,
         is_credit INTEGER NOT NULL DEFAULT 0,
         is_active INTEGER NOT NULL DEFAULT 1,
@@ -3052,5 +3053,23 @@ class DatabaseService {
       column: 'is_credit',
       definition: 'INTEGER NOT NULL DEFAULT 0',
     );
+    await _ensureColumn(
+      database,
+      table: 'payment_methods',
+      column: 'provider_key',
+      definition: 'TEXT',
+    );
+    await database.rawUpdate('''
+      UPDATE payment_methods
+      SET provider_key = CASE
+        WHEN is_cash_drawer = 1 THEN 'cash'
+        WHEN is_credit = 1 OR LOWER(name) LIKE '%kopesha%' THEN 'kopesha'
+        WHEN LOWER(name) LIKE '%mpesa%' OR LOWER(name) LIKE '%m-pesa%' THEN 'mpesa'
+        WHEN LOWER(name) LIKE '%card%' THEN 'card'
+        WHEN LOWER(name) LIKE '%bank%' OR LOWER(name) LIKE '%transfer%' THEN 'bank_transfer'
+        ELSE 'other'
+      END
+      WHERE provider_key IS NULL OR TRIM(provider_key) = ''
+    ''');
   }
 }
