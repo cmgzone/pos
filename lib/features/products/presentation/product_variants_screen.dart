@@ -448,6 +448,36 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
     final formKey = GlobalKey<FormState>();
     var uploadingImage = false;
 
+    void applyPickedColor(
+      _VariantColorPreset preset,
+      StateSetter setDialogState,
+    ) {
+      hexController.text = _hexFromColor(preset.color);
+      if (nameController.text.trim().isEmpty) {
+        nameController.text = preset.label;
+      }
+      setDialogState(() {});
+    }
+
+    Future<void> openCustomColorPicker(
+      BuildContext dialogContext,
+      StateSetter setDialogState,
+    ) async {
+      final picked = await showDialog<Color>(
+        context: dialogContext,
+        builder: (_) => _CustomVariantColorPickerDialog(
+          initialColor:
+              _colorFromHex(hexController.text) ??
+              _variantColorSwatch({'name': nameController.text}),
+        ),
+      );
+      if (picked == null) {
+        return;
+      }
+      hexController.text = _hexFromColor(picked);
+      setDialogState(() {});
+    }
+
     Future<void> pickImage(
       BuildContext dialogContext,
       StateSetter setDialogState,
@@ -565,13 +595,37 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                                 onChanged: (_) => setDialogState(() {}),
                               ),
                               SizedBox(height: 12),
-                              TextFormField(
-                                controller: hexController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Hex color',
-                                  hintText: '#111827',
-                                ),
-                                onChanged: (_) => setDialogState(() {}),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: hexController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Hex color',
+                                        hintText: '#111827',
+                                      ),
+                                      onChanged: (_) => setDialogState(() {}),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () => openCustomColorPicker(
+                                      dialogContext,
+                                      setDialogState,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.colorize_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Pick'),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 10),
+                              _VariantColorPresetGrid(
+                                selectedHex: hexController.text,
+                                onSelected: (preset) =>
+                                    applyPickedColor(preset, setDialogState),
                               ),
                             ],
                           ),
@@ -1528,6 +1582,276 @@ class _VariantColorImagePreview extends StatelessWidget {
   }
 }
 
+class _VariantColorPreset {
+  final String label;
+  final Color color;
+
+  const _VariantColorPreset(this.label, this.color);
+}
+
+const _variantColorPresets = [
+  _VariantColorPreset('Black', Color(0xFF111827)),
+  _VariantColorPreset('Silver', Color(0xFFC0C7D2)),
+  _VariantColorPreset('Blue', Color(0xFF2563EB)),
+  _VariantColorPreset('Gold', Color(0xFFD4AF37)),
+  _VariantColorPreset('Red', Color(0xFFDC2626)),
+  _VariantColorPreset('White', Color(0xFFFFFFFF)),
+  _VariantColorPreset('Green', Color(0xFF16A34A)),
+  _VariantColorPreset('Yellow', Color(0xFFEAB308)),
+  _VariantColorPreset('Orange', Color(0xFFF97316)),
+  _VariantColorPreset('Purple', Color(0xFF7C3AED)),
+  _VariantColorPreset('Pink', Color(0xFFEC4899)),
+  _VariantColorPreset('Brown', Color(0xFF92400E)),
+  _VariantColorPreset('Grey', Color(0xFF6B7280)),
+];
+
+class _VariantColorPresetGrid extends StatelessWidget {
+  final String selectedHex;
+  final ValueChanged<_VariantColorPreset> onSelected;
+
+  const _VariantColorPresetGrid({
+    required this.selectedHex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _normalizedHex(selectedHex);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final preset in _variantColorPresets)
+          _VariantColorPresetChip(
+            preset: preset,
+            selected: selected == _hexFromColor(preset.color),
+            onTap: () => onSelected(preset),
+          ),
+      ],
+    );
+  }
+}
+
+class _VariantColorPresetChip extends StatelessWidget {
+  final _VariantColorPreset preset;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _VariantColorPresetChip({
+    required this.preset,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight =
+        ThemeData.estimateBrightnessForColor(preset.color) == Brightness.light;
+    return Material(
+      color: selected
+          ? AppColors.primaryLight.withValues(alpha: 0.12)
+          : Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? AppColors.primaryLight
+                  : Theme.of(context).colorScheme.outline,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: preset.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isLight ? const Color(0xFFD1D5DB) : Colors.white,
+                  ),
+                ),
+              ),
+              SizedBox(width: 6),
+              Text(
+                preset.label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomVariantColorPickerDialog extends StatefulWidget {
+  final Color initialColor;
+
+  const _CustomVariantColorPickerDialog({required this.initialColor});
+
+  @override
+  State<_CustomVariantColorPickerDialog> createState() =>
+      _CustomVariantColorPickerDialogState();
+}
+
+class _CustomVariantColorPickerDialogState
+    extends State<_CustomVariantColorPickerDialog> {
+  late int _red;
+  late int _green;
+  late int _blue;
+
+  Color get _color => Color.fromARGB(255, _red, _green, _blue);
+
+  @override
+  void initState() {
+    super.initState();
+    final value = widget.initialColor.toARGB32();
+    _red = (value >> 16) & 0xFF;
+    _green = (value >> 8) & 0xFF;
+    _blue = value & 0xFF;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text('Pick Colour'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: _color,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _color.withValues(alpha: 0.22),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    _hexFromColor(_color),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 18),
+            _RgbSlider(
+              label: 'Red',
+              value: _red,
+              color: const Color(0xFFDC2626),
+              onChanged: (value) => setState(() => _red = value),
+            ),
+            _RgbSlider(
+              label: 'Green',
+              value: _green,
+              color: const Color(0xFF16A34A),
+              onChanged: (value) => setState(() => _green = value),
+            ),
+            _RgbSlider(
+              label: 'Blue',
+              value: _blue,
+              color: const Color(0xFF2563EB),
+              onChanged: (value) => setState(() => _blue = value),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _color),
+          child: const Text('Use Colour'),
+        ),
+      ],
+    );
+  }
+}
+
+class _RgbSlider extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+  final ValueChanged<int> onChanged;
+
+  const _RgbSlider({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 52,
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+        Expanded(
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 255,
+            divisions: 255,
+            activeColor: color,
+            label: value.toString(),
+            onChanged: (next) => onChanged(next.round()),
+          ),
+        ),
+        SizedBox(
+          width: 36,
+          child: Text(
+            value.toString(),
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 Color _variantColorSwatch(Map<String, dynamic> color) {
   final hex = color['hex_color']?.toString().trim();
   final fromHex = _colorFromHex(hex);
@@ -1547,6 +1871,16 @@ Color? _colorFromHex(String? value) {
     return null;
   }
   return Color(int.parse('FF$normalized', radix: 16));
+}
+
+String _hexFromColor(Color color) {
+  final value = color.toARGB32() & 0xFFFFFF;
+  return '#${value.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
+String _normalizedHex(String? value) {
+  final color = _colorFromHex(value);
+  return color == null ? '' : _hexFromColor(color);
 }
 
 Color _colorFromName(String value) {
