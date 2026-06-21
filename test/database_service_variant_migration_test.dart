@@ -90,6 +90,16 @@ void main() {
 
       expect(columnNames, contains('variant_id'));
       expect(columnNames, contains('variant_name'));
+
+      final colorColumns = await DatabaseService.db.rawQuery(
+        "PRAGMA table_info('product_variant_colors')",
+      );
+      final colorColumnNames = colorColumns
+          .map((row) => row['name'] as String? ?? '')
+          .toSet();
+
+      expect(colorColumnNames, contains('variant_id'));
+      expect(colorColumnNames, contains('image_url'));
     },
   );
 }

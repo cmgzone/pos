@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/product_image_upload_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
 Color colorOptionSwatch(Map<String, dynamic> option) {
@@ -100,7 +103,11 @@ class ColorOptionTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _ColorPreview(color: swatch, enabled: enabled),
+                _ColorPreview(
+                  color: swatch,
+                  imagePath: option['image_url'] as String?,
+                  enabled: enabled,
+                ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -166,34 +173,61 @@ class ColorOptionTile extends StatelessWidget {
 
 class _ColorPreview extends StatelessWidget {
   final Color color;
+  final String? imagePath;
   final bool enabled;
 
-  const _ColorPreview({required this.color, required this.enabled});
+  const _ColorPreview({
+    required this.color,
+    required this.imagePath,
+    required this.enabled,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isLight =
         ThemeData.estimateBrightnessForColor(color) == Brightness.light;
+    final path = imagePath?.trim() ?? '';
+    final decoration = BoxDecoration(
+      shape: BoxShape.circle,
+      color: color,
+      border: Border.all(
+        color: isLight ? const Color(0xFFD1D5DB) : Colors.white,
+        width: 2,
+      ),
+      boxShadow: enabled
+          ? [
+              BoxShadow(
+                color: color.withValues(alpha: isLight ? 0.14 : 0.28),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ]
+          : const [],
+    );
+    if (path.isEmpty) {
+      return Container(width: 52, height: 52, decoration: decoration);
+    }
+
+    final image = ProductImageUploadService.isRemoteImage(path)
+        ? Image.network(
+            path,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          )
+        : Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          );
+
     return Container(
       width: 52,
       height: 52,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        border: Border.all(
-          color: isLight ? const Color(0xFFD1D5DB) : Colors.white,
-          width: 2,
-        ),
-        boxShadow: enabled
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: isLight ? 0.14 : 0.28),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : const [],
-      ),
+      decoration: decoration,
+      clipBehavior: Clip.antiAlias,
+      child: image,
     );
   }
 }

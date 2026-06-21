@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 21;
+  static const int _databaseVersion = 22;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -1058,6 +1058,7 @@ class DatabaseService {
         variant_id TEXT NOT NULL,
         name TEXT NOT NULL,
         hex_color TEXT,
+        image_url TEXT,
         stock REAL NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
@@ -1881,6 +1882,7 @@ class DatabaseService {
         variant_id TEXT NOT NULL,
         name TEXT NOT NULL,
         hex_color TEXT,
+        image_url TEXT,
         stock REAL NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
@@ -1895,6 +1897,12 @@ class DatabaseService {
       database,
       table: 'sale_items',
       column: 'variant_color_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'product_variant_colors',
+      column: 'image_url',
       definition: 'TEXT',
     );
     await _ensureColumn(

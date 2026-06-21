@@ -53,6 +53,7 @@ class ProductVariantColorRepository {
     required String variantId,
     required String name,
     String? hexColor,
+    String? imageUrl,
     double stock = 0,
     int sortOrder = 0,
   }) async {
@@ -66,12 +67,14 @@ class ProductVariantColorRepository {
       'variant_id': variantId,
       'name': name,
       'hex_color': _normalizeHexColor(hexColor),
+      'image_url': _normalizeText(imageUrl),
       'stock': stock,
       'sort_order': sortOrder,
       'created_at': now,
       'updated_at': now,
       'sync_status': 'pending',
     });
+    await syncVariantStock(productId: productId, variantId: variantId);
     await AuditLogService.log(
       action: 'create',
       entityTable: table,
@@ -82,16 +85,33 @@ class ProductVariantColorRepository {
 
   static Future<void> update(String id, Map<String, dynamic> data) async {
     await LicenseService.ensureWriteAccess(action: 'update variant colors');
+    final existing = await getById(id);
     final payload = Map<String, dynamic>.from(data);
     if (payload.containsKey('hex_color')) {
       payload['hex_color'] = _normalizeHexColor(payload['hex_color']);
     }
+    if (payload.containsKey('image_url')) {
+      payload['image_url'] = _normalizeText(payload['image_url']);
+    }
     await DatabaseService.update(table, payload, id);
+    if (existing != null) {
+      await syncVariantStock(
+        productId: existing['product_id'] as String,
+        variantId: existing['variant_id'] as String,
+      );
+    }
   }
 
   static Future<void> delete(String id) async {
     await LicenseService.ensureWriteAccess(action: 'delete variant colors');
+    final existing = await getById(id);
     await DatabaseService.delete(table, id);
+    if (existing != null) {
+      await syncVariantStock(
+        productId: existing['product_id'] as String,
+        variantId: existing['variant_id'] as String,
+      );
+    }
     await AuditLogService.log(
       action: 'delete',
       entityTable: table,
@@ -115,6 +135,47 @@ class ProductVariantColorRepository {
     );
   }
 
+  static Future<void> syncVariantStock({
+    required String productId,
+    required String variantId,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.rawQuery(
+      '''
+      UPDATE product_variants
+      SET stock = (
+        SELECT COALESCE(SUM(stock), 0)
+        FROM $table
+        WHERE variant_id = ?
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+      ),
+      updated_at = ?,
+      sync_status = 'pending'
+      WHERE id = ?
+        AND COALESCE(branch_id, ?) = ?
+      ''',
+      [variantId, ..._currentBranchArgs, now, variantId, ..._currentBranchArgs],
+    );
+    await DatabaseService.rawQuery(
+      '''
+      UPDATE products
+      SET stock = (
+        SELECT COALESCE(SUM(stock), 0)
+        FROM product_variants
+        WHERE product_id = ?
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+      ),
+      updated_at = ?,
+      sync_status = 'pending'
+      WHERE id = ?
+        AND COALESCE(branch_id, ?) = ?
+      ''',
+      [productId, ..._currentBranchArgs, now, productId, ..._currentBranchArgs],
+    );
+  }
+
   static String? _normalizeHexColor(Object? value) {
     final raw = value?.toString().trim() ?? '';
     if (raw.isEmpty) {
@@ -123,5 +184,10 @@ class ProductVariantColorRepository {
     final withHash = raw.startsWith('#') ? raw : '#$raw';
     final normalized = withHash.toUpperCase();
     return RegExp(r'^#[0-9A-F]{6}$').hasMatch(normalized) ? normalized : null;
+  }
+
+  static String? _normalizeText(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 }

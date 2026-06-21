@@ -1110,6 +1110,7 @@ CREATE TABLE IF NOT EXISTS product_variant_colors (
   variant_id text NOT NULL,
   name text NOT NULL,
   hex_color text,
+  image_url text,
   stock double precision NOT NULL DEFAULT 0,
   sort_order integer NOT NULL DEFAULT 0,
   server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
@@ -1284,6 +1285,7 @@ ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_bran
 ALTER TABLE products ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE product_variant_colors ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE product_variant_colors ADD COLUMN IF NOT EXISTS image_url text;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS amount_paid double precision NOT NULL DEFAULT 0;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS balance_due double precision NOT NULL DEFAULT 0;

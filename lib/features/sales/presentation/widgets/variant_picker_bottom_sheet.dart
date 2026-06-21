@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/product_image_upload_service.dart';
 import '../../../../core/services/shop_settings.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/unit_utils.dart';
@@ -199,6 +201,7 @@ class _VariantOptionTile extends StatelessWidget {
     final subtitle = hasColors
         ? _colorSummary(product, colors)
         : _stockSummary(product, variant);
+    final previewImagePath = _bestPreviewImage(product, colors);
 
     return Material(
       color: Colors.transparent,
@@ -226,7 +229,11 @@ class _VariantOptionTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _VariantBadge(enabled: enabled, hasColors: hasColors),
+              _VariantPreview(
+                enabled: enabled,
+                hasColors: hasColors,
+                imagePath: previewImagePath,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -319,17 +326,43 @@ class _VariantOptionTile extends StatelessWidget {
     }
     return '$available of ${colors.length} color${colors.length == 1 ? '' : 's'} available';
   }
+
+  static String? _bestPreviewImage(
+    Map<String, dynamic> product,
+    List<Map<String, dynamic>> colors,
+  ) {
+    for (final color in colors) {
+      final image = color['image_url']?.toString().trim() ?? '';
+      if (image.isNotEmpty && _asDouble(color['stock']) > 0) {
+        return image;
+      }
+    }
+    for (final color in colors) {
+      final image = color['image_url']?.toString().trim() ?? '';
+      if (image.isNotEmpty) {
+        return image;
+      }
+    }
+    final productImage = product['image_url']?.toString().trim() ?? '';
+    return productImage.isEmpty ? null : productImage;
+  }
 }
 
-class _VariantBadge extends StatelessWidget {
+class _VariantPreview extends StatelessWidget {
   final bool enabled;
   final bool hasColors;
+  final String? imagePath;
 
-  const _VariantBadge({required this.enabled, required this.hasColors});
+  const _VariantPreview({
+    required this.enabled,
+    required this.hasColors,
+    required this.imagePath,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final path = imagePath?.trim() ?? '';
+    Widget fallback = Container(
       width: 46,
       height: 46,
       decoration: BoxDecoration(
@@ -344,6 +377,32 @@ class _VariantBadge extends StatelessWidget {
             ? AppColors.primaryLight
             : Theme.of(context).colorScheme.onSurfaceVariant,
       ),
+    );
+    if (path.isEmpty) {
+      return fallback;
+    }
+    final image = ProductImageUploadService.isRemoteImage(path)
+        ? Image.network(
+            path,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, _, _) => fallback,
+          )
+        : Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, _, _) => fallback,
+          );
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Opacity(opacity: enabled ? 1 : 0.5, child: image),
     );
   }
 }

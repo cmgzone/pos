@@ -178,6 +178,7 @@ const syncTables = [
       'variant_id',
       'name',
       'hex_color',
+      'image_url',
       'stock',
       'sort_order',
       'created_at',

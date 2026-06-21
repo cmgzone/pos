@@ -83,6 +83,11 @@ class ProductColorDrawer extends StatelessWidget {
             UnitUtils.stockUnitForProduct(product),
           )
         : 'No stock limit';
+    final headerImagePath = _bestImageForDrawer(
+      product: product,
+      colors: colors,
+      selectedColorId: selectedColorId,
+    );
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -102,6 +107,7 @@ class ProductColorDrawer extends StatelessWidget {
                   _DrawerHeroHeader(
                     product: product,
                     variant: variant,
+                    imagePath: headerImagePath,
                     heroTag: heroTag,
                     price: price,
                     stockLabel: stockLabel,
@@ -193,6 +199,33 @@ class ProductColorDrawer extends StatelessWidget {
     }
     return '${UnitUtils.formatWithUnit(stock, UnitUtils.stockUnitForProduct(product))} available';
   }
+
+  static String? _bestImageForDrawer({
+    required Map<String, dynamic> product,
+    required List<Map<String, dynamic>> colors,
+    required String? selectedColorId,
+  }) {
+    Map<String, dynamic>? selectedColor;
+    if (selectedColorId != null) {
+      for (final color in colors) {
+        if (color['id'] == selectedColorId) {
+          selectedColor = color;
+          break;
+        }
+      }
+    }
+    final selectedImage = selectedColor?['image_url']?.toString().trim();
+    if (selectedImage != null && selectedImage.isNotEmpty) {
+      return selectedImage;
+    }
+    for (final color in colors) {
+      final image = color['image_url']?.toString().trim() ?? '';
+      if (image.isNotEmpty) {
+        return image;
+      }
+    }
+    return product['image_url']?.toString().trim();
+  }
 }
 
 class _ProductColorDrawerRouteBody extends StatelessWidget {
@@ -247,6 +280,7 @@ class _ProductColorDrawerRouteBody extends StatelessWidget {
 class _DrawerHeroHeader extends StatelessWidget {
   final Map<String, dynamic> product;
   final Map<String, dynamic> variant;
+  final String? imagePath;
   final String? heroTag;
   final double price;
   final String stockLabel;
@@ -254,6 +288,7 @@ class _DrawerHeroHeader extends StatelessWidget {
   const _DrawerHeroHeader({
     required this.product,
     required this.variant,
+    required this.imagePath,
     required this.heroTag,
     required this.price,
     required this.stockLabel,
@@ -280,7 +315,7 @@ class _DrawerHeroHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             child: AspectRatio(
               aspectRatio: 16 / 9,
-              child: _ProductImage(product: product),
+              child: _ProductImage(imagePath: imagePath),
             ),
           ),
           const SizedBox(height: 18),
@@ -327,26 +362,26 @@ class _DrawerHeroHeader extends StatelessWidget {
 }
 
 class _ProductImage extends StatelessWidget {
-  final Map<String, dynamic> product;
+  final String? imagePath;
 
-  const _ProductImage({required this.product});
+  const _ProductImage({required this.imagePath});
 
   @override
   Widget build(BuildContext context) {
-    final imagePath = product['image_url']?.toString().trim() ?? '';
-    if (imagePath.isEmpty) {
+    final path = imagePath?.trim() ?? '';
+    if (path.isEmpty) {
       return const _ImagePlaceholder();
     }
-    if (ProductImageUploadService.isRemoteImage(imagePath)) {
+    if (ProductImageUploadService.isRemoteImage(path)) {
       return Image.network(
-        imagePath,
+        path,
         fit: BoxFit.cover,
         filterQuality: FilterQuality.high,
         errorBuilder: (_, _, _) => const _ImagePlaceholder(),
       );
     }
     return Image.file(
-      File(imagePath),
+      File(path),
       fit: BoxFit.cover,
       filterQuality: FilterQuality.high,
       errorBuilder: (_, _, _) => const _ImagePlaceholder(),
