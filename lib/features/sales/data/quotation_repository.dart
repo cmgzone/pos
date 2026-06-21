@@ -126,6 +126,8 @@ class QuotationRepository {
           'quotation_id': quotationId,
           'product_id': item['product_id'] as String?,
           'variant_id': item['variant_id'] as String?,
+          'variant_color_id': item['variant_color_id'] as String?,
+          'variant_color_name': item['variant_color_name'] as String?,
           'product_name': item['product_name'] as String? ?? 'Product',
           'quantity': qty,
           'unit': item['unit'] as String? ?? 'pcs',
@@ -313,6 +315,11 @@ class QuotationRepository {
         .where((id) => id.isNotEmpty)
         .toSet()
         .toList();
+    final variantColorIds = rawItems
+        .map((item) => item['variant_color_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
 
     final List<Map<String, dynamic>> products;
     if (productIds.isNotEmpty) {
@@ -350,6 +357,26 @@ class QuotationRepository {
     }
     final variantsMap = {for (final v in variants) v['id'] as String: v};
 
+    final List<Map<String, dynamic>> variantColors;
+    if (variantColorIds.isNotEmpty) {
+      final placeholders = List.filled(variantColorIds.length, '?').join(',');
+      variantColors = await DatabaseService.rawQuery(
+        '''
+        SELECT *
+        FROM product_variant_colors
+        WHERE id IN ($placeholders)
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+        ''',
+        [...variantColorIds, ..._currentBranchArgs],
+      );
+    } else {
+      variantColors = [];
+    }
+    final variantColorsMap = {
+      for (final color in variantColors) color['id'] as String: color,
+    };
+
     final refreshed = <Map<String, dynamic>>[];
     final adjustments = <String>[];
 
@@ -357,12 +384,21 @@ class QuotationRepository {
       final productId = item['product_id'] as String? ?? '';
       final variantId = item['variant_id'] as String?;
       final variantName = item['variant_name'] as String?;
+      final variantColorId = item['variant_color_id'] as String?;
+      final variantColorName = item['variant_color_name'] as String?;
       final product = productId.isEmpty ? null : productsMap[productId];
       final variant = (variantId == null || variantId.trim().isEmpty)
           ? null
           : variantsMap[variantId];
+      final color = (variantColorId == null || variantColorId.trim().isEmpty)
+          ? null
+          : variantColorsMap[variantColorId];
       final baseName = (product?['name'] as String?) ?? 'Product';
-      final itemName = _variantLabel(baseName, variantName);
+      final itemName = _variantLabel(
+        baseName,
+        variantName,
+        colorName: variantColorName,
+      );
 
       if (product == null) {
         adjustments.add('$itemName is no longer available and was removed.');
@@ -372,10 +408,22 @@ class QuotationRepository {
         adjustments.add('$itemName is no longer available and was removed.');
         continue;
       }
+      if (variantColorId != null &&
+          variantColorId.trim().isNotEmpty &&
+          color == null) {
+        adjustments.add('$itemName is no longer available and was removed.');
+        continue;
+      }
+      if (color != null &&
+          (color['variant_id'] != variantId ||
+              color['product_id'] != productId)) {
+        adjustments.add('$itemName is no longer available and was removed.');
+        continue;
+      }
 
       final tracksStock = UnitUtils.tracksStock(product);
       final factor = UnitUtils.saleToStockFactor(product);
-      final stockSource = variant ?? product;
+      final stockSource = color ?? variant ?? product;
       final currentStock = _asDouble(stockSource['stock']);
       final maxSaleQty = !tracksStock
           ? 999999.0
@@ -403,6 +451,8 @@ class QuotationRepository {
         ...item,
         'product_name': baseName,
         'variant_name': (variant?['name'] as String?) ?? variantName,
+        'variant_color_id': color?['id'] as String? ?? variantColorId,
+        'variant_color_name': (color?['name'] as String?) ?? variantColorName,
         'quantity': restored,
         'max_stock': maxSaleQty,
         'stock_on_hand': currentStock,
@@ -418,10 +468,21 @@ class QuotationRepository {
     return QuotationLoadResult(items: refreshed, adjustments: adjustments);
   }
 
-  static String _variantLabel(String productName, String? variantName) {
-    final clean = variantName?.trim() ?? '';
-    if (clean.isEmpty) return productName;
-    return '$productName - $clean';
+  static String _variantLabel(
+    String productName,
+    String? variantName, {
+    String? colorName,
+  }) {
+    final parts = <String>[productName];
+    final cleanVariant = variantName?.trim() ?? '';
+    if (cleanVariant.isNotEmpty) {
+      parts.add(cleanVariant);
+    }
+    final cleanColor = colorName?.trim() ?? '';
+    if (cleanColor.isNotEmpty) {
+      parts.add(cleanColor);
+    }
+    return parts.join(' - ');
   }
 }
 

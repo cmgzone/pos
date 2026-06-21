@@ -734,6 +734,8 @@ CREATE TABLE IF NOT EXISTS sale_items (
   unit text NOT NULL DEFAULT 'pcs',
   sale_id text NOT NULL,
   product_id text NOT NULL,
+  variant_color_id text,
+  variant_color_name text,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
@@ -1100,12 +1102,33 @@ CREATE TABLE IF NOT EXISTS product_variants (
   sync_status text NOT NULL DEFAULT 'synced'
 );
 
+CREATE TABLE IF NOT EXISTS product_variant_colors (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  product_id text NOT NULL,
+  variant_id text NOT NULL,
+  name text NOT NULL,
+  hex_color text,
+  stock double precision NOT NULL DEFAULT 0,
+  sort_order integer NOT NULL DEFAULT 0,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
 CREATE INDEX IF NOT EXISTS idx_product_variants_business_revision
   ON product_variants(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_product_variants_product_id
   ON product_variants(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_variants_barcode
   ON product_variants(barcode);
+CREATE INDEX IF NOT EXISTS idx_product_variant_colors_business_revision
+  ON product_variant_colors(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_product_variant_colors_variant_id
+  ON product_variant_colors(variant_id);
 
 -- Ensure has_variants column exists on products
 ALTER TABLE products ADD COLUMN IF NOT EXISTS has_variants integer NOT NULL DEFAULT 0;
@@ -1124,6 +1147,8 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS track_stock integer NOT NULL DEFAU
 
 -- Ensure variant_id column exists on sale_items
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variant_id text;
+ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variant_color_id text;
+ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variant_color_name text;
 CREATE INDEX IF NOT EXISTS idx_sale_items_variant_id ON sale_items(variant_id);
 
 -- ── Payment Methods ───────────────────────────────────────────────────────────
@@ -1258,6 +1283,7 @@ ALTER TABLE shifts ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch'
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE product_variant_colors ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS amount_paid double precision NOT NULL DEFAULT 0;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS balance_due double precision NOT NULL DEFAULT 0;
@@ -1293,6 +1319,7 @@ CREATE INDEX IF NOT EXISTS idx_shifts_branch_id ON shifts(business_id, branch_id
 CREATE INDEX IF NOT EXISTS idx_suppliers_branch_id ON suppliers(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_products_branch_id ON products(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_product_variants_branch_id ON product_variants(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_product_variant_colors_branch_id ON product_variant_colors(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_invoices_branch_id ON purchase_invoices(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_payments_business_revision ON supplier_payments(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_supplier_payments_branch_id ON supplier_payments(business_id, branch_id);
@@ -1313,12 +1340,14 @@ CREATE INDEX IF NOT EXISTS idx_service_orders_branch_id ON service_orders(busine
 CREATE INDEX IF NOT EXISTS idx_products_barcode_partial ON products(business_id, barcode) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_product_variants_barcode_partial ON product_variants(business_id, barcode) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_product_variants_product_deleted ON product_variants(business_id, product_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_product_variant_colors_variant_deleted ON product_variant_colors(business_id, variant_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_stock_batches_fifo_partial ON stock_batches(business_id, product_id, quantity_remaining, expiry_date, received_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_sale_items_lookup ON sale_items(sale_id, product_id);
 CREATE INDEX IF NOT EXISTS idx_sales_sync_branch ON sales(business_id, branch_id, deleted_at, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_products_branch_deleted ON products(business_id, branch_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_product_variants_branch_deleted ON product_variants(business_id, branch_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_product_variant_colors_branch_deleted ON product_variant_colors(business_id, branch_id, deleted_at);
 
 CREATE TABLE IF NOT EXISTS customer_invoices (
   id text PRIMARY KEY,
@@ -1427,6 +1456,8 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   quotation_id text NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
   product_id text,
   variant_id text,
+  variant_color_id text,
+  variant_color_name text,
   product_name text NOT NULL,
   quantity numeric NOT NULL DEFAULT 0,
   unit text NOT NULL DEFAULT 'pcs',
@@ -1440,6 +1471,9 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   sync_status text NOT NULL DEFAULT 'synced',
   server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
 );
+
+ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS variant_color_id text;
+ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS variant_color_name text;
 
 CREATE INDEX IF NOT EXISTS idx_quotations_business_revision
   ON quotations(business_id, server_revision, id);

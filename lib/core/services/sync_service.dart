@@ -91,6 +91,7 @@ class SyncService {
     'suppliers',
     'products',
     'product_variants',
+    'product_variant_colors',
     'purchase_invoices',
     'supplier_payments',
     'purchase_orders',
@@ -125,6 +126,7 @@ class SyncService {
     'suppliers',
     'products',
     'product_variants',
+    'product_variant_colors',
     'purchase_invoices',
     'supplier_payments',
     'purchase_orders',
@@ -752,6 +754,10 @@ class SyncService {
         return rowCount > 0
             ? 'Downloading product variants$countText...'
             : 'Checking product variants...';
+      case 'product_variant_colors':
+        return rowCount > 0
+            ? 'Downloading product colors$countText...'
+            : 'Checking product colors...';
       case 'categories':
         return rowCount > 0
             ? 'Downloading categories$countText...'

@@ -285,7 +285,9 @@ class _StatCard extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 Text(
                   value,
@@ -349,7 +351,9 @@ class _InvoiceListTile extends StatelessWidget {
             ),
             Text(
               '${invoice['item_count'] ?? 0} items',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -386,7 +390,9 @@ class _EmptyInvoices extends StatelessWidget {
           Text(
             'Create product or service invoices before payment, then convert them to sales once paid.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -425,6 +431,27 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
     _discount.dispose();
     _note.dispose();
     super.dispose();
+  }
+
+  Widget _responsiveFieldPair({required Widget first, required Widget second}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumns = constraints.maxWidth >= 520;
+        if (!twoColumns) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [first, SizedBox(height: 12), second],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: first),
+            SizedBox(width: 10),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
   }
 
   double get _subtotal =>
@@ -542,10 +569,7 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
               padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.request_quote_outlined,
-                    color: AppColors.primary,
-                  ),
+                  Icon(Icons.request_quote_outlined, color: AppColors.primary),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -594,63 +618,45 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                       ],
                     ),
                     SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _phone,
-                            decoration: InputDecoration(
-                              labelText: 'Phone',
-                              prefixIcon: Icon(Icons.phone_outlined),
-                            ),
-                          ),
+                    _responsiveFieldPair(
+                      first: TextField(
+                        controller: _phone,
+                        decoration: InputDecoration(
+                          labelText: 'Phone',
+                          prefixIcon: Icon(Icons.phone_outlined),
                         ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: _email,
-                            decoration: InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email_outlined),
-                            ),
-                          ),
+                      ),
+                      second: TextField(
+                        controller: _email,
+                        decoration: InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email_outlined),
                         ),
-                      ],
+                      ),
                     ),
                     SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _kraPin,
-                            decoration: InputDecoration(
-                              labelText: 'Customer KRA PIN optional',
-                              prefixIcon: Icon(Icons.badge_outlined),
-                            ),
-                          ),
+                    _responsiveFieldPair(
+                      first: TextField(
+                        controller: _kraPin,
+                        decoration: InputDecoration(
+                          labelText: 'Customer KRA PIN',
+                          helperText: 'Optional',
+                          prefixIcon: Icon(Icons.badge_outlined),
                         ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _status,
-                            decoration: InputDecoration(
-                              labelText: 'Status',
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'draft',
-                                child: Text('Draft'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'sent',
-                                child: Text('Sent'),
-                              ),
-                            ],
-                            onChanged: (value) =>
-                                setState(() => _status = value ?? 'draft'),
+                      ),
+                      second: DropdownButtonFormField<String>(
+                        initialValue: _status,
+                        decoration: InputDecoration(labelText: 'Status'),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'draft',
+                            child: Text('Draft'),
                           ),
-                        ),
-                      ],
+                          DropdownMenuItem(value: 'sent', child: Text('Sent')),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => _status = value ?? 'draft'),
+                      ),
                     ),
                     SizedBox(height: 12),
                     Wrap(
@@ -722,7 +728,9 @@ class _InvoiceEditorDialogState extends State<_InvoiceEditorDialog> {
                     if (_lines.isEmpty)
                       Text(
                         'No items yet. Add a product, service, or custom charge.',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       )
                     else
                       ..._lines.asMap().entries.map(
@@ -1059,7 +1067,9 @@ class _InvoiceDetailDialogState extends State<_InvoiceDetailDialog> {
                           Text(
                             invoice['note'] as String,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -1132,10 +1142,7 @@ class _InvoiceHeader extends StatelessWidget {
               Expanded(
                 child: Text(
                   invoice['customer_name'] as String? ?? 'Customer',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
               _StatusPill(status: status),
@@ -1269,10 +1276,7 @@ class _EditableLineTile extends StatelessWidget {
               '${ShopSettings.currency}${line.lineTotal.toStringAsFixed(2)}',
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
-            IconButton(
-              onPressed: onDelete,
-              icon: Icon(Icons.delete_outline),
-            ),
+            IconButton(onPressed: onDelete, icon: Icon(Icons.delete_outline)),
           ],
         ),
       ),

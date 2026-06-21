@@ -64,6 +64,8 @@ class HeldSaleRepository {
           'service_id': item['service_id'],
           'variant_id': item['variant_id'],
           'variant_name': item['variant_name'],
+          'variant_color_id': item['variant_color_id'],
+          'variant_color_name': item['variant_color_name'],
           'unit': item['unit'] as String? ?? UnitUtils.defaultUnit,
           'stock_unit':
               item['stock_unit'] as String? ??
@@ -216,6 +218,15 @@ class HeldSaleRepository {
         .toSet()
         .toList();
 
+    final variantColorIds = items
+        .where(
+          (item) => (item['line_type'] as String? ?? 'product') != 'service',
+        )
+        .map((item) => item['variant_color_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
     final List<Map<String, dynamic>> productsList;
     if (productIds.isNotEmpty) {
       final placeholders = List.filled(productIds.length, '?').join(',');
@@ -252,6 +263,26 @@ class HeldSaleRepository {
     }
     final variantsMap = {for (final v in variantsList) v['id'] as String: v};
 
+    final List<Map<String, dynamic>> colorsList;
+    if (variantColorIds.isNotEmpty) {
+      final placeholders = List.filled(variantColorIds.length, '?').join(',');
+      colorsList = await DatabaseService.rawQuery(
+        '''
+        SELECT *
+        FROM product_variant_colors
+        WHERE id IN ($placeholders)
+          AND deleted_at IS NULL
+          AND COALESCE(branch_id, ?) = ?
+        ''',
+        [...variantColorIds, ..._currentBranchArgs],
+      );
+    } else {
+      colorsList = [];
+    }
+    final colorsMap = {
+      for (final color in colorsList) color['id'] as String: color,
+    };
+
     for (final item in items) {
       final lineType = item['line_type'] as String? ?? 'product';
       if (lineType == 'service') {
@@ -263,11 +294,17 @@ class HeldSaleRepository {
       final product = productId.isEmpty ? null : productsMap[productId];
       final variantId = item['variant_id'] as String?;
       final variantName = item['variant_name'] as String?;
+      final variantColorId = item['variant_color_id'] as String?;
+      final variantColorName = item['variant_color_name'] as String?;
       final baseName =
           (product?['name'] as String?) ??
           (item['product_name'] as String?) ??
           'Product';
-      final itemName = _variantLabel(baseName, variantName);
+      final itemName = _variantLabel(
+        baseName,
+        variantName,
+        colorName: variantColorName,
+      );
 
       if (product == null) {
         adjustments.add('$itemName is no longer available and was removed.');
@@ -283,7 +320,23 @@ class HeldSaleRepository {
         continue;
       }
 
-      final stockSource = variant ?? product;
+      final color = (variantColorId == null || variantColorId.trim().isEmpty)
+          ? null
+          : colorsMap[variantColorId];
+      if (variantColorId != null &&
+          variantColorId.trim().isNotEmpty &&
+          color == null) {
+        adjustments.add('$itemName is no longer available and was removed.');
+        continue;
+      }
+      if (color != null &&
+          (color['variant_id'] != variantId ||
+              color['product_id'] != productId)) {
+        adjustments.add('$itemName is no longer available and was removed.');
+        continue;
+      }
+
+      final stockSource = color ?? variant ?? product;
       final currentStockOnHand = _asDouble(stockSource['stock']);
       final maxStock = factor <= 0
           ? currentStockOnHand
@@ -310,6 +363,8 @@ class HeldSaleRepository {
         ...item,
         'product_name': baseName,
         'variant_name': (variant?['name'] as String?) ?? variantName,
+        'variant_color_id': color?['id'] as String? ?? variantColorId,
+        'variant_color_name': (color?['name'] as String?) ?? variantColorName,
         'quantity': restoredQuantity,
         'cost': _asDouble((variant ?? product)['cost']) * factor,
         'max_stock': maxStock,
@@ -359,12 +414,18 @@ class HeldSaleRepository {
     return double.parse(value.toStringAsFixed(3));
   }
 
-  static String _variantLabel(String productName, String? variantName) {
+  static String _variantLabel(
+    String productName,
+    String? variantName, {
+    String? colorName,
+  }) {
     final cleanVariant = variantName?.trim() ?? '';
-    if (cleanVariant.isEmpty) {
-      return productName;
-    }
-    return '$productName - $cleanVariant';
+    final cleanColor = colorName?.trim() ?? '';
+    return [
+      productName,
+      if (cleanVariant.isNotEmpty) cleanVariant,
+      if (cleanColor.isNotEmpty) cleanColor,
+    ].join(' - ');
   }
 }
 

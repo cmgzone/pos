@@ -17,14 +17,24 @@ class CartItem {
   final String? serviceTemplateId;
   final String? variantId;
   final String? variantName;
+  final String? variantColorId;
+  final String? variantColorName;
   final bool tracksStock;
   int get precision => UnitUtils.allowsDecimal(unit) ? 3 : 0;
   double quantity;
 
-  /// Unique key used for cart deduplication. Combines productId + variantId
-  /// so that different variants of the same product can coexist in the cart.
-  String get cartKey =>
-      variantId != null ? '${productId}_$variantId' : productId;
+  /// Unique key used for cart deduplication. Combines product, variant, and
+  /// color so that different choices of the same product can coexist.
+  String get cartKey {
+    final parts = [productId];
+    if (variantId != null) {
+      parts.add(variantId!);
+    }
+    if (variantColorId != null) {
+      parts.add(variantColorId!);
+    }
+    return parts.join('_');
+  }
 
   CartItem({
     required this.productId,
@@ -41,6 +51,8 @@ class CartItem {
     this.serviceTemplateId,
     this.variantId,
     this.variantName,
+    this.variantColorId,
+    this.variantColorName,
     this.tracksStock = true,
     this.quantity = 1,
   });
@@ -65,6 +77,8 @@ class CartItem {
     'service_order_id': serviceOrderId,
     'service_id': serviceTemplateId,
     'variant_id': variantId,
+    'variant_color_id': variantColorId,
+    'variant_color_name': variantColorName,
   };
 
   Map<String, dynamic> toHeldItem() => {
@@ -84,11 +98,15 @@ class CartItem {
     'service_id': serviceTemplateId,
     'variant_id': variantId,
     'variant_name': variantName,
+    'variant_color_id': variantColorId,
+    'variant_color_name': variantColorName,
   };
 
   Map<String, dynamic> toQuotationItem() => {
     'product_id': productId,
     'variant_id': variantId,
+    'variant_color_id': variantColorId,
+    'variant_color_name': variantColorName,
     'product_name': productName,
     'quantity': quantity,
     'unit': unit,
@@ -114,6 +132,8 @@ class CartItem {
       serviceTemplateId: row['service_id'] as String?,
       variantId: row['variant_id'] as String?,
       variantName: row['variant_name'] as String?,
+      variantColorId: row['variant_color_id'] as String?,
+      variantColorName: row['variant_color_name'] as String?,
       tracksStock: _asBool(row['track_stock']),
       quantity: _asDouble(row['quantity'], fallback: 1),
     );
@@ -160,6 +180,7 @@ class CartNotifier extends Notifier<List<CartItem>> {
   bool addProduct(
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
+    Map<String, dynamic>? variantColor,
   }) {
     final unit = UnitUtils.saleUnitForProduct(product);
     final stockUnit = UnitUtils.stockUnitForProduct(product);
@@ -168,14 +189,15 @@ class CartNotifier extends Notifier<List<CartItem>> {
     final step = UnitUtils.step(unit);
 
     // Resolve stock and pricing from variant or parent product
-    final stockSource = variant ?? product;
+    final stockSource = variantColor ?? variant ?? product;
     final stock = (stockSource['stock'] as num? ?? 0).toDouble();
     final availableSaleQuantity = (() {
       if (!tracksStock) return 999999.0;
       if (saleToStockFactor <= 0) return stock;
       return _roundQuantity(stock / saleToStockFactor);
     })();
-    final rawCost = (stockSource['cost'] as num? ?? 0).toDouble();
+    final priceSource = variant ?? product;
+    final rawCost = (priceSource['cost'] as num? ?? 0).toDouble();
     final costPerSaleUnit = rawCost * saleToStockFactor;
     final price = variant != null
         ? (variant['price'] as num?)?.toDouble() ??
@@ -184,9 +206,13 @@ class CartNotifier extends Notifier<List<CartItem>> {
 
     final variantId = variant?['id'] as String?;
     final variantName = variant?['name'] as String?;
-    final cartKey = variantId != null
-        ? '${product['id']}_$variantId'
-        : product['id'] as String;
+    final variantColorId = variantColor?['id'] as String?;
+    final variantColorName = variantColor?['name'] as String?;
+    final cartKey = [
+      product['id'] as String,
+      ?variantId,
+      ?variantColorId,
+    ].join('_');
 
     if (tracksStock && (stock <= 0 || availableSaleQuantity <= 0)) {
       return false;
@@ -222,6 +248,8 @@ class CartNotifier extends Notifier<List<CartItem>> {
           stockUnit: stockUnit,
           variantId: variantId,
           variantName: variantName,
+          variantColorId: variantColorId,
+          variantColorName: variantColorName,
           tracksStock: tracksStock,
           quantity: initialQuantity,
         ),
@@ -352,6 +380,8 @@ class CartNotifier extends Notifier<List<CartItem>> {
               item['stock_unit'] as String? ?? item['unit'] as String? ?? 'pcs',
           variantId: item['variant_id'] as String?,
           variantName: item['variant_name'] as String?,
+          variantColorId: item['variant_color_id'] as String?,
+          variantColorName: item['variant_color_name'] as String?,
           tracksStock: _asBool(item['track_stock']),
           quantity: _asDouble(item['quantity'], fallback: 1),
         ),

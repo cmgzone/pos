@@ -46,10 +46,12 @@ class SaleRepository {
   static String _productRefundKey({
     required String? productId,
     required String? variantId,
+    required String? variantColorId,
   }) {
     final product = productId?.trim() ?? '';
     final variant = variantId?.trim() ?? '';
-    return 'product:$product:$variant';
+    final color = variantColorId?.trim() ?? '';
+    return 'product:$product:$variant:$color';
   }
 
   /// Create a complete sale with items (transactional)
@@ -119,6 +121,11 @@ class SaleRepository {
           .whereType<String>()
           .toSet()
           .toList();
+      final variantColorIds = productItems
+          .map((item) => item['variant_color_id'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
 
       final List<Map<String, dynamic>> productsList;
       if (productIds.isNotEmpty) {
@@ -143,6 +150,20 @@ class SaleRepository {
         variantsList = [];
       }
       final variantsMap = {for (final v in variantsList) v['id'] as String: v};
+
+      final List<Map<String, dynamic>> variantColorsList;
+      if (variantColorIds.isNotEmpty) {
+        final placeholders = List.filled(variantColorIds.length, '?').join(',');
+        variantColorsList = await txn.rawQuery(
+          'SELECT * FROM product_variant_colors WHERE id IN ($placeholders)',
+          variantColorIds,
+        );
+      } else {
+        variantColorsList = [];
+      }
+      final variantColorsMap = {
+        for (final color in variantColorsList) color['id'] as String: color,
+      };
 
       final nonVariantProductIds = productItems
           .where((item) => item['variant_id'] == null)
@@ -188,6 +209,7 @@ class SaleRepository {
       for (final item in productItems) {
         final pid = item['product_id'] as String;
         final variantId = item['variant_id'] as String?;
+        final variantColorId = item['variant_color_id'] as String?;
         final qty = (item['quantity'] as num).toDouble();
         final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
             .toDouble();
@@ -210,6 +232,18 @@ class SaleRepository {
             throw Exception(
               'Not enough stock for variant "${variant['name']}"',
             );
+          }
+          if (variantColorId != null) {
+            final color = variantColorsMap[variantColorId];
+            if (color == null) throw Exception('Product color not found');
+            if (color['variant_id'] != variantId ||
+                color['product_id'] != pid) {
+              throw Exception('Product color does not match this variant');
+            }
+            final colorStock = (color['stock'] as num? ?? 0).toDouble();
+            if (colorStock < stockQty - 0.001) {
+              throw Exception('Not enough stock for color "${color['name']}"');
+            }
           }
           continue;
         }
@@ -276,6 +310,7 @@ class SaleRepository {
       for (final item in productItems) {
         final pid = item['product_id'] as String;
         final variantId = item['variant_id'] as String?;
+        final variantColorId = item['variant_color_id'] as String?;
         final qty = (item['quantity'] as num).toDouble();
         final unit = item['unit'] as String? ?? 'pcs';
         final saleToStockFactor = (item['sale_to_stock_factor'] as num? ?? 1)
@@ -295,6 +330,10 @@ class SaleRepository {
             'sale_id': effectiveSaleId,
             'product_id': pid,
             'variant_id': variantId,
+            'variant_color_id': variantColorId,
+            'variant_color_name':
+                item['variant_color_name'] as String? ??
+                variantColorsMap[variantColorId]?['name'] as String?,
             'created_at': saleTimestamp,
             'updated_at': now,
             'sync_status': 'pending',
@@ -306,6 +345,12 @@ class SaleRepository {
             'UPDATE product_variants SET stock = stock - ? WHERE id = ?',
             [stockQty, variantId],
           );
+          if (variantColorId != null) {
+            await txn.rawUpdate(
+              'UPDATE product_variant_colors SET stock = stock - ?, updated_at = ?, sync_status = ? WHERE id = ?',
+              [stockQty, now, 'pending', variantColorId],
+            );
+          }
           await txn.rawUpdate(
             'UPDATE products SET stock = stock - ? WHERE id = ?',
             [stockQty, pid],
@@ -524,7 +569,11 @@ class SaleRepository {
         (
           SELECT GROUP_CONCAT(
             CASE
-              WHEN si.variant_id IS NOT NULL THEN p.name || ' - ' || COALESCE(pv.name, '')
+              WHEN si.variant_id IS NOT NULL THEN p.name || ' - ' || COALESCE(pv.name, '') ||
+                CASE
+                  WHEN COALESCE(si.variant_color_name, '') <> '' THEN ' - ' || si.variant_color_name
+                  ELSE ''
+                END
               ELSE p.name
             END,
             ', '
@@ -592,10 +641,16 @@ class SaleRepository {
         si.sale_id,
         si.product_id,
         si.variant_id,
+        si.variant_color_id,
+        si.variant_color_name,
         NULL as service_order_id,
         NULL as service_id,
         CASE WHEN si.variant_id IS NOT NULL
-          THEN p.name || ' – ' || COALESCE(pv.name, '')
+          THEN p.name || ' – ' || COALESCE(pv.name, '') ||
+            CASE
+              WHEN COALESCE(si.variant_color_name, '') <> '' THEN ' – ' || si.variant_color_name
+              ELSE ''
+            END
           ELSE p.name
         END as product_name,
         COALESCE(pv.barcode, p.barcode) as barcode,
@@ -614,6 +669,8 @@ class SaleRepository {
         ssi.sale_id,
         NULL as product_id,
         NULL as variant_id,
+        NULL as variant_color_id,
+        NULL as variant_color_name,
         ssi.service_order_id,
         ssi.service_id,
         ssi.service_name as product_name,
@@ -708,6 +765,7 @@ class SaleRepository {
       SELECT
         si.product_id,
         si.variant_id,
+        si.variant_color_id,
         NULL as service_order_id,
         NULL as service_id,
         NULL as service_name,
@@ -715,11 +773,12 @@ class SaleRepository {
       FROM $_salesTable r
       JOIN $_itemsTable si ON si.sale_id = r.id
       WHERE r.refund_for_sale_id = ?
-      GROUP BY si.product_id, si.variant_id
+      GROUP BY si.product_id, si.variant_id, si.variant_color_id
       UNION ALL
       SELECT
         NULL as product_id,
         NULL as variant_id,
+        NULL as variant_color_id,
         ssi.service_order_id,
         ssi.service_id,
         ssi.service_name,
@@ -739,6 +798,7 @@ class SaleRepository {
         refundedByProduct[_productRefundKey(
           productId: row['product_id'] as String?,
           variantId: row['variant_id'] as String?,
+          variantColorId: row['variant_color_id'] as String?,
         )] = _money(
           row['refunded_quantity'] as num?,
         );
@@ -767,6 +827,7 @@ class SaleRepository {
               : (refundedByProduct[_productRefundKey(
                       productId: item['product_id'] as String?,
                       variantId: item['variant_id'] as String?,
+                      variantColorId: item['variant_color_id'] as String?,
                     )] ??
                     0.0);
           final refundableQuantity = soldQuantity - refundedQuantity;
@@ -779,6 +840,7 @@ class SaleRepository {
               : _productRefundKey(
                   productId: item['product_id'] as String?,
                   variantId: item['variant_id'] as String?,
+                  variantColorId: item['variant_color_id'] as String?,
                 );
 
           return {
@@ -848,6 +910,7 @@ class SaleRepository {
               ? _productRefundKey(
                   productId: item['product_id'] as String?,
                   variantId: item['variant_id'] as String?,
+                  variantColorId: item['variant_color_id'] as String?,
                 )
               : null);
       if (refundKey == null || !refundableByKey.containsKey(refundKey)) {
@@ -1001,6 +1064,7 @@ class SaleRepository {
 
         final productId = item['product_id'] as String;
         final variantId = item['variant_id'] as String?;
+        final variantColorId = item['variant_color_id'] as String?;
         final product =
             productsById[productId] ?? <String, dynamic>{'unit': item['unit']};
         final saleUnit = item['unit'] as String? ?? 'pcs';
@@ -1021,6 +1085,8 @@ class SaleRepository {
           'sale_id': refundId,
           'product_id': productId,
           'variant_id': variantId,
+          'variant_color_id': variantColorId,
+          'variant_color_name': item['variant_color_name'] as String?,
           'created_at': now,
           'updated_at': now,
           'sync_status': 'pending',
@@ -1036,6 +1102,12 @@ class SaleRepository {
             'UPDATE product_variants SET stock = stock + ? WHERE id = ?',
             [stockQuantity, variantId],
           );
+          if (variantColorId != null) {
+            await txn.rawUpdate(
+              'UPDATE product_variant_colors SET stock = stock + ?, updated_at = ?, sync_status = ? WHERE id = ?',
+              [stockQuantity, now, 'pending', variantColorId],
+            );
+          }
           await txn.rawUpdate(
             'UPDATE products SET stock = stock + ? WHERE id = ?',
             [stockQuantity, productId],

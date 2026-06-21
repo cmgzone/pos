@@ -21,6 +21,7 @@ import '../../agent/data/piki_models.dart';
 import '../../agent/data/piki_provider.dart';
 import '../../products/data/product_provider.dart';
 import '../../products/data/product_repository.dart';
+import '../../products/data/product_variant_color_repository.dart';
 import '../../products/data/product_variant_repository.dart';
 import '../../products/presentation/product_form_screen.dart';
 import '../../shifts/data/shift_provider.dart';
@@ -44,6 +45,8 @@ import '../../services/data/service_provider.dart';
 import 'barcode_scanner.dart';
 import 'payment_checkout_dialog.dart';
 import 'receipt_service.dart';
+import 'widgets/product_color_drawer.dart';
+import 'widgets/variant_picker_bottom_sheet.dart';
 
 enum PosProductViewMode { cards, compact }
 
@@ -53,6 +56,10 @@ final posProductViewModeProvider = StateProvider<PosProductViewMode>(
 
 final posRecentProductsProvider = StateProvider<List<Map<String, dynamic>>>(
   (ref) => const [],
+);
+
+final posLastSelectedVariantColorProvider = StateProvider<Map<String, String>>(
+  (ref) => const {},
 );
 
 final posTodayStatsProvider = FutureProvider<Map<String, dynamic>>(
@@ -1264,25 +1271,36 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   String _cartLabel(
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
+    Map<String, dynamic>? variantColor,
   }) {
     final productName = product['name'] as String? ?? 'Product';
     final variantName = variant?['name'] as String? ?? '';
-    if (variantName.trim().isEmpty) {
-      return productName;
+    final colorName = variantColor?['name'] as String? ?? '';
+    final parts = <String>[productName];
+    if (variantName.trim().isNotEmpty) {
+      parts.add(variantName.trim());
     }
-    return '$productName - ${variantName.trim()}';
+    if (colorName.trim().isNotEmpty) {
+      parts.add(colorName.trim());
+    }
+    return parts.join(' - ');
   }
 
   void _showAddToCartSnackBar(
     bool success,
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
+    Map<String, dynamic>? variantColor,
   }) {
     if (!mounted) {
       return;
     }
 
-    final label = _cartLabel(product, variant: variant);
+    final label = _cartLabel(
+      product,
+      variant: variant,
+      variantColor: variantColor,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -1310,28 +1328,171 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     );
   }
 
-  void _addProductToCart(
+  bool _addProductToCart(
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
+    Map<String, dynamic>? variantColor,
   }) {
     final success = ref
         .read(cartProvider.notifier)
-        .addProduct(product, variant: variant);
+        .addProduct(product, variant: variant, variantColor: variantColor);
     if (success) {
       _rememberQuickPick(product);
+      _rememberVariantColor(product, variant, variantColor);
     }
-    _showAddToCartSnackBar(success, product, variant: variant);
+    _showAddToCartSnackBar(
+      success,
+      product,
+      variant: variant,
+      variantColor: variantColor,
+    );
     _clearSearch();
+    return success;
   }
 
-  Future<Map<String, dynamic>?> _pickVariantForProduct(
+  String _variantColorSelectionKey(
     Map<String, dynamic> product,
-  ) async {
+    Map<String, dynamic> variant,
+  ) {
+    return '${product['id']}_${variant['id']}';
+  }
+
+  void _rememberVariantColor(
+    Map<String, dynamic> product,
+    Map<String, dynamic>? variant,
+    Map<String, dynamic>? variantColor,
+  ) {
+    final colorId = variantColor?['id']?.toString();
+    if (variant == null || colorId == null || colorId.trim().isEmpty) {
+      return;
+    }
+    final key = _variantColorSelectionKey(product, variant);
+    ref.read(posLastSelectedVariantColorProvider.notifier).state = {
+      ...ref.read(posLastSelectedVariantColorProvider),
+      key: colorId,
+    };
+  }
+
+  String? _lastSelectedColorId(
+    Map<String, dynamic> product,
+    Map<String, dynamic> variant,
+  ) {
+    return ref.read(
+      posLastSelectedVariantColorProvider,
+    )[_variantColorSelectionKey(product, variant)];
+  }
+
+  Map<String, List<Map<String, dynamic>>> _colorsByVariantId(
+    List<Map<String, dynamic>> colors,
+  ) {
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final color in colors) {
+      final variantId = color['variant_id']?.toString();
+      if (variantId == null || variantId.isEmpty) {
+        continue;
+      }
+      grouped.putIfAbsent(variantId, () => []).add(color);
+    }
+    return grouped;
+  }
+
+  bool _variantColorOutOfStock(
+    Map<String, dynamic> product,
+    Map<String, dynamic> color,
+  ) {
+    return UnitUtils.tracksStock(product) &&
+        ((color['stock'] as num?) ?? 0).toDouble() <= 0;
+  }
+
+  void _showVariantColorUnavailableSnackBar(
+    Map<String, dynamic> product,
+    Map<String, dynamic> variant,
+    Map<String, dynamic> color,
+  ) {
+    if (!mounted) {
+      return;
+    }
+    final label = _cartLabel(product, variant: variant, variantColor: color);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label is out of stock.'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.error,
+        width: 360,
+      ),
+    );
+  }
+
+  void _closeVariantPicker(BuildContext? bottomSheetContext) {
+    if (bottomSheetContext != null && bottomSheetContext.mounted) {
+      Navigator.pop(bottomSheetContext);
+    }
+  }
+
+  Future<void> _handleVariantSelection(
+    Map<String, dynamic> product,
+    Map<String, dynamic> variant, {
+    BuildContext? bottomSheetContext,
+    List<Map<String, dynamic>>? prefetchedColors,
+  }) async {
+    final pickerContext = bottomSheetContext;
+    final variantId = variant['id']?.toString();
+    final colors =
+        prefetchedColors ??
+        (variantId == null || variantId.isEmpty
+            ? const <Map<String, dynamic>>[]
+            : await ProductVariantColorRepository.getForVariant(variantId));
+    if (!mounted) {
+      return;
+    }
+    if (pickerContext != null && !pickerContext.mounted) {
+      return;
+    }
+
+    if (colors.isEmpty) {
+      _closeVariantPicker(pickerContext);
+      _addProductToCart(product, variant: variant);
+      return;
+    }
+
+    if (colors.length == 1) {
+      final onlyColor = colors.first;
+      if (_variantColorOutOfStock(product, onlyColor)) {
+        _showVariantColorUnavailableSnackBar(product, variant, onlyColor);
+        return;
+      }
+      _closeVariantPicker(pickerContext);
+      _addProductToCart(product, variant: variant, variantColor: onlyColor);
+      return;
+    }
+
+    final selectedColor = await ProductColorDrawer.show(
+      pickerContext ?? context,
+      product: product,
+      variant: variant,
+      colors: colors,
+      selectedColorId: _lastSelectedColorId(product, variant),
+      heroTag: VariantPickerBottomSheet.heroTagFor(product, variant),
+    );
+    if (!mounted || selectedColor == null) {
+      return;
+    }
+    if (_variantColorOutOfStock(product, selectedColor)) {
+      _showVariantColorUnavailableSnackBar(product, variant, selectedColor);
+      return;
+    }
+    _addProductToCart(product, variant: variant, variantColor: selectedColor);
+    if (pickerContext != null && pickerContext.mounted) {
+      _closeVariantPicker(pickerContext);
+    }
+  }
+
+  Future<void> _pickVariantForProduct(Map<String, dynamic> product) async {
     final variants = await ProductVariantRepository.getForProduct(
       product['id'] as String,
     );
     if (!mounted) {
-      return null;
+      return;
     }
     if (variants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1340,59 +1501,35 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           backgroundColor: AppColors.warning,
         ),
       );
-      return null;
+      return;
     }
 
-    return showDialog<Map<String, dynamic>>(
+    final colors = await ProductVariantColorRepository.getForProduct(
+      product['id'] as String,
+    );
+    if (!mounted) {
+      return;
+    }
+    final colorsByVariantId = _colorsByVariantId(colors);
+
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Choose Variant - ${product['name']}'),
-        content: SizedBox(
-          width: 460,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: variants.length,
-            separatorBuilder: (_, _) => SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final variant = variants[index];
-              final stock = (variant['stock'] as num? ?? 0).toDouble();
-              final tracksStock = UnitUtils.tracksStock(product);
-              final outOfStock = tracksStock && stock <= 0;
-              return Material(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-                child: ListTile(
-                  enabled: !outOfStock,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  title: Text(variant['name'] as String? ?? 'Variant'),
-                  subtitle: Text(
-                    '${ShopSettings.currency}${((variant['price'] as num?) ?? 0).toStringAsFixed(2)} - ${!tracksStock
-                        ? 'No stock limit'
-                        : outOfStock
-                        ? 'Out of stock'
-                        : UnitUtils.formatWithUnit(stock, UnitUtils.stockUnitForProduct(product))}',
-                  ),
-                  trailing: outOfStock
-                      ? Icon(Icons.block_outlined, color: AppColors.error)
-                      : Icon(Icons.chevron_right),
-                  onTap: outOfStock
-                      ? null
-                      : () => Navigator.pop(dialogContext, variant),
-                ),
-              );
-            },
-          ),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.36),
+      builder: (bottomSheetContext) => VariantPickerBottomSheet(
+        product: product,
+        variants: variants,
+        colorsByVariantId: colorsByVariantId,
+        onVariantSelected: (variant, pickerContext) => _handleVariantSelection(
+          product,
+          variant,
+          bottomSheetContext: pickerContext,
+          prefetchedColors:
+              colorsByVariantId[variant['id']?.toString()] ??
+              const <Map<String, dynamic>>[],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text('Cancel'),
-          ),
-        ],
       ),
     );
   }
@@ -1400,7 +1537,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   Future<void> _handleProductSelection(Map<String, dynamic> product) async {
     final matchedVariant = _matchedVariantFromSearchResult(product);
     if (matchedVariant != null) {
-      _addProductToCart(product, variant: matchedVariant);
+      await _handleVariantSelection(product, matchedVariant);
       return;
     }
 
@@ -1409,11 +1546,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       return;
     }
 
-    final variant = await _pickVariantForProduct(product);
-    if (variant == null) {
-      return;
-    }
-    _addProductToCart(product, variant: variant);
+    await _pickVariantForProduct(product);
   }
 
   Future<void> _handleBarcodeScan(String barcode) async {
@@ -1468,7 +1601,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
         'stock': result['variant_stock'],
         'low_stock': result['variant_low_stock'],
       };
-      _addProductToCart(parentProduct, variant: variant);
+      await _handleVariantSelection(parentProduct, variant);
       return;
     }
 
@@ -4632,7 +4765,7 @@ class _CartSide extends ConsumerWidget {
           (item) => {
             'line_type': item.lineType,
             'product_id': item.productId,
-            'product_name': item.productName,
+            'product_name': _cartItemDisplayName(item),
             'quantity': item.quantity,
             'unit_price': item.unitPrice,
             'unit': item.unit,
@@ -6230,6 +6363,19 @@ String _formatHeldTimestamp(String? rawValue) {
   return '$day $month, $hour:$minute';
 }
 
+String _cartItemDisplayName(CartItem item) {
+  final parts = <String>[item.productName];
+  final variantName = item.variantName?.trim() ?? '';
+  if (variantName.isNotEmpty) {
+    parts.add(variantName);
+  }
+  final colorName = item.variantColorName?.trim() ?? '';
+  if (colorName.isNotEmpty) {
+    parts.add(colorName);
+  }
+  return parts.join(' - ');
+}
+
 class _CartItemRow extends ConsumerWidget {
   final CartItem item;
   final bool showProfit;
@@ -6303,10 +6449,7 @@ class _CartItemRow extends ConsumerWidget {
   }
 
   Widget _buildDetails(BuildContext context) {
-    final itemName =
-        item.variantName != null && item.variantName!.trim().isNotEmpty
-        ? '${item.productName} - ${item.variantName!.trim()}'
-        : item.productName;
+    final itemName = _cartItemDisplayName(item);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -6534,10 +6677,7 @@ class _MobileCartItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final itemName =
-        item.variantName != null && item.variantName!.trim().isNotEmpty
-        ? '${item.productName} - ${item.variantName!.trim()}'
-        : item.productName;
+    final itemName = _cartItemDisplayName(item);
     final accent = item.isService
         ? Theme.of(context).colorScheme.secondary
         : AppColors.primaryLight;
@@ -6642,6 +6782,12 @@ class _MobileCartItemCard extends StatelessWidget {
                 _CartMetaChip(
                   icon: Icons.category_outlined,
                   label: item.variantName!.trim(),
+                ),
+              if (item.variantColorName != null &&
+                  item.variantColorName!.trim().isNotEmpty)
+                _CartMetaChip(
+                  icon: Icons.palette_outlined,
+                  label: item.variantColorName!.trim(),
                 ),
             ],
           ),

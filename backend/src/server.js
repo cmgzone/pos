@@ -182,6 +182,7 @@ const CATALOG_CACHE_TABLES = new Set([
   'categories',
   'products',
   'product_variants',
+  'product_variant_colors',
   'services',
   'stock_batches',
   'sale_items',
@@ -9054,6 +9055,7 @@ function featureRequiredForTable(tableName) {
       return FEATURE_KEYS.services;
     case 'products':
     case 'product_variants':
+    case 'product_variant_colors':
       return FEATURE_KEYS.products;
     case 'sales':
     case 'sale_items':
@@ -13791,6 +13793,7 @@ const syncTableFeatures = Object.freeze({
   suppliers: 'purchases',
   products: 'products',
   product_variants: 'products',
+  product_variant_colors: 'products',
   purchase_invoices: 'purchases',
   supplier_payments: 'purchases',
   purchase_orders: 'purchases',

@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 20;
+  static const int _databaseVersion = 21;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -19,6 +19,7 @@ class DatabaseService {
     'categories',
     'products',
     'product_variants',
+    'product_variant_colors',
     'customers',
     'shifts',
     'sales',
@@ -593,6 +594,8 @@ class DatabaseService {
         sale_id TEXT NOT NULL,
         product_id TEXT NOT NULL,
         variant_id TEXT,
+        variant_color_id TEXT,
+        variant_color_name TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -720,6 +723,8 @@ class DatabaseService {
         service_id TEXT,
         variant_id TEXT,
         variant_name TEXT,
+        variant_color_id TEXT,
+        variant_color_name TEXT,
         unit TEXT NOT NULL DEFAULT 'pcs',
         stock_unit TEXT NOT NULL DEFAULT 'pcs',
         created_at TEXT NOT NULL,
@@ -1046,6 +1051,25 @@ class DatabaseService {
     ''');
 
     await database.execute('''
+      CREATE TABLE IF NOT EXISTS product_variant_colors (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        product_id TEXT NOT NULL,
+        variant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        hex_color TEXT,
+        stock REAL NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await database.execute('''
       CREATE TABLE IF NOT EXISTS payment_methods (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1327,6 +1351,12 @@ class DatabaseService {
     );
     await _createIndexIfColumnsExist(
       database,
+      table: 'product_variant_colors',
+      indexName: 'idx_product_variant_colors_variant_id',
+      columns: ['variant_id'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
       table: 'sale_items',
       indexName: 'idx_sale_items_variant_id',
       columns: ['variant_id'],
@@ -1389,6 +1419,12 @@ class DatabaseService {
       indexName: 'idx_product_variants_branch_deleted',
       columns: ['branch_id', 'deleted_at'],
     );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_variant_colors',
+      indexName: 'idx_product_variant_colors_branch_deleted',
+      columns: ['branch_id', 'deleted_at'],
+    );
   }
 
   static Future<void> _createIndexIfColumnsExist(
@@ -1435,6 +1471,7 @@ class DatabaseService {
     await _ensureUserLastSeenSchema(database);
     await _ensureUserAccessSchema(database);
     await _ensureProductVariantsSchema(database);
+    await _ensureProductVariantColorsSchema(database);
     await _ensureBrandColumn(database);
     await _ensureProductStorefrontSchema(database);
     await _ensurePaymentMethodsSchema(database);
@@ -1833,6 +1870,53 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureProductVariantColorsSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS product_variant_colors (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        product_id TEXT NOT NULL,
+        variant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        hex_color TEXT,
+        stock REAL NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
+      )
+    ''');
+    await _ensureColumn(
+      database,
+      table: 'sale_items',
+      column: 'variant_color_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'sale_items',
+      column: 'variant_color_name',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'variant_color_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'variant_color_name',
+      definition: 'TEXT',
+    );
+  }
+
   /// Adds the brand column to products if it doesn't exist (v13+).
   static Future<void> _ensureBrandColumn(DatabaseExecutor database) async {
     await _ensureColumn(
@@ -2109,6 +2193,8 @@ class DatabaseService {
         quotation_id TEXT NOT NULL,
         product_id TEXT,
         variant_id TEXT,
+        variant_color_id TEXT,
+        variant_color_name TEXT,
         product_name TEXT NOT NULL,
         quantity REAL NOT NULL DEFAULT 0,
         unit TEXT NOT NULL DEFAULT 'pcs',
@@ -2160,6 +2246,8 @@ class DatabaseService {
       ['quotation_items', 'quotation_id', "TEXT NOT NULL DEFAULT ''"],
       ['quotation_items', 'product_id', 'TEXT'],
       ['quotation_items', 'variant_id', 'TEXT'],
+      ['quotation_items', 'variant_color_id', 'TEXT'],
+      ['quotation_items', 'variant_color_name', 'TEXT'],
       ['quotation_items', 'product_name', "TEXT NOT NULL DEFAULT ''"],
       ['quotation_items', 'quantity', 'REAL NOT NULL DEFAULT 0'],
       ['quotation_items', 'unit', "TEXT NOT NULL DEFAULT 'pcs'"],
@@ -2744,6 +2832,18 @@ class DatabaseService {
         definition: 'TEXT',
       );
     }
+    await _ensureColumn(
+      database,
+      table: 'quotation_items',
+      column: 'variant_color_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'quotation_items',
+      column: 'variant_color_name',
+      definition: 'TEXT',
+    );
   }
 
   static Future<void> _ensureServicesSchema(DatabaseExecutor database) async {
