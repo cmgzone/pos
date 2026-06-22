@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ----------------------------------------------------------------------
-    // 2b. Download section OS detection and fallback
+    // 2b. Download section OS detection + dynamic release URLs
     // ----------------------------------------------------------------------
     const downloadCards = document.querySelectorAll('.download-card');
     const userAgent = navigator.userAgent.toLowerCase();
@@ -158,28 +158,132 @@ document.addEventListener('DOMContentLoaded', () => {
     const isAndroid = userAgent.includes('android');
     const isIos = /iphone|ipad|ipod/.test(userAgent);
 
+    // Highlight the card that matches the visitor's OS
     downloadCards.forEach((card) => {
         const os = card.getAttribute('data-os');
-        const link = card.querySelector('.download-link');
-        const meta = card.querySelector('.download-meta');
-
-        // Highlight the card that matches the visitor's OS
         if ((os === 'windows' && isWindows) || (os === 'android' && isAndroid) || (os === 'ios' && isIos)) {
             card.classList.add('recommended');
         }
-
-        // Warn if the file has not been uploaded yet
-        if (link) {
-            link.addEventListener('click', () => {
-                const href = link.getAttribute('href') || '';
-                if (href.includes('/downloads/') || href.startsWith('downloads/')) {
-                    // In a static file context the download may 404.
-                    // Let the browser handle it; log for debugging.
-                    console.debug('Download requested:', href);
-                }
-            });
-        }
     });
+
+    // Rewrite the Windows / Android download buttons with the real release
+    // URLs served by the backend. The static hrefs in index.html are only
+    // fallbacks; the source of truth is GET /api/app/version, which returns
+    // the paths the admin uploaded (e.g. /downloads/app/windows/...).
+    function resolveReleaseUrl(path) {
+        if (!path) return '';
+        if (/^https?:\/\//i.test(path) || path.startsWith('/')) return path;
+        return '/' + path.replace(/^\.?\//, '');
+    }
+
+    function formatBytes(bytes) {
+        const n = Number(bytes);
+        if (!n || n <= 0) return '';
+        if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+        if (n >= 1024) return Math.round(n / 1024) + ' KB';
+        return n + ' B';
+    }
+
+    function disableCard(card, message) {
+        const link = card.querySelector('.download-link');
+        const meta = card.querySelector('.download-meta');
+        if (link) {
+            link.removeAttribute('href');
+            link.removeAttribute('download');
+            link.classList.add('btn-disabled');
+            link.setAttribute('aria-disabled', 'true');
+            const icon = link.querySelector('i');
+            link.innerHTML = '';
+            if (icon) link.appendChild(icon);
+            else link.innerHTML = '<i class="fa-solid fa-clock"></i> ';
+            link.appendChild(document.createTextNode(' ' + message));
+        }
+        if (meta) meta.textContent = 'Not available yet';
+    }
+
+    function applyReleaseToCard(card, release) {
+        if (!card) return;
+        const url = resolveReleaseUrl(release.url);
+        const version = (release.version || '').trim();
+        const sizeLabel = formatBytes(release.bytes);
+        if (!url) {
+            disableCard(card, 'Not available yet');
+            return;
+        }
+        const link = card.querySelector('.download-link');
+        const meta = card.querySelector('.download-meta');
+        if (link) {
+            link.setAttribute('href', url);
+            link.setAttribute('download', '');
+            link.classList.remove('btn-disabled');
+            link.removeAttribute('aria-disabled');
+        }
+        if (meta) {
+            const parts = [];
+            if (version) parts.push('v' + version.replace(/^v/i, ''));
+            if (sizeLabel) parts.push('~' + sizeLabel);
+            meta.textContent = parts.length ? parts.join(' · ') : 'Available';
+        }
+    }
+
+    async function loadAppReleases() {
+        const windowsCard = document.querySelector('.download-card[data-os="windows"]');
+        const androidCard = document.querySelector('.download-card[data-os="android"]');
+
+        try {
+            const response = await fetch('/api/app/version', { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error('app version request failed');
+            const body = await response.json();
+            const data = body && body.ok ? body.data : body;
+            if (!data || typeof data !== 'object') throw new Error('app version payload invalid');
+
+            const androidVersion = data.androidVersion || data.latestVersion || '';
+            const androidUrl = data.androidUrl || data.apkUrl || '';
+            const windowsVersion = data.windowsVersion || '';
+            const windowsUrl = data.windowsUrl || '';
+
+            applyReleaseToCard(windowsCard, { url: windowsUrl, version: windowsVersion });
+            applyReleaseToCard(androidCard, { url: androidUrl, version: androidVersion });
+
+            // Optional: best-effort HEAD to show real file size next to the version.
+            const headUrl = async (path) => {
+                if (!path) return null;
+                try {
+                    const r = await fetch(path, { method: 'HEAD' });
+                    if (!r.ok) return null;
+                    return Number(r.headers.get('content-length') || 0) || null;
+                } catch (_) {
+                    return null;
+                }
+            };
+            if (windowsUrl) {
+                const bytes = await headUrl(resolveReleaseUrl(windowsUrl));
+                if (bytes) {
+                    const meta = windowsCard && windowsCard.querySelector('.download-meta');
+                    if (meta) {
+                        const v = (windowsVersion || '').replace(/^v/i, '');
+                        meta.textContent = (v ? 'v' + v + ' · ' : '') + formatBytes(bytes);
+                    }
+                }
+            }
+            if (androidUrl) {
+                const bytes = await headUrl(resolveReleaseUrl(androidUrl));
+                if (bytes) {
+                    const meta = androidCard && androidCard.querySelector('.download-meta');
+                    if (meta) {
+                        const v = (androidVersion || '').replace(/^v/i, '');
+                        meta.textContent = (v ? 'v' + v + ' · ' : '') + formatBytes(bytes);
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load app release URLs:', error);
+            disableCard(windowsCard, 'Not available yet');
+            disableCard(androidCard, 'Not available yet');
+        }
+    }
+
+    loadAppReleases();
 
     // ----------------------------------------------------------------------
     // 3. Business impact calculator logic

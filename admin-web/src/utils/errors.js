@@ -29,6 +29,9 @@ export function friendlyError(error, fallback = 'Something went wrong. Please tr
   if (lower.includes('403') || lower.includes('forbidden')) {
     return 'You do not have permission to do that.'
   }
+  if (lower.includes('413') || lower.includes('payload too large') || lower.includes('entity too large') || lower.includes('too large')) {
+    return 'The file is too large to upload. Use a smaller build, or raise the upload limit on the server.'
+  }
   if (
     lower.includes('database') ||
     lower.includes('sql') ||
