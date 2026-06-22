@@ -1,9 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Search, ShoppingBag, Sparkles } from "lucide-react";
+import { ShoppingBag, Search } from "lucide-react";
 import type { Business } from "@/lib/types";
 import { useStore } from "./store-provider";
+import { getInitials } from "@/lib/utils";
 
 interface SiteHeaderProps {
   business?: Business;
@@ -15,53 +15,65 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
 
+  const scrollToCatalog = () => {
+    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
-    <motion.header
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="sticky top-0 z-40 glass"
-    >
-      <div className="mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-12">
-        <div className="flex items-center gap-3 min-w-0">
+    <header className="sticky top-0 z-40 border-b border-border-subtle bg-background/90 backdrop-blur-md">
+      <div className="mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-10">
+        <div className="flex min-w-0 items-center gap-3">
           {logoUrl ? (
             <img
               src={logoUrl}
-              alt={business?.name}
-              className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-white/10"
+              alt={business?.name || "Store"}
+              className="h-9 w-9 shrink-0 rounded-md object-cover ring-1 ring-border-strong"
             />
           ) : (
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-elevated ring-1 ring-white/10">
-              <Sparkles className="h-4 w-4 text-accent" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-elevated text-[13px] font-semibold tracking-tight text-foreground ring-1 ring-border-subtle">
+              {getInitials(business?.name)}
             </div>
           )}
-          <span className="truncate text-sm font-semibold tracking-tight sm:text-base">
-            {business?.name || "Storefront"}
-          </span>
+          <div className="min-w-0">
+            <span className="block truncate text-[15px] font-semibold leading-tight tracking-tight">
+              {business?.name || "Storefront"}
+            </span>
+            {(brand?.tagline || business?.selectedBranch?.name) && (
+              <span className="block truncate text-[11px] text-muted">
+                {brand?.tagline || business?.selectedBranch?.name}
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2">
+        <nav className="flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={scrollToCatalog}
+            className="hidden rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground sm:inline-flex"
+          >
+            Shop
+          </button>
           <button
             onClick={onTrackOrder}
-            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-muted transition hover:bg-surface-elevated hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground"
           >
             <Search className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Track</span>
+            <span className="hidden sm:inline">Track order</span>
           </button>
           <button
             onClick={() => setIsCartOpen(true)}
-            className="relative flex h-9 items-center gap-1.5 rounded-full bg-accent px-3 text-xs font-semibold text-background transition hover:opacity-90"
+            className="relative inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3.5 text-[13px] font-semibold text-background transition hover:opacity-90"
           >
-            <ShoppingBag className="h-3.5 w-3.5" />
+            <ShoppingBag className="h-4 w-4" />
             <span className="hidden sm:inline">Cart</span>
             {cartCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[9px] font-bold text-foreground ring-1 ring-accent">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1 text-[11px] font-bold text-foreground ring-1 ring-border-strong">
                 {cartCount > 9 ? "9+" : cartCount}
               </span>
             )}
           </button>
-        </div>
+        </nav>
       </div>
-    </motion.header>
+    </header>
   );
 }

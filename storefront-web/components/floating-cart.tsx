@@ -13,12 +13,12 @@ export function FloatingCart({ onOpen }: FloatingCartProps) {
 
   return (
     <motion.button
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
+      whileTap={{ scale: 0.96 }}
       onClick={onOpen}
-      className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-background shadow-lg shadow-accent/20 ring-1 ring-white/10"
+      className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-foreground text-background shadow-lg shadow-black/30 ring-1 ring-border-strong sm:hidden"
+      aria-label="Open cart"
     >
       <ShoppingBag className="h-5 w-5" />
       <AnimatePresence>
@@ -27,7 +27,7 @@ export function FloatingCart({ onOpen }: FloatingCartProps) {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0 }}
-            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background text-[10px] font-bold text-foreground ring-1 ring-accent"
+            className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1 text-[10px] font-bold text-foreground ring-1 ring-border-strong"
           >
             {cartCount > 9 ? "9+" : cartCount}
           </motion.span>

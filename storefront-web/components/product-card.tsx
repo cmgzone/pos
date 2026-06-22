@@ -2,27 +2,12 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Check, Tag, ImageOff } from "lucide-react";
+import { Plus, Check, ImageOff } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
 import { formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { useStore } from "./store-provider";
-import { StaggerItem, HoverLift } from "./motion";
+import { StaggerItem } from "./motion";
 import { QuickViewModal } from "./quick-view-modal";
-
-const categoryColors: Record<string, string> = {
-  food: "#eab308",
-  beverages: "#f97316",
-  electronics: "#3b82f6",
-  fashion: "#ec4899",
-  health: "#22c55e",
-  home: "#a855f7",
-  services: "#f4c430",
-};
-
-function categoryColor(category?: string | null): string {
-  const key = (category || "").toLowerCase().split(/[&,\s]+/)[0];
-  return categoryColors[key] || "#6366f1";
-}
 
 interface ProductCardProps {
   item: CatalogItem;
@@ -45,12 +30,11 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
   );
   const selectedAvailableVariant =
     selectedVariant && selectedVariant.available !== false ? selectedVariant : undefined;
-  const price =
-    selectedAvailableVariant
-      ? selectedAvailableVariant.price
-      : hasVariants && variantPrices.length > 0
-        ? Math.min(...variantPrices)
-        : item.price;
+  const price = selectedAvailableVariant
+    ? selectedAvailableVariant.price
+    : hasVariants && variantPrices.length > 0
+      ? Math.min(...variantPrices)
+      : item.price;
   const pricePrefix =
     hasVariants && !selectedAvailableVariant && variantPrices.length > 0 ? "From " : "";
   const isOutOfStock = hasVariants
@@ -58,9 +42,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
     : Boolean(item.trackStock && item.stock <= 0);
   const images = getCatalogItemImages(item);
   const image = images[0];
-  const imageCount = images.length;
   const hasImage = image && !imageError;
-  const accent = categoryColor(item.category);
 
   const handleAdd = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -74,105 +56,116 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
     setTimeout(() => setAdded(false), 1200);
   };
 
+  const buttonLabel = isOutOfStock
+    ? "Sold out"
+    : hasVariants && !selectedAvailableVariant
+      ? "Choose options"
+      : "Add to cart";
+
   return (
     <StaggerItem>
-      <HoverLift>
-        <motion.div
+      <div className="group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
+        <button
+          type="button"
           onClick={() => setShowQuickView(true)}
-          className="group relative flex flex-col overflow-hidden rounded-2xl bg-[#141418] ring-1 ring-white/[0.05] cursor-pointer"
-          whileHover={{ boxShadow: `0 0 0 1px ${accent}30` }}
+          className="relative aspect-[4/5] overflow-hidden bg-surface-elevated text-left"
         >
-          <div className="relative aspect-[4/3] overflow-hidden">
-            {hasImage ? (
-              <img
-                src={image}
-                alt={item.name}
-                onError={() => setImageError(true)}
-                className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                loading="lazy"
-              />
-            ) : (
-              <div
-                className="flex h-full w-full flex-col items-center justify-center gap-2"
-                style={{
-                  background: `linear-gradient(135deg, ${accent}12, ${accent}06)`,
-                }}
-              >
-                <div
-                  className="flex h-12 w-12 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${accent}20` }}
-                >
-                  <Tag className="h-5 w-5" style={{ color: accent }} />
-                </div>
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5"
-                >
-                  <ImageOff className="h-4 w-4 text-white/15" />
-                </div>
-              </div>
-            )}
-            {item.isFeatured && (
-              <span className="absolute left-2 top-2 rounded-full bg-accent/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-background">
-                Featured
+          {hasImage ? (
+            <img
+              src={image}
+              alt={item.name}
+              onError={() => setImageError(true)}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted">
+              <ImageOff className="h-7 w-7 opacity-40" />
+              <span className="text-[11px] uppercase tracking-wider opacity-60">
+                No image
               </span>
-            )}
-            {isOutOfStock && (
-              <span className="absolute right-2 top-2 rounded-full bg-red-500/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                Out of stock
-              </span>
-            )}
-            {item.variants && item.variants.length > 1 && (
-              <span className="absolute bottom-2 left-2 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted">
-                {item.variants.length} options
-              </span>
-            )}
-            {imageCount > 1 && (
-              <span className="absolute bottom-2 right-2 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted">
-                {imageCount} photos
-              </span>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="flex flex-1 flex-col p-3.5">
-            {item.category && (
-              <span className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted">
-                {item.category}
+          {item.isFeatured && !isOutOfStock && (
+            <span className="absolute left-3 top-3 rounded bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-background">
+              Featured
+            </span>
+          )}
+
+          {isOutOfStock && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60">
+              <span className="rounded border border-border-strong bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-strong">
+                Sold out
               </span>
-            )}
-            <h3 className="line-clamp-2 text-sm font-semibold leading-snug">
+            </div>
+          )}
+
+          {hasVariants && variants.length > 1 && !isOutOfStock && (
+            <span className="absolute bottom-3 left-3 rounded bg-background/80 px-2 py-1 text-[10px] font-medium text-muted-strong backdrop-blur-sm">
+              {variants.length} options
+            </span>
+          )}
+        </button>
+
+        <div className="flex flex-1 flex-col p-4">
+          {item.category && (
+            <span className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+              {item.category}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowQuickView(true)}
+            className="text-left"
+          >
+            <h3 className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground">
               {item.name}
             </h3>
-            {item.brand && (
-              <p className="mt-0.5 text-[11px] text-muted">{item.brand}</p>
-            )}
+          </button>
+          {item.brand && (
+            <p className="mt-1 text-[12px] text-muted">{item.brand}</p>
+          )}
 
-            <div className="mt-auto flex items-center justify-between pt-3">
-              <span className="text-base font-bold text-accent">
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="flex flex-col">
+              <span className="text-[17px] font-semibold tracking-tight text-foreground">
                 {pricePrefix}
                 {formatPrice(price, currencySymbol, currencyCode)}
               </span>
-              <button
-                onClick={handleAdd}
-                disabled={isOutOfStock}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.08] ring-1 ring-white/[0.06] transition hover:bg-accent hover:text-background hover:ring-0 disabled:opacity-40 disabled:hover:bg-white/[0.08] disabled:hover:text-foreground"
-              >
-                <motion.div
-                  key={added ? "check" : "plus"}
-                  initial={{ scale: 0.4, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {added ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
-                  )}
-                </motion.div>
-              </button>
+              {hasVariants && !selectedAvailableVariant && variantPrices.length > 0 && (
+                <span className="text-[11px] text-muted">multiple options</span>
+              )}
             </div>
           </div>
-        </motion.div>
-      </HoverLift>
+
+          <button
+            onClick={handleAdd}
+            disabled={isOutOfStock}
+            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-foreground hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border-subtle disabled:hover:bg-surface-elevated disabled:hover:text-foreground"
+          >
+            <motion.span
+              key={added ? "check" : "plus"}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.18 }}
+              className="inline-flex items-center gap-2"
+            >
+              {added ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Added
+                </>
+              ) : (
+                <>
+                  {!isOutOfStock && <Plus className="h-4 w-4" />}
+                  {buttonLabel}
+                </>
+              )}
+            </motion.span>
+          </button>
+        </div>
+      </div>
 
       {showQuickView && (
         <QuickViewModal

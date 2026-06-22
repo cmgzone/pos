@@ -1,5 +1,12 @@
 import type { Catalog, Order, OrderPayload } from "./types";
 
+interface ApiJsonResponse {
+  ok?: boolean;
+  data?: unknown;
+  message?: string;
+  error?: string;
+}
+
 function getApiBase(): string {
   if (typeof window === "undefined") return "";
   if (process.env.NEXT_PUBLIC_API_BASE_URL) return process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -10,12 +17,12 @@ function buildUrl(path: string): string {
   return `${getApiBase()}${path}`;
 }
 
-async function readApiJson(res: Response): Promise<any> {
+async function readApiJson(res: Response): Promise<ApiJsonResponse> {
   const text = await res.text();
   if (!text.trim()) return {};
   try {
-    return JSON.parse(text);
-  } catch (_) {
+    return JSON.parse(text) as ApiJsonResponse;
+  } catch {
     throw new Error("Server returned an invalid response. Please try again.");
   }
 }
@@ -34,7 +41,7 @@ export async function fetchCatalog(
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Failed to load catalog");
   }
-  return json.data;
+  return json.data as Catalog;
 }
 
 export async function placeOrder(
@@ -53,7 +60,7 @@ export async function placeOrder(
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Failed to place order");
   }
-  return json.data;
+  return json.data as { orderNumber: string };
 }
 
 export async function trackOrder(
@@ -81,5 +88,5 @@ export async function trackOrder(
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Order not found");
   }
-  return json.data;
+  return json.data as Order;
 }

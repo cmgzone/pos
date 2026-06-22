@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Store } from "lucide-react";
+import { Search, Store, ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Branch } from "@/lib/types";
 import { FadeIn } from "./motion";
@@ -32,69 +32,76 @@ export function CatalogToolbar({
 }: CatalogToolbarProps) {
   return (
     <FadeIn>
-      <div id="catalog" className="sticky top-14 z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:-mx-12 xl:px-12">
-        <div className="rounded-b-2xl bg-[#111114]/90 px-4 py-3.5 backdrop-blur-lg ring-1 ring-white/[0.06] sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 items-center gap-2">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  placeholder="Search..."
-                  className="h-9 w-full rounded-full bg-surface-elevated pl-9 pr-3 text-xs text-foreground placeholder:text-muted ring-1 ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-accent/40"
-                />
-              </div>
-
-              {branches.length > 1 && (
-                <div className="relative">
-                  <Store className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                  <select
-                    value={selectedBranch?.id || ""}
-                    onChange={(e) => onBranchChange(e.target.value)}
-                    className="h-9 appearance-none rounded-full bg-surface-elevated pl-8 pr-7 text-xs ring-1 ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-accent/40"
-                  >
-                    {branches.map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+      <div
+        id="catalog"
+        className="sticky top-16 z-30 -mx-4 border-b border-border-subtle bg-background/95 px-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10"
+      >
+        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-1 items-center gap-2.5">
+            <div className="relative flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search the store"
+                className="h-10 w-full rounded-md border border-border-subtle bg-surface pl-9 pr-3 text-[13px] text-foreground placeholder:text-muted focus:border-border-strong focus:outline-none"
+              />
             </div>
 
+            {branches.length > 1 && (
+              <div className="relative">
+                <Store className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <select
+                  value={selectedBranch?.id || ""}
+                  onChange={(e) => onBranchChange(e.target.value)}
+                  className="h-10 appearance-none rounded-md border border-border-subtle bg-surface pl-9 pr-9 text-[13px] text-foreground focus:border-border-strong focus:outline-none"
+                  aria-label="Choose branch"
+                >
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
             <select
               value={sortBy}
               onChange={(e) => onSortChange(e.target.value)}
-              className="h-8 w-fit rounded-full bg-surface-elevated px-3 text-[11px] font-medium ring-1 ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-accent/40"
+              className="h-10 appearance-none rounded-md border border-border-subtle bg-surface pl-3 pr-9 text-[13px] font-medium text-foreground focus:border-border-strong focus:outline-none"
+              aria-label="Sort by"
             >
               <option value="featured">Featured</option>
               <option value="priceAsc">Price: Low to High</option>
               <option value="priceDesc">Price: High to Low</option>
-              <option value="name">Name</option>
+              <option value="name">Name: A–Z</option>
             </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           </div>
-
-          {categories.length > 0 && (
-            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
-              <CategoryPill
-                label="All"
-                active={activeCategory === "all"}
-                onClick={() => onCategoryChange("all")}
-              />
-              {categories.map((cat) => (
-                <CategoryPill
-                  key={cat}
-                  label={cat}
-                  active={activeCategory === cat}
-                  onClick={() => onCategoryChange(cat)}
-                />
-              ))}
-            </div>
-          )}
         </div>
+
+        {categories.length > 0 && (
+          <div className="flex gap-1 overflow-x-auto border-t border-border-subtle py-2.5">
+            <CategoryPill
+              label="All"
+              active={activeCategory === "all"}
+              onClick={() => onCategoryChange("all")}
+            />
+            {categories.map((cat) => (
+              <CategoryPill
+                key={cat}
+                label={cat}
+                active={activeCategory === cat}
+                onClick={() => onCategoryChange(cat)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </FadeIn>
   );
@@ -112,16 +119,22 @@ function CategoryPill({
   return (
     <button
       onClick={onClick}
-      className="relative shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition"
+      className="relative shrink-0 rounded-md px-3 py-1.5 text-[13px] font-medium transition"
     >
       {active && (
         <motion.div
           layoutId="activeCategory"
-          className="absolute inset-0 rounded-full bg-accent/12 ring-1 ring-accent/25"
-          transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+          className="absolute inset-0 rounded-md bg-surface-elevated ring-1 ring-border-strong"
+          transition={{ type: "spring", bounce: 0.18, duration: 0.35 }}
         />
       )}
-      <span className={active ? "text-accent" : "text-muted hover:text-foreground"}>
+      <span
+        className={
+          active
+            ? "relative text-foreground"
+            : "relative text-muted transition hover:text-foreground"
+        }
+      >
         {label}
       </span>
     </button>

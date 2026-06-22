@@ -1,7 +1,8 @@
 "use client";
 
-import { Sparkles, Search } from "lucide-react";
+import { Search, MessageCircle } from "lucide-react";
 import type { Business } from "@/lib/types";
+import { getInitials } from "@/lib/utils";
 
 interface FooterProps {
   business?: Business;
@@ -10,38 +11,106 @@ interface FooterProps {
 
 export function Footer({ business, onTrackOrder }: FooterProps) {
   const year = new Date().getFullYear();
+  const brand = business?.brand;
+  const logoUrl = brand?.logoUrl;
+  const whatsapp = business?.whatsappNumber;
+
+  const scrollToCatalog = () => {
+    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+  };
 
   return (
-    <footer className="mt-auto border-t border-white/[0.06] px-4 py-8 sm:px-6 lg:px-8 xl:px-12">
-      <div className="flex flex-col items-center justify-between gap-5 sm:flex-row">
-        <div className="flex items-center gap-2.5">
-          {business?.brand?.logoUrl ? (
-            <img
-              src={business.brand.logoUrl}
-              alt={business.name}
-              className="h-7 w-7 rounded-full object-cover ring-1 ring-white/10"
-            />
-          ) : (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface ring-1 ring-white/10">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
+    <footer className="mt-auto border-t border-border-subtle">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-10">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="lg:col-span-2">
+            <div className="flex items-center gap-3">
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={business?.name || "Store"}
+                  className="h-9 w-9 rounded-md object-cover ring-1 ring-border-strong"
+                />
+              ) : (
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-elevated text-[13px] font-semibold ring-1 ring-border-subtle">
+                  {getInitials(business?.name)}
+                </div>
+              )}
+              <span className="text-[15px] font-semibold tracking-tight">
+                {business?.name || "Storefront"}
+              </span>
             </div>
-          )}
-          <span className="text-sm font-medium">
-            {business?.name || "Storefront"}
-          </span>
+            {brand?.description && (
+              <p className="mt-4 max-w-sm text-[13px] leading-relaxed text-muted">
+                {brand.description}
+              </p>
+            )}
+            {business?.selectedBranch?.name && (
+              <p className="mt-3 text-[12px] text-muted">
+                {business.selectedBranch.name}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+              Shop
+            </h3>
+            <ul className="mt-4 space-y-2.5 text-[13px]">
+              <li>
+                <button
+                  onClick={scrollToCatalog}
+                  className="text-muted-strong transition hover:text-foreground"
+                >
+                  All products
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={onTrackOrder}
+                  className="inline-flex items-center gap-1.5 text-muted-strong transition hover:text-foreground"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  Track order
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+              Contact
+            </h3>
+            <ul className="mt-4 space-y-2.5 text-[13px]">
+              {whatsapp && (
+                <li>
+                  <a
+                    href={`https://wa.me/${whatsapp.replace(/[^\d]/g, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-muted-strong transition hover:text-foreground"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    WhatsApp
+                  </a>
+                </li>
+              )}
+              <li className="text-muted">
+                Online orders, pickup & delivery.
+              </li>
+            </ul>
+          </div>
         </div>
 
-        <button
-          onClick={onTrackOrder}
-          className="flex items-center gap-1.5 text-xs text-muted transition hover:text-foreground"
-        >
-          <Search className="h-3.5 w-3.5" />
-          Track your order
-        </button>
-      </div>
-
-      <div className="mt-6 text-center text-[11px] text-muted/60">
-        &copy; {year} {business?.name || "Storefront"}. Powered by Piki POS.
+        <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-border-subtle pt-6 text-[12px] text-muted sm:flex-row">
+          <p>
+            &copy; {year} {business?.name || "Storefront"}.
+          </p>
+          <p>
+            Powered by{" "}
+            <span className="font-medium text-muted-strong">Piki POS</span>
+          </p>
+        </div>
       </div>
     </footer>
   );

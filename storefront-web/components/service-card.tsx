@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Check, Clock, Scissors } from "lucide-react";
+import { Plus, Check, Clock, Calendar } from "lucide-react";
 import type { CatalogItem } from "@/lib/types";
 import { formatPrice } from "@/lib/utils";
 import { useStore } from "./store-provider";
-import { StaggerItem, HoverLift } from "./motion";
+import { StaggerItem } from "./motion";
 
 interface ServiceCardProps {
   item: CatalogItem;
@@ -29,68 +29,71 @@ export function ServiceCard({ item, currencySymbol, currencyCode }: ServiceCardP
 
   return (
     <StaggerItem>
-      <HoverLift>
-        <motion.div
-          className="group relative flex flex-col overflow-hidden rounded-2xl bg-[#141418] ring-1 ring-white/[0.05]"
-          whileHover={{ boxShadow: "0 0 0 1px rgba(244,196,48,0.15)" }}
-        >
-          <div className="relative flex aspect-[4/3] flex-col items-center justify-center gap-3 overflow-hidden bg-gradient-to-br from-accent/[0.08] to-accent/[0.02]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/[0.12] ring-1 ring-accent/20">
-              <Scissors className="h-5 w-5 text-accent/50" />
-            </div>
-            <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent">
-              Service
+      <div className="group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
+        <div className="relative flex aspect-[4/5] flex-col items-center justify-center gap-4 border-b border-border-subtle bg-surface-elevated">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full ring-1 ring-border-strong">
+            <Calendar className="h-6 w-6 text-muted-strong" />
+          </div>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            Service
+          </span>
+        </div>
+
+        <div className="flex flex-1 flex-col p-4">
+          {item.category && (
+            <span className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+              {item.category}
             </span>
-          </div>
+          )}
+          <h3 className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground">
+            {item.name}
+          </h3>
+          {item.description && (
+            <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-muted">
+              {item.description}
+            </p>
+          )}
 
-          <div className="flex flex-1 flex-col p-3.5">
-            {item.category && (
-              <span className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted">
-                {item.category}
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="flex flex-col">
+              <span className="text-[17px] font-semibold tracking-tight text-foreground">
+                {formatPrice(item.price, currencySymbol, currencyCode)}
               </span>
-            )}
-            <h3 className="line-clamp-2 text-sm font-semibold leading-snug">
-              {item.name}
-            </h3>
-            {item.description && (
-              <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-muted">
-                {item.description}
-              </p>
-            )}
-
-            <div className="mt-auto flex items-center justify-between pt-3">
-              <div className="flex flex-col">
-                <span className="text-base font-bold text-accent">
-                  {formatPrice(item.price, currencySymbol, currencyCode)}
+              {duration && (
+                <span className="flex items-center gap-1 text-[11px] text-muted">
+                  <Clock className="h-3 w-3" />
+                  {duration} min
                 </span>
-                {duration && (
-                  <span className="flex items-center gap-1 text-[10px] text-muted">
-                    <Clock className="h-3 w-3" />
-                    {duration} min
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={handleAdd}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.08] ring-1 ring-white/[0.06] transition hover:bg-accent hover:text-background hover:ring-0"
-              >
-                <motion.div
-                  key={added ? "check" : "plus"}
-                  initial={{ scale: 0.4, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {added ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
-                  )}
-                </motion.div>
-              </button>
+              )}
             </div>
           </div>
-        </motion.div>
-      </HoverLift>
+
+          <button
+            onClick={handleAdd}
+            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-foreground hover:bg-foreground hover:text-background"
+          >
+            <motion.span
+              key={added ? "check" : "plus"}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.18 }}
+              className="inline-flex items-center gap-2"
+            >
+              {added ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Added
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Book now
+                </>
+              )}
+            </motion.span>
+          </button>
+        </div>
+      </div>
     </StaggerItem>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, X, Plus, Package } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Plus, Check, Package } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
 import { classNames, formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { ScaleIn } from "./motion";
@@ -34,6 +34,7 @@ export function QuickViewModal({
   );
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [imageError, setImageError] = useState(false);
+  const [added, setAdded] = useState(false);
   const requiresVariant = Boolean(item.hasVariants && variants.length > 0);
   const selectedAvailableVariant =
     selectedVariant && selectedVariant.available !== false ? selectedVariant : undefined;
@@ -60,7 +61,6 @@ export function QuickViewModal({
       if (selectedVariant) onVariantChange(undefined);
       return;
     }
-
     const stillAvailable = availableVariants.some(
       (variant) => variant.id === selectedVariant?.id
     );
@@ -80,6 +80,14 @@ export function QuickViewModal({
     setImageError(false);
   };
 
+  const handleAddClick = () => {
+    if (!canAdd) return;
+    onAdd();
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1200);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <motion.div
@@ -87,17 +95,18 @@ export function QuickViewModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60"
       />
-      <ScaleIn className="relative w-full max-w-2xl overflow-hidden rounded-3xl bg-surface ring-1 ring-white/10">
+      <ScaleIn className="relative w-full max-w-3xl overflow-hidden rounded-xl border border-border-subtle bg-surface">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-elevated ring-1 ring-white/10 transition hover:bg-white/10"
+          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-md bg-background/80 text-foreground ring-1 ring-border-subtle backdrop-blur transition hover:bg-background"
+          aria-label="Close quick view"
         >
           <X className="h-4 w-4" />
         </button>
 
-        <div className="grid max-h-[80vh] overflow-y-auto sm:grid-cols-2">
+        <div className="grid max-h-[88vh] overflow-y-auto sm:grid-cols-2">
           <div className="relative aspect-square bg-surface-elevated sm:aspect-auto">
             {image && !imageError ? (
               <img
@@ -108,43 +117,43 @@ export function QuickViewModal({
               />
             ) : (
               <div className="flex h-full min-h-[240px] items-center justify-center">
-                <Package className="h-16 w-16 text-white/10" />
+                <Package className="h-14 w-14 text-muted/40" />
               </div>
             )}
             {hasMultipleImages && (
               <>
-                <span className="absolute left-3 top-3 rounded-full bg-background/70 px-2 py-1 text-[11px] font-medium text-muted backdrop-blur">
-                  {selectedImageIndex + 1}/{images.length}
+                <span className="absolute left-3 top-3 rounded bg-background/80 px-2 py-1 text-[11px] font-medium text-muted-strong backdrop-blur">
+                  {selectedImageIndex + 1} / {images.length}
                 </span>
                 <button
                   type="button"
                   onClick={() => stepImage(-1)}
-                  className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/70 text-foreground backdrop-blur transition hover:bg-background/90"
-                  aria-label="Previous product photo"
+                  className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/80 text-foreground ring-1 ring-border-subtle backdrop-blur transition hover:bg-background"
+                  aria-label="Previous photo"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => stepImage(1)}
-                  className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/70 text-foreground backdrop-blur transition hover:bg-background/90"
-                  aria-label="Next product photo"
+                  className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/80 text-foreground ring-1 ring-border-subtle backdrop-blur transition hover:bg-background"
+                  aria-label="Next photo"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
-                <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto rounded-2xl bg-background/70 p-2 backdrop-blur">
+                <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto rounded-md bg-background/80 p-1.5 backdrop-blur">
                   {images.map((url, index) => (
                     <button
                       key={`${url}-${index}`}
                       type="button"
                       onClick={() => chooseImage(index)}
                       className={classNames(
-                        "h-12 w-12 shrink-0 overflow-hidden rounded-xl ring-1 transition",
+                        "h-12 w-12 shrink-0 overflow-hidden rounded ring-1 transition",
                         selectedImageIndex === index
-                          ? "ring-accent"
-                          : "ring-white/10 opacity-70 hover:opacity-100"
+                          ? "ring-foreground"
+                          : "ring-border-subtle opacity-70 hover:opacity-100"
                       )}
-                      aria-label={`Show product photo ${index + 1}`}
+                      aria-label={`Show photo ${index + 1}`}
                     >
                       <img
                         src={url}
@@ -159,30 +168,31 @@ export function QuickViewModal({
             )}
           </div>
 
-          <div className="flex flex-col p-6 sm:p-8">
+          <div className="flex flex-col p-6 sm:p-7">
             {item.category && (
-              <span className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
+              <span className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
                 {item.category}
               </span>
             )}
-            <h2 className="text-2xl font-bold tracking-tight">{item.name}</h2>
+            <h2 className="font-display text-3xl leading-tight tracking-tight">
+              {item.name}
+            </h2>
             {item.brand && (
-              <p className="mt-1 text-sm text-muted">{item.brand}</p>
+              <p className="mt-1 text-[13px] text-muted">{item.brand}</p>
             )}
-            <p className="mt-4 text-sm leading-relaxed text-muted">
+            <p className="mt-4 text-[14px] leading-relaxed text-muted-strong">
               {item.description || "No description available."}
             </p>
 
             {variants.length > 0 && (
               <div className="mt-6">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted">
+                <span className="text-[12px] font-medium uppercase tracking-[0.12em] text-muted">
                   Choose variant
                 </span>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2.5 flex flex-wrap gap-2">
                   {variants.map((variant) => {
                     const isAvailable = variant.available !== false;
                     const isSelected = selectedVariant?.id === variant.id;
-
                     return (
                       <button
                         key={variant.id}
@@ -191,42 +201,55 @@ export function QuickViewModal({
                         }}
                         disabled={!isAvailable}
                         className={classNames(
-                          "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                          "rounded-md border px-3 py-2 text-[12px] font-medium transition",
                           isSelected
-                            ? "bg-accent text-background"
-                            : "bg-surface-elevated ring-1 ring-white/10 hover:bg-white/5",
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border-subtle bg-surface-elevated text-foreground hover:border-border-strong",
                           !isAvailable && "cursor-not-allowed opacity-40"
                         )}
                       >
-                        {variant.name} - {formatPrice(variant.price, currencySymbol, currencyCode)}
-                        {!isAvailable ? " - Sold out" : ""}
+                        {variant.name} ·{" "}
+                        {formatPrice(variant.price, currencySymbol, currencyCode)}
+                        {!isAvailable ? " · Sold out" : ""}
                       </button>
                     );
                   })}
                 </div>
                 {requiresVariant && availableVariants.length === 0 && (
-                  <p className="mt-2 text-xs text-red-300">
+                  <p className="mt-2 text-[12px] text-foreground">
                     No variants are currently available.
                   </p>
                 )}
               </div>
             )}
 
-            <div className="mt-auto flex items-center justify-between pt-8">
-              <span className="text-2xl font-bold text-accent">
-                {formatPrice(price, currencySymbol, currencyCode)}
-              </span>
+            <div className="mt-auto flex flex-col gap-4 pt-8">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[12px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Price
+                </span>
+                <span className="font-display text-3xl tracking-tight">
+                  {formatPrice(price, currencySymbol, currencyCode)}
+                </span>
+              </div>
               <button
-                onClick={() => {
-                  if (!canAdd) return;
-                  onAdd();
-                  onClose();
-                }}
+                onClick={handleAddClick}
                 disabled={!canAdd}
-                className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground text-[14px] font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Plus className="h-4 w-4" />
-                {requiresVariant && availableVariants.length === 0 ? "Sold out" : "Add to cart"}
+                {added ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Added
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    {requiresVariant && availableVariants.length === 0
+                      ? "Sold out"
+                      : "Add to cart"}
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { AnimatePresence } from "framer-motion";
-import { Sparkles } from "lucide-react";
 import { StoreProvider, useStore } from "./store-provider";
 import { SiteHeader } from "./site-header";
 import { Hero } from "./hero";
@@ -131,6 +130,8 @@ function StorefrontInner() {
     return <ErrorState message={error} />;
   }
 
+  const isSearching = Boolean(search) || category !== "all";
+
   return (
     <>
       <SiteHeader
@@ -138,12 +139,9 @@ function StorefrontInner() {
         onTrackOrder={() => setShowTracker(true)}
       />
 
-      <Hero
-        business={catalog?.business}
-        onBrowse={scrollToCatalog}
-      />
+      <Hero business={catalog?.business} onBrowse={scrollToCatalog} />
 
-      <main className="flex-1 w-full space-y-8 px-4 pb-16 pt-8 sm:px-6 lg:px-8 xl:px-12">
+      <main className="flex-1 w-full px-4 pb-20 pt-10 sm:px-6 lg:px-10">
         <CatalogToolbar
           categories={catalog?.categories || []}
           activeCategory={category}
@@ -157,46 +155,53 @@ function StorefrontInner() {
           onBranchChange={handleBranchChange}
         />
 
-        {isLoading || !catalog ? (
-          <div className="pt-4">
+        <div className="mt-10">
+          {isLoading || !catalog ? (
             <SkeletonGrid />
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="py-20 text-center text-muted">
-            <p className="text-sm">No items match your search.</p>
-            <button
-              onClick={() => {
-                setSearch("");
-                setCategory("all");
-              }}
-              className="mt-3 text-xs text-accent hover:underline"
-            >
-              Clear filters
-            </button>
-          </div>
-        ) : (
-          <section>
-            <FadeIn>
-              <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent/[0.12] ring-1 ring-accent/20">
-                  <Sparkles className="h-4 w-4 text-accent" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold tracking-tight">
-                    {search || category !== "all"
-                      ? "Search results"
-                      : "Featured products"}
-                  </h2>
-                  <p className="text-[12px] text-muted">
+          ) : filteredItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <p className="font-display text-2xl tracking-tight">
+                No items match your search
+              </p>
+              <p className="mt-2 text-[13px] text-muted">
+                Try a different keyword or clear your filters.
+              </p>
+              <button
+                onClick={() => {
+                  setSearch("");
+                  setCategory("all");
+                }}
+                className="mt-5 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-foreground hover:bg-foreground hover:text-background"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <section>
+              <FadeIn>
+                <div className="mb-6 flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+                      {isSearching ? "Results" : "Collection"}
+                    </p>
+                    <h2 className="mt-1.5 font-display text-3xl tracking-tight sm:text-4xl">
+                      {isSearching ? "Search results" : "Browse the store"}
+                    </h2>
+                  </div>
+                  <p className="hidden text-[13px] text-muted sm:block">
                     {filteredItems.length}{" "}
                     {filteredItems.length === 1 ? "item" : "items"}
                   </p>
                 </div>
-              </div>
-            </FadeIn>
-            <ProductGrid items={filteredItems} currencySymbol={catalog.currencySymbol} currencyCode={catalog.currencyCode} />
-          </section>
-        )}
+              </FadeIn>
+              <ProductGrid
+                items={filteredItems}
+                currencySymbol={catalog.currencySymbol}
+                currencyCode={catalog.currencyCode}
+              />
+            </section>
+          )}
+        </div>
       </main>
 
       <Footer
@@ -238,13 +243,8 @@ function applyBrandStyles(brand?: BusinessBrand) {
   const root = document.documentElement;
   if (brand?.primaryColor) {
     root.style.setProperty("--accent", brand.primaryColor);
-    root.style.setProperty(
-      "--accent-glow",
-      `${brand.primaryColor}26`
-    );
   } else {
     root.style.removeProperty("--accent");
-    root.style.removeProperty("--accent-glow");
   }
 }
 
