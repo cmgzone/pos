@@ -78,8 +78,8 @@ export function Hero({ business, onBrowse }: HeroProps) {
                 aria-label={`Go to slide ${i + 1}`}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
                   i === slideIndex % coverUrls.length
-                    ? "w-6 bg-foreground"
-                    : "w-1.5 bg-foreground/40 hover:bg-foreground/60"
+                    ? "w-6 bg-accent"
+                    : "w-1.5 bg-accent/40 hover:bg-accent/60"
                 }`}
               />
             ))}
@@ -108,7 +108,7 @@ export function Hero({ business, onBrowse }: HeroProps) {
           <FadeIn delay={0.22}>
             <button
               onClick={onBrowse}
-              className="group mt-8 inline-flex items-center gap-2 rounded-md bg-foreground px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
+              className="group mt-8 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
             >
               Browse collection
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
@@ -143,7 +143,7 @@ export function Hero({ business, onBrowse }: HeroProps) {
         <FadeIn delay={0.22}>
           <button
             onClick={onBrowse}
-            className="group mt-8 inline-flex items-center gap-2 rounded-md bg-foreground px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
+            className="group mt-8 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
           >
             Browse collection
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />

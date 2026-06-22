@@ -71,7 +71,7 @@ export function CheckoutModal({
   };
 
   const inputClass =
-    "h-11 w-full rounded-md border border-border-subtle bg-surface px-3.5 text-[14px] text-foreground placeholder:text-muted focus:border-border-strong focus:outline-none";
+    "h-11 w-full rounded-md border border-border-subtle bg-surface px-3.5 text-[14px] text-foreground placeholder:text-muted focus:border-accent focus:outline-none";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -107,19 +107,19 @@ export function CheckoutModal({
                 exit={{ opacity: 0 }}
                 className="flex flex-col items-center py-8 text-center"
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-background">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-background">
                   <Check className="h-7 w-7" />
                 </div>
                 <h3 className="mt-5 text-xl font-semibold">Order placed</h3>
                 <p className="mt-2 text-[13px] text-muted">
                   Save your order number to track this order later.
                 </p>
-                <p className="mt-4 font-display text-4xl tracking-tight">
+                <p className="mt-4 font-display text-4xl tracking-tight text-accent">
                   #{result.orderNumber}
                 </p>
                 <button
                   onClick={onClose}
-                  className="mt-8 rounded-md bg-foreground px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
+                  className="mt-8 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
                 >
                   Continue shopping
                 </button>
@@ -170,7 +170,7 @@ export function CheckoutModal({
                         onClick={() => setFulfillmentMethod("pickup")}
                         className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-[13px] font-medium transition ${
                           fulfillmentMethod === "pickup"
-                            ? "border-foreground bg-foreground text-background"
+                            ? "border-accent bg-accent text-background"
                             : "border-border-subtle bg-surface-elevated text-foreground hover:border-border-strong"
                         }`}
                       >
@@ -182,7 +182,7 @@ export function CheckoutModal({
                         onClick={() => setFulfillmentMethod("delivery")}
                         className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-[13px] font-medium transition ${
                           fulfillmentMethod === "delivery"
-                            ? "border-foreground bg-foreground text-background"
+                            ? "border-accent bg-accent text-background"
                             : "border-border-subtle bg-surface-elevated text-foreground hover:border-border-strong"
                         }`}
                       >
@@ -220,7 +220,7 @@ export function CheckoutModal({
                       onChange={(e) => setNote(e.target.value)}
                       rows={3}
                       placeholder="Any special instructions..."
-                      className="w-full rounded-md border border-border-subtle bg-surface px-3.5 py-3 text-[14px] text-foreground placeholder:text-muted focus:border-border-strong focus:outline-none"
+                      className="w-full rounded-md border border-border-subtle bg-surface px-3.5 py-3 text-[14px] text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
                     />
                   </div>
                 </div>
@@ -251,7 +251,7 @@ export function CheckoutModal({
                   </ul>
                   <div className="mt-3 flex items-center justify-between border-t border-border-subtle pt-3">
                     <span className="text-[13px] text-muted">Total</span>
-                    <span className="text-lg font-semibold tabular-nums">
+                    <span className="text-lg font-semibold tabular-nums text-accent">
                       {formatPrice(cartTotal, currencySymbol, currencyCode)}
                     </span>
                   </div>
@@ -266,7 +266,7 @@ export function CheckoutModal({
                 <button
                   type="submit"
                   disabled={isSubmitting || cart.length === 0}
-                  className="flex w-full items-center justify-center gap-2 rounded-md bg-foreground py-3 text-[14px] font-semibold text-background transition hover:opacity-90 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-accent py-3 text-[14px] font-semibold text-background transition hover:opacity-90 disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>

@@ -70,7 +70,7 @@ export function CartDrawer({ onCheckout, currencySymbol, currencyCode }: CartDra
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="mt-2 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-foreground hover:bg-foreground hover:text-background"
+                  className="mt-2 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-accent hover:bg-accent hover:text-background"
                 >
                   Continue shopping
                 </button>
@@ -138,7 +138,7 @@ export function CartDrawer({ onCheckout, currencySymbol, currencyCode }: CartDra
                                   <Plus className="h-3 w-3" />
                                 </button>
                               </div>
-                              <span className="text-[14px] font-semibold tabular-nums">
+                              <span className="text-[14px] font-semibold tabular-nums text-accent">
                                 {formatPrice(price * quantity, currencySymbol, currencyCode)}
                               </span>
                             </div>
@@ -152,7 +152,7 @@ export function CartDrawer({ onCheckout, currencySymbol, currencyCode }: CartDra
                 <div className="border-t border-border-subtle px-5 py-4">
                   <div className="mb-3 flex items-center justify-between text-[14px]">
                     <span className="text-muted">Subtotal</span>
-                    <span className="font-semibold tabular-nums">
+                    <span className="font-semibold tabular-nums text-accent">
                       {formatPrice(cartTotal, currencySymbol, currencyCode)}
                     </span>
                   </div>
@@ -164,7 +164,7 @@ export function CartDrawer({ onCheckout, currencySymbol, currencyCode }: CartDra
                       setIsCartOpen(false);
                       onCheckout();
                     }}
-                    className="w-full rounded-md bg-foreground py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
+                    className="w-full rounded-md bg-accent py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
                   >
                     Checkout
                   </button>

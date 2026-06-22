@@ -88,7 +88,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
           )}
 
           {item.isFeatured && !isOutOfStock && (
-            <span className="absolute left-3 top-3 rounded bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-background">
+            <span className="absolute left-3 top-3 rounded bg-accent px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-background">
               Featured
             </span>
           )}
@@ -129,7 +129,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="flex flex-col">
-              <span className="text-[17px] font-semibold tracking-tight text-foreground">
+              <span className="text-[17px] font-semibold tracking-tight text-accent">
                 {pricePrefix}
                 {formatPrice(price, currencySymbol, currencyCode)}
               </span>
@@ -142,7 +142,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
           <button
             onClick={handleAdd}
             disabled={isOutOfStock}
-            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-foreground hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border-subtle disabled:hover:bg-surface-elevated disabled:hover:text-foreground"
+            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-accent hover:bg-accent hover:text-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border-subtle disabled:hover:bg-surface-elevated disabled:hover:text-foreground"
           >
             <motion.span
               key={added ? "check" : "plus"}

@@ -62,7 +62,7 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
           </button>
           <button
             onClick={() => setIsCartOpen(true)}
-            className="relative inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3.5 text-[13px] font-semibold text-background transition hover:opacity-90"
+            className="relative inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-[13px] font-semibold text-background transition hover:opacity-90"
           >
             <ShoppingBag className="h-4 w-4" />
             <span className="hidden sm:inline">Cart</span>

@@ -150,7 +150,7 @@ export function QuickViewModal({
                       className={classNames(
                         "h-12 w-12 shrink-0 overflow-hidden rounded ring-1 transition",
                         selectedImageIndex === index
-                          ? "ring-foreground"
+                          ? "ring-accent"
                           : "ring-border-subtle opacity-70 hover:opacity-100"
                       )}
                       aria-label={`Show photo ${index + 1}`}
@@ -203,7 +203,7 @@ export function QuickViewModal({
                         className={classNames(
                           "rounded-md border px-3 py-2 text-[12px] font-medium transition",
                           isSelected
-                            ? "border-foreground bg-foreground text-background"
+                            ? "border-accent bg-accent text-background"
                             : "border-border-subtle bg-surface-elevated text-foreground hover:border-border-strong",
                           !isAvailable && "cursor-not-allowed opacity-40"
                         )}
@@ -228,14 +228,14 @@ export function QuickViewModal({
                 <span className="text-[12px] font-medium uppercase tracking-[0.12em] text-muted">
                   Price
                 </span>
-                <span className="font-display text-3xl tracking-tight">
+                <span className="font-display text-3xl tracking-tight text-accent">
                   {formatPrice(price, currencySymbol, currencyCode)}
                 </span>
               </div>
               <button
                 onClick={handleAddClick}
                 disabled={!canAdd}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground text-[14px] font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-accent text-[14px] font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {added ? (
                   <>

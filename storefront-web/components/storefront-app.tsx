@@ -171,7 +171,7 @@ function StorefrontInner() {
                   setSearch("");
                   setCategory("all");
                 }}
-                className="mt-5 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-foreground hover:bg-foreground hover:text-background"
+                className="mt-5 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-accent hover:bg-accent hover:text-background"
               >
                 Clear filters
               </button>

@@ -46,7 +46,7 @@ export function OrderTracker({ business, currency, currencyCode, onClose }: Orde
   };
 
   const inputClass =
-    "h-11 w-full rounded-md border border-border-subtle bg-surface px-3.5 text-[14px] text-foreground placeholder:text-muted focus:border-border-strong focus:outline-none";
+    "h-11 w-full rounded-md border border-border-subtle bg-surface px-3.5 text-[14px] text-foreground placeholder:text-muted focus:border-accent focus:outline-none";
 
   const status = order ? statusMeta[order.status] || statusMeta.pending : null;
 
@@ -104,7 +104,7 @@ export function OrderTracker({ business, currency, currencyCode, onClose }: Orde
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-foreground py-3 text-[14px] font-semibold text-background transition hover:opacity-90 disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-accent py-3 text-[14px] font-semibold text-background transition hover:opacity-90 disabled:opacity-50"
             >
               {loading ? (
                 <>
@@ -170,7 +170,7 @@ export function OrderTracker({ business, currency, currencyCode, onClose }: Orde
 
                 <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-4">
                   <span className="text-[13px] text-muted">Total</span>
-                  <span className="text-lg font-semibold tabular-nums">
+                  <span className="text-lg font-semibold tabular-nums text-accent">
                     {formatPrice(order.subtotal, currency, currencyCode)}
                   </span>
                 </div>

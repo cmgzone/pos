@@ -17,7 +17,7 @@ export function FloatingCart({ onOpen }: FloatingCartProps) {
       animate={{ opacity: 1, y: 0 }}
       whileTap={{ scale: 0.96 }}
       onClick={onOpen}
-      className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-foreground text-background shadow-lg shadow-black/30 ring-1 ring-border-strong sm:hidden"
+      className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent text-background shadow-lg shadow-black/30 ring-1 ring-border-strong sm:hidden"
       aria-label="Open cart"
     >
       <ShoppingBag className="h-5 w-5" />

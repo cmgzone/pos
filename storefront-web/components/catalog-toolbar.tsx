@@ -45,7 +45,7 @@ export function CatalogToolbar({
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder="Search the store"
-                className="h-10 w-full rounded-md border border-border-subtle bg-surface pl-9 pr-3 text-[13px] text-foreground placeholder:text-muted focus:border-border-strong focus:outline-none"
+                className="h-10 w-full rounded-md border border-border-subtle bg-surface pl-9 pr-3 text-[13px] text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
               />
             </div>
 
@@ -55,7 +55,7 @@ export function CatalogToolbar({
                 <select
                   value={selectedBranch?.id || ""}
                   onChange={(e) => onBranchChange(e.target.value)}
-                  className="h-10 appearance-none rounded-md border border-border-subtle bg-surface pl-9 pr-9 text-[13px] text-foreground focus:border-border-strong focus:outline-none"
+                  className="h-10 appearance-none rounded-md border border-border-subtle bg-surface pl-9 pr-9 text-[13px] text-foreground focus:border-accent focus:outline-none"
                   aria-label="Choose branch"
                 >
                   {branches.map((branch) => (
@@ -73,7 +73,7 @@ export function CatalogToolbar({
             <select
               value={sortBy}
               onChange={(e) => onSortChange(e.target.value)}
-              className="h-10 appearance-none rounded-md border border-border-subtle bg-surface pl-3 pr-9 text-[13px] font-medium text-foreground focus:border-border-strong focus:outline-none"
+              className="h-10 appearance-none rounded-md border border-border-subtle bg-surface pl-3 pr-9 text-[13px] font-medium text-foreground focus:border-accent focus:outline-none"
               aria-label="Sort by"
             >
               <option value="featured">Featured</option>

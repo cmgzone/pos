@@ -56,7 +56,7 @@ export function ServiceCard({ item, currencySymbol, currencyCode }: ServiceCardP
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="flex flex-col">
-              <span className="text-[17px] font-semibold tracking-tight text-foreground">
+              <span className="text-[17px] font-semibold tracking-tight text-accent">
                 {formatPrice(item.price, currencySymbol, currencyCode)}
               </span>
               {duration && (
@@ -70,7 +70,7 @@ export function ServiceCard({ item, currencySymbol, currencyCode }: ServiceCardP
 
           <button
             onClick={handleAdd}
-            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-foreground hover:bg-foreground hover:text-background"
+            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-accent hover:bg-accent hover:text-background"
           >
             <motion.span
               key={added ? "check" : "plus"}

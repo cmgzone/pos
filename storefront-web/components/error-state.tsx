@@ -16,7 +16,7 @@ export function ErrorState({ message }: ErrorStateProps) {
       <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted">{message}</p>
       <button
         onClick={() => window.location.reload()}
-        className="mt-6 rounded-md bg-foreground px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
+        className="mt-6 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
       >
         Try again
       </button>
