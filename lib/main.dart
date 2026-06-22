@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core/navigation/app_navigator.dart';
 import 'core/providers/theme_provider.dart';
@@ -21,8 +24,25 @@ import 'features/training/widgets/training_overlay_host.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _ensureWritableWorkingDirectory();
   ErrorWidget.builder = (_) => const _AppErrorFallback();
   runApp(const ProviderScope(child: PosApp()));
+}
+
+Future<void> _ensureWritableWorkingDirectory() async {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      if (!await supportDir.exists()) {
+        await supportDir.create(recursive: true);
+      }
+      Directory.current = supportDir;
+    } catch (_) {
+      // If we can't switch to the support directory, leave the working
+      // directory as-is. Plugin data that uses absolute paths (via
+      // path_provider) will still resolve correctly.
+    }
+  }
 }
 
 class PosApp extends ConsumerWidget {
