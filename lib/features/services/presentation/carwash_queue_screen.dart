@@ -102,7 +102,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
               width: 32, height: 32,
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(Icons.car_repair, color: Theme.of(context).colorScheme.secondary, size: 18),
             ),
@@ -138,7 +138,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                         setState(() => _baysCount++);
                       },
               ),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
             ],
           ),
           IconButton(
@@ -146,7 +146,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
             onPressed: _load,
             tooltip: 'Refresh',
           ),
-          SizedBox(width: 8),
+          SizedBox(width: AppSpacing.sm),
         ],
       ),
       body: _loading
@@ -156,15 +156,15 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                 // ── Legend bar
                 Container(
                   color: Theme.of(context).colorScheme.surface,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: 10),
                   child: Row(
                     children: [
                       _LegendDot('Booked', AppColors.primary),
-                      SizedBox(width: 16),
+                      SizedBox(width: AppSpacing.lg),
                       _LegendDot('Checked In', AppColors.warning),
-                      SizedBox(width: 16),
+                      SizedBox(width: AppSpacing.lg),
                       _LegendDot('In Progress', AppColors.primaryLight),
-                      SizedBox(width: 16),
+                      SizedBox(width: AppSpacing.lg),
                       _LegendDot('Ready', Theme.of(context).colorScheme.secondary),
                       Spacer(),
                       Text(
@@ -180,7 +180,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                 // ── Bay grid
                 Expanded(
                   child: GridView.builder(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(AppSpacing.xl),
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
                       maxCrossAxisExtent: 320,
@@ -236,7 +236,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +252,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                   : 'Walk-in',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
-            SizedBox(height: 20),
+            SizedBox(height: AppSpacing.xl),
             Wrap(
               spacing: 10,
               runSpacing: 10,
@@ -271,7 +271,7 @@ class _CarwashQueueScreenState extends ConsumerState<CarwashQueueScreen> {
                     )),
               ],
             ),
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
           ],
         ),
       ),
@@ -312,7 +312,7 @@ class _BayCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: isEmpty
               ? AppColors.success.withValues(alpha: 0.3)
@@ -325,7 +325,7 @@ class _BayCard extends StatelessWidget {
         children: [
           // ── Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             decoration: BoxDecoration(
               color: statusColor.withValues(alpha: isEmpty ? 0.06 : 0.1),
               borderRadius:
@@ -338,7 +338,7 @@ class _BayCard extends StatelessWidget {
                   color: statusColor,
                   size: 18,
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Text(
                   'Bay $bayNumber',
                   style: TextStyle(
@@ -354,7 +354,7 @@ class _BayCard extends StatelessWidget {
                         horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.xl),
                     ),
                     child: Text(
                       status.replaceAll('_', ' '),
@@ -377,7 +377,7 @@ class _BayCard extends StatelessWidget {
                       children: [
                         Icon(Icons.check_circle_outline,
                             color: AppColors.success, size: 36),
-                        SizedBox(height: 8),
+                        SizedBox(height: AppSpacing.sm),
                         Text(
                           'Available',
                           style: TextStyle(
@@ -402,7 +402,7 @@ class _BayCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           (order['customer_name'] as String?)?.isNotEmpty ==
                                   true
@@ -411,7 +411,7 @@ class _BayCard extends StatelessWidget {
                           style: TextStyle(
                               color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                         ),
-                        SizedBox(height: 8),
+                        SizedBox(height: AppSpacing.sm),
                         // Elapsed time
                         _ElapsedTime(
                           checkedInAt: order['checked_in_at'] as String?,
@@ -426,6 +426,7 @@ class _BayCard extends StatelessWidget {
                           (order['price'] as num? ?? 0).toStringAsFixed(2),
                           style: TextStyle(
                             color: AppColors.success,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                             fontWeight: FontWeight.w700,
                             fontSize: 16,
                           ),
@@ -437,20 +438,20 @@ class _BayCard extends StatelessWidget {
           // ── Actions
           if (!isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
               child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                         minimumSize: Size.zero,
                       ),
                       onPressed: () => onAdvance(order!),
                       child: Text('Next', style: TextStyle(fontSize: 12)),
                     ),
                   ),
-                  SizedBox(width: 8),
+                  SizedBox(width: AppSpacing.sm),
                   IconButton(
                     icon: Icon(Icons.swap_horiz, size: 18),
                     tooltip: 'Move bay',
@@ -487,7 +488,7 @@ class _UnassignedCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: orders.isEmpty
               ? context.appBorder
@@ -499,7 +500,7 @@ class _UnassignedCard extends StatelessWidget {
         children: [
           Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             decoration: BoxDecoration(
               color: AppColors.warning.withValues(
                   alpha: orders.isEmpty ? 0.04 : 0.1),
@@ -513,7 +514,7 @@ class _UnassignedCard extends StatelessWidget {
                         ? Theme.of(context).colorScheme.onSurfaceVariant
                         : AppColors.warning,
                     size: 18),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Text(
                   'Queue',
                   style: TextStyle(
@@ -531,7 +532,7 @@ class _UnassignedCard extends StatelessWidget {
                         horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppColors.warning.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.xl),
                     ),
                     child: Text(
                       '${orders.length} waiting',
@@ -561,14 +562,14 @@ class _UnassignedCard extends StatelessWidget {
                       final o = orders[i];
                       final status = o['status'] as String? ?? 'booked';
                       return InkWell(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                         onTap: () => onOrderTap(o),
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: _statusColor(context, status)
                                   .withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
                               border: Border.all(
                                 color: _statusColor(context, status)
                                     .withValues(alpha: 0.2),
@@ -677,7 +678,7 @@ class _ElapsedTimeState extends State<_ElapsedTime> {
           size: 13,
           color: isOvertime ? AppColors.error : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        SizedBox(width: 4),
+        SizedBox(width: AppSpacing.xs),
         Text(
           label,
           style: TextStyle(
@@ -687,7 +688,7 @@ class _ElapsedTimeState extends State<_ElapsedTime> {
           ),
         ),
         if (isOvertime) ...[
-          SizedBox(width: 4),
+          SizedBox(width: AppSpacing.xs),
           Text(
             'OVERTIME',
             style: TextStyle(

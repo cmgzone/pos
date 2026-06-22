@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/theme/app_colors.dart';
 
 class BeautifulIcon extends StatefulWidget {
   final IconData? icon;
@@ -44,7 +45,7 @@ class _BeautifulIconState extends State<BeautifulIcon> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: currentColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: iconWidget,
             )

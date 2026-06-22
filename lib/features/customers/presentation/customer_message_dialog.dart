@@ -150,7 +150,7 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
                   ? null
                   : (values) => setState(() => _channel = values.first),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             TextField(
               controller: _channel == CustomerMessageChannel.email
                   ? _emailController
@@ -197,10 +197,10 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
           ElevatedButton.icon(
             onPressed: _sending ? null : () => _send(api: true),
             icon: _sending
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                ? SizedBox(
+                    width: AppSpacing.lg,
+                    height: AppSpacing.lg,
+                    child: const CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.send_outlined),
             label: const Text('Send API'),

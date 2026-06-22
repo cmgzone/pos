@@ -6,7 +6,7 @@ import 'app_colors.dart';
 class AppTheme {
   static OutlineInputBorder _inputBorder(Color color, {double width = 1}) {
     return OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       borderSide: BorderSide(color: color, width: width),
     );
   }
@@ -107,6 +107,10 @@ class AppTheme {
           : ThemeData.dark(useMaterial3: true).textTheme,
     ).apply(bodyColor: text, displayColor: text);
 
+    // Tabular figures on money-bearing display styles so KPI values stop
+    // jittering when totals change. Kept off body text for readability.
+    const tabularFigures = <FontFeature>[FontFeature.tabularFigures()];
+
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -119,14 +123,27 @@ class AppTheme {
         displayLarge: textTheme.displayLarge?.copyWith(
           fontWeight: FontWeight.w700,
           letterSpacing: -1.2,
+          fontFeatures: tabularFigures,
         ),
         displayMedium: textTheme.displayMedium?.copyWith(
           fontWeight: FontWeight.w700,
           letterSpacing: -0.8,
+          fontFeatures: tabularFigures,
+        ),
+        displaySmall: textTheme.displaySmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.4,
+          fontFeatures: tabularFigures,
         ),
         headlineMedium: textTheme.headlineMedium?.copyWith(
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
+          fontFeatures: tabularFigures,
+        ),
+        headlineSmall: textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
+          fontFeatures: tabularFigures,
         ),
         titleLarge: textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w700,
@@ -138,6 +155,10 @@ class AppTheme {
         bodyMedium: textTheme.bodyMedium?.copyWith(color: muted),
         bodySmall: textTheme.bodySmall?.copyWith(color: muted),
         labelLarge: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+        labelSmall: textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.08,
+        ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: surface,
@@ -169,13 +190,13 @@ class AppTheme {
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.horizontal(right: Radius.circular(22)),
+          borderRadius: BorderRadius.horizontal(right: Radius.circular(AppRadius.xl)),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
-        shape: _rounded(20),
+        shape: _rounded(AppRadius.xl),
         titleTextStyle: GoogleFonts.inter(
           color: text,
           fontSize: 21,
@@ -190,7 +211,7 @@ class AppTheme {
         showDragHandle: true,
         dragHandleColor: border,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
         ),
       ),
       textSelectionTheme: TextSelectionThemeData(
@@ -237,7 +258,7 @@ class AppTheme {
           foregroundColor: scheme.onPrimary,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape: _rounded(12),
+          shape: _rounded(AppRadius.sm),
           textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
         ),
       ),
@@ -248,7 +269,7 @@ class AppTheme {
           disabledBackgroundColor: elevatedSurface,
           disabledForegroundColor: muted,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape: _rounded(12),
+          shape: _rounded(AppRadius.sm),
           textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
         ),
       ),
@@ -257,7 +278,7 @@ class AppTheme {
           foregroundColor: text,
           side: BorderSide(color: border),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-          shape: _rounded(12),
+          shape: _rounded(AppRadius.sm),
           textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
       ),
@@ -265,7 +286,7 @@ class AppTheme {
         style: TextButton.styleFrom(
           foregroundColor: scheme.primary,
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-          shape: _rounded(10),
+          shape: _rounded(AppRadius.xs),
           textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
         ),
       ),
@@ -274,7 +295,7 @@ class AppTheme {
           foregroundColor: muted,
           hoverColor: elevatedSurface,
           highlightColor: scheme.primary.withValues(alpha: 0.09),
-          shape: _rounded(12),
+          shape: _rounded(AppRadius.sm),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
@@ -329,7 +350,7 @@ class AppTheme {
         selectedColor: scheme.primaryContainer,
         disabledColor: elevatedSurface,
         side: BorderSide(color: border),
-        shape: _rounded(999),
+        shape: _rounded(AppRadius.xs),
         labelStyle: GoogleFonts.inter(color: text, fontWeight: FontWeight.w600),
         secondaryLabelStyle: GoogleFonts.inter(
           color: scheme.primary,
@@ -345,13 +366,13 @@ class AppTheme {
           fontWeight: FontWeight.w600,
         ),
         subtitleTextStyle: GoogleFonts.inter(color: muted, fontSize: 13),
-        shape: _rounded(12),
+        shape: _rounded(AppRadius.sm),
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: surface,
         surfaceTintColor: Colors.transparent,
         elevation: 6,
-        shape: _rounded(14),
+        shape: _rounded(AppRadius.md),
         textStyle: GoogleFonts.inter(color: text),
       ),
       switchTheme: SwitchThemeData(
@@ -374,7 +395,7 @@ class AppTheme {
         ),
         checkColor: WidgetStatePropertyAll(scheme.onPrimary),
         side: BorderSide(color: border),
-        shape: _rounded(5),
+        shape: _rounded(AppRadius.xs),
       ),
       radioTheme: RadioThemeData(
         fillColor: _state(
@@ -399,14 +420,14 @@ class AppTheme {
         ),
         behavior: SnackBarBehavior.floating,
         elevation: 0,
-        shape: _rounded(12),
+        shape: _rounded(AppRadius.sm),
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
           color: brightness == Brightness.light
               ? AppColors.textPrimary
               : const Color(0xFFF1F2F5),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.xs),
         ),
         textStyle: GoogleFonts.inter(
           color: brightness == Brightness.light

@@ -45,7 +45,6 @@ import '../../services/data/service_provider.dart';
 import 'barcode_scanner.dart';
 import 'payment_checkout_dialog.dart';
 import 'receipt_service.dart';
-import 'widgets/product_color_drawer.dart';
 import 'widgets/variant_picker_bottom_sheet.dart';
 
 enum PosProductViewMode { cards, compact }
@@ -138,10 +137,10 @@ class PosScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primary, AppColors.primaryLight],
-                ),
-                borderRadius: BorderRadius.circular(10),
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkAccent
+                    : AppColors.primary,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(
                 Icons.point_of_sale_rounded,
@@ -149,7 +148,7 @@ class PosScreen extends ConsumerWidget {
                 size: 20,
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.sm),
             Flexible(
               child: Text(
                 ShopSettings.shopName,
@@ -169,13 +168,13 @@ class PosScreen extends ConsumerWidget {
             _LicenseIndicatorChip(state: syncState, compact: true),
             SizedBox(width: 8),
             _SyncIndicatorChip(state: syncState, compact: true),
-            SizedBox(width: 8),
+            SizedBox(width: AppSpacing.sm),
             _CashierAvatarButton(
               cashierName: cashierName,
               cashierRole: cashierRole,
             ),
           ],
-          SizedBox(width: 16),
+          SizedBox(width: AppSpacing.lg),
         ],
       ),
       body: LayoutBuilder(
@@ -238,17 +237,17 @@ class PosScreen extends ConsumerWidget {
             color: Theme.of(context).brightness == Brightness.dark
                 ? AppColors.darkSurface
                 : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
           ),
           child: Column(
             children: [
               Container(
                 width: 44,
                 height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                margin: const EdgeInsets.only(top: 10, bottom: AppSpacing.xs),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.outline,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
               ),
               Expanded(
@@ -286,7 +285,7 @@ class _PosBottomActionBar extends ConsumerWidget {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 10),
         decoration: BoxDecoration(
           color: isDark
               ? AppColors.darkSurface
@@ -314,7 +313,7 @@ class _PosBottomActionBar extends ConsumerWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  SizedBox(height: AppSpacing.xs),
                   Text(
                     hasItems
                         ? '${ShopSettings.currency}${total.toStringAsFixed(2)}'
@@ -329,12 +328,13 @@ class _PosBottomActionBar extends ConsumerWidget {
                           : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             if (hasItems)
               FilledButton.icon(
                 onPressed: onOpenCart,
@@ -954,16 +954,16 @@ class _LicenseIndicatorChip extends StatelessWidget {
     }
 
     return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: const EdgeInsets.only(right: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       child: Row(
         children: [
           Icon(icon, size: 16, color: color),
-          SizedBox(width: 6),
+          SizedBox(width: AppSpacing.xs),
           Text(label, style: TextStyle(color: color, fontSize: 12)),
         ],
       ),
@@ -994,7 +994,7 @@ class _PosModeTabBar extends ConsumerWidget {
       color: isDark
           ? AppColors.darkSurface
           : Theme.of(context).colorScheme.surface,
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.xs),
       child: Row(
         children: [
           _ModeTab(
@@ -1003,7 +1003,7 @@ class _PosModeTabBar extends ConsumerWidget {
             selected: mode == PosMode.sale,
             onTap: () => _switchMode(context, ref, PosMode.sale),
           ),
-          SizedBox(width: 8),
+          SizedBox(width: AppSpacing.sm),
           _ModeTab(
             label: 'Quotation',
             icon: Icons.request_quote_outlined,
@@ -1089,14 +1089,14 @@ class _ModeTab extends StatelessWidget {
               : Theme.of(context).colorScheme.onSurfaceVariant);
     return Material(
       color: bg,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
             border: Border.all(
               color: selected
                   ? Colors.transparent
@@ -1109,7 +1109,7 @@ class _ModeTab extends StatelessWidget {
             children: [
               if (selected) ...[
                 Icon(icon, size: 15, color: fg),
-                SizedBox(width: 6),
+                SizedBox(width: AppSpacing.xs),
               ],
               Text(
                 label,
@@ -1466,25 +1466,43 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       return;
     }
 
-    final selectedColor = await ProductColorDrawer.show(
+    final categoryName = _categoryNameFor(
+      product,
+      ref.read(categoriesProvider).valueOrNull ??
+          const <Map<String, dynamic>>[],
+    );
+    await ProductVariantDialog.show(
       pickerContext ?? context,
       product: product,
-      variant: variant,
-      colors: colors,
-      selectedColorId: _lastSelectedColorId(product, variant),
-      heroTag: VariantPickerBottomSheet.heroTagFor(product, variant),
+      variants: [variant],
+      colorsByVariantId: {
+        if (variantId != null && variantId.isNotEmpty) variantId: colors,
+      },
+      categoryName: categoryName,
+      rememberedColorIdForVariant: (selectedVariant) =>
+          _lastSelectedColorId(product, selectedVariant),
+      onAddToCart: (selectedVariant, selectedColor, dialogContext) {
+        if (selectedColor == null) {
+          return;
+        }
+        if (_variantColorOutOfStock(product, selectedColor)) {
+          _showVariantColorUnavailableSnackBar(
+            product,
+            selectedVariant,
+            selectedColor,
+          );
+          return;
+        }
+        final added = _addProductToCart(
+          product,
+          variant: selectedVariant,
+          variantColor: selectedColor,
+        );
+        if (added && dialogContext.mounted) {
+          Navigator.pop(dialogContext);
+        }
+      },
     );
-    if (!mounted || selectedColor == null) {
-      return;
-    }
-    if (_variantColorOutOfStock(product, selectedColor)) {
-      _showVariantColorUnavailableSnackBar(product, variant, selectedColor);
-      return;
-    }
-    _addProductToCart(product, variant: variant, variantColor: selectedColor);
-    if (pickerContext != null && pickerContext.mounted) {
-      _closeVariantPicker(pickerContext);
-    }
   }
 
   Future<void> _pickVariantForProduct(Map<String, dynamic> product) async {
@@ -1512,25 +1530,40 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     }
     final colorsByVariantId = _colorsByVariantId(colors);
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.36),
-      builder: (bottomSheetContext) => VariantPickerBottomSheet(
-        product: product,
-        variants: variants,
-        colorsByVariantId: colorsByVariantId,
-        onVariantSelected: (variant, pickerContext) => _handleVariantSelection(
+    final categoryName = _categoryNameFor(
+      product,
+      ref.read(categoriesProvider).valueOrNull ??
+          const <Map<String, dynamic>>[],
+    );
+    await ProductVariantDialog.show(
+      context,
+      product: product,
+      variants: variants,
+      colorsByVariantId: colorsByVariantId,
+      categoryName: categoryName,
+      rememberedColorIdForVariant: (variant) =>
+          _lastSelectedColorId(product, variant),
+      onAddToCart: (variant, variantColor, dialogContext) {
+        final variantId = variant['id']?.toString();
+        final variantColors =
+            colorsByVariantId[variantId] ?? const <Map<String, dynamic>>[];
+        if (variantColors.isNotEmpty && variantColor == null) {
+          return;
+        }
+        if (variantColor != null &&
+            _variantColorOutOfStock(product, variantColor)) {
+          _showVariantColorUnavailableSnackBar(product, variant, variantColor);
+          return;
+        }
+        final added = _addProductToCart(
           product,
-          variant,
-          bottomSheetContext: pickerContext,
-          prefetchedColors:
-              colorsByVariantId[variant['id']?.toString()] ??
-              const <Map<String, dynamic>>[],
-        ),
-      ),
+          variant: variant,
+          variantColor: variantColor,
+        );
+        if (added && dialogContext.mounted) {
+          Navigator.pop(dialogContext);
+        }
+      },
     );
   }
 
@@ -1753,13 +1786,13 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                           ),
                         ),
                         if (canUseServices) ...[
-                          SizedBox(width: compact ? 8 : 12),
+                          SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
                           serviceShortcut(),
                         ],
-                        SizedBox(width: compact ? 8 : 12),
+                        SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
                         const _PosViewModeToggle(),
                         if (isMobileDevice) ...[
-                          SizedBox(width: compact ? 8 : 12),
+                          SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
                           _PremiumIconAction(
                             icon: Icons.qr_code_scanner_rounded,
                             tooltip: 'Scan barcode',
@@ -1771,7 +1804,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       ],
                     ),
                     if (Platform.isWindows) ...[
-                      SizedBox(height: 5),
+                      SizedBox(height: AppSpacing.xs),
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 180),
                         switchInCurve: Curves.easeOutCubic,
@@ -1888,10 +1921,10 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       }
                       if (viewMode == PosProductViewMode.compact) {
                         return ListView.separated(
-                          padding: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                           itemCount: products.length,
                           separatorBuilder: (_, _) =>
-                              SizedBox(height: compact ? 8 : 10),
+                              SizedBox(height: compact ? AppSpacing.sm : AppSpacing.md),
                           itemBuilder: (context, index) {
                             final product = products[index];
                             return _CompactProductTile(
@@ -1908,12 +1941,12 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         );
                       }
                       return GridView.builder(
-                        padding: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: gridColumns,
                           mainAxisExtent: 144,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
+                          crossAxisSpacing: AppSpacing.sm,
+                          mainAxisSpacing: AppSpacing.sm,
                         ),
                         itemCount: products.length,
                         itemBuilder: (context, index) {
@@ -1929,12 +1962,12 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                       );
                     },
                     loading: () => GridView.builder(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: gridColumns,
                         mainAxisExtent: 144,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
+                        crossAxisSpacing: AppSpacing.sm,
+                        mainAxisSpacing: AppSpacing.sm,
                       ),
                       itemCount: 8,
                       itemBuilder: (_, _) => Container(
@@ -1946,7 +1979,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                                           context,
                                         ).colorScheme.surfaceContainerHighest)
                                   .withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                     ),
@@ -2009,7 +2042,7 @@ class _PremiumSearchField extends StatelessWidget {
           height: 38,
           decoration: BoxDecoration(
             color: isDark ? AppColors.darkSurfaceHighlight : AppColors.surface,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
             border: Border.all(
               color: active
                   ? (isDark
@@ -2028,13 +2061,13 @@ class _PremiumSearchField extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 width: 24,
                 height: 24,
-                margin: const EdgeInsets.only(left: 8, right: 8),
+                margin: const EdgeInsets.only(left: AppSpacing.sm, right: AppSpacing.sm),
                 decoration: BoxDecoration(
                   color: active
                       ? (isDark ? AppColors.darkAccent : AppColors.primary)
                             .withValues(alpha: 0.14)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: AnimatedRotation(
                   turns: hasFocus ? -0.04 : 0,
@@ -2102,7 +2135,7 @@ class _PremiumSearchField extends StatelessWidget {
                         onTap: onClear,
                         compact: compact,
                       )
-                    : SizedBox(key: ValueKey('empty-search-action'), width: 8),
+                    : SizedBox(key: ValueKey('empty-search-action'), width: AppSpacing.sm),
               ),
             ],
           ),
@@ -2130,7 +2163,7 @@ class _SearchClearButton extends StatelessWidget {
         padding: const EdgeInsets.only(right: 7),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           child: Container(
             width: compact ? 28 : 30,
             height: compact ? 28 : 30,
@@ -2142,7 +2175,7 @@ class _SearchClearButton extends StatelessWidget {
                               context,
                             ).colorScheme.surfaceContainerHighest)
                       .withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
               border: Border.all(
                 color:
                     (Theme.of(context).brightness == Brightness.dark
@@ -2212,7 +2245,7 @@ class _SearchStatusHint extends StatelessWidget {
                 : null,
           ),
         ),
-        SizedBox(width: 7),
+        SizedBox(width: AppSpacing.xs),
         Flexible(
           child: Text(
             ready
@@ -2285,7 +2318,7 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: widget.onTap,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   curve: Curves.easeOutCubic,
@@ -2295,7 +2328,7 @@ class _PremiumIconActionState extends State<_PremiumIconAction> {
                     color: isDark
                         ? AppColors.darkSurfaceHighlight
                         : AppColors.surface,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: Border.all(
                       color: active
                           ? widget.accent.withValues(alpha: 0.5)
@@ -2334,7 +2367,7 @@ class _PosViewModeToggle extends ConsumerWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceHighlight : AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(
           color: isDark ? AppColors.darkBorder : AppColors.border,
         ),
@@ -2381,7 +2414,7 @@ class _PosViewModeButton extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOutCubic,
@@ -2394,7 +2427,7 @@ class _PosViewModeButton extends StatelessWidget {
                           : AppColors.primary)
                       .withValues(alpha: 0.14)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           child: Icon(
             icon,
@@ -2437,13 +2470,13 @@ class _QuickPicksStrip extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-        SizedBox(height: 6),
+        SizedBox(height: AppSpacing.xs),
         SizedBox(
           height: 34,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: products.length,
-            separatorBuilder: (_, _) => SizedBox(width: 8),
+            separatorBuilder: (_, _) => SizedBox(width: AppSpacing.sm),
             itemBuilder: (context, index) {
               final product = products[index];
               return _QuickPickChip(
@@ -2470,14 +2503,14 @@ class _QuickPickChip extends StatelessWidget {
     final name = product['name'] as String? ?? 'Product';
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
             border: Border.all(
               color: isDark ? AppColors.darkBorder : AppColors.border,
             ),
@@ -2646,16 +2679,16 @@ class _CompactProductTile extends StatelessWidget {
       color: isDark
           ? AppColors.darkSurface
           : Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: isOutOfStock ? null : onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Opacity(
           opacity: isOutOfStock ? 0.62 : 1,
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(
                 color: isDark
                     ? AppColors.darkBorder
@@ -2669,7 +2702,7 @@ class _CompactProductTile extends StatelessWidget {
                   isOutOfStock: isOutOfStock,
                   size: 42,
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2684,7 +2717,7 @@ class _CompactProductTile extends StatelessWidget {
                           fontSize: 14,
                         ),
                       ),
-                      SizedBox(height: 3),
+                      SizedBox(height: AppSpacing.xs),
                       Text(
                         categoryName ?? 'General',
                         maxLines: 1,
@@ -2698,7 +2731,7 @@ class _CompactProductTile extends StatelessWidget {
                         ),
                       ),
                       if (saleUnit != stockUnit) ...[
-                        SizedBox(height: 3),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           'Stocked: ${UnitUtils.formatWithUnit(stock, stockUnit)}',
                           maxLines: 1,
@@ -2708,13 +2741,14 @@ class _CompactProductTile extends StatelessWidget {
                               context,
                             ).colorScheme.onSurfaceVariant,
                             fontSize: 10,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                SizedBox(width: 10),
+                SizedBox(width: AppSpacing.sm),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -2726,9 +2760,10 @@ class _CompactProductTile extends StatelessWidget {
                             : AppColors.success,
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
-                    SizedBox(height: 6),
+                    SizedBox(height: AppSpacing.xs),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
@@ -2736,7 +2771,7 @@ class _CompactProductTile extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: stockColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(AppRadius.xl),
                       ),
                       child: Text(
                         stockText,
@@ -2744,12 +2779,13 @@ class _CompactProductTile extends StatelessWidget {
                           color: stockColor,
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                     ),
                   ],
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Icon(
                   Icons.add_circle_rounded,
                   color: isOutOfStock
@@ -2779,7 +2815,7 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
           child: Column(
@@ -2794,7 +2830,7 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
                               ? AppColors.darkAccent
                               : Theme.of(context).colorScheme.secondary)
                           .withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: Icon(
                   Icons.design_services_outlined,
@@ -2804,7 +2840,7 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
                   size: 28,
                 ),
               ),
-              SizedBox(height: 14),
+              SizedBox(height: AppSpacing.md),
               Text(
                 'Services are managed on the Services page',
                 textAlign: TextAlign.center,
@@ -2813,7 +2849,7 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
                   color: isDark ? AppColors.darkTextPrimary : null,
                 ),
               ),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 'Open Services to create orders, quick-sell jobs, and send service charges to the cart.',
                 textAlign: TextAlign.center,
@@ -2823,7 +2859,7 @@ class _ServiceOnlyPosShortcut extends StatelessWidget {
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              SizedBox(height: 18),
+              SizedBox(height: AppSpacing.lg),
               FilledButton.icon(
                 onPressed: onTap,
                 icon: Icon(Icons.open_in_new, size: 18),
@@ -2890,7 +2926,7 @@ class _CartSide extends ConsumerWidget {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(AppSpacing.xxl),
                 child: Column(
                   children: [
                     Row(
@@ -2928,7 +2964,7 @@ class _CartSide extends ConsumerWidget {
                             ),
                           ),
                         if (cart.isNotEmpty) ...[
-                          SizedBox(width: 8),
+                          SizedBox(width: AppSpacing.sm),
                           TextButton.icon(
                             onPressed: () => _clearCurrentSale(ref),
                             icon: Icon(
@@ -2944,16 +2980,16 @@ class _CartSide extends ConsumerWidget {
                         ],
                       ],
                     ),
-                    SizedBox(height: 14),
+                    SizedBox(height: AppSpacing.md),
                     Container(
                       width: double.infinity,
-                      padding: EdgeInsets.all(isMobileCart ? 9 : 14),
+                      padding: EdgeInsets.all(isMobileCart ? 9 : AppSpacing.md),
                       decoration: BoxDecoration(
                         color: hasOpenShift
                             ? AppColors.success.withValues(alpha: 0.10)
                             : AppColors.warning.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(
-                          isMobileCart ? 10 : 14,
+                          isMobileCart ? AppRadius.sm : AppRadius.md,
                         ),
                         border: Border.all(
                           color: hasOpenShift
@@ -2972,7 +3008,7 @@ class _CartSide extends ConsumerWidget {
                                 : AppColors.warning,
                             size: isMobileCart ? 17 : 24,
                           ),
-                          SizedBox(width: isMobileCart ? 8 : 12),
+                          SizedBox(width: isMobileCart ? AppSpacing.sm : AppSpacing.md),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2991,7 +3027,7 @@ class _CartSide extends ConsumerWidget {
                                   ),
                                 ),
                                 if (!isMobileCart) ...[
-                                  SizedBox(height: 2),
+                                  SizedBox(height: AppSpacing.xs),
                                   Text(
                                     hasOpenShift
                                         ? 'Expected cash: ${ShopSettings.currency}${((currentSummary?['expected_cash'] as num?) ?? 0).toStringAsFixed(2)}'
@@ -3019,8 +3055,8 @@ class _CartSide extends ConsumerWidget {
                                     ? VisualDensity.compact
                                     : VisualDensity.standard,
                                 padding: EdgeInsets.symmetric(
-                                  horizontal: isMobileCart ? 6 : 8,
-                                  vertical: isMobileCart ? 4 : 8,
+                                  horizontal: isMobileCart ? AppSpacing.xs : AppSpacing.sm,
+                                  vertical: isMobileCart ? AppSpacing.xs : AppSpacing.sm,
                                 ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -3052,11 +3088,11 @@ class _CartSide extends ConsumerWidget {
                         holdsLoading: heldSalesAsync.isLoading,
                       )
                     : ListView.separated(
-                        padding: EdgeInsets.all(isMobileCart ? 12 : 16),
+                        padding: EdgeInsets.all(isMobileCart ? AppSpacing.md : AppSpacing.lg),
                         itemCount: cart.length,
                         separatorBuilder: (_, _) => isMobileCart
-                            ? SizedBox(height: 10)
-                            : Divider(height: 24),
+                            ? SizedBox(height: AppSpacing.sm)
+                            : Divider(height: AppSpacing.xxl),
                         itemBuilder: (context, index) {
                           final item = cart[index];
                           return _CartItemRow(
@@ -3068,7 +3104,7 @@ class _CartSide extends ConsumerWidget {
               ),
               if (cart.isNotEmpty)
                 Container(
-                  padding: EdgeInsets.all(isMobileCart ? 10 : 24),
+                  padding: EdgeInsets.all(isMobileCart ? AppSpacing.sm : AppSpacing.xxl),
                   decoration: BoxDecoration(
                     color: Theme.of(
                       context,
@@ -3097,7 +3133,7 @@ class _CartSide extends ConsumerWidget {
                                   ),
                                 ),
                                 if (canViewProfit) ...[
-                                  SizedBox(width: 8),
+                                  SizedBox(width: AppSpacing.sm),
                                   Expanded(
                                     child: _CompactCartAmount(
                                       label: 'Profit',
@@ -3107,7 +3143,7 @@ class _CartSide extends ConsumerWidget {
                                     ),
                                   ),
                                 ],
-                                SizedBox(width: 8),
+                                SizedBox(width: AppSpacing.sm),
                                 SizedBox(
                                   height: 40,
                                   child: ElevatedButton.icon(
@@ -3122,12 +3158,13 @@ class _CartSide extends ConsumerWidget {
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
+                                        horizontal: AppSpacing.md,
                                       ),
                                       backgroundColor: AppColors.primary,
                                       textStyle: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w800,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
                                       ),
                                     ),
                                   ),
@@ -3135,7 +3172,7 @@ class _CartSide extends ConsumerWidget {
                               ],
                             ),
                             if (discount > 0 || tax > 0) ...[
-                              SizedBox(height: 8),
+                              SizedBox(height: AppSpacing.sm),
                               Row(
                                 children: [
                                   Expanded(
@@ -3146,6 +3183,7 @@ class _CartSide extends ConsumerWidget {
                                           context,
                                         ).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -3159,22 +3197,24 @@ class _CartSide extends ConsumerWidget {
                                           context,
                                         ).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
                                       ),
                                     ),
                                   if (discount > 0) ...[
-                                    SizedBox(width: 8),
+                                    SizedBox(width: AppSpacing.sm),
                                     Text(
                                       '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
                                       style: TextStyle(
                                         color: AppColors.error,
                                         fontSize: 11,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
                                       ),
                                     ),
                                   ],
                                 ],
                               ),
                             ],
-                            SizedBox(height: 8),
+                            SizedBox(height: AppSpacing.sm),
                             Row(
                               children: [
                                 Expanded(
@@ -3196,14 +3236,14 @@ class _CartSide extends ConsumerWidget {
                                     style: OutlinedButton.styleFrom(
                                       visualDensity: VisualDensity.compact,
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
+                                        vertical: AppSpacing.sm,
                                       ),
                                       textStyle: TextStyle(fontSize: 12),
                                     ),
                                   ),
                                 ),
                                 if (discount > 0) ...[
-                                  SizedBox(width: 8),
+                                  SizedBox(width: AppSpacing.sm),
                                   IconButton(
                                     tooltip: 'Clear discount',
                                     onPressed: () =>
@@ -3220,7 +3260,7 @@ class _CartSide extends ConsumerWidget {
                                 ],
                               ],
                             ),
-                            SizedBox(height: 8),
+                            SizedBox(height: AppSpacing.sm),
                             Row(
                               children: [
                                 Expanded(
@@ -3235,13 +3275,13 @@ class _CartSide extends ConsumerWidget {
                                     style: OutlinedButton.styleFrom(
                                       visualDensity: VisualDensity.compact,
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
+                                        vertical: AppSpacing.sm,
                                       ),
                                       textStyle: TextStyle(fontSize: 12),
                                     ),
                                   ),
                                 ),
-                                SizedBox(width: 8),
+                                SizedBox(width: AppSpacing.sm),
                                 Expanded(
                                   child: TextButton.icon(
                                     onPressed: heldSalesAsync.isLoading
@@ -3259,7 +3299,7 @@ class _CartSide extends ConsumerWidget {
                                     style: TextButton.styleFrom(
                                       visualDensity: VisualDensity.compact,
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
+                                        vertical: AppSpacing.sm,
                                       ),
                                       textStyle: TextStyle(fontSize: 12),
                                     ),
@@ -3276,14 +3316,14 @@ class _CartSide extends ConsumerWidget {
                               value:
                                   '${ShopSettings.currency}${subtotal.toStringAsFixed(2)}',
                             ),
-                            SizedBox(height: 8),
+                            SizedBox(height: AppSpacing.sm),
                             _SummaryRow(
                               title: 'Tax (${ShopSettings.taxRate}%)',
                               value:
                                   '${ShopSettings.currency}${tax.toStringAsFixed(2)}',
                             ),
                             if (discount > 0) ...[
-                              SizedBox(height: 8),
+                              SizedBox(height: AppSpacing.sm),
                               _SummaryRow(
                                 title: 'Discount',
                                 value:
@@ -3291,7 +3331,7 @@ class _CartSide extends ConsumerWidget {
                                 isDiscount: true,
                               ),
                             ],
-                            SizedBox(height: 12),
+                            SizedBox(height: AppSpacing.md),
                             Row(
                               children: [
                                 Expanded(
@@ -3310,7 +3350,7 @@ class _CartSide extends ConsumerWidget {
                                   ),
                                 ),
                                 if (discount > 0) ...[
-                                  SizedBox(width: 12),
+                                  SizedBox(width: AppSpacing.md),
                                   TextButton.icon(
                                     onPressed: () =>
                                         ref
@@ -3323,9 +3363,9 @@ class _CartSide extends ConsumerWidget {
                                 ],
                               ],
                             ),
-                            SizedBox(height: 16),
+                            SizedBox(height: AppSpacing.lg),
                             Divider(),
-                            SizedBox(height: 16),
+                            SizedBox(height: AppSpacing.lg),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -3333,7 +3373,7 @@ class _CartSide extends ConsumerWidget {
                                   'Total',
                                   style: Theme.of(context).textTheme.titleLarge,
                                 ),
-                                SizedBox(width: 12),
+                                SizedBox(width: AppSpacing.md),
                                 Flexible(
                                   child: Text(
                                     '${ShopSettings.currency}${total.toStringAsFixed(2)}',
@@ -3354,7 +3394,7 @@ class _CartSide extends ConsumerWidget {
                               ],
                             ),
                             if (canViewProfit) ...[
-                              SizedBox(height: 8),
+                              SizedBox(height: AppSpacing.sm),
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
@@ -3367,7 +3407,7 @@ class _CartSide extends ConsumerWidget {
                                       ).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
-                                  SizedBox(width: 12),
+                                  SizedBox(width: AppSpacing.md),
                                   Flexible(
                                     child: Text(
                                       '${ShopSettings.currency}${profit.toStringAsFixed(2)}',
@@ -3394,12 +3434,12 @@ class _CartSide extends ConsumerWidget {
                                     label: Text('Hold Sale'),
                                     style: OutlinedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
+                                        vertical: AppSpacing.lg,
                                       ),
                                     ),
                                   ),
                                 ),
-                                SizedBox(width: 12),
+                                SizedBox(width: AppSpacing.md),
                                 Expanded(
                                   child: TextButton.icon(
                                     onPressed: heldSalesAsync.isLoading
@@ -3416,7 +3456,7 @@ class _CartSide extends ConsumerWidget {
                                     ),
                                     style: TextButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
+                                        vertical: AppSpacing.lg,
                                       ),
                                     ),
                                   ),
@@ -3424,7 +3464,7 @@ class _CartSide extends ConsumerWidget {
                               ],
                             ),
                             if (heldSaleCount > 0) ...[
-                              SizedBox(height: 10),
+                              SizedBox(height: AppSpacing.sm),
                               Text(
                                 'You have $heldSaleCount held sale${heldSaleCount == 1 ? '' : 's'} ready to resume.',
                                 style: TextStyle(
@@ -3437,7 +3477,7 @@ class _CartSide extends ConsumerWidget {
                                 textAlign: TextAlign.center,
                               ),
                             ],
-                            SizedBox(height: 16),
+                            SizedBox(height: AppSpacing.lg),
                             Row(
                               children: [
                                 Expanded(
@@ -3449,11 +3489,14 @@ class _CartSide extends ConsumerWidget {
                                       'Checkout • ${ShopSettings.currency}${total.toStringAsFixed(2)}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(fontSize: 16),
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                      ),
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
+                                        vertical: AppSpacing.lg,
                                       ),
                                       backgroundColor: AppColors.primary,
                                     ),
@@ -3461,7 +3504,7 @@ class _CartSide extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                            SizedBox(height: 10),
+                            SizedBox(height: AppSpacing.sm),
                             Text(
                               'Select a payment method such as Cash, Kopesha, or Mobile Money during checkout.',
                               style: TextStyle(
@@ -3494,7 +3537,7 @@ class _CartSide extends ConsumerWidget {
     final recentSalesAsync = ref.watch(posRecentSalesProvider);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3502,13 +3545,13 @@ class _CartSide extends ConsumerWidget {
           // Empty cart headline
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
               color: isDark
                   ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
                   : Theme.of(context).colorScheme.surfaceContainerHighest
                         .withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
                 color: isDark
                     ? AppColors.darkBorder.withValues(alpha: 0.6)
@@ -3528,7 +3571,7 @@ class _CartSide extends ConsumerWidget {
                           context,
                         ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 Text(
                   'Your cart is empty',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -3538,7 +3581,7 @@ class _CartSide extends ConsumerWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 4),
+                SizedBox(height: AppSpacing.xs),
                 Text(
                   'Tap products to add them to your sale.',
                   textAlign: TextAlign.center,
@@ -3552,7 +3595,7 @@ class _CartSide extends ConsumerWidget {
               ],
             ),
           ),
-          SizedBox(height: 20),
+          SizedBox(height: AppSpacing.xl),
           // Today's quick stats
           Text(
             'Today\'s Performance',
@@ -3564,7 +3607,7 @@ class _CartSide extends ConsumerWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 10),
+          SizedBox(height: AppSpacing.sm),
           todayStatsAsync.when(
             data: (stats) {
               final salesCount = (stats['total_sales'] as num?)?.toInt() ?? 0;
@@ -3581,7 +3624,7 @@ class _CartSide extends ConsumerWidget {
                       isDark: isDark,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: _StatCard(
                       label: 'Items Sold',
@@ -3591,7 +3634,7 @@ class _CartSide extends ConsumerWidget {
                       isDark: isDark,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: _StatCard(
                       label: 'Revenue',
@@ -3608,9 +3651,9 @@ class _CartSide extends ConsumerWidget {
             loading: () => Row(
               children: [
                 Expanded(child: _StatCardSkeleton(isDark: isDark)),
-                SizedBox(width: 10),
+                SizedBox(width: AppSpacing.sm),
                 Expanded(child: _StatCardSkeleton(isDark: isDark)),
-                SizedBox(width: 10),
+                SizedBox(width: AppSpacing.sm),
                 Expanded(child: _StatCardSkeleton(isDark: isDark)),
               ],
             ),
@@ -3624,7 +3667,7 @@ class _CartSide extends ConsumerWidget {
                     isDark: isDark,
                   ),
                 ),
-                SizedBox(width: 10),
+                SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: _StatCard(
                     label: 'Items Sold',
@@ -3633,7 +3676,7 @@ class _CartSide extends ConsumerWidget {
                     isDark: isDark,
                   ),
                 ),
-                SizedBox(width: 10),
+                SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: _StatCard(
                     label: 'Revenue',
@@ -3645,7 +3688,7 @@ class _CartSide extends ConsumerWidget {
               ],
             ),
           ),
-          SizedBox(height: 24),
+          SizedBox(height: AppSpacing.xxl),
           // Recent sales
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3672,19 +3715,19 @@ class _CartSide extends ConsumerWidget {
               ),
             ],
           ),
-          SizedBox(height: 10),
+          SizedBox(height: AppSpacing.sm),
           recentSalesAsync.when(
             data: (sales) {
               if (sales.isEmpty) {
                 return Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(
                     color: isDark
                         ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
                         : Theme.of(context).colorScheme.surfaceContainerHighest
                               .withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     border: Border.all(
                       color: isDark
                           ? AppColors.darkBorder.withValues(alpha: 0.5)
@@ -3721,7 +3764,7 @@ class _CartSide extends ConsumerWidget {
                   );
                   return Padding(
                     padding: EdgeInsets.only(
-                      bottom: entry.key == recent.length - 1 ? 0 : 8,
+                      bottom: entry.key == recent.length - 1 ? 0 : AppSpacing.sm,
                     ),
                     child: _RecentSaleRow(
                       paymentType: paymentType,
@@ -3740,20 +3783,20 @@ class _CartSide extends ConsumerWidget {
               children: List.generate(
                 3,
                 (index) => Padding(
-                  padding: EdgeInsets.only(bottom: index == 2 ? 0 : 8),
+                  padding: EdgeInsets.only(bottom: index == 2 ? 0 : AppSpacing.sm),
                   child: _RecentSaleRowSkeleton(isDark: isDark),
                 ),
               ),
             ),
             error: (_, _) => Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
                 color: isDark
                     ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.4)
                     : Theme.of(context).colorScheme.surfaceContainerHighest
                           .withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Text(
                 'Could not load recent sales.',
@@ -6900,19 +6943,19 @@ class _CategoryChip extends StatelessWidget {
     final accent = isDark ? AppColors.darkAccent : AppColors.primary;
 
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
               color: isSelected
                   ? accent.withValues(alpha: 0.12)
                   : Colors.transparent,
@@ -6955,7 +6998,7 @@ class _ProductImagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = size <= 44 ? 12.0 : 20.0;
+    final radius = size <= 44 ? AppRadius.sm : AppRadius.lg;
     return Container(
       width: size,
       height: size,
@@ -7093,19 +7136,19 @@ class _ProductCardState extends State<_ProductCard> {
     return Material(
       color: isOutOfStock
           ? (isDark
-                ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
-                : Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45))
+                 ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
+                 : Theme.of(
+                     context,
+                   ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45))
           : (isDark ? AppColors.darkSurface : AppColors.surface),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: isOutOfStock ? null : widget.onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
               color: isOutOfStock
                   ? (isDark
@@ -7122,7 +7165,7 @@ class _ProductCardState extends State<_ProductCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     child: SizedBox(
                       width: 40,
                       height: 40,
@@ -7135,7 +7178,7 @@ class _ProductCardState extends State<_ProductCard> {
                             ),
                     ),
                   ),
-                  SizedBox(width: 10),
+                  SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -7154,7 +7197,7 @@ class _ProductCardState extends State<_ProductCard> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
                           style: TextStyle(
@@ -7163,6 +7206,7 @@ class _ProductCardState extends State<_ProductCard> {
                                 : Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -7179,12 +7223,12 @@ class _ProductCardState extends State<_ProductCard> {
                   constraints: const BoxConstraints(maxWidth: 150),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
+                      horizontal: AppSpacing.sm,
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
                       color: stockBadgeColor.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.xl),
                     ),
                     child: Text(
                       stockLabel,
@@ -7194,6 +7238,7 @@ class _ProductCardState extends State<_ProductCard> {
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         color: stockBadgeColor,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ),
@@ -7229,7 +7274,7 @@ class _SummaryRow extends StatelessWidget {
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
-        SizedBox(width: 12),
+        SizedBox(width: AppSpacing.md),
         Flexible(
           child: Text(
             value,
@@ -7241,6 +7286,7 @@ class _SummaryRow extends StatelessWidget {
                   ? AppColors.warning
                   : Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ),
@@ -7265,10 +7311,10 @@ class _CompactCartAmount extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -7292,6 +7338,7 @@ class _CompactCartAmount extends StatelessWidget {
               color: valueColor,
               fontSize: isPrimary ? 15 : 12,
               fontWeight: FontWeight.w900,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -7318,14 +7365,14 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.55)
             : Theme.of(
                 context,
               ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(
           color: isDark
               ? AppColors.darkBorder.withValues(alpha: 0.55)
@@ -7345,7 +7392,7 @@ class _StatCard extends StatelessWidget {
                     ? AppColors.darkAccent
                     : Theme.of(context).colorScheme.primary),
           ),
-          SizedBox(height: 8),
+          SizedBox(height: AppSpacing.sm),
           Text(
             value,
             maxLines: 1,
@@ -7356,9 +7403,10 @@ class _StatCard extends StatelessWidget {
                   : Theme.of(context).colorScheme.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w900,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          SizedBox(height: 2),
+          SizedBox(height: AppSpacing.xs),
           Text(
             label,
             style: TextStyle(

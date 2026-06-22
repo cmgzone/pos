@@ -225,11 +225,11 @@ class _CustomerKopeshaDetailScreenState
             icon: Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
-          SizedBox(width: 8),
+          SizedBox(width: AppSpacing.sm),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 980),
@@ -237,10 +237,10 @@ class _CustomerKopeshaDetailScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                     border: Border.all(color: Theme.of(context).colorScheme.outline),
                   ),
                   child: Column(
@@ -254,14 +254,14 @@ class _CustomerKopeshaDetailScreenState
                             height: 56,
                             decoration: BoxDecoration(
                               color: riskColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius: BorderRadius.circular(AppRadius.lg),
                             ),
                             child: Icon(
                               Icons.person_outline_rounded,
                               color: riskColor,
                             ),
                           ),
-                          SizedBox(width: 16),
+                          SizedBox(width: AppSpacing.lg),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,7 +286,7 @@ class _CustomerKopeshaDetailScreenState
                           _Tag(label: risk, color: riskColor),
                         ],
                       ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       Wrap(
                         spacing: 14,
                         runSpacing: 14,
@@ -319,7 +319,7 @@ class _CustomerKopeshaDetailScreenState
                     ],
                   ),
                 ),
-                SizedBox(height: 24),
+                SizedBox(height: AppSpacing.xxl),
                 _SectionCard(
                   title: 'Open Kopesha Sales',
                   subtitle:
@@ -350,7 +350,7 @@ class _CustomerKopeshaDetailScreenState
                               .toList(),
                         ),
                 ),
-                SizedBox(height: 24),
+                SizedBox(height: AppSpacing.xxl),
                 _SectionCard(
                   title: 'Payment History',
                   subtitle:
@@ -408,10 +408,10 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -421,7 +421,7 @@ class _SectionCard extends StatelessWidget {
             title,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
-          SizedBox(height: 4),
+          SizedBox(height: AppSpacing.xs),
           Text(
             subtitle,
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -452,7 +452,7 @@ class _SummaryTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Column(
@@ -465,7 +465,7 @@ class _SummaryTile extends StatelessWidget {
           SizedBox(height: 6),
           Text(
             value,
-            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+            style: TextStyle(color: color, fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
         ],
       ),
@@ -497,10 +497,10 @@ class _StatementSaleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,7 +519,7 @@ class _StatementSaleRow extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 12),
+          SizedBox(height: AppSpacing.md),
           Wrap(
             spacing: 18,
             runSpacing: 10,
@@ -578,10 +578,10 @@ class _PaymentHistoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,6 +594,7 @@ class _PaymentHistoryRow extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppColors.success,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -604,7 +605,7 @@ class _PaymentHistoryRow extends StatelessWidget {
                   fontSize: 12,
                 ),
               ),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               IconButton(
                 onPressed: paymentGroupId == null || paymentGroupId!.isEmpty
                     ? null
@@ -663,12 +664,13 @@ class _MiniMeta extends StatelessWidget {
           label,
           style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
         ),
-        SizedBox(height: 4),
+        SizedBox(height: AppSpacing.xs),
         Text(
           value,
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: valueColor ?? Theme.of(context).colorScheme.onSurface,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ],
@@ -688,7 +690,7 @@ class _Tag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       child: Text(
         label,

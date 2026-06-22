@@ -56,7 +56,7 @@ class ShiftManagementScreen extends ConsumerWidget {
           color: AppColors.primary,
           onRefresh: () async => invalidateShiftProviders(ref),
           child: ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpacing.xxl),
             children: [
               Text(
                 'Opening, closing, and drawer reconciliation live here.',
@@ -65,12 +65,12 @@ class ShiftManagementScreen extends ConsumerWidget {
                 ),
               ),
               if (access?.autoClosedShift != null) ...[
-                SizedBox(height: 16),
+                SizedBox(height: AppSpacing.lg),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: AppColors.warning.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     border: Border.all(
                       color: AppColors.warning.withValues(alpha: 0.25),
                     ),
@@ -81,7 +81,7 @@ class ShiftManagementScreen extends ConsumerWidget {
                         Icons.schedule_send_outlined,
                         color: AppColors.warning,
                       ),
-                      SizedBox(width: 12),
+                      SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Text(
                           'A previous-day shift was auto-closed so you can start fresh today.',
@@ -96,7 +96,7 @@ class ShiftManagementScreen extends ConsumerWidget {
                   ),
                 ),
               ],
-              SizedBox(height: 20),
+              SizedBox(height: AppSpacing.xl),
               _CurrentShiftCard(
                 shift: currentShift,
                 summary: currentSummary,
@@ -131,12 +131,12 @@ class ShiftManagementScreen extends ConsumerWidget {
                         summary: currentSummary,
                       ),
               ),
-              SizedBox(height: 20),
+              SizedBox(height: AppSpacing.xl),
               _MovementCard(
                 movements: movementsAsync.valueOrNull ?? const [],
                 loading: currentShift != null && movementsAsync.isLoading,
               ),
-              SizedBox(height: 20),
+              SizedBox(height: AppSpacing.xl),
               _HistoryCard(
                 shifts: historyAsync.valueOrNull ?? const [],
                 loading: historyAsync.isLoading,
@@ -169,7 +169,7 @@ class ShiftManagementScreen extends ConsumerWidget {
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Open Shift'),
           content: Column(
@@ -189,7 +189,7 @@ class ShiftManagementScreen extends ConsumerWidget {
                   errorText: errorText,
                 ),
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               TextField(
                 controller: noteController,
                 minLines: 2,
@@ -293,7 +293,7 @@ class ShiftManagementScreen extends ConsumerWidget {
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text(isCashIn ? 'Record Cash In' : 'Record Cash Out'),
           content: Column(
@@ -310,7 +310,7 @@ class ShiftManagementScreen extends ConsumerWidget {
                   errorText: errorText,
                 ),
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               TextField(
                 controller: reasonController,
                 minLines: 2,
@@ -419,7 +419,7 @@ class ShiftManagementScreen extends ConsumerWidget {
         builder: (context, setState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Close Shift'),
           content: Column(
@@ -428,9 +428,9 @@ class ShiftManagementScreen extends ConsumerWidget {
             children: [
               Text(
                 'Expected cash: ${_currency(summary['expected_cash'])}',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()]),
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               TextField(
                 controller: countedCashController,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -442,7 +442,7 @@ class ShiftManagementScreen extends ConsumerWidget {
                   errorText: errorText,
                 ),
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               TextField(
                 controller: noteController,
                 minLines: 2,
@@ -580,7 +580,7 @@ class _CurrentShiftCard extends StatelessWidget {
       return _SectionCard(
         title: 'Current Shift',
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
+          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
           child: Center(child: CircularProgressIndicator()),
         ),
       );
@@ -596,7 +596,7 @@ class _CurrentShiftCard extends StatelessWidget {
               'No open shift for ${ShiftRepository.normalizeActorName(SessionService.currentUserName)}.',
               style: theme.textTheme.bodyMedium,
             ),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             Text(
               requiresManagedShift
                   ? 'Cash shifts will auto-open on the first cash transaction, or you can open one now.'
@@ -605,7 +605,7 @@ class _CurrentShiftCard extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
             FilledButton.icon(
               onPressed: onOpenShift,
               icon: Icon(Icons.play_circle_outline),
@@ -729,7 +729,7 @@ class _CurrentShiftCard extends StatelessWidget {
             },
           ),
           if (note != null && note.trim().isNotEmpty) ...[
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
             Text(
               note.trim(),
               style: theme.textTheme.bodySmall?.copyWith(
@@ -871,17 +871,17 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: Theme.of(context).textTheme.titleMedium),
-          SizedBox(height: 16),
+          SizedBox(height: AppSpacing.lg),
           child,
         ],
       ),
@@ -900,10 +900,10 @@ class _StatChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = accent ?? AppColors.primaryLight;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -919,7 +919,7 @@ class _StatChip extends StatelessWidget {
           SizedBox(height: 6),
           Text(
             value,
-            style: TextStyle(fontWeight: FontWeight.w700, color: color),
+            style: TextStyle(fontWeight: FontWeight.w700, color: color, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
         ],
       ),
@@ -948,7 +948,7 @@ class _MovementTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -965,11 +965,11 @@ class _MovementTile extends StatelessWidget {
               Spacer(),
               Text(
                 ShiftManagementScreen._currency(movement['amount']),
-                style: TextStyle(fontWeight: FontWeight.w700, color: tone),
+                style: TextStyle(fontWeight: FontWeight.w700, color: tone, fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ],
           ),
-          SizedBox(height: 12),
+          SizedBox(height: AppSpacing.md),
           Text(
             movement['reason'] as String? ?? 'Cash movement',
             maxLines: 2,
@@ -1004,7 +1004,7 @@ class _HistoryTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -1020,7 +1020,7 @@ class _HistoryTile extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
               ),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   shift['cashier_name'] as String? ?? 'Unknown Cashier',
@@ -1034,9 +1034,9 @@ class _HistoryTile extends StatelessWidget {
           SizedBox(height: 10),
           Text(
             ShiftManagementScreen._currency(shift['expected_cash']),
-            style: TextStyle(fontWeight: FontWeight.w700),
+            style: TextStyle(fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
-          SizedBox(height: 4),
+          SizedBox(height: AppSpacing.xs),
           Text(
             (shift['status'] as String? ?? 'open').toUpperCase(),
             style: TextStyle(

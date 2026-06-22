@@ -259,7 +259,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                       prefixIcon: Icon(Icons.receipt_outlined),
                     ),
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   DropdownButtonFormField<String>(
                     initialValue: selectedCategoryId,
                     decoration: InputDecoration(
@@ -278,7 +278,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                       setDialogState(() => selectedCategoryId = value);
                     },
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   TextField(
                     controller: amountController,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -290,7 +290,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                       prefixText: '${ShopSettings.currency} ',
                     ),
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: OutlinedButton.icon(
@@ -313,7 +313,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                       label: Text(_formatDateValue(selectedDate)),
                     ),
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   TextField(
                     controller: noteController,
                     maxLines: 2,
@@ -478,26 +478,26 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.categoriesCreated > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.categoriesCreated} expense categor${importResult.categoriesCreated == 1 ? 'y' : 'ies'} created.',
                 style: TextStyle(color: AppColors.success),
               ),
             ],
             if (importResult.skipped > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
                 style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
-              SizedBox(height: 6),
+              SizedBox(height: AppSpacing.xs),
               ...importResult.errors.map(
                 (error) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -603,13 +603,13 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
             tooltip: 'Refresh',
             onPressed: _loadData,
           ),
-          SizedBox(width: isMobile ? 4 : 8),
+          SizedBox(width: isMobile ? AppSpacing.xs : AppSpacing.sm),
         ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? 16 : 24),
+              padding: EdgeInsets.all(isMobile ? AppSpacing.lg : AppSpacing.xxl),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1100),
@@ -666,7 +666,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           ],
                         ),
                       ),
-                      SizedBox(height: 14),
+                      SizedBox(height: AppSpacing.md),
                       _ExpenseActionsBar(
                         isMobile: isMobile,
                         isImporting: _isImportingExpenses,
@@ -674,7 +674,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                         onAddExpense: _showAddExpenseDialog,
                         onImportExpenses: _importExpensesFromFile,
                       ),
-                      SizedBox(height: 24),
+                      SizedBox(height: AppSpacing.xxl),
                       TrainingAnchor(
                         id: 'pl.summary',
                         child: isMobile
@@ -703,7 +703,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                     .toList(),
                               ),
                       ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       _SectionCard(
                         title: 'Snapshot',
                         icon: Icons.analytics_outlined,
@@ -730,7 +730,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                           ],
                         ),
                       ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       if (_categoryTotals.isNotEmpty)
                         _SectionCard(
                           title: 'Expense Categories',
@@ -739,7 +739,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                             children: _categoryTotals.map((category) {
                               return Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
+                                  vertical: AppSpacing.sm,
                                 ),
                                 child: Row(
                                   children: [
@@ -761,12 +761,13 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                         fontSize: 12,
                                       ),
                                     ),
-                                    SizedBox(width: 16),
+                                    SizedBox(width: AppSpacing.lg),
                                     Text(
                                       '${ShopSettings.currency}${((category['total_amount'] as num? ?? 0).toDouble()).toStringAsFixed(2)}',
                                       style: TextStyle(
                                         color: AppColors.error,
                                         fontWeight: FontWeight.bold,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
                                       ),
                                     ),
                                   ],
@@ -775,7 +776,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                             }).toList(),
                           ),
                         ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       _SectionCard(
                         title: 'Profit & Loss Report',
                         icon: Icons.stacked_line_chart_outlined,
@@ -806,7 +807,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                   final positive = net >= 0;
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                                      vertical: AppSpacing.md,
                                     ),
                                     decoration: BoxDecoration(
                                       border: Border(
@@ -844,7 +845,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                             ),
                                           ],
                                         ),
-                                        SizedBox(height: 10),
+                                        SizedBox(height: AppSpacing.sm),
                                         Wrap(
                                           spacing: 18,
                                           runSpacing: 8,
@@ -890,7 +891,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                 }).toList(),
                               ),
                       ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       _SectionCard(
                         title: 'Expenses Report',
                         icon: Icons.request_quote_outlined,
@@ -908,7 +909,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                 formatDate: _formatDate,
                               ),
                       ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       TrainingAnchor(
                         id: 'pl.expenses',
                         child: _SectionCard(
@@ -927,7 +928,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                   children: _recentExpenses.map((expense) {
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
+                                        vertical: AppSpacing.sm,
                                       ),
                                       child: Row(
                                         children: [
@@ -943,7 +944,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
-                                                SizedBox(height: 4),
+                                                SizedBox(height: AppSpacing.xs),
                                                 Text(
                                                   '${expense['category_name'] ?? 'Uncategorized'} - ${_formatDate(expense['incurred_on'] as String? ?? '')}',
                                                   style: TextStyle(
@@ -961,6 +962,7 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                             style: TextStyle(
                                               color: AppColors.error,
                                               fontWeight: FontWeight.bold,
+                                              fontFeatures: const [FontFeature.tabularFigures()],
                                             ),
                                           ),
                                         ],
@@ -993,12 +995,12 @@ class _PeriodChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected ? AppColors.primary : context.appSurfaceHighlight,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
           child: Text(
             label,
             style: TextStyle(
@@ -1041,10 +1043,10 @@ class _DailyExpenseReportList extends StatelessWidget {
 
         return Container(
           margin: const EdgeInsets.only(bottom: 14),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
@@ -1067,24 +1069,25 @@ class _DailyExpenseReportList extends StatelessWidget {
                       fontSize: 12,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  SizedBox(width: AppSpacing.md),
                   Text(
                     '${ShopSettings.currency}${dayTotal.toStringAsFixed(2)}',
                     style: TextStyle(
                       color: AppColors.error,
                       fontWeight: FontWeight.w900,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: 10),
+              SizedBox(height: AppSpacing.sm),
               Column(
                 children: entry.value.map((row) {
                   final amount = ((row['total_amount'] as num?) ?? 0)
                       .toDouble();
                   final count = ((row['expense_count'] as num?) ?? 0).toInt();
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                     child: Row(
                       children: [
                         Expanded(
@@ -1103,12 +1106,13 @@ class _DailyExpenseReportList extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        SizedBox(width: 16),
+                        SizedBox(width: AppSpacing.lg),
                         Text(
                           '${ShopSettings.currency}${amount.toStringAsFixed(2)}',
                           style: TextStyle(
                             color: AppColors.error,
                             fontWeight: FontWeight.w700,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],
@@ -1166,9 +1170,9 @@ class _ExpenseActionsBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           addExpenseButton,
-          SizedBox(height: 10),
+          SizedBox(height: AppSpacing.sm),
           importExpensesButton,
-          SizedBox(height: 10),
+          SizedBox(height: AppSpacing.sm),
           createCategoryButton,
         ],
       );
@@ -1195,10 +1199,10 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -1211,13 +1215,14 @@ class _SummaryCard extends StatelessWidget {
               fontSize: 12,
             ),
           ),
-          SizedBox(height: 6),
+          SizedBox(height: AppSpacing.xs),
           Text(
             value,
             style: TextStyle(
               color: color,
               fontSize: 22,
               fontWeight: FontWeight.bold,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -1241,10 +1246,10 @@ class _LegendDot extends StatelessWidget {
           height: 10,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(AppRadius.xs),
           ),
         ),
-        SizedBox(width: 6),
+        SizedBox(width: AppSpacing.xs),
         Text(
           label,
           style: TextStyle(
@@ -1278,6 +1283,7 @@ class _MiniMetric extends StatelessWidget {
             style: TextStyle(
               color: color ?? Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -1300,10 +1306,10 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -1312,14 +1318,14 @@ class _SectionCard extends StatelessWidget {
           Row(
             children: [
               Icon(icon, color: AppColors.primaryLight, size: 18),
-              SizedBox(width: 10),
+              SizedBox(width: AppSpacing.sm),
               Text(
                 title,
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
             ],
           ),
-          SizedBox(height: 16),
+          SizedBox(height: AppSpacing.lg),
           child,
         ],
       ),

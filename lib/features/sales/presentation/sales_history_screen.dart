@@ -414,20 +414,20 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.productLines > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.productLines} product row${importResult.productLines == 1 ? '' : 's'} matched existing inventory and used POS stock rules.',
                 style: TextStyle(color: AppColors.success),
               ),
             ],
             if (importResult.serviceLines > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.serviceLines} service row${importResult.serviceLines == 1 ? '' : 's'} imported as service sales.',
               ),
             ],
             if (importResult.summaryOnly > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.summaryOnly} summary-only row${importResult.summaryOnly == 1 ? '' : 's'} imported without item stock changes.',
                 style: TextStyle(
@@ -436,14 +436,14 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               ),
             ],
             if (importResult.skipped > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
                 style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -787,11 +787,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xxl,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Add Manual Sale'),
           content: SizedBox(
@@ -833,9 +833,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             });
                           },
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   InkWell(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
@@ -866,18 +866,18 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       ),
                     ),
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   if (recordMode == 'product') ...[
                     if (savedCount > 0) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
+                          horizontal: AppSpacing.md,
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.success.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                           border: Border.all(
                             color: AppColors.success.withValues(alpha: 0.22),
                           ),
@@ -890,7 +890,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           ),
                         ),
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: AppSpacing.md),
                     ],
                     if (products.isNotEmpty)
                       DropdownButtonFormField<String>(
@@ -936,7 +936,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           prefixIcon: Icon(Icons.inventory_2_outlined),
                         ),
                       ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                     _ManualSaleResponsiveRow(
                       children: [
                         TextField(
@@ -965,7 +965,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                     InputDecorator(
                       decoration: InputDecoration(
                         labelText: 'Sale Total',
@@ -973,22 +973,22 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       ),
                       child: Text(
                         '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
                       ),
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                   ],
                   if (recordMode == 'service' && services.isNotEmpty) ...[
                     if (savedCount > 0) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
+                          horizontal: AppSpacing.md,
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.success.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                           border: Border.all(
                             color: AppColors.success.withValues(alpha: 0.22),
                           ),
@@ -1001,7 +1001,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           ),
                         ),
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: AppSpacing.md),
                     ],
                     DropdownButtonFormField<String>(
                       initialValue: selectedService?['id'] as String?,
@@ -1062,7 +1062,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                               );
                             },
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                     _ManualSaleResponsiveRow(
                       children: [
                         TextField(
@@ -1091,7 +1091,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                     InputDecorator(
                       decoration: InputDecoration(
                         labelText: 'Sale Total',
@@ -1099,10 +1099,10 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       ),
                       child: Text(
                         '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
                       ),
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
                       childrenPadding: EdgeInsets.zero,
@@ -1110,7 +1110,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       title: Text('Service Details'),
                       subtitle: Text('Customer, staff, bay, notes'),
                       children: [
-                        SizedBox(height: 8),
+                        SizedBox(height: AppSpacing.sm),
                         TextField(
                           controller: customerNameController,
                           enabled: !isSaving,
@@ -1119,7 +1119,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             prefixIcon: Icon(Icons.person_outline),
                           ),
                         ),
-                        SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.md),
                         _ManualSaleResponsiveRow(
                           children: [
                             TextField(
@@ -1142,7 +1142,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             ),
                           ],
                         ),
-                        SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.md),
                         TextField(
                           controller: noteController,
                           enabled: !isSaving,
@@ -1191,7 +1191,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         ],
                       ],
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                   ],
                   DropdownButtonFormField<String>(
                     initialValue: selectedMethod['id'] as String,
@@ -1219,7 +1219,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       });
                     },
                   ),
-                  SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.md),
                   if (recordMode == 'manual') ...[
                     TextField(
                       controller: totalController,
@@ -1232,7 +1232,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         prefixIcon: Icon(Icons.attach_money),
                       ),
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: AppSpacing.md),
                   ],
                   TextField(
                     controller: taxController,
@@ -1275,8 +1275,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                     ),
               child: isSaving
                   ? SizedBox(
-                      width: 16,
-                      height: 16,
+                      width: AppSpacing.lg,
+                      height: AppSpacing.lg,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
@@ -1320,288 +1320,69 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     final amountTendered = (sale['amount_tendered'] as num?)?.toDouble() ?? 0;
     final changeGiven = (sale['change_given'] as num?)?.toDouble() ?? 0;
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.receipt, color: AppColors.primaryLight),
-            SizedBox(width: 12),
-            Text('Sale Details'),
-            Spacer(),
-            Text(
-              '#${(sale['id'] as String).substring(0, 8)}',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Date & payment
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      'Date: ${_formatDate(sale['created_at'] as String? ?? '')}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _paymentTypeColor(sale).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _paymentTypeLabel(sale),
-                      style: TextStyle(
-                        color: _paymentTypeColor(sale),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if ((sale['customer_name'] as String?)?.isNotEmpty == true) ...[
-                SizedBox(height: 10),
-                _DetailRow(
-                  label: 'Customer',
-                  value: sale['customer_name'] as String,
-                ),
-              ],
-              if ((sale['cashier_name'] as String?)?.isNotEmpty == true) ...[
-                SizedBox(height: 8),
-                _DetailRow(
-                  label: 'Cashier',
-                  value: sale['cashier_name'] as String,
-                ),
-              ],
-              if ((sale['due_date'] as String?)?.isNotEmpty == true) ...[
-                SizedBox(height: 8),
-                _DetailRow(
-                  label: 'Due Date',
-                  value: sale['due_date'] as String,
-                  valueColor: (sale['balance_due'] as num? ?? 0) > 0
-                      ? AppColors.warning
-                      : null,
-                ),
-              ],
-              SizedBox(height: 16),
-              Divider(),
-              // Items
-              ...items.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        (item['line_type'] as String? ?? 'product') == 'service'
-                            ? Icons.design_services_rounded
-                            : Icons.inventory_2_outlined,
-                        color:
-                            (item['line_type'] as String? ?? 'product') ==
-                                'service'
-                            ? Theme.of(context).colorScheme.secondary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                        size: 18,
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          item['product_name'] as String? ?? 'Unknown',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
-                      Text(
-                        UnitUtils.formatWithUnit(
-                          item['quantity'] as num?,
-                          item['unit'] as String?,
-                        ),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      SizedBox(width: 24),
-                      Text(
-                        '${ShopSettings.currency}${((item['unit_price'] as num) * (item['quantity'] as num)).toStringAsFixed(2)}',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Divider(),
-              SizedBox(height: 8),
-              _DetailRow(
-                label: 'Subtotal',
-                value:
-                    '${ShopSettings.currency}${((sale['total_amount'] as num) - (sale['tax'] as num) + (sale['discount'] as num)).toStringAsFixed(2)}',
-              ),
-              _DetailRow(
-                label: 'Tax',
-                value:
-                    '${ShopSettings.currency}${(sale['tax'] as num).toStringAsFixed(2)}',
-              ),
-              if ((sale['discount'] as num? ?? 0) > 0)
-                _DetailRow(
-                  label: 'Discount',
-                  value:
-                      '-${ShopSettings.currency}${(sale['discount'] as num).toStringAsFixed(2)}',
-                ),
-              if ((sale['refunded_amount'] as num? ?? 0) > 0)
-                _DetailRow(
-                  label: 'Refunded',
-                  value:
-                      '${ShopSettings.currency}${(sale['refunded_amount'] as num).toStringAsFixed(2)}',
-                  valueColor: AppColors.error,
-                ),
-              if ((sale['balance_due'] as num? ?? 0) > 0)
-                _DetailRow(
-                  label: 'Kopesha Balance',
-                  value:
-                      '${ShopSettings.currency}${(sale['balance_due'] as num).toStringAsFixed(2)}',
-                  valueColor: AppColors.warning,
-                ),
-              if (isCash && amountTendered > 0) ...[
-                _DetailRow(
-                  label: 'Cash Received',
-                  value:
-                      '${ShopSettings.currency}${amountTendered.toStringAsFixed(2)}',
-                ),
-                _DetailRow(
-                  label: 'Change Returned',
-                  value:
-                      '${ShopSettings.currency}${changeGiven.toStringAsFixed(2)}',
-                ),
-              ],
-              SizedBox(height: 8),
-              _DetailRow(
-                label: 'Profit',
-                value:
-                    '${ShopSettings.currency}${(sale['profit'] as num? ?? 0).toStringAsFixed(2)}',
-                valueColor: (sale['profit'] as num? ?? 0) >= 0
-                    ? AppColors.success
-                    : AppColors.error,
-              ),
-              SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Total',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(width: 12),
-                  Flexible(
-                    child: Text(
-                      '${ShopSettings.currency}${(sale['total_amount'] as num).toStringAsFixed(2)}',
-                      textAlign: TextAlign.end,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          if (_canRefund(sale))
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _showRefundDialog(sale);
-              },
-              child: Text('Return', style: TextStyle(color: AppColors.error)),
-            ),
-          if (_canDeleteSale(sale))
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _deleteSaleWithConfirmation(sale);
-              },
-              child: Text('Delete', style: TextStyle(color: AppColors.error)),
-            ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close')),
-          if ((sale['etims_status'] as String?) != 'submitted')
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _submitEtimsForSale(sale);
-              },
-              icon: Icon(Icons.account_balance_outlined, size: 18),
-              label: Text('Submit eTIMS'),
-            ),
-          OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _sendReceiptMessage(sale);
-            },
-            icon: Icon(Icons.send_outlined, size: 18),
-            label: Text('Send Receipt'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              final totalAmount = (sale['total_amount'] as num).toDouble();
-              final saleTax = (sale['tax'] as num).toDouble();
-              final saleDiscount = (sale['discount'] as num).toDouble();
-              ReceiptService.showReceiptPreview(
-                context,
-                saleId: sale['id'] as String,
-                total: totalAmount,
-                subtotal: totalAmount - saleTax + saleDiscount,
-                tax: saleTax,
-                discount: saleDiscount,
-                paymentType: sale['payment_type'] as String? ?? 'cash',
-                items: items,
-                customerName: sale['customer_name'] as String?,
-                amountTendered:
-                    (sale['amount_tendered'] as num?)?.toDouble() ?? 0,
-                changeGiven: (sale['change_given'] as num?)?.toDouble() ?? 0,
-                balanceDue: (sale['balance_due'] as num?)?.toDouble() ?? 0,
-                dueDate: sale['due_date'] as String?,
-                cashierName: sale['cashier_name'] as String?,
-                documentDate: sale['created_at'] as String?,
-                etimsStatus: sale['etims_status'] as String?,
-                etimsInvoiceNumber: sale['etims_invoice_number'] as String?,
-                etimsControlUnitInvoiceNumber:
-                    sale['etims_control_unit_invoice_number'] as String?,
-                etimsControlUnitSerial:
-                    sale['etims_control_unit_serial'] as String?,
-                etimsVerificationUrl: sale['etims_verification_url'] as String?,
-                etimsQrCode: sale['etims_qr_code'] as String?,
-                showTenderedBreakdown: isCash,
-              );
-            },
-            child: Text('Print'),
-          ),
-        ],
+      builder: (ctx) => _SaleDetailsDialog(
+        sale: sale,
+        items: items,
+        formattedDate: _formatDate(sale['created_at'] as String? ?? ''),
+        paymentTypeLabel: _paymentTypeLabel(sale),
+        paymentTypeColor: _paymentTypeColor(sale),
+        isCash: isCash,
+        amountTendered: amountTendered,
+        changeGiven: changeGiven,
+        canRefund: _canRefund(sale),
+        canDelete: _canDeleteSale(sale),
+        canSubmitEtims: (sale['etims_status'] as String?) != 'submitted',
+        onClose: () => Navigator.pop(ctx),
+        onReturn: () {
+          Navigator.pop(ctx);
+          _showRefundDialog(sale);
+        },
+        onDelete: () {
+          Navigator.pop(ctx);
+          _deleteSaleWithConfirmation(sale);
+        },
+        onSubmitEtims: () {
+          Navigator.pop(ctx);
+          _submitEtimsForSale(sale);
+        },
+        onSendReceipt: () {
+          Navigator.pop(ctx);
+          _sendReceiptMessage(sale);
+        },
+        onPrint: () {
+          Navigator.pop(ctx);
+          final totalAmount = (sale['total_amount'] as num).toDouble();
+          final saleTax = (sale['tax'] as num).toDouble();
+          final saleDiscount = (sale['discount'] as num).toDouble();
+          ReceiptService.showReceiptPreview(
+            context,
+            saleId: sale['id'] as String,
+            total: totalAmount,
+            subtotal: totalAmount - saleTax + saleDiscount,
+            tax: saleTax,
+            discount: saleDiscount,
+            paymentType: sale['payment_type'] as String? ?? 'cash',
+            items: items,
+            customerName: sale['customer_name'] as String?,
+            amountTendered: (sale['amount_tendered'] as num?)?.toDouble() ?? 0,
+            changeGiven: (sale['change_given'] as num?)?.toDouble() ?? 0,
+            balanceDue: (sale['balance_due'] as num?)?.toDouble() ?? 0,
+            dueDate: sale['due_date'] as String?,
+            cashierName: sale['cashier_name'] as String?,
+            documentDate: sale['created_at'] as String?,
+            etimsStatus: sale['etims_status'] as String?,
+            etimsInvoiceNumber: sale['etims_invoice_number'] as String?,
+            etimsControlUnitInvoiceNumber:
+                sale['etims_control_unit_invoice_number'] as String?,
+            etimsControlUnitSerial:
+                sale['etims_control_unit_serial'] as String?,
+            etimsVerificationUrl: sale['etims_verification_url'] as String?,
+            etimsQrCode: sale['etims_qr_code'] as String?,
+            showTenderedBreakdown: isCash,
+          );
+        },
       ),
     );
   }
@@ -1710,7 +1491,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         title: Text('Delete Sale?'),
         content: Text(
           'Delete sale #${saleId.substring(0, 8)} from sales history and reports? Use Return instead when you need stock restored.',
@@ -1797,7 +1578,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Return Items'),
           content: SizedBox(
@@ -1809,14 +1590,14 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 Text(
                   'Choose the item quantities to return for sale #${(sale['id'] as String).substring(0, 8)}.',
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 Text(
                   'Product stock will be restored automatically where applicable.',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-                SizedBox(height: 16),
+                SizedBox(height: AppSpacing.lg),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 260),
                   child: ListView.separated(
@@ -1832,12 +1613,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       final unit = item['unit'] as String?;
                       final isCompact = MediaQuery.of(context).size.width < 560;
                       return Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(AppSpacing.md),
                         decoration: BoxDecoration(
                           color: Theme.of(
                             context,
                           ).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: isCompact
                             ? Column(
@@ -1849,7 +1630,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  SizedBox(height: AppSpacing.xs),
                                   Text(
                                     'Returnable: ${UnitUtils.formatWithUnit(refundableQuantity, unit)}',
                                     style: TextStyle(
@@ -1866,9 +1647,10 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                         context,
                                       ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
+                                      fontFeatures: const [FontFeature.tabularFigures()],
                                     ),
                                   ),
-                                  SizedBox(height: 12),
+                                  SizedBox(height: AppSpacing.md),
                                   TextField(
                                     controller: controller,
                                     keyboardType:
@@ -1895,7 +1677,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        SizedBox(height: 4),
+                                        SizedBox(height: AppSpacing.xs),
                                         Text(
                                           'Returnable: ${UnitUtils.formatWithUnit(refundableQuantity, unit)}',
                                           style: TextStyle(
@@ -1912,12 +1694,13 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                               context,
                                             ).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
+                                            fontFeatures: const [FontFeature.tabularFigures()],
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  SizedBox(width: 12),
+                                  SizedBox(width: AppSpacing.md),
                                   SizedBox(
                                     width: 130,
                                     child: TextField(
@@ -2092,8 +1875,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
               ),
               child: isSaving
                   ? SizedBox(
-                      width: 16,
-                      height: 16,
+                      width: AppSpacing.lg,
+                      height: AppSpacing.lg,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
@@ -2253,7 +2036,7 @@ class _ManualSaleResponsiveRow extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) SizedBox(height: 12),
+                if (index != children.length - 1) SizedBox(height: AppSpacing.md),
               ],
             ],
           );
@@ -2263,7 +2046,7 @@ class _ManualSaleResponsiveRow extends StatelessWidget {
           children: [
             for (var index = 0; index < children.length; index++) ...[
               Expanded(child: children[index]),
-              if (index != children.length - 1) SizedBox(width: 12),
+              if (index != children.length - 1) SizedBox(width: AppSpacing.md),
             ],
           ],
         );
@@ -2389,16 +2172,17 @@ class _SalesHeader extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            SizedBox(height: 4),
+            SizedBox(height: AppSpacing.xs),
             Text(
               '${ShopSettings.currency}${totalRevenue.toStringAsFixed(2)}',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
                 color: Theme.of(context).colorScheme.onSurface,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
           ],
           if (isMobile)
             Row(
@@ -2411,7 +2195,7 @@ class _SalesHeader extends StatelessWidget {
                     color: AppColors.primary,
                   ),
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: _MiniSalesMetric(
                     label: 'Tax',
@@ -2457,7 +2241,7 @@ class _SalesHeader extends StatelessWidget {
             onSelected: onFilterSelected,
             isMobile: isMobile,
           ),
-          SizedBox(height: 8),
+          SizedBox(height: AppSpacing.sm),
           _SaleTypeFilterBar(
             selectedType: selectedSaleType,
             onSelected: onSaleTypeSelected,
@@ -2497,7 +2281,7 @@ class _SalesFilterBar extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: filters.length,
-          separatorBuilder: (_, _) => SizedBox(width: 8),
+          separatorBuilder: (_, _) => SizedBox(width: AppSpacing.sm),
           itemBuilder: (context, index) {
             final filter = filters[index];
             return SizedBox(
@@ -2541,10 +2325,10 @@ class _CompactFilterButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: isSelected ? AppColors.primary : Colors.transparent,
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 9),
           child: Text(
@@ -2626,10 +2410,10 @@ class _SaleTypeChip extends StatelessWidget {
       color: isSelected
           ? Theme.of(context).colorScheme.secondary
           : context.appSurfaceHighlight,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
@@ -2677,10 +2461,10 @@ class _MiniSalesMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
@@ -2706,6 +2490,7 @@ class _MiniSalesMetric extends StatelessWidget {
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w900,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -2726,7 +2511,7 @@ class _EmptySalesState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -2737,7 +2522,7 @@ class _EmptySalesState extends StatelessWidget {
                 context,
               ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
             ),
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
             Text(
               'No sales found',
               style: TextStyle(
@@ -2745,7 +2530,7 @@ class _EmptySalesState extends StatelessWidget {
                 fontSize: 16,
               ),
             ),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             Text(
               isCashierView
                   ? 'Completed branch sales will appear here.'
@@ -2861,14 +2646,14 @@ class _SaleRow extends StatelessWidget {
 
         return Material(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             child: Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outline,
                 ),
@@ -2886,7 +2671,7 @@ class _SaleRow extends StatelessWidget {
                                   ? Theme.of(context).colorScheme.secondary
                                   : AppColors.success)
                               .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Icon(
                       isRefund
@@ -2902,7 +2687,7 @@ class _SaleRow extends StatelessWidget {
                       size: 22,
                     ),
                   ),
-                  SizedBox(width: 16),
+                  SizedBox(width: AppSpacing.lg),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2911,7 +2696,7 @@ class _SaleRow extends StatelessWidget {
                           'Sale #${(sale['id'] as String).substring(0, 8)}',
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           saleDisplayNames.isNotEmpty
                               ? '$saleTypeLabel - $saleDisplayNames'
@@ -2928,7 +2713,7 @@ class _SaleRow extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           dateStr,
                           style: TextStyle(
@@ -2940,7 +2725,7 @@ class _SaleRow extends StatelessWidget {
                         ),
                         if ((sale['customer_name'] as String?)?.isNotEmpty ==
                             true) ...[
-                          SizedBox(height: 4),
+                          SizedBox(height: AppSpacing.xs),
                           Text(
                             sale['customer_name'] as String,
                             style: TextStyle(
@@ -2953,7 +2738,7 @@ class _SaleRow extends StatelessWidget {
                           ),
                         ],
                         if (hasRefund) ...[
-                          SizedBox(height: 4),
+                          SizedBox(height: AppSpacing.xs),
                           Text(
                             refundState.isEmpty ? 'Refunded' : refundState,
                             style: TextStyle(
@@ -2969,11 +2754,11 @@ class _SaleRow extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
-                      vertical: 4,
+                      vertical: AppSpacing.xs,
                     ),
                     decoration: BoxDecoration(
                       color: _badgeColor(paymentType).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Text(
                       _badgeLabel(paymentType),
@@ -2984,7 +2769,7 @@ class _SaleRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  SizedBox(width: 24),
+                  SizedBox(width: AppSpacing.xxl),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -2994,6 +2779,7 @@ class _SaleRow extends StatelessWidget {
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: isRefund ? AppColors.error : AppColors.success,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                       Text(
@@ -3004,6 +2790,7 @@ class _SaleRow extends StatelessWidget {
                           color: (sale['profit'] as num? ?? 0) >= 0
                               ? AppColors.success.withValues(alpha: 0.8)
                               : AppColors.error,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                       if ((sale['balance_due'] as num? ?? 0) > 0)
@@ -3013,11 +2800,12 @@ class _SaleRow extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: AppColors.warning,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                     ],
                   ),
-                  SizedBox(width: 8),
+                  SizedBox(width: AppSpacing.sm),
                   Icon(
                     Icons.chevron_right,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -3073,14 +2861,14 @@ class _MobileSaleRowCard extends StatelessWidget {
 
     return Material(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
@@ -3094,7 +2882,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                     height: 42,
                     decoration: BoxDecoration(
                       color: typeColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Icon(
                       isRefund
@@ -3106,7 +2894,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                       size: 21,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3122,7 +2910,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                             fontSize: 15,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           saleTypeLabel,
                           style: TextStyle(
@@ -3134,7 +2922,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  SizedBox(width: 8),
+                  SizedBox(width: AppSpacing.sm),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -3144,6 +2932,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                           fontSize: 17,
                           fontWeight: FontWeight.w900,
                           color: isRefund ? AppColors.error : AppColors.success,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                       SizedBox(height: 5),
@@ -3152,7 +2941,7 @@ class _MobileSaleRowCard extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -3204,10 +2993,10 @@ class _SaleBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       child: Text(
         label,
@@ -3235,7 +3024,7 @@ class _SaleInfoChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
@@ -3253,6 +3042,7 @@ class _SaleInfoChip extends StatelessWidget {
                 color: foreground,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
@@ -3277,10 +3067,10 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
@@ -3303,6 +3093,7 @@ class _StatCard extends StatelessWidget {
                   color: color,
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
@@ -3329,12 +3120,12 @@ class _FilterChip extends StatelessWidget {
       padding: const EdgeInsets.only(left: 6),
       child: Material(
         color: isSelected ? AppColors.primary : context.appSurfaceHighlight,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
             child: Text(
               label,
               style: TextStyle(
@@ -3348,6 +3139,661 @@ class _FilterChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SaleDetailsDialog extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  final List<Map<String, dynamic>> items;
+  final String formattedDate;
+  final String paymentTypeLabel;
+  final Color paymentTypeColor;
+  final bool isCash;
+  final double amountTendered;
+  final double changeGiven;
+  final bool canRefund;
+  final bool canDelete;
+  final bool canSubmitEtims;
+  final VoidCallback onClose;
+  final VoidCallback onReturn;
+  final VoidCallback onDelete;
+  final VoidCallback onSubmitEtims;
+  final VoidCallback onSendReceipt;
+  final VoidCallback onPrint;
+
+  const _SaleDetailsDialog({
+    required this.sale,
+    required this.items,
+    required this.formattedDate,
+    required this.paymentTypeLabel,
+    required this.paymentTypeColor,
+    required this.isCash,
+    required this.amountTendered,
+    required this.changeGiven,
+    required this.canRefund,
+    required this.canDelete,
+    required this.canSubmitEtims,
+    required this.onClose,
+    required this.onReturn,
+    required this.onDelete,
+    required this.onSubmitEtims,
+    required this.onSendReceipt,
+    required this.onPrint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final isMobile = size.width < 600;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Dialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 24,
+        vertical: isMobile ? 14 : 24,
+      ),
+      clipBehavior: Clip.antiAlias,
+      backgroundColor: scheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: isMobile ? size.width - 24 : 620,
+          maxHeight: size.height * (isMobile ? 0.88 : 0.86),
+        ),
+        child: Column(
+          children: [
+            _SaleDetailsHeader(
+              saleId: sale['id'] as String? ?? '',
+              onClose: onClose,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  isMobile ? 16 : 22,
+                  0,
+                  isMobile ? 16 : 22,
+                  18,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SaleDetailsMetaCard(
+                      sale: sale,
+                      formattedDate: formattedDate,
+                      paymentTypeLabel: paymentTypeLabel,
+                      paymentTypeColor: paymentTypeColor,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    Text(
+                      'Items',
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (items.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest.withValues(
+                            alpha: 0.38,
+                          ),
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                          border: Border.all(
+                            color: scheme.outline.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: Text(
+                          'No sale items found.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                      )
+                    else
+                      Column(
+                        children: [
+                          for (
+                            var index = 0;
+                            index < items.length;
+                            index++
+                          ) ...[
+                            _SaleDetailsItemRow(item: items[index]),
+                            if (index != items.length - 1)
+                              Divider(
+                                height: 1,
+                                color: scheme.outline.withValues(alpha: 0.38),
+                              ),
+                          ],
+                        ],
+                      ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _SaleTotalsCard(
+                      sale: sale,
+                      isCash: isCash,
+                      amountTendered: amountTendered,
+                      changeGiven: changeGiven,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            _SaleDetailsActionBar(
+              canRefund: canRefund,
+              canDelete: canDelete,
+              canSubmitEtims: canSubmitEtims,
+              onReturn: onReturn,
+              onDelete: onDelete,
+              onClose: onClose,
+              onSubmitEtims: onSubmitEtims,
+              onSendReceipt: onSendReceipt,
+              onPrint: onPrint,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SaleDetailsHeader extends StatelessWidget {
+  final String saleId;
+  final VoidCallback onClose;
+
+  const _SaleDetailsHeader({required this.saleId, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final shortId = saleId.isEmpty
+        ? 'sale'
+        : saleId.substring(0, saleId.length < 8 ? saleId.length : 8);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, AppSpacing.lg, AppSpacing.md, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: const Icon(
+              Icons.receipt_long_rounded,
+              color: AppColors.primaryLight,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sale Details',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '#$shortId',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: onClose,
+            icon: const Icon(Icons.close_rounded),
+            tooltip: 'Close',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleDetailsMetaCard extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  final String formattedDate;
+  final String paymentTypeLabel;
+  final Color paymentTypeColor;
+
+  const _SaleDetailsMetaCard({
+    required this.sale,
+    required this.formattedDate,
+    required this.paymentTypeLabel,
+    required this.paymentTypeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final customerName = (sale['customer_name'] as String?)?.trim() ?? '';
+    final cashierName = (sale['cashier_name'] as String?)?.trim() ?? '';
+    final dueDate = (sale['due_date'] as String?)?.trim() ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Date: $formattedDate',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: paymentTypeColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
+                ),
+                child: Text(
+                  paymentTypeLabel,
+                  style: TextStyle(
+                    color: paymentTypeColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (customerName.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _DetailRow(label: 'Customer', value: customerName),
+          ],
+          if (cashierName.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _DetailRow(label: 'Cashier', value: cashierName),
+          ],
+          if (dueDate.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _DetailRow(
+              label: 'Due Date',
+              value: dueDate,
+              valueColor: _numValue(sale['balance_due']) > 0
+                  ? AppColors.warning
+                  : null,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleDetailsItemRow extends StatelessWidget {
+  final Map<String, dynamic> item;
+
+  const _SaleDetailsItemRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final lineType = item['line_type'] as String? ?? 'product';
+    final isService = lineType == 'service';
+    final quantity = _numValue(item['quantity']);
+    final unitPrice = _numValue(item['unit_price']);
+    final total = quantity * unitPrice;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isService
+                ? Icons.design_services_rounded
+                : Icons.inventory_2_outlined,
+            color: isService ? scheme.secondary : scheme.onSurfaceVariant,
+            size: 19,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['product_name'] as String? ?? 'Unknown',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.22,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  UnitUtils.formatWithUnit(quantity, item['unit'] as String?),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Text(
+              _money(total),
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleTotalsCard extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  final bool isCash;
+  final double amountTendered;
+  final double changeGiven;
+
+  const _SaleTotalsCard({
+    required this.sale,
+    required this.isCash,
+    required this.amountTendered,
+    required this.changeGiven,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final total = _numValue(sale['total_amount']);
+    final tax = _numValue(sale['tax']);
+    final discount = _numValue(sale['discount']);
+    final refunded = _numValue(sale['refunded_amount']);
+    final balanceDue = _numValue(sale['balance_due']);
+    final profit = _numValue(sale['profit']);
+    final subtotal = total - tax + discount;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.32),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        children: [
+          _DetailRow(label: 'Subtotal', value: _money(subtotal)),
+          _DetailRow(label: 'Tax', value: _money(tax)),
+          if (discount > 0)
+            _DetailRow(label: 'Discount', value: '-${_money(discount)}'),
+          if (refunded > 0)
+            _DetailRow(
+              label: 'Refunded',
+              value: _money(refunded),
+              valueColor: AppColors.error,
+            ),
+          if (balanceDue > 0)
+            _DetailRow(
+              label: 'Kopesha Balance',
+              value: _money(balanceDue),
+              valueColor: AppColors.warning,
+            ),
+          if (isCash && amountTendered > 0) ...[
+            _DetailRow(label: 'Cash Received', value: _money(amountTendered)),
+            _DetailRow(label: 'Change Returned', value: _money(changeGiven)),
+          ],
+          const SizedBox(height: 6),
+          _DetailRow(
+            label: 'Profit',
+            value: _money(profit),
+            valueColor: profit >= 0 ? AppColors.success : AppColors.error,
+          ),
+          Divider(height: 20, color: scheme.outline.withValues(alpha: 0.55)),
+          Row(
+            children: [
+              Text(
+                'Total',
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  _money(total),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.success,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleDetailsActionBar extends StatelessWidget {
+  final bool canRefund;
+  final bool canDelete;
+  final bool canSubmitEtims;
+  final VoidCallback onReturn;
+  final VoidCallback onDelete;
+  final VoidCallback onClose;
+  final VoidCallback onSubmitEtims;
+  final VoidCallback onSendReceipt;
+  final VoidCallback onPrint;
+
+  const _SaleDetailsActionBar({
+    required this.canRefund,
+    required this.canDelete,
+    required this.canSubmitEtims,
+    required this.onReturn,
+    required this.onDelete,
+    required this.onClose,
+    required this.onSubmitEtims,
+    required this.onSendReceipt,
+    required this.onPrint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          top: BorderSide(color: scheme.outline.withValues(alpha: 0.55)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobile = constraints.maxWidth < 520;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 14 : 18,
+                AppSpacing.md,
+                isMobile ? 14 : 18,
+                14,
+              ),
+              child: isMobile ? _mobileActions() : _desktopActions(),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileActions() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onSendReceipt,
+                icon: const Icon(Icons.send_outlined, size: 18),
+                label: const Text('Send'),
+              ),
+            ),
+            if (canSubmitEtims) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onSubmitEtims,
+                  icon: const Icon(Icons.account_balance_outlined, size: 18),
+                  label: const Text('eTIMS'),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: onPrint,
+            icon: const Icon(Icons.print_rounded, size: 18),
+            label: const Text('Print'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (canRefund)
+              TextButton(
+                onPressed: onReturn,
+                child: const Text(
+                  'Return',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+            if (canDelete)
+              TextButton(
+                onPressed: onDelete,
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+            TextButton(onPressed: onClose, child: const Text('Close')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _desktopActions() {
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        if (canRefund)
+          TextButton(
+            onPressed: onReturn,
+            child: const Text(
+              'Return',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        if (canDelete)
+          TextButton(
+            onPressed: onDelete,
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        OutlinedButton.icon(
+          onPressed: onSendReceipt,
+          icon: const Icon(Icons.send_outlined, size: 18),
+          label: const Text('Send Receipt'),
+        ),
+        if (canSubmitEtims)
+          OutlinedButton.icon(
+            onPressed: onSubmitEtims,
+            icon: const Icon(Icons.account_balance_outlined, size: 18),
+            label: const Text('Submit eTIMS'),
+          ),
+        OutlinedButton(onPressed: onClose, child: const Text('Close')),
+        FilledButton(onPressed: onPrint, child: const Text('Print')),
+      ],
     );
   }
 }
@@ -3371,14 +3817,14 @@ class _DetailRow extends StatelessWidget {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          SizedBox(width: 12),
+          SizedBox(width: AppSpacing.md),
           Flexible(
             child: Text(
               value,
               textAlign: TextAlign.end,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w500, color: valueColor),
+              style: TextStyle(fontWeight: FontWeight.w500, color: valueColor, fontFeatures: const [FontFeature.tabularFigures()]),
             ),
           ),
         ],
@@ -3386,3 +3832,13 @@ class _DetailRow extends StatelessWidget {
     );
   }
 }
+
+double _numValue(Object? value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String _money(num value) =>
+    '${ShopSettings.currency}${value.toStringAsFixed(2)}';

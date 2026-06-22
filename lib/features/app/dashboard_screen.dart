@@ -338,7 +338,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         'What do you want to do?',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                       TextField(
                         controller: controller,
                         autofocus: true,
@@ -349,7 +349,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           prefixIcon: Icon(Icons.search_rounded),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpacing.md),
                       Flexible(
                         child: ListView.separated(
                           shrinkWrap: true,
@@ -423,9 +423,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildHeader(),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: AppSpacing.xl),
                           _buildSearch(),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: AppSpacing.xl),
                           if (_isLoading)
                             const LinearProgressIndicator(minHeight: 2)
                           else if (isWide)
@@ -455,11 +455,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: theme.colorScheme.outline),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
             child: Image.asset(
               'assets/images/logo.png',
               fit: BoxFit.cover,
@@ -478,7 +478,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 13),
+        const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,9 +553,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Semantics(
       button: true,
       label: 'Search app actions',
-      child: InkWell(
+        child: InkWell(
         onTap: _showActionSearch,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: IgnorePointer(
           child: TextField(
             decoration: InputDecoration(
@@ -588,7 +588,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: Column(
             children: [
               TrainingAnchor(id: 'dashboard.kpis', child: _buildKpiGrid()),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.xl),
               TrainingAnchor(
                 id: 'dashboard.insights',
                 child: _buildActions(crossAxisCount: 4),
@@ -596,14 +596,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ],
           ),
         ),
-        const SizedBox(width: 22),
+        const SizedBox(width: AppSpacing.xl),
         SizedBox(
           width: 390,
           child: Column(
             children: [
               if (hasProductAccess) ...[
                 _buildLowStockCard(),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
               ],
               TrainingAnchor(
                 id: 'dashboard.recentSales',
@@ -628,15 +628,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Column(
       children: [
         TrainingAnchor(id: 'dashboard.kpis', child: _buildKpiGrid()),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppSpacing.xl),
         TrainingAnchor(
           id: 'dashboard.insights',
           child: _buildActions(crossAxisCount: columns),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppSpacing.xl),
         if (hasProductAccess) ...[
           _buildLowStockCard(),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpacing.xl),
         ],
         TrainingAnchor(
           id: 'dashboard.recentSales',
@@ -652,21 +652,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         label: 'Sales Today',
         value: _money(_todaySummary['total_revenue'] as num?),
         icon: Icons.point_of_sale_rounded,
-        color: const Color(0xFFD72668),
+        color: context.metricColor('sales'),
         destinationIndex: 4,
       ),
       _DashboardMetric(
         label: 'Sales This Month',
         value: _money(_monthSummary['total_revenue'] as num?),
         icon: Icons.calendar_month_rounded,
-        color: const Color(0xFF536DFE),
+        color: context.metricColor('month'),
         destinationIndex: 8,
       ),
       _DashboardMetric(
         label: 'Profit Today',
         value: _money(_todaySummary['total_profit'] as num?),
         icon: Icons.trending_up_rounded,
-        color: AppColors.success,
+        color: context.metricColor('profit'),
         destinationIndex: 7,
       ),
       _DashboardMetric(
@@ -675,28 +675,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ? _topProductName!.trim()
             : 'No sales yet',
         icon: Icons.emoji_events_outlined,
-        color: const Color(0xFF9C6ADE),
+        color: context.metricColor('top'),
         destinationIndex: 8,
       ),
       _DashboardMetric(
         label: 'Low Stock Items',
         value: '${_lowStockProducts.length}',
         icon: Icons.inventory_2_outlined,
-        color: AppColors.warning,
+        color: context.metricColor('stock'),
         destinationIndex: 12,
       ),
       _DashboardMetric(
         label: 'Pending Orders',
         value: '$_pendingOrders',
         icon: Icons.pending_actions_rounded,
-        color: const Color(0xFF00A6A6),
+        color: context.metricColor('orders'),
         destinationIndex: 17,
       ),
       _DashboardMetric(
         label: 'Active Staff',
         value: '$_activeStaff',
         icon: Icons.badge_outlined,
-        color: const Color(0xFFEC6B3C),
+        color: context.metricColor('staff'),
         destinationIndex: 9,
       ),
     ];
@@ -708,7 +708,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           title: 'Business overview',
           subtitle: 'Live performance at a glance',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         LayoutBuilder(
           builder: (context, constraints) {
             final columns = constraints.maxWidth >= 820
@@ -721,8 +721,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: columns,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
+                crossAxisSpacing: AppSpacing.md,
+                mainAxisSpacing: AppSpacing.md,
                 mainAxisExtent: 132,
               ),
               itemCount: metrics.length,
@@ -748,14 +748,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           title: 'Quick actions',
           subtitle: 'Your most-used business tasks',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+            crossAxisSpacing: AppSpacing.md,
+            mainAxisSpacing: AppSpacing.md,
             childAspectRatio: crossAxisCount == 2 ? 1.28 : 1.22,
           ),
           itemCount: _actions.length,
@@ -786,7 +786,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 height: 40,
                 decoration: BoxDecoration(
                   color: AppColors.warning.withValues(alpha: 0.11),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: const Icon(
                   Icons.warning_amber_rounded,
@@ -794,7 +794,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   size: 22,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -819,14 +819,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ],
           ),
           if (_lowStockProducts.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             const Divider(height: 1),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             ..._lowStockProducts.take(3).map((product) {
               final stock = product['stock'] as num? ?? 0;
               final unit = (product['stock_unit'] ?? '').toString();
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                 child: Row(
                   children: [
                     Expanded(
@@ -865,7 +865,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.xl, 18, AppSpacing.md, AppSpacing.md),
             child: Row(
               children: [
                 Expanded(
@@ -883,11 +883,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           if (_recentSales.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xs, AppSpacing.xl, AppSpacing.xl),
               child: Row(
                 children: [
                   _ActionIcon(icon: Icons.receipt_long_outlined),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
                       'Completed sales will appear here.',
@@ -905,14 +905,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               return Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 11,
-                    ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                    vertical: 11,
+                  ),
                     child: Row(
                       children: [
                         const _ActionIcon(icon: Icons.shopping_bag_outlined),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1002,7 +1002,7 @@ class _MetricTile extends StatelessWidget {
     return Material(
       color: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         side: BorderSide(
           color: theme.colorScheme.outline.withValues(alpha: 0.72),
         ),
@@ -1011,7 +1011,7 @@ class _MetricTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1021,7 +1021,7 @@ class _MetricTile extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: metric.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(11),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Icon(metric.icon, size: 20, color: metric.color),
               ),
@@ -1032,14 +1032,15 @@ class _MetricTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               Text(
                 metric.value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
@@ -1078,7 +1079,7 @@ class _ActionTile extends StatelessWidget {
     return Material(
       color: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         side: BorderSide(
           color: theme.colorScheme.outline.withValues(alpha: 0.72),
         ),
@@ -1087,7 +1088,7 @@ class _ActionTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(17),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1140,7 +1141,7 @@ class _ActionIcon extends StatelessWidget {
         color: enabled
             ? theme.colorScheme.primaryContainer
             : theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Icon(icon, size: 22, color: color),
     );
@@ -1155,7 +1156,7 @@ class _Panel extends StatelessWidget {
 
   const _Panel({
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(AppSpacing.xl),
     this.backgroundColor,
     this.borderColor,
   });
@@ -1168,7 +1169,7 @@ class _Panel extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: backgroundColor ?? theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color:
               borderColor ?? theme.colorScheme.outline.withValues(alpha: 0.72),
@@ -1192,9 +1193,14 @@ class _SectionHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.titleMedium),
-        const SizedBox(height: 3),
-        Text(subtitle, style: theme.textTheme.bodySmall),
+        Text(title.toUpperCase(), style: context.appSectionHeaderStyle),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          subtitle,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }

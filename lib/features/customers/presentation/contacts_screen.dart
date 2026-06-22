@@ -149,20 +149,20 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               '${importResult.fileName == null ? '' : ' from ${importResult.fileName}'}.',
             ),
             if (importResult.updated > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.updated} existing customer${importResult.updated == 1 ? '' : 's'} updated.',
               ),
             ],
             if (importResult.skipped > 0) ...[
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 '${importResult.skipped} row${importResult.skipped == 1 ? '' : 's'} skipped.',
                 style: TextStyle(color: AppColors.warning),
               ),
             ],
             if (importResult.errors.isNotEmpty) ...[
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               Text(
                 'Check these rows:',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -219,7 +219,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Edit Customer'),
           content: SizedBox(
@@ -358,7 +358,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Edit Supplier'),
           content: SizedBox(
@@ -542,7 +542,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Create Supplier'),
           content: SizedBox(
@@ -764,7 +764,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
             child: TextField(
               controller: _searchController,
               onChanged: (_) => _load(),
@@ -831,7 +831,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 100),
       itemCount: _customers.length,
       separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -875,7 +875,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 100),
       itemCount: _suppliers.length,
       separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -925,16 +925,16 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               height: 72,
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(AppRadius.xl),
               ),
               child: Icon(icon, size: 36, color: AppColors.primaryLight),
             ),
-            SizedBox(height: 20),
+            SizedBox(height: AppSpacing.xl),
             Text(
               title,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             Text(
               subtitle,
               textAlign: TextAlign.center,
@@ -983,7 +983,7 @@ class _ContactCard extends StatelessWidget {
       padding: EdgeInsets.all(isMobile ? 14 : 16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: hasPhone
               ? context.appBorder
@@ -1001,7 +1001,7 @@ class _ContactCard extends StatelessWidget {
         Row(
           children: [
             _avatar(),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1012,7 +1012,7 @@ class _ContactCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
-                  SizedBox(height: 4),
+                  SizedBox(height: AppSpacing.xs),
                   Row(
                     children: [
                       if (!hasPhone) ...[
@@ -1021,7 +1021,7 @@ class _ContactCard extends StatelessWidget {
                           size: 14,
                           color: AppColors.warning.withValues(alpha: 0.9),
                         ),
-                        SizedBox(width: 4),
+                        SizedBox(width: AppSpacing.xs),
                       ],
                       Expanded(
                         child: Text(
@@ -1046,8 +1046,8 @@ class _ContactCard extends StatelessWidget {
             ),
           ],
         ),
-        if (trailing != null) ...[SizedBox(height: 12), trailing!],
-        SizedBox(height: 12),
+        if (trailing != null) ...[SizedBox(height: AppSpacing.md), trailing!],
+        SizedBox(height: AppSpacing.md),
         Row(
           children: [
             Expanded(
@@ -1057,7 +1057,7 @@ class _ContactCard extends StatelessWidget {
                 label: Text('Edit'),
               ),
             ),
-            SizedBox(width: 8),
+            SizedBox(width: AppSpacing.sm),
             Expanded(
               child: FilledButton.icon(
                 onPressed: onMessage,
@@ -1089,7 +1089,7 @@ class _ContactCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
               ),
-              SizedBox(height: 4),
+              SizedBox(height: AppSpacing.xs),
               Row(
                 children: [
                   if (!hasPhone) ...[
@@ -1098,7 +1098,7 @@ class _ContactCard extends StatelessWidget {
                       size: 14,
                       color: AppColors.warning.withValues(alpha: 0.9),
                     ),
-                    SizedBox(width: 4),
+                    SizedBox(width: AppSpacing.xs),
                   ],
                   Expanded(
                     child: Text(
@@ -1129,7 +1129,7 @@ class _ContactCard extends StatelessWidget {
           icon: Icon(Icons.edit_outlined, size: 20),
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        SizedBox(width: 4),
+        SizedBox(width: AppSpacing.xs),
         IconButton(
           onPressed: onMessage,
           tooltip: 'WhatsApp / SMS',
@@ -1146,7 +1146,7 @@ class _ContactCard extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         color: iconColor.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Icon(icon, color: iconColor, size: 22),
     );
@@ -1169,10 +1169,10 @@ class _BalanceBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: color.withValues(alpha: 0.20)),
       ),
       child: Column(
@@ -1193,6 +1193,7 @@ class _BalanceBadge extends StatelessWidget {
               color: color,
               fontWeight: FontWeight.w800,
               fontSize: 13,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],

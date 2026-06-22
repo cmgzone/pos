@@ -120,7 +120,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   minimumSize: WidgetStateProperty.all(const Size(0, 32)),
                   padding: WidgetStateProperty.all(
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 6),
                   ),
                 ),
               ),
@@ -133,7 +133,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
             child: TabBar(
               controller: _tabs,
               isScrollable: isMobile || _isManagerOrAdmin,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+              labelPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
               indicatorColor: AppColors.primary,
               labelColor: AppColors.primary,
               unselectedLabelColor: Theme.of(
@@ -520,7 +520,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
       children: [
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
           child: Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -582,7 +582,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
           child: _loading
               ? Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -693,7 +693,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.xl),
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final panelWidth = constraints.maxWidth >= 900
@@ -731,7 +731,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         },
                       ),
                       if (topProducts.isNotEmpty) ...[
-                        SizedBox(height: 20),
+                        SizedBox(height: AppSpacing.xl),
                         Text(
                           _isFilteredToEmployee
                               ? 'Top products sold by $_selectedCashierName'
@@ -739,7 +739,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.md),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
@@ -749,10 +749,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             final unit =
                                 product['sale_unit'] as String? ?? 'pcs';
                             return Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(AppSpacing.md),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(AppRadius.md),
                                 border: Border.all(
                                   color: Theme.of(context).colorScheme.outline,
                                 ),
@@ -766,7 +766,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  SizedBox(height: AppSpacing.xs),
                                   Text(
                                     '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} $unit sold',
                                     style: TextStyle(
@@ -783,7 +783,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         ),
                       ],
                       if (topServices.isNotEmpty) ...[
-                        SizedBox(height: 20),
+                        SizedBox(height: AppSpacing.xl),
                         Text(
                           _isFilteredToEmployee
                               ? 'Top services sold by $_selectedCashierName'
@@ -791,7 +791,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.md),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
@@ -801,10 +801,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             final revenue = (service['revenue'] as num? ?? 0)
                                 .toDouble();
                             return Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(AppSpacing.md),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(AppRadius.md),
                                 border: Border.all(
                                   color: Theme.of(context).colorScheme.outline,
                                 ),
@@ -818,7 +818,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  SizedBox(height: AppSpacing.xs),
                                   Text(
                                     '${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(2)} sold - ${_displayMoney(revenue)}',
                                     style: TextStyle(
@@ -826,6 +826,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         context,
                                       ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
+                                      fontFeatures: const [FontFeature.tabularFigures()],
                                     ),
                                   ),
                                 ],
@@ -834,7 +835,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           }).toList(),
                         ),
                       ],
-                      SizedBox(height: 24),
+                      SizedBox(height: AppSpacing.xxl),
                       Text(
                         _isFilteredToEmployee
                             ? 'Shift reconciliation for $_selectedCashierName'
@@ -842,14 +843,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: AppSpacing.md),
                       if (_closedShifts.isEmpty)
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(AppSpacing.lg),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
                             border: Border.all(
                               color: Theme.of(context).colorScheme.outline,
                             ),
@@ -872,10 +873,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                           final tone = _differenceColor(difference);
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(AppSpacing.lg),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(AppRadius.lg),
                               border: Border.all(
                                 color: Theme.of(context).colorScheme.outline,
                               ),
@@ -890,7 +891,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                       height: 42,
                                       decoration: BoxDecoration(
                                         color: tone.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(AppRadius.sm),
                                       ),
                                       child: Icon(
                                         difference.abs() < 0.009
@@ -901,7 +902,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: tone,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -914,7 +915,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                               fontWeight: FontWeight.w700,
                                             ),
                                           ),
-                                          SizedBox(height: 4),
+                                          SizedBox(height: AppSpacing.xs),
                                           Text(
                                             'Closed ${_displayTime(shift['closed_at'] as String?)} • Expected ${_displayMoney(shift['expected_cash'])}',
                                             style: TextStyle(
@@ -922,6 +923,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                 context,
                                               ).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
+                                              fontFeatures: const [FontFeature.tabularFigures()],
                                             ),
                                           ),
                                         ],
@@ -938,6 +940,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 16,
+                                            fontFeatures: const [FontFeature.tabularFigures()],
                                           ),
                                         ),
                                         Text(
@@ -946,13 +949,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                             color: tone,
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
+                                            fontFeatures: const [FontFeature.tabularFigures()],
                                           ),
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
-                                SizedBox(height: 12),
+                                SizedBox(height: AppSpacing.md),
                                 Row(
                                   children: [
                                     Expanded(
@@ -964,7 +968,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primaryLight,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Cash In',
@@ -974,7 +978,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.success,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Cash Out',
@@ -990,7 +994,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                             ),
                           );
                         }),
-                      SizedBox(height: 24),
+                      SizedBox(height: AppSpacing.xxl),
                       Text(
                         _isFilteredToEmployee
                             ? 'Sales for $_selectedCashierName'
@@ -998,14 +1002,14 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: AppSpacing.md),
                       if (_cashiers.isEmpty)
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(AppSpacing.lg),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
                             border: Border.all(
                               color: Theme.of(context).colorScheme.outline,
                             ),
@@ -1028,10 +1032,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                               (cashier['refund_count'] as num? ?? 0).toInt();
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(AppSpacing.lg),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(AppRadius.lg),
                               border: Border.all(
                                 color: Theme.of(context).colorScheme.outline,
                               ),
@@ -1048,7 +1052,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primary.withValues(
                                           alpha: 0.12,
                                         ),
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(AppRadius.sm),
                                       ),
                                       child: Center(
                                         child: Text(
@@ -1064,7 +1068,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         ),
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -1098,7 +1102,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                     shape: BoxShape.circle,
                                                   ),
                                                 ),
-                                                SizedBox(width: 4),
+                                                SizedBox(width: AppSpacing.xs),
                                                 Text(
                                                   'Online',
                                                   style: TextStyle(
@@ -1138,6 +1142,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                             color: AppColors.success,
                                             fontWeight: FontWeight.w700,
                                             fontSize: 16,
+                                            fontFeatures: const [FontFeature.tabularFigures()],
                                           ),
                                         ),
                                         Text(
@@ -1165,7 +1170,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primaryLight,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Kopesha',
@@ -1175,7 +1180,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.warning,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Profit',
@@ -1187,7 +1192,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                     ),
                                   ],
                                 ),
-                                SizedBox(height: 12),
+                                SizedBox(height: AppSpacing.md),
                                 Row(
                                   children: [
                                     Expanded(
@@ -1199,7 +1204,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primary,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Services',
@@ -1211,7 +1216,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         ).colorScheme.secondary,
                                       ),
                                     ),
-                                    SizedBox(width: 12),
+                                    SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: _CashierStatTile(
                                         label: 'Service Sales',
@@ -1224,7 +1229,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                     ),
                                   ],
                                 ),
-                                SizedBox(height: 12),
+                                SizedBox(height: AppSpacing.md),
                                 Wrap(
                                   spacing: 16,
                                   runSpacing: 8,
@@ -1245,6 +1250,7 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           color: AppColors.error,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
+                                          fontFeatures: const [FontFeature.tabularFigures()],
                                         ),
                                       ),
                                   ],
@@ -1317,7 +1323,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
         // Controls
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
           child: Row(
             children: [
               // Period chips
@@ -1358,9 +1364,9 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                   message: 'No sales data for this period',
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   itemCount: _products.length,
-                  separatorBuilder: (_, _) => SizedBox(height: 8),
+                  separatorBuilder: (_, _) => SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final p = _products[index];
                     final revenue = (p['total_revenue'] as num? ?? 0)
@@ -1372,10 +1378,10 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                     final rank = index + 1;
 
                     return Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         border: Border.all(
                           color: Theme.of(context).colorScheme.outline,
                         ),
@@ -1390,7 +1396,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                               color: rank <= 3
                                   ? AppColors.primary.withValues(alpha: 0.15)
                                   : context.appSurfaceHighlight,
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
                             ),
                             child: Center(
                               child: Text(
@@ -1419,7 +1425,7 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                                     fontSize: 14,
                                   ),
                                 ),
-                                SizedBox(height: 4),
+                                SizedBox(height: AppSpacing.xs),
                                 Text(
                                   '${qtySold % 1 == 0 ? qtySold.toInt() : qtySold.toStringAsFixed(2)} ${p['sale_unit'] ?? 'pcs'} sold · $txns transactions',
                                   style: TextStyle(
@@ -1441,12 +1447,14 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.primaryLight,
                                   fontSize: 15,
+                                  fontFeatures: const [FontFeature.tabularFigures()],
                                 ),
                               ),
                               Text(
                                 'Profit: ${ShopSettings.currency}${profit.toStringAsFixed(2)}',
                                 style: TextStyle(
                                   fontSize: 11,
+                                  fontFeatures: const [FontFeature.tabularFigures()],
                                   color: profit >= 0
                                       ? AppColors.success
                                       : AppColors.error,
@@ -1523,14 +1531,14 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
         // Total banner
         Container(
           color: AppColors.warning.withValues(alpha: 0.1),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: 14),
           child: Row(
             children: [
               Icon(
                 Icons.account_balance_wallet_outlined,
                 color: AppColors.warning,
               ),
-              SizedBox(width: 12),
+              SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1548,6 +1556,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                         color: AppColors.warning,
                         fontWeight: FontWeight.bold,
                         fontSize: 20,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ],
@@ -1559,7 +1568,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               IconButton(icon: Icon(Icons.refresh), onPressed: _load),
             ],
           ),
@@ -1567,9 +1576,9 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
         Divider(height: 1),
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             itemCount: _debtors.length,
-            separatorBuilder: (_, _) => SizedBox(height: 8),
+            separatorBuilder: (_, _) => SizedBox(height: AppSpacing.sm),
             itemBuilder: (context, index) {
               final d = _debtors[index];
               final balance = (d['balance'] as num? ?? 0).toDouble();
@@ -1579,10 +1588,10 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                   : 0.0;
 
               return Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   border: Border.all(
                     color: Theme.of(context).colorScheme.outline,
                   ),
@@ -1596,7 +1605,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                           height: 40,
                           decoration: BoxDecoration(
                             color: AppColors.warning.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
                           child: Center(
                             child: Text(
@@ -1611,7 +1620,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                             ),
                           ),
                         ),
-                        SizedBox(width: 12),
+                        SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1645,6 +1654,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                                 color: AppColors.warning,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
+                                fontFeatures: const [FontFeature.tabularFigures()],
                               ),
                             ),
                             Text(
@@ -1673,7 +1683,7 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                         minHeight: 5,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    SizedBox(height: AppSpacing.xs),
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text(
@@ -1812,7 +1822,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
     ];
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),
@@ -1821,10 +1831,10 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
             children: [
               // Header total
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(AppSpacing.xl),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   border: Border.all(
                     color: Theme.of(context).colorScheme.outline,
                   ),
@@ -1845,7 +1855,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               fontSize: 13,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          SizedBox(height: AppSpacing.xs),
                           Text(
                             '${ShopSettings.currency}${total.toStringAsFixed(2)}',
                             maxLines: 1,
@@ -1854,12 +1864,13 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
                               color: AppColors.warning,
+                              fontFeatures: const [FontFeature.tabularFigures()],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(width: 12),
+                    SizedBox(width: AppSpacing.md),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -1873,7 +1884,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                   ],
                 ),
               ),
-              SizedBox(height: 20),
+              SizedBox(height: AppSpacing.xl),
 
               // Bucket cards
               ...buckets
@@ -1882,10 +1893,10 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                     (b) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(AppSpacing.lg),
                         decoration: BoxDecoration(
                           color: b.color.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                           border: Border.all(
                             color: b.color.withValues(alpha: 0.25),
                           ),
@@ -1920,13 +1931,14 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                                     fontSize: 12,
                                   ),
                                 ),
-                                SizedBox(width: 16),
+                                SizedBox(width: AppSpacing.lg),
                                 Text(
                                   '${ShopSettings.currency}${b.amount.toStringAsFixed(2)}',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: b.color,
                                     fontSize: 15,
+                                    fontFeatures: const [FontFeature.tabularFigures()],
                                   ),
                                 ),
                               ],
@@ -1951,14 +1963,14 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                     ),
                   ),
 
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.sm),
               Text(
                 'Individual Sales',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
 
               // Individual sales list
               ..._sales.map((s) {
@@ -1973,7 +1985,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                       border: Border.all(
                         color: Theme.of(context).colorScheme.outline,
                       ),
@@ -1988,7 +2000,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
-                        SizedBox(width: 12),
+                        SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1998,7 +2010,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                                     'Unknown Customer',
                                 style: TextStyle(fontWeight: FontWeight.w600),
                               ),
-                              SizedBox(height: 4),
+                              SizedBox(height: AppSpacing.xs),
                               Text(
                                 bucket == 'current'
                                     ? 'Due: ${s['due_date'] ?? 'N/A'}'
@@ -2020,6 +2032,7 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               style: TextStyle(
                                 color: bColor,
                                 fontWeight: FontWeight.bold,
+                                fontFeatures: const [FontFeature.tabularFigures()],
                               ),
                             ),
                             if (daysOverdue > 0)
@@ -2094,7 +2107,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
         // Period picker
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
           child: Row(
             children: [
               ...[7, 14, 30, 90].map(
@@ -2118,13 +2131,13 @@ class _StockMovementTabState extends State<_StockMovementTab> {
         Divider(height: 1),
         // Legend
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.sm),
           child: Row(
             children: [
               _LegendDot(color: AppColors.success, label: 'Stock In'),
-              SizedBox(width: 16),
+              SizedBox(width: AppSpacing.lg),
               _LegendDot(color: AppColors.error, label: 'Stock Out (sold)'),
-              SizedBox(width: 16),
+              SizedBox(width: AppSpacing.lg),
               _LegendDot(color: AppColors.warning, label: 'Low / Out of stock'),
             ],
           ),
@@ -2138,9 +2151,9 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                   message: 'No stock movement in this period',
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xs, AppSpacing.xl, AppSpacing.xl),
                   itemCount: _data.length,
-                  separatorBuilder: (_, _) => SizedBox(height: 8),
+                  separatorBuilder: (_, _) => SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final item = _data[index];
                     final qtyIn = (item['qty_in'] as num? ?? 0).toDouble();
@@ -2159,7 +2172,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         border: Border.all(
                           color: Theme.of(context).colorScheme.outline,
                         ),
@@ -2181,11 +2194,11 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
-                                  vertical: 4,
+                                  vertical: AppSpacing.xs,
                                 ),
                                 decoration: BoxDecoration(
                                   color: statusColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(AppRadius.sm),
                                 ),
                                 child: Text(
                                   status == 'out'
@@ -2212,7 +2225,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                                 color: AppColors.success,
                                 icon: Icons.add_circle_outline,
                               ),
-                              SizedBox(width: 16),
+                              SizedBox(width: AppSpacing.lg),
                               _MovementTile(
                                 label: 'Out',
                                 value: qtyOut,
@@ -2220,7 +2233,7 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                                 color: AppColors.error,
                                 icon: Icons.remove_circle_outline,
                               ),
-                              SizedBox(width: 16),
+                              SizedBox(width: AppSpacing.lg),
                               _MovementTile(
                                 label: 'Net',
                                 value: qtyIn - qtyOut,
@@ -2285,7 +2298,7 @@ class _Chip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: selected ? c : context.appSurfaceHighlight,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           border: Border.all(color: selected ? c : context.appBorder),
         ),
         child: Text(
@@ -2458,20 +2471,20 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         children: [
           Text(
             'Kenya Launch Reports',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
-          SizedBox(height: 8),
+          SizedBox(height: AppSpacing.sm),
           Text(
             'Z-report, VAT-ready summary, KRA eTIMS status, and accountant export counts.',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          SizedBox(height: 16),
+          SizedBox(height: AppSpacing.lg),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -2500,7 +2513,7 @@ class _KenyaReportsTabState extends State<_KenyaReportsTab> {
               ),
             ],
           ),
-          SizedBox(height: 20),
+          SizedBox(height: AppSpacing.xl),
           Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -2629,10 +2642,10 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
           : null,
       child: Container(
         width: 220,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Row(
@@ -2642,11 +2655,11 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
               height: 42,
               decoration: BoxDecoration(
                 color: widget.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(widget.icon, color: widget.color),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2658,7 +2671,7 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
                       fontSize: 12,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  SizedBox(height: AppSpacing.xs),
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
@@ -2668,6 +2681,7 @@ class _SummaryMetricCardState extends State<_SummaryMetricCard> {
                         color: widget.color,
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ),
@@ -2709,10 +2723,10 @@ class _SalesTrendPanel extends StatelessWidget {
     final total = values.fold<double>(0, (sum, value) => sum + value);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -2721,7 +2735,7 @@ class _SalesTrendPanel extends StatelessWidget {
           Row(
             children: [
               Icon(Icons.show_chart_rounded, color: AppColors.primary),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   'Sales Trend',
@@ -2733,11 +2747,12 @@ class _SalesTrendPanel extends StatelessWidget {
                 style: TextStyle(
                   color: AppColors.success,
                   fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
           ),
-          SizedBox(height: 16),
+          SizedBox(height: AppSpacing.lg),
           SizedBox(
             height: 150,
             child: Row(
@@ -2762,13 +2777,13 @@ class _SalesTrendPanel extends StatelessWidget {
                                   color: value > 0
                                       ? AppColors.primary
                                       : context.appBorder,
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(AppRadius.sm),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(height: 8),
+                        SizedBox(height: AppSpacing.sm),
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
@@ -2788,7 +2803,7 @@ class _SalesTrendPanel extends StatelessWidget {
               }).toList(),
             ),
           ),
-          SizedBox(height: 8),
+          SizedBox(height: AppSpacing.sm),
           Text(
             maxValue <= 0
                 ? 'No sales in the selected trend window.'
@@ -2796,6 +2811,7 @@ class _SalesTrendPanel extends StatelessWidget {
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -2840,10 +2856,10 @@ class _RankedMetricPanel extends StatelessWidget {
     );
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -2852,7 +2868,7 @@ class _RankedMetricPanel extends StatelessWidget {
           Row(
             children: [
               Icon(icon, color: AppColors.primary),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               Text(
                 title,
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
@@ -2882,6 +2898,7 @@ class _RankedMetricPanel extends StatelessWidget {
                         style: TextStyle(
                           color: AppColors.success,
                           fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                     ],
@@ -2898,7 +2915,7 @@ class _RankedMetricPanel extends StatelessWidget {
                   ],
                   SizedBox(height: 6),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                     child: LinearProgressIndicator(
                       minHeight: 7,
                       value: ratio.clamp(0.0, 1.0).toDouble(),
@@ -2932,10 +2949,10 @@ class _CashierStatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2947,13 +2964,13 @@ class _CashierStatTile extends StatelessWidget {
               fontSize: 11,
             ),
           ),
-          SizedBox(height: 4),
+          SizedBox(height: AppSpacing.xs),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+              style: TextStyle(color: color, fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()]),
             ),
           ),
         ],
@@ -3020,7 +3037,7 @@ class _MovementTile extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
         child: Row(
           children: [
@@ -3076,7 +3093,7 @@ class _EmptyState extends StatelessWidget {
               context,
             ).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
           ),
-          SizedBox(height: 16),
+          SizedBox(height: AppSpacing.lg),
           Text(
             message,
             style: TextStyle(
@@ -3151,7 +3168,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
         // Period selector
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
           child: Row(
             children: [
               ...[7, 14, 30, 90].map(
@@ -3185,9 +3202,9 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                       'Create branches in Settings to compare performance.',
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   itemCount: _branches.length + 1,
-                  separatorBuilder: (context, _) => SizedBox(height: 12),
+                  separatorBuilder: (context, _) => SizedBox(height: AppSpacing.md),
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       return _BranchComparisonSummary(
@@ -3226,7 +3243,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
                         border: Border.all(
                           color: rank == 1
                               ? AppColors.primary.withValues(alpha: 0.3)
@@ -3244,7 +3261,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                 height: 36,
                                 decoration: BoxDecoration(
                                   color: rankColor.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(AppRadius.sm),
                                 ),
                                 child: Center(
                                   child: Text(
@@ -3257,7 +3274,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                   ),
                                 ),
                               ),
-                              SizedBox(width: 12),
+                              SizedBox(width: AppSpacing.md),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3290,6 +3307,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                                       fontWeight: FontWeight.bold,
                                       color: AppColors.primaryLight,
                                       fontSize: 18,
+                                      fontFeatures: const [FontFeature.tabularFigures()],
                                     ),
                                   ),
                                   Text(
@@ -3305,7 +3323,7 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                               ),
                             ],
                           ),
-                          SizedBox(height: 16),
+                          SizedBox(height: AppSpacing.lg),
                           // Metrics grid
                           Row(
                             children: [
@@ -3397,7 +3415,7 @@ class _BranchComparisonSummary extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -3406,7 +3424,7 @@ class _BranchComparisonSummary extends StatelessWidget {
           Row(
             children: [
               Icon(Icons.compare_arrows_rounded, color: AppColors.primary),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   'Branch Snapshot - ${days}d',
@@ -3437,7 +3455,7 @@ class _BranchComparisonSummary extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 16),
+          SizedBox(height: AppSpacing.lg),
           ...branches.take(5).map((branch) {
             final name = branch['branch_name'] as String? ?? 'Branch';
             final sales = (branch['revenue'] as num? ?? 0).toDouble();
@@ -3458,17 +3476,18 @@ class _BranchComparisonSummary extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '${money(sales)} sales / ${money(profit)} profit',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
+                          '${money(sales)} sales / ${money(profit)} profit',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                       ),
                     ],
                   ),
                   SizedBox(height: 6),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                     child: LinearProgressIndicator(
                       minHeight: 8,
                       value: ratio.clamp(0.0, 1.0).toDouble(),
@@ -3506,7 +3525,7 @@ class _BranchMetric extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3525,6 +3544,7 @@ class _BranchMetric extends StatelessWidget {
                 color: color,
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
               overflow: TextOverflow.ellipsis,
             ),

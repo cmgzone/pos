@@ -132,7 +132,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Record Payment: ${customer['name']}'),
           content: SizedBox(
@@ -146,6 +146,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   style: TextStyle(
                     color: AppColors.warning,
                     fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
                 SizedBox(height: 14),
@@ -390,7 +391,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Column(
@@ -400,10 +401,10 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             label,
             style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11),
           ),
-          SizedBox(height: 4),
+          SizedBox(height: AppSpacing.xs),
           Text(
             value,
-            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+            style: TextStyle(color: color, fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
         ],
       ),
@@ -427,7 +428,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       child: Row(
         children: [
           for (var i = 0; i < filters.length; i++) ...[
-            if (i > 0) SizedBox(width: 8),
+            if (i > 0) SizedBox(width: AppSpacing.sm),
             filters[i],
           ],
         ],
@@ -464,7 +465,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -485,7 +486,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    SizedBox(height: AppSpacing.xs),
                     Text(
                       '${ShopSettings.currency}${outstanding.toStringAsFixed(2)}',
                       maxLines: 1,
@@ -494,6 +495,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                         color: AppColors.warning,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ],
@@ -504,7 +506,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 height: 42,
                 decoration: BoxDecoration(
                   color: AppColors.warning.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Icon(
                   Icons.account_balance_wallet_outlined,
@@ -524,7 +526,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   color: AppColors.primary,
                 ),
               ),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: _CompactStat(
                   label: 'Overdue',
@@ -532,7 +534,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                   color: AppColors.error,
                 ),
               ),
-              SizedBox(width: 8),
+              SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: _CompactStat(
                   label: 'Risky',
@@ -554,14 +556,14 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
         _filter = value;
         _load();
       },
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.primary.withValues(alpha: 0.16)
               : context.appSurfaceHighlight,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           border: Border.all(
             color: selected ? AppColors.primaryLight : context.appBorder,
           ),
@@ -627,7 +629,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
               height: 44,
               decoration: BoxDecoration(
                 color: riskColor.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Icon(
                 overdueCount > 0
@@ -637,7 +639,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 size: 22,
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,7 +653,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  SizedBox(height: AppSpacing.xs),
                   Text(
                     _contactLine(c),
                     maxLines: 1,
@@ -664,7 +666,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 ],
               ),
             ),
-            SizedBox(width: 8),
+            SizedBox(width: AppSpacing.sm),
             _RiskBadge(label: risk, color: riskColor),
           ],
         ),
@@ -686,9 +688,10 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             fontSize: 25,
             fontWeight: FontWeight.w900,
             color: AppColors.warning,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
-        SizedBox(height: 8),
+        SizedBox(height: AppSpacing.sm),
         Row(
           children: [
             Icon(
@@ -786,7 +789,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             label: Text('Record Payment'),
           ),
         ),
-        SizedBox(height: 8),
+        SizedBox(height: AppSpacing.sm),
         Row(
           children: [
             Expanded(
@@ -796,7 +799,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 label: Text('Statement'),
               ),
             ),
-            SizedBox(width: 8),
+            SizedBox(width: AppSpacing.sm),
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _messageCustomer(c),
@@ -829,7 +832,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
               height: 50,
               decoration: BoxDecoration(
                 color: riskColor.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
               ),
               child: Icon(
                 overdueCount > 0
@@ -852,7 +855,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  SizedBox(height: AppSpacing.xs),
                   Text(
                     _contactLine(c),
                     maxLines: 1,
@@ -862,7 +865,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                       fontSize: 12,
                     ),
                   ),
-                  SizedBox(height: 8),
+                  SizedBox(height: AppSpacing.sm),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -883,7 +886,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 ],
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -895,9 +898,10 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     color: AppColors.warning,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-                SizedBox(height: 4),
+                SizedBox(height: AppSpacing.xs),
                 Text(
                   'Next due: ${_shortDate(nextDue)}',
                   style: TextStyle(
@@ -910,7 +914,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             ),
           ],
         ),
-        SizedBox(height: 16),
+        SizedBox(height: AppSpacing.lg),
         Row(
           children: [
             Expanded(
@@ -935,7 +939,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
             ),
           ],
         ),
-        SizedBox(height: 16),
+        SizedBox(height: AppSpacing.lg),
         Row(
           children: [
             Expanded(
@@ -945,7 +949,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 label: Text('View Statement'),
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _messageCustomer(c),
@@ -953,7 +957,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                 label: Text('Message'),
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Expanded(
               child: ElevatedButton.icon(
                 onPressed: () => _recordPayment(c),
@@ -1015,7 +1019,7 @@ class _KopeshaScreenState extends ConsumerState<KopeshaScreen> {
                     label: Text('Create Account'),
                   ),
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
               ],
               IconButton(
                 onPressed: _load,
@@ -1161,8 +1165,8 @@ class _Info extends StatelessWidget {
           label,
           style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
         ),
-        SizedBox(height: 4),
-        Text(value, style: TextStyle(fontWeight: FontWeight.w700)),
+        SizedBox(height: AppSpacing.xs),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()])),
       ],
     );
   }
@@ -1185,7 +1189,7 @@ class _CompactStat extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1236,7 +1240,7 @@ class _MetricPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Row(
         children: [
@@ -1261,7 +1265,7 @@ class _MetricPill extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: color, fontWeight: FontWeight.w800),
+                  style: TextStyle(color: color, fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
                 ),
               ],
             ),
@@ -1283,7 +1287,7 @@ class _RiskBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       child: Text(
         label,
@@ -1306,12 +1310,12 @@ class _ChipButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Text(

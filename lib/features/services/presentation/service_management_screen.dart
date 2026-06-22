@@ -134,7 +134,7 @@ class _ServiceManagementScreenState
             icon: Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
-          SizedBox(width: 8),
+          SizedBox(width: AppSpacing.sm),
         ],
       ),
       body: TrainingAnchor(
@@ -204,7 +204,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
               color: Colors.white,
               size: 18,
             ),
-            SizedBox(width: 8),
+            SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
                 success
@@ -326,7 +326,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(context, compact: compactHeader),
-              SizedBox(height: 16),
+              SizedBox(height: AppSpacing.lg),
               Expanded(
                 child: isMobile
                     ? _buildMobileLayout(servicesAsync, todayOrdersAsync, cart)
@@ -392,7 +392,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [Expanded(child: title)]),
-          SizedBox(height: 12),
+          SizedBox(height: AppSpacing.md),
           actions,
         ],
       );
@@ -447,7 +447,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
               selected: _selectedCategory == null,
               onSelected: (_) => _setSelectedCategory(null),
             ),
-            SizedBox(width: 8),
+            SizedBox(width: AppSpacing.sm),
             for (final category in categories)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -470,7 +470,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
     return ListView.separated(
       padding: const EdgeInsets.only(bottom: 104),
       itemCount: displayedServices.length,
-      separatorBuilder: (_, _) => SizedBox(height: 12),
+      separatorBuilder: (_, _) => SizedBox(height: AppSpacing.md),
       itemBuilder: (context, index) {
         final service = displayedServices[index];
         return _MobileServiceTile(
@@ -500,13 +500,13 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
         return Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             onTap: () => _handleServiceTap(service, allServices),
             child: Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 border: Border.all(color: Theme.of(context).colorScheme.outline),
                 boxShadow: [
                   BoxShadow(
@@ -527,7 +527,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                         height: 46,
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                         child: Icon(
                           Icons.design_services_rounded,
@@ -548,7 +548,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                       fontSize: 16,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  SizedBox(height: AppSpacing.xs),
                   Text(
                     service['category'] as String? ?? 'General',
                     maxLines: 1,
@@ -570,6 +570,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                             color: AppColors.success,
                             fontWeight: FontWeight.w800,
                             fontSize: 18,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ),
@@ -578,7 +579,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                         height: 44,
                         decoration: BoxDecoration(
                           color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                         child: Icon(
                           Icons.add_shopping_cart_rounded,
@@ -628,7 +629,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(flex: 6, child: _buildServicesGrid(servicesAsync)),
-        SizedBox(width: 24),
+        SizedBox(width: AppSpacing.xxl),
         Expanded(flex: 4, child: _buildTodayOrdersList(todayOrdersAsync, cart)),
       ],
     );
@@ -707,14 +708,14 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             child: Row(
               children: [
                 Icon(
@@ -722,7 +723,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                   color: AppColors.primary,
                   size: 20,
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'Today\'s Orders',
@@ -746,7 +747,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                 if (orders.isEmpty) {
                   return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
+                      padding: EdgeInsets.all(AppSpacing.xxl),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -755,7 +756,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                             size: 48,
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
-                          SizedBox(height: 12),
+                          SizedBox(height: AppSpacing.md),
                           Text(
                             'No orders today',
                             style: TextStyle(
@@ -763,7 +764,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          SizedBox(height: AppSpacing.xs),
                           Text(
                             'Create orders to see them here',
                             style: TextStyle(
@@ -778,7 +779,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                 }
 
                 return ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: orders.length,
                   separatorBuilder: (_, _) => SizedBox(height: 10),
                   itemBuilder: (context, index) {
@@ -790,7 +791,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
               loading: () => Center(child: CircularProgressIndicator()),
               error: (error, _) => Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
                   child: Text(
                     AppErrorMessage.from(
                       error,
@@ -838,13 +839,13 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
     final isInCart = cart.any((item) => item.serviceOrderId == orderId);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       onTap: () => showServiceOrderDetailsDialog(context, ref, orderId),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
             color: isInCart
                 ? AppColors.success.withValues(alpha: 0.3)
@@ -869,12 +870,12 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
                   ),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Text(
                     statusLabel,
@@ -887,7 +888,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                 ),
               ],
             ),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             Row(
               children: [
                 Icon(
@@ -895,7 +896,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                   size: 14,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                SizedBox(width: 4),
+                SizedBox(width: AppSpacing.xs),
                 Expanded(
                   child: Text(
                     customerName,
@@ -908,7 +909,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                   ),
                 ),
                 if (bayNumber != null && bayNumber.isNotEmpty) ...[
-                  SizedBox(width: 8),
+                  SizedBox(width: AppSpacing.sm),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
@@ -916,7 +917,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(AppRadius.xs),
                     ),
                     child: Text(
                       'Bay $bayNumber',
@@ -940,6 +941,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                     color: AppColors.success,
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
                 if (canCharge && !isInCart)
@@ -958,8 +960,8 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                     label: Text('Add to Cart'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm,
                       ),
                       minimumSize: Size.zero,
                     ),
@@ -972,7 +974,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.success.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -982,7 +984,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                           size: 14,
                           color: AppColors.success,
                         ),
-                        SizedBox(width: 4),
+                        SizedBox(width: AppSpacing.xs),
                         Text(
                           'In Cart',
                           style: TextStyle(
@@ -1011,10 +1013,10 @@ class _ServiceDurationBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
@@ -1025,7 +1027,7 @@ class _ServiceDurationBadge extends StatelessWidget {
             size: 12,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          SizedBox(width: 4),
+          SizedBox(width: AppSpacing.xs),
           Text(
             '$duration min',
             style: TextStyle(
@@ -1052,15 +1054,15 @@ class _MobileServiceTile extends StatelessWidget {
 
     return Material(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             border: Border.all(color: Theme.of(context).colorScheme.outline),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             children: [
@@ -1069,14 +1071,14 @@ class _MobileServiceTile extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Icon(
                   Icons.design_services_rounded,
                   color: Theme.of(context).colorScheme.secondary,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1111,7 +1113,7 @@ class _MobileServiceTile extends StatelessWidget {
                   ],
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: AppSpacing.md),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -1121,15 +1123,16 @@ class _MobileServiceTile extends StatelessWidget {
                       color: AppColors.success,
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                  SizedBox(height: 8),
+                  SizedBox(height: AppSpacing.sm),
                   Container(
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Icon(
                       Icons.add_shopping_cart_rounded,
@@ -1168,16 +1171,16 @@ class _CatalogTab extends ConsumerWidget {
         }
 
         return ListView.separated(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           itemCount: services.length,
           separatorBuilder: (_, _) => SizedBox(height: 10),
           itemBuilder: (context, index) {
             final service = services[index];
             return Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Row(
@@ -1187,14 +1190,14 @@ class _CatalogTab extends ConsumerWidget {
                     height: 48,
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                     child: Icon(
                       Icons.design_services_rounded,
                       color: AppColors.primaryLight,
                     ),
                   ),
-                  SizedBox(width: 16),
+                  SizedBox(width: AppSpacing.lg),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1206,7 +1209,7 @@ class _CatalogTab extends ConsumerWidget {
                             fontSize: 15,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           service['category'] as String? ?? 'General',
                           style: TextStyle(
@@ -1237,9 +1240,10 @@ class _CatalogTab extends ConsumerWidget {
                         style: TextStyle(
                           color: AppColors.success,
                           fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
-                      SizedBox(height: 8),
+                      SizedBox(height: AppSpacing.sm),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1306,7 +1310,7 @@ class _OrdersTab extends ConsumerWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.xxl, AppSpacing.xl, AppSpacing.xxl, 0),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Wrap(
@@ -1342,7 +1346,7 @@ class _OrdersTab extends ConsumerWidget {
                 );
               }
               return ListView.separated(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(AppSpacing.xxl),
                 itemCount: orders.length,
                 separatorBuilder: (_, _) => SizedBox(height: 10),
                 itemBuilder: (context, index) {
@@ -1409,12 +1413,12 @@ class _ServiceOrderTile extends StatelessWidget {
 
     return InkWell(
       onTap: onViewDetails,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Container(
-        padding: const EdgeInsets.all(12), // Reduced from 16
+        padding: const EdgeInsets.all(AppSpacing.md), // Reduced from 16
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(12), // Reduced from 16
+          borderRadius: BorderRadius.circular(AppRadius.sm), // Reduced from 16
           border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Column(
@@ -1432,7 +1436,7 @@ class _ServiceOrderTile extends StatelessWidget {
                           fontSize: 15,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      SizedBox(height: AppSpacing.xs),
                       Text(
                         (order['customer_name'] as String?)?.isNotEmpty == true
                             ? order['customer_name'] as String
@@ -1449,7 +1453,7 @@ class _ServiceOrderTile extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: _statusColor(context, status).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                   ),
                   child: Text(
                     status.replaceAll('_', ' '),
@@ -1462,7 +1466,7 @@ class _ServiceOrderTile extends StatelessWidget {
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             Row(
               children: [
                 Expanded(
@@ -1479,11 +1483,12 @@ class _ServiceOrderTile extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.success,
                     fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             if (assignedStaff != null || bayNumber != null || note != null) ...[
               Wrap(
                 spacing: 6, // Reduced from 8
@@ -1503,7 +1508,7 @@ class _ServiceOrderTile extends StatelessWidget {
                     _OrderMetaChip(icon: Icons.notes_outlined, label: note),
                 ],
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
             ],
             Wrap(
               spacing: 6, // Reduced from 10
@@ -1557,7 +1562,7 @@ class _OrderMetaChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Row(
@@ -1592,8 +1597,8 @@ Future<void> showServiceOrderDetailsDialog(
   await showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
       title: Text('Service Order Details'),
       content: _ResponsiveDialogContent(
         maxWidth: 640,
@@ -1684,7 +1689,7 @@ class _OrderDetailRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(width: 120, child: labelText),
-              SizedBox(width: 12),
+              SizedBox(width: AppSpacing.md),
               Expanded(child: valueText),
             ],
           );
@@ -1790,7 +1795,7 @@ class _ServiceOrderDetailsContent extends StatelessWidget {
           if (note != null) ...[
             SizedBox(height: 18),
             const _DetailsSectionTitle('Note'),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             _InfoPanel(child: Text(note)),
           ],
           SizedBox(height: 18),
@@ -1864,12 +1869,12 @@ class _ServiceOrderDetailsHeader extends StatelessWidget {
             ],
           ),
         ),
-        SizedBox(width: 12),
+        SizedBox(width: AppSpacing.md),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: _statusColor(context, status).withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
           ),
           child: Text(
             status.replaceAll('_', ' '),
@@ -1908,10 +1913,10 @@ class _InfoPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: child,
@@ -1954,7 +1959,7 @@ Future<void> deleteServiceOrderWithConfirmation(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
       title: Text('Delete Service Order?'),
       content: Text(
         'Delete "$serviceName" from service orders and reports? This will not delete the service template.',
@@ -2244,11 +2249,11 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
 
         return AlertDialog(
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xxl,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Cash Payment'),
           content: _ResponsiveDialogContent(
@@ -2261,16 +2266,17 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                   serviceName,
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 Text(
                   'Total: ${ShopSettings.currency}${total.toStringAsFixed(2)}',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
                     color: AppColors.success,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-                SizedBox(height: 16),
+                SizedBox(height: AppSpacing.lg),
                 TextField(
                   controller: controller,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -2287,7 +2293,7 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                     errorText: errorText,
                   ),
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
@@ -2301,7 +2307,7 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                     label: Text('Use Exact Amount'),
                   ),
                 ),
-                SizedBox(height: 8),
+                SizedBox(height: AppSpacing.sm),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
@@ -2309,7 +2315,7 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                     color: hasEnoughCash
                         ? AppColors.primaryLight.withValues(alpha: 0.08)
                         : AppColors.warning.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Row(
                     children: [
@@ -2321,7 +2327,7 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                             ? AppColors.primaryLight
                             : AppColors.warning,
                       ),
-                      SizedBox(width: 12),
+                      SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2343,6 +2349,7 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
+                                fontFeatures: const [FontFeature.tabularFigures()],
                               ),
                             ),
                           ],
@@ -2507,11 +2514,11 @@ void _showServicePaymentSuccessDialog(
   showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
       title: Row(
         children: const [
           Icon(Icons.check_circle, color: AppColors.success, size: 30),
-          SizedBox(width: 12),
+          SizedBox(width: AppSpacing.md),
           Text('Payment Complete'),
         ],
       ),
@@ -2523,13 +2530,14 @@ void _showServicePaymentSuccessDialog(
             serviceName,
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
           ),
-          SizedBox(height: 12),
+          SizedBox(height: AppSpacing.md),
           Text(
             'Total: ${ShopSettings.currency}${total.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppColors.success,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
           SizedBox(height: 10),
@@ -2643,8 +2651,8 @@ Future<void> showServiceEditorDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         title: Text(service == null ? 'Create Service' : 'Edit Service'),
         content: _ResponsiveDialogContent(
           maxWidth: 720,
@@ -2658,7 +2666,7 @@ Future<void> showServiceEditorDialog(
                   prefixIcon: Icon(Icons.design_services_outlined),
                 ),
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               _ResponsiveFormRow(
                 children: [
                   TextField(
@@ -2680,7 +2688,7 @@ Future<void> showServiceEditorDialog(
                   ),
                 ],
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               _ResponsiveFormRow(
                 children: [
                   TextField(
@@ -2700,7 +2708,7 @@ Future<void> showServiceEditorDialog(
                   ),
                 ],
               ),
-              SizedBox(height: 12),
+              SizedBox(height: AppSpacing.md),
               TextField(
                 controller: descriptionController,
                 maxLines: 2,
@@ -2904,11 +2912,11 @@ Future<bool> showCreateServiceOrderDialog(
 
         return AlertDialog(
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xxl,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Create Service Order'),
           content: _ResponsiveDialogContent(
@@ -2950,7 +2958,7 @@ Future<bool> showCreateServiceOrderDialog(
                     });
                   },
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 _CustomerSelectionField(
                   selectedCustomerName: selectedCustomerName,
                   onTap: () async {
@@ -2973,7 +2981,7 @@ Future<bool> showCreateServiceOrderDialog(
                     });
                   },
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 _ResponsiveFormRow(
                   children: [
                     DropdownButtonFormField<String>(
@@ -3032,7 +3040,7 @@ Future<bool> showCreateServiceOrderDialog(
                     ),
                   ],
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 _ResponsiveFormRow(
                   children: [
                     TextField(
@@ -3054,13 +3062,13 @@ Future<bool> showCreateServiceOrderDialog(
                     ),
                   ],
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 _BaySelectionField(
                   baysCount: baysCount,
                   selectedBay: selectedBay,
                   onChanged: (bay) => setDialogState(() => selectedBay = bay),
                 ),
-                SizedBox(height: 12),
+                SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: noteController,
                   maxLines: 2,
@@ -3326,7 +3334,7 @@ class _ResponsiveFormRow extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) SizedBox(height: 12),
+                if (index != children.length - 1) SizedBox(height: AppSpacing.md),
               ],
             ],
           );
@@ -3336,7 +3344,7 @@ class _ResponsiveFormRow extends StatelessWidget {
           children: [
             for (var index = 0; index < children.length; index++) ...[
               Expanded(child: children[index]),
-              if (index != children.length - 1) SizedBox(width: 12),
+              if (index != children.length - 1) SizedBox(width: AppSpacing.md),
             ],
           ],
         );
@@ -3364,10 +3372,10 @@ class _ServiceFieldDraftCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: Column(
@@ -3422,7 +3430,7 @@ class _ServiceFieldDraftCard extends StatelessWidget {
             ],
           ),
           if (draft.fieldType == 'select') ...[
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             TextField(
               controller: draft.priceMapController,
               decoration: InputDecoration(
@@ -3453,7 +3461,7 @@ class _CustomerSelectionField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: onTap,
       child: InputDecorator(
         decoration: InputDecoration(
@@ -3490,7 +3498,7 @@ class _ScheduleSelectionField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: onTap,
       child: InputDecorator(
         decoration: InputDecoration(
@@ -3689,7 +3697,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -3698,12 +3706,12 @@ class _EmptyState extends StatelessWidget {
               size: 64,
               color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
             ),
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
             Text(
               title,
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
-            SizedBox(height: 8),
+            SizedBox(height: AppSpacing.sm),
             Text(
               subtitle,
               textAlign: TextAlign.center,
@@ -3851,10 +3859,10 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
       title: Text('Select Customer'),
-      contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      contentPadding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
       content: SizedBox(
         width: math.max(
           240.0,
@@ -3871,7 +3879,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                 prefixIcon: Icon(Icons.search),
               ),
             ),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             Expanded(
               child: ListView(
                 children: [
@@ -3890,7 +3898,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                       alpha: 0.08,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     onTap: () =>
                         Navigator.pop(context, <String, dynamic>{'id': null}),
@@ -3898,7 +3906,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                   SizedBox(height: 6),
                   if (_filtered.isEmpty)
                     Padding(
-                      padding: EdgeInsets.all(24),
+                      padding: EdgeInsets.all(AppSpacing.xxl),
                       child: Text(
                         'No customers found',
                         textAlign: TextAlign.center,
@@ -3935,7 +3943,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                             alpha: 0.08,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
                           onTap: () => Navigator.pop(context, c),
                         ),
@@ -3991,7 +3999,7 @@ class _ServiceReportsTab extends ConsumerWidget {
         final recentOrders = stats['recent_orders'] as List<dynamic>? ?? [];
 
         return ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           children: [
             _StatsRow(
               cards: [
@@ -4015,7 +4023,7 @@ class _ServiceReportsTab extends ConsumerWidget {
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             _StatsRow(
               cards: [
                 _StatCardData(
@@ -4038,7 +4046,7 @@ class _ServiceReportsTab extends ConsumerWidget {
                 ),
               ],
             ),
-            SizedBox(height: 24),
+            SizedBox(height: AppSpacing.xxl),
             _ServiceSalesByDateSection(
               selectedDate: selectedSalesDate,
               salesAsync: salesByDateAsync,
@@ -4059,9 +4067,9 @@ class _ServiceReportsTab extends ConsumerWidget {
                 );
               },
             ),
-            SizedBox(height: 24),
+            SizedBox(height: AppSpacing.xxl),
             _SectionHeader(title: 'Pipeline Status', onRefresh: onRefresh),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             _ReportCard(
               child: Column(
                 children: [
@@ -4076,9 +4084,9 @@ class _ServiceReportsTab extends ConsumerWidget {
                 ],
               ),
             ),
-            SizedBox(height: 24),
+            SizedBox(height: AppSpacing.xxl),
             const _SectionHeader(title: 'Top Services'),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             if (topServices.isEmpty)
               const _EmptyState(
                 icon: Icons.bar_chart_outlined,
@@ -4087,9 +4095,9 @@ class _ServiceReportsTab extends ConsumerWidget {
               )
             else
               _TopServicesSection(topServices: topServices),
-            SizedBox(height: 24),
+            SizedBox(height: AppSpacing.xxl),
             const _SectionHeader(title: 'Recent Orders'),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             if (recentOrders.isEmpty)
               const _EmptyState(
                 icon: Icons.history_outlined,
@@ -4098,7 +4106,7 @@ class _ServiceReportsTab extends ConsumerWidget {
               )
             else
               _RecentOrdersSection(recentOrders: recentOrders, ref: ref),
-            SizedBox(height: 32),
+            SizedBox(height: AppSpacing.section),
           ],
         );
       },
@@ -4123,10 +4131,10 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: Column(
@@ -4137,7 +4145,7 @@ class _StatCard extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(icon, color: color, size: 18),
             ),
@@ -4148,6 +4156,7 @@ class _StatCard extends StatelessWidget {
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: color,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
             SizedBox(height: 2),
@@ -4195,7 +4204,7 @@ class _StatsRow extends StatelessWidget {
             icon: cards[index].icon,
             color: cards[index].color,
           ),
-          if (index != cards.length - 1) SizedBox(width: 12),
+          if (index != cards.length - 1) SizedBox(width: AppSpacing.md),
         ],
       ],
     );
@@ -4208,7 +4217,7 @@ class _ReportCard extends StatelessWidget {
 
   const _ReportCard({
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(AppSpacing.lg),
   });
 
   @override
@@ -4217,7 +4226,7 @@ class _ReportCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: child,
@@ -4254,7 +4263,7 @@ class _ServiceSalesByDateSection extends StatelessWidget {
             ),
           ],
         ),
-        SizedBox(height: 12),
+        SizedBox(height: AppSpacing.md),
         salesAsync.when(
           loading: () => const _ReportCard(
             child: Center(child: CircularProgressIndicator()),
@@ -4312,7 +4321,7 @@ class _ServiceSalesByDateSection extends StatelessWidget {
                       'Payment Methods',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: AppSpacing.sm),
                     ...paymentMethods.map((item) {
                       final row = item as Map<String, dynamic>;
                       return _ReportValueRow(
@@ -4330,7 +4339,7 @@ class _ServiceSalesByDateSection extends StatelessWidget {
                       'Services Sold',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: AppSpacing.sm),
                     ...services.map((item) {
                       final row = item as Map<String, dynamic>;
                       return _ReportValueRow(
@@ -4346,7 +4355,7 @@ class _ServiceSalesByDateSection extends StatelessWidget {
                       'Recent Service Sales',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: AppSpacing.sm),
                     ...recentSales.map((item) {
                       final row = item as Map<String, dynamic>;
                       return _ReportValueRow(
@@ -4382,10 +4391,10 @@ class _MiniMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 180,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Row(
@@ -4402,6 +4411,7 @@ class _MiniMetric extends StatelessWidget {
                     color: color,
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
                 Text(
@@ -4435,8 +4445,8 @@ class _ReportValueRow extends StatelessWidget {
           Expanded(
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
-          SizedBox(width: 12),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w700)),
+          SizedBox(width: AppSpacing.md),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()])),
         ],
       ),
     );
@@ -4459,7 +4469,7 @@ class _TopServicesSection extends StatelessWidget {
           final revenue = (service['revenue'] as num? ?? 0).toDouble();
 
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Row(
               children: [
                 Container(
@@ -4467,7 +4477,7 @@ class _TopServicesSection extends StatelessWidget {
                   height: 36,
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Icon(
                     Icons.design_services_rounded,
@@ -4475,7 +4485,7 @@ class _TopServicesSection extends StatelessWidget {
                     size: 18,
                   ),
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -4499,6 +4509,7 @@ class _TopServicesSection extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.success,
                     fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -4554,7 +4565,7 @@ class _RecentOrderTile extends StatelessWidget {
     final assignedStaff = _cleanText(order['assigned_staff']);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
       child: Row(
         children: [
           Container(
@@ -4565,7 +4576,7 @@ class _RecentOrderTile extends StatelessWidget {
               shape: BoxShape.circle,
             ),
           ),
-          SizedBox(width: 12),
+          SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4608,14 +4619,15 @@ class _RecentOrderTile extends StatelessWidget {
                 style: TextStyle(
                   color: AppColors.success,
                   fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-              SizedBox(height: 4),
+              SizedBox(height: AppSpacing.xs),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
                 decoration: BoxDecoration(
                   color: _statusColor(context, status).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
                 ),
                 child: Text(
                   status.replaceAll('_', ' '),
@@ -4688,7 +4700,7 @@ class _PipelineRow extends StatelessWidget {
             height: 10,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-          SizedBox(width: 12),
+          SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
               label,
@@ -4699,7 +4711,7 @@ class _PipelineRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
             ),
             child: Text(
               '$count',

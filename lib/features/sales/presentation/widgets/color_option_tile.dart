@@ -78,18 +78,18 @@ class ColorOptionTile extends StatelessWidget {
       opacity: enabled ? 1 : 0.48,
       child: Material(
         color: background,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           splashColor: AppColors.primaryLight.withValues(alpha: 0.12),
           highlightColor: AppColors.primaryLight.withValues(alpha: 0.06),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(color: borderColor, width: selected ? 2 : 1),
               boxShadow: enabled
                   ? [
@@ -108,7 +108,7 @@ class ColorOptionTile extends StatelessWidget {
                   imagePath: option['image_url'] as String?,
                   enabled: enabled,
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,7 +125,7 @@ class ColorOptionTile extends StatelessWidget {
                           fontSize: 15,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
                         stockLabel,
                         maxLines: 1,
@@ -136,12 +136,13 @@ class ColorOptionTile extends StatelessWidget {
                               : theme.colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.sm),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 160),
                   child: !enabled

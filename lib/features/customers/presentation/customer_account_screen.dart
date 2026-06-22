@@ -72,9 +72,9 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
             child: FilledButton.icon(
               onPressed: _isSaving ? null : _save,
               icon: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
+                  ? SizedBox(
+                      width: AppSpacing.lg,
+                      height: AppSpacing.lg,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
@@ -84,12 +84,12 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
               label: const Text('Save'),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
         ],
       ),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 560),
             child: Form(
@@ -101,10 +101,10 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
                     id: 'customerAccount.form',
                     child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(AppSpacing.xl),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
                         border: Border.all(color: Theme.of(context).colorScheme.outline),
                       ),
                       child: Column(
@@ -127,7 +127,7 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
                               fontSize: 13,
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: AppSpacing.xl),
                           TextFormField(
                             controller: _nameController,
                             validator: (value) {
@@ -141,7 +141,7 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
                               prefixIcon: Icon(Icons.person_outline),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.lg),
                           TextFormField(
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
@@ -150,7 +150,7 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
                               prefixIcon: Icon(Icons.phone_outlined),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.lg),
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,

@@ -52,4 +52,37 @@ class AppColors {
       offset: const Offset(0, 10),
     ),
   ];
+
+  // ── Named metric colors (used by dashboard KPIs) ────────────────────────
+  // Brand pink (metricSales) and semantic success/warning (metricProfit/
+  // metricStock) reuse the constants above. These four are the unique
+  // metric hues that previously lived as magic hex in dashboard_screen.dart.
+  static const Color metricMonth  = Color(0xFF536DFE);
+  static const Color metricTop    = Color(0xFF9C6ADE);
+  static const Color metricOrders = Color(0xFF00A6A6);
+  static const Color metricStaff  = Color(0xFFEC6B3C);
+}
+
+/// 4pt spacing scale. Prefer these over raw SizedBox(height: N) so the
+/// whole app breathes from one rhythm.
+class AppSpacing {
+  const AppSpacing._();
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double xl = 20;
+  static const double xxl = 24;
+  static const double section = 32;
+}
+
+/// Tiered radius scale. Tiles (md) deliberately sit below panels (lg) so
+/// list items no longer look identical to container cards.
+class AppRadius {
+  const AppRadius._();
+  static const double xs = 6;   // chips, badges
+  static const double sm = 10;  // buttons, inputs
+  static const double md = 14;  // tiles, list items
+  static const double lg = 18;  // panels, true cards
+  static const double xl = 22;  // sheets, dialogs
 }

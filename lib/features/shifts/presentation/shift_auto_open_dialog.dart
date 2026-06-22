@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/shop_settings.dart';
+import '../../../core/theme/app_colors.dart';
 
 class ShiftAutoOpenDialogResult {
   final double openingCash;
@@ -28,7 +29,7 @@ Future<ShiftAutoOpenDialogResult?> showShiftAutoOpenDialog(
     builder: (ctx) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         title: const Text('Start Cash Shift'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -39,7 +40,7 @@ Future<ShiftAutoOpenDialogResult?> showShiftAutoOpenDialog(
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             if (suggestedOpeningCash != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               Text(
                 'Suggested from your last shift opening.',
                 style: Theme.of(
@@ -47,7 +48,7 @@ Future<ShiftAutoOpenDialogResult?> showShiftAutoOpenDialog(
                 ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             TextField(
               controller: openingCashController,
               keyboardType: const TextInputType.numberWithOptions(
@@ -59,7 +60,7 @@ Future<ShiftAutoOpenDialogResult?> showShiftAutoOpenDialog(
                 errorText: errorText,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: noteController,
               minLines: 2,

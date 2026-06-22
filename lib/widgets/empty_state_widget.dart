@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/theme/app_colors.dart';
 import 'beautiful_icon.dart';
 
 class EmptyStateWidget extends StatelessWidget {
@@ -26,7 +27,7 @@ class EmptyStateWidget extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppSpacing.xxl),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
@@ -37,7 +38,7 @@ class EmptyStateWidget extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
               ),
             ),
-            SizedBox(height: 24),
+            SizedBox(height: AppSpacing.xxl),
             Text(
               title,
               style: TextStyle(
@@ -47,7 +48,7 @@ class EmptyStateWidget extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 12),
+            SizedBox(height: AppSpacing.md),
             Text(
               subtitle,
               style: TextStyle(
@@ -58,18 +59,18 @@ class EmptyStateWidget extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             if (onAction != null && actionLabel != null) ...[
-              SizedBox(height: 24),
+              SizedBox(height: AppSpacing.xxl),
               FilledButton.icon(
                 onPressed: onAction,
                 icon: Icon(Icons.add),
                 label: Text(actionLabel!),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+                    horizontal: AppSpacing.xxl,
+                    vertical: AppSpacing.md,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                 ),
               ),
