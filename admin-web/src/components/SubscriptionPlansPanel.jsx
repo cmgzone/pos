@@ -1016,13 +1016,14 @@ export default function SubscriptionPlansPanel({ token }) {
               }}
             />
             <small className="form-hint">
-              Upload a <strong>.zip</strong> of the entire Flutter Windows
-              build output (the Release folder containing pos_app.exe plus all
-              DLLs and the data folder). A bare .exe alone will fail with
-              missing DLL errors like &quot;connectivity_plus_plugin not
-              found&quot;. Use{' '}
-              <code>scripts/package-windows.ps1</code> to build and zip
-              automatically.
+              Upload a <strong>.exe</strong> Windows installer (recommended) or
+              a <strong>.zip</strong> of the entire Flutter Windows build
+              output. The installer gives users a setup wizard with shortcuts
+              and an uninstaller. A bare app .exe alone will fail with missing
+              DLL errors like &quot;connectivity_plus_plugin not found&quot;.
+              Use{' '}
+              <code>scripts/package-windows.ps1</code> to build the installer
+              and zip automatically.
             </small>
           </label>
         </div>

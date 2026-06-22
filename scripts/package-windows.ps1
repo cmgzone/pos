@@ -103,13 +103,54 @@ Copy-Item -Path (Join-Path $releaseDir "*") -Destination $stagingDir -Recurse -F
 # Clean up staging
 Remove-Item $stagingDir -Recurse -Force
 
+# --- Build the Windows installer (setup.exe) with Inno Setup -----------------
+$innoCandidates = @(
+  "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+  "C:\Program Files\Inno Setup 6\ISCC.exe",
+  "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+)
+$innoPath = $innoCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+$installerPath = $null
+if ($innoPath) {
+  Write-Host "Building Windows installer with Inno Setup..." -ForegroundColor Yellow
+  $issPath = Join-Path $ProjectRoot "scripts\piki-pos-windows.iss"
+  if (Test-Path $issPath) {
+    # Update the version in the .iss file so the installer matches
+    $issContent = Get-Content $issPath -Raw
+    $issContent = $issContent -replace '#define MyAppVersion "[^"]*"', "#define MyAppVersion `"$cleanVersion`""
+    Set-Content -Path $issPath -Value $issContent -NoNewline
+
+    & $innoPath $issPath 2>&1 | ForEach-Object { Write-Host $_ }
+    $installerName = "piki-pos-windows-$cleanVersion-setup.exe"
+    $installerPath = Join-Path $OutputDir $installerName
+    if (Test-Path $installerPath) {
+      Write-Host "Installer created successfully." -ForegroundColor Green
+    } else {
+      Write-Warning "Inno Setup ran but installer file was not found at expected path."
+      $installerPath = $null
+    }
+  } else {
+    Write-Warning "Inno Setup script not found: $issPath - skipping installer build."
+  }
+} else {
+  Write-Warning "Inno Setup (ISCC.exe) not found - skipping installer build."
+  Write-Host "  Install Inno Setup to also generate a setup.exe:" -ForegroundColor Yellow
+  Write-Host "    winget install JRSoftware.InnoSetup" -ForegroundColor Yellow
+}
+
 # --- Report ------------------------------------------------------------------
 $zipInfo = Get-Item $zipPath
-$sizeMb = [math]::Round($zipInfo.Length / 1MB, 1)
+$zipSizeMb = [math]::Round($zipInfo.Length / 1MB, 1)
 Write-Host ""
 Write-Host "Done!" -ForegroundColor Green
-Write-Host "  Output: $zipPath"
-Write-Host "  Size:   $sizeMb MB"
+Write-Host "  Zip:       $zipPath ($zipSizeMb MB)" -ForegroundColor White
+if ($installerPath -and (Test-Path $installerPath)) {
+  $instInfo = Get-Item $installerPath
+  $instSizeMb = [math]::Round($instInfo.Length / 1MB, 1)
+  Write-Host "  Installer: $installerPath ($instSizeMb MB)" -ForegroundColor White
+}
 Write-Host ""
-Write-Host "Upload this .zip via the admin panel (Windows release section)." -ForegroundColor Cyan
-Write-Host "Users will extract it and run pos_app.exe (or piki_pos.exe)." -ForegroundColor Cyan
+Write-Host "Upload the installer (.exe) or zip via the admin panel" -ForegroundColor Cyan
+Write-Host "Windows release section. The installer is recommended - it gives" -ForegroundColor Cyan
+Write-Host "users a setup wizard with shortcuts and an uninstaller." -ForegroundColor Cyan
