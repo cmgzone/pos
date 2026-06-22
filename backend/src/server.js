@@ -13005,6 +13005,8 @@ async function saveUploadedAppRelease({
     throw error;
   }
 
+  await cleanupOldReleases(platformDir, filename);
+
   return {
     platform,
     version,
@@ -13012,6 +13014,28 @@ async function saveUploadedAppRelease({
     bytes,
     url: `${appReleaseUrlPrefix}/${platform}/${filename}`,
   };
+}
+
+async function cleanupOldReleases(platformDir, keepFileName) {
+  try {
+    const entries = await fsp.readdir(platformDir);
+    const releaseFiles = entries.filter(
+      (name) => !name.startsWith('.') && name !== keepFileName,
+    );
+    for (const name of releaseFiles) {
+      const filePath = path.join(platformDir, name);
+      try {
+        const stat = await fsp.stat(filePath);
+        if (stat.isFile()) {
+          await fsp.rm(filePath, { force: true });
+        }
+      } catch (_) {
+        // best-effort cleanup
+      }
+    }
+  } catch (_) {
+    // directory may not exist yet
+  }
 }
 
 function releaseFileExtension(platform, originalName) {
