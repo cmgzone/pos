@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiUrl } from '../utils/api'
+import { apiUrl, apiBaseUrl } from '../utils/api'
 import { friendlyError } from '../utils/errors'
 
 const FEATURE_LABELS = {
@@ -447,6 +447,13 @@ export default function SubscriptionPlansPanel({ token }) {
       return
     }
 
+    if (!apiBaseUrl) {
+      setMessage(
+        `Set PIKI_API_BASE_URL on the admin-web service in Coolify (e.g. https://pikipos.com) so large file uploads bypass the nginx proxy, then redeploy.`,
+      )
+      return
+    }
+
     setUploadingRelease(platform)
     setUploadProgress(0)
     setUploadFileSize(file.size || 0)
@@ -456,7 +463,7 @@ export default function SubscriptionPlansPanel({ token }) {
         version,
         fileName: file.name || `${platform}-release`,
       })
-      const url = `/api/platform/app-release/${platform}?${params}`
+      const url = apiUrl(`/api/platform/app-release/${platform}?${params}`)
 
       const body = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
