@@ -20,6 +20,10 @@ export default function Dashboard({ token, onLogout }) {
   const [activeTab, setActiveTab] = useState('businesses')
   const [loadMessage, setLoadMessage] = useState('')
   const [assignmentState, setAssignmentState] = useState({})
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletingAll, setDeletingAll] = useState(false)
+  const [deleteAllMessage, setDeleteAllMessage] = useState('')
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
@@ -176,6 +180,36 @@ export default function Dashboard({ token, onLogout }) {
           error: friendlyError(error, 'Could not update subscription.'),
         },
       }))
+    }
+  }
+
+  const deleteAllData = async () => {
+    setDeletingAll(true)
+    setDeleteAllMessage('')
+    try {
+      const response = await fetch('/api/platform/all-data', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ confirm: 'DELETE EVERYTHING' }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error || 'Could not delete data')
+      }
+      setDeleteAllMessage(body.data?.message || 'All data deleted.')
+      setBusinesses([])
+      setUsers([])
+      setStats({ totalBusinesses: 0, activeSubscriptions: 0, totalUsers: 0 })
+      setShowDeleteAllModal(false)
+      setDeleteConfirmText('')
+      setLoadMessage(body.data?.message || 'All data deleted.')
+    } catch (error) {
+      setDeleteAllMessage(friendlyError(error, 'Could not delete data.'))
+    } finally {
+      setDeletingAll(false)
     }
   }
 
@@ -394,10 +428,85 @@ export default function Dashboard({ token, onLogout }) {
                 {activeTab === 'plans' && (
                   <SubscriptionPlansPanel token={token} />
                 )}
+
+                {activeTab === 'businesses' && (
+                  <div style={{ marginTop: '2rem', padding: '1.5rem', border: '1px solid rgba(255,59,48,0.3)', borderRadius: '12px', background: 'rgba(255,59,48,0.05)' }}>
+                    <h3 style={{ color: '#ff3b30', margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Danger Zone</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                      Delete all businesses, users, and their data (products, sales, customers, suppliers, expenses, etc.). This cannot be undone.
+                    </p>
+                    <button
+                      className="btn"
+                      style={{ background: '#ff3b30', color: 'white' }}
+                      onClick={() => setShowDeleteAllModal(true)}
+                    >
+                      Delete All Data
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
+
+        {showDeleteAllModal && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.7)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}>
+            <div style={{
+              background: 'var(--bg-secondary)', borderRadius: '16px',
+              padding: '2rem', maxWidth: '480px', width: '90%',
+              border: '1px solid rgba(255,59,48,0.3)',
+            }}>
+              <h2 style={{ color: '#ff3b30', marginTop: 0 }}>Delete All Data?</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                This will permanently delete:
+              </p>
+              <ul style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', paddingLeft: '1.5rem' }}>
+                <li>{stats.totalBusinesses} business(es)</li>
+                <li>{stats.totalUsers} user(s)</li>
+                <li>All products, sales, customers, suppliers, expenses</li>
+                <li>All subscriptions and payment records</li>
+                <li>All devices and access tokens</li>
+              </ul>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 600 }}>
+                Type <span style={{ color: '#ff3b30' }}>DELETE</span> to confirm:
+              </p>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Type DELETE"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                style={{ marginBottom: '1rem' }}
+              />
+              {deleteAllMessage && (
+                <div className="admin-message error" style={{ marginBottom: '1rem' }}>
+                  {deleteAllMessage}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => { setShowDeleteAllModal(false); setDeleteConfirmText(''); setDeleteAllMessage('') }}
+                  disabled={deletingAll}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn"
+                  style={{ background: '#ff3b30', color: 'white' }}
+                  disabled={deletingAll || deleteConfirmText !== 'DELETE'}
+                  onClick={deleteAllData}
+                >
+                  {deletingAll ? 'Deleting...' : 'Delete Everything'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

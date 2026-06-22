@@ -1649,6 +1649,85 @@ app.get('/api/platform/users', requirePlatformAdmin, async (req, res, next) => {
   }
 });
 
+// ── Platform Admin: Delete All Businesses, Users & Data ─────────────────────
+
+app.delete('/api/platform/all-data', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const confirm = normalizeOptionalText(req.body?.confirm);
+    if (confirm !== 'DELETE EVERYTHING') {
+      throw createHttpError(400, 'Confirmation required. Send { "confirm": "DELETE EVERYTHING" } in the request body.');
+    }
+
+    const businessCountResult = await query('SELECT COUNT(*)::int AS count FROM businesses WHERE deleted_at IS NULL');
+    const userCountResult = await query('SELECT COUNT(*)::int AS count FROM users WHERE deleted_at IS NULL');
+    const businessCount = businessCountResult.rows[0]?.count || 0;
+    const userCount = userCountResult.rows[0]?.count || 0;
+
+    if (businessCount === 0 && userCount === 0) {
+      res.json({ ok: true, data: { businesses: 0, users: 0, message: 'Nothing to delete.' } });
+      return;
+    }
+
+    const businessDataTables = [
+      'customer_invoice_items',
+      'customer_invoices',
+      'stock_transfers',
+      'audit_logs',
+      'branches',
+      'payment_methods',
+      'product_variant_colors',
+      'product_variants',
+      'service_sale_items',
+      'service_field_values',
+      'service_orders',
+      'service_fields',
+      'services',
+      'expenses',
+      'credit_payments',
+      'cash_movements',
+      'sale_items',
+      'sales',
+      'shifts',
+      'stock_batches',
+      'purchase_order_items',
+      'purchase_orders',
+      'supplier_payments',
+      'purchase_invoices',
+      'products',
+      'suppliers',
+      'customers',
+      'expense_categories',
+      'categories',
+    ];
+
+    for (const table of businessDataTables) {
+      try {
+        await query(`DELETE FROM ${table}`);
+      } catch (_) {
+        // table may not exist yet on some deployments
+      }
+    }
+
+    try { await query('DELETE FROM users'); } catch (_) {}
+    try { await query('DELETE FROM email_otps'); } catch (_) {}
+
+    try { await query('DELETE FROM businesses'); } catch (_) {}
+
+    try { await query('DELETE FROM platform_app_version WHERE id != 1'); } catch (_) {}
+
+    res.json({
+      ok: true,
+      data: {
+        businesses: businessCount,
+        users: userCount,
+        message: `Deleted ${businessCount} business(es) and ${userCount} user(s). All associated data has been removed.`,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 // ── Platform Admin: AI Configuration ─────────────────────────────────────────
 
 app.get('/api/platform/plans', requirePlatformAdmin, async (req, res, next) => {
