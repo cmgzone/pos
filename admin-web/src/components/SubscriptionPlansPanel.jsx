@@ -247,6 +247,8 @@ export default function SubscriptionPlansPanel({ token }) {
     useState(false)
   const [savingAppVersion, setSavingAppVersion] = useState(false)
   const [uploadingRelease, setUploadingRelease] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadFileSize, setUploadFileSize] = useState(0)
   const [savingGateway, setSavingGateway] = useState('')
   const [savingMessageGateway, setSavingMessageGateway] = useState('')
   const [savingEtimsConfig, setSavingEtimsConfig] = useState(false)
@@ -446,24 +448,54 @@ export default function SubscriptionPlansPanel({ token }) {
     }
 
     setUploadingRelease(platform)
+    setUploadProgress(0)
+    setUploadFileSize(file.size || 0)
     setMessage('')
     try {
       const params = new URLSearchParams({
         version,
         fileName: file.name || `${platform}-release`,
       })
-      const response = await fetch(`/api/platform/app-release/${platform}?${params}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-        body: file,
+      const url = `/api/platform/app-release/${platform}?${params}`
+
+      const body = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', url)
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.setRequestHeader(
+          'Content-Type',
+          file.type || 'application/octet-stream',
+        )
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const pct = Math.round((event.loaded / event.total) * 100)
+            setUploadProgress(pct)
+          }
+        }
+        xhr.upload.onerror = () =>
+          reject(new Error('Network error during upload.'))
+        xhr.upload.ontimeout = () =>
+          reject(new Error('Upload timed out. Try a smaller file or check your connection.'))
+        xhr.onerror = () =>
+          reject(new Error('The server could not be reached.'))
+        xhr.ontimeout = () =>
+          reject(new Error('The request timed out.'))
+        xhr.onload = () => {
+          try {
+            const parsed = JSON.parse(xhr.responseText || '{}')
+            if (xhr.status >= 200 && xhr.status < 300 && parsed.ok === true) {
+              resolve(parsed)
+            } else {
+              reject(new Error(parsed.error || `Could not upload ${platformLabel}`))
+            }
+          } catch {
+            reject(new Error(`Could not upload ${platformLabel}`))
+          }
+        }
+        xhr.timeout = 1200000
+        xhr.send(file)
       })
-      const body = await response.json().catch(() => ({}))
-      if (!response.ok || body.ok !== true) {
-        throw new Error(body.error || `Could not upload ${platformLabel}`)
-      }
+
       const nextVersion = { ...(body.data || {}) }
       delete nextVersion.upload
       setAppVersion(nextVersion)
@@ -472,6 +504,8 @@ export default function SubscriptionPlansPanel({ token }) {
       setMessage(friendlyError(error, `Could not upload ${platformLabel}.`))
     } finally {
       setUploadingRelease('')
+      setUploadProgress(0)
+      setUploadFileSize(0)
     }
   }
 
@@ -1044,7 +1078,9 @@ export default function SubscriptionPlansPanel({ token }) {
         <div className="editor-actions">
           <span className="gateway-status">
             {uploadingRelease
-              ? 'Uploading release file...'
+              ? uploadProgress > 0
+                ? `Uploading ${uploadingRelease}... ${uploadProgress}% (${Math.round(uploadFileSize / 1024 / 1024)} MB)`
+                : `Uploading ${uploadingRelease}... preparing...`
               : (appVersion.androidUrl || appVersion.apkUrl) &&
                   appVersion.windowsUrl
                 ? 'Android and Windows release endpoints are configured.'
