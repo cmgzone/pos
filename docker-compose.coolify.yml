@@ -71,6 +71,12 @@ services:
     volumes:
       - piki_app_releases:/app/backend/app-releases
     restart: unless-stopped
+    labels:
+      # Allow large APK/installer uploads (300MB) through Traefik
+      - "traefik.http.middlewares.piki-web-buffer.buffering.maxRequestBodyBytes=314572800"
+      - "traefik.http.middlewares.piki-web-buffer.buffering.memRequestBodyBytes=104857600"
+      # Long timeouts for large file uploads and downloads
+      - "traefik.http.services.piki-web.loadbalancer.server.responseForwarding.flushInterval=100ms"
 
 volumes:
   piki_app_releases:
