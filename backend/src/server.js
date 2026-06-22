@@ -1693,6 +1693,45 @@ app.get('/api/app/version', async (req, res, next) => {
   }
 });
 
+app.get('/api/app/releases/status', async (req, res, next) => {
+  try {
+    const releasesDir = config.appReleaseDir;
+    const platforms = ['android', 'windows'];
+    const result = {};
+    for (const platform of platforms) {
+      const platformDir = path.join(releasesDir, platform);
+      let files = [];
+      try {
+        const entries = await fsp.readdir(platformDir);
+        files = await Promise.all(
+          entries
+            .filter((name) => !name.startsWith('.'))
+            .map(async (name) => {
+              const filePath = path.join(platformDir, name);
+              const stat = await fsp.stat(filePath);
+              return {
+                name,
+                size: stat.size,
+                url: `${appReleaseUrlPrefix}/${platform}/${name}`,
+                modified: stat.mtime.toISOString(),
+              };
+            }),
+        );
+      } catch (_) {
+        // directory doesn't exist yet
+      }
+      result[platform] = {
+        dir: platformDir,
+        count: files.length,
+        files: files.sort((a, b) => b.modified.localeCompare(a.modified)),
+      };
+    }
+    res.json({ ok: true, data: result });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.put('/api/platform/subscription-settings', requirePlatformAdmin, async (req, res, next) => {
   try {
     const settings = await savePlatformSubscriptionSettings(req.body || {});

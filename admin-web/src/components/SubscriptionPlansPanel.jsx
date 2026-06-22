@@ -492,7 +492,7 @@ export default function SubscriptionPlansPanel({ token }) {
             reject(new Error(`Could not upload ${platformLabel}`))
           }
         }
-        xhr.timeout = 1200000
+        xhr.timeout = 1800000
         xhr.send(file)
       })
 
