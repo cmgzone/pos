@@ -21,6 +21,7 @@ const FEATURE_LABELS = {
   branches: 'Branches',
   audit_logs: 'Audit Logs',
   proactive_piki: 'Proactive Piki',
+  loyalty: 'Loyalty',
 }
 
 const defaultFeatures = Object.keys(FEATURE_LABELS)

@@ -459,6 +459,39 @@ async function ensureSubscriptionSchema(target = query) {
     ],
   );
 
+  // Backfill the loyalty feature into paid plans that were seeded before
+  // loyalty existed in the canonical feature lists. Without this, devices on
+  // those plans receive a license token whose entitlements omit 'loyalty', so
+  // the Loyalty screen stays hidden even for admins on paid plans.
+  for (const [planCode, canonicalFeatures] of [
+    ['growth', GROWTH_FEATURES],
+    ['pro', ALL_FEATURES],
+    ['enterprise', ALL_FEATURES],
+  ]) {
+    await runQuery(
+      target,
+      `
+      UPDATE subscription_plans
+      SET features_json = COALESCE(
+            features_json || (
+              SELECT jsonb_agg(f)
+              FROM jsonb_array_elements_text($2::jsonb) AS f
+              WHERE NOT (features_json ? f)
+            ),
+            features_json
+          ),
+          updated_at = NOW()
+      WHERE code = $1
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text($2::jsonb) AS f
+          WHERE NOT (features_json ? f)
+        )
+      `,
+      [planCode, JSON.stringify(canonicalFeatures)],
+    );
+  }
+
   for (const price of DEFAULT_PRICES) {
     const [
       planCode,
