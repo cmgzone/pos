@@ -9,6 +9,8 @@ import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
+import '../../loyalty/data/loyalty_repository.dart';
+import '../../sales/data/cart_provider.dart';
 import '../../settings/data/payment_method_provider.dart';
 import '../../settings/data/payment_method_repository.dart';
 
@@ -23,6 +25,7 @@ class PaymentCheckoutDialog extends ConsumerStatefulWidget {
   }) {
     return showDialog<Map<String, dynamic>>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => PaymentCheckoutDialog(total: total),
     );
   }
@@ -54,7 +57,7 @@ Future<bool> showMpesaPaymentConfirmationDialog(
     builder: (ctx) {
       final media = MediaQuery.of(ctx);
       final isCompact = media.size.width < 560;
-      return AlertDialog(
+    return AlertDialog(
         insetPadding: EdgeInsets.symmetric(
           horizontal: isCompact ? 12 : 40,
           vertical: isCompact ? 12 : 24,
@@ -318,16 +321,192 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   Map<String, dynamic>? _selectedMethod;
   String? _cashError;
 
+  // Loyalty redemption state
+  late double _discountBefore;
+  double _loyaltyDiscount = 0;
+  int _loyaltyPoints = 0;
+  String? _loyaltyLedgerId;
+  String? _loyaltyCustomerId;
+  bool _loyaltyCompleted = false;
+  bool _loyaltyRefunded = false;
+  int? _customerPoints;
+  Map<String, dynamic>? _loyaltyPreview;
+  bool _isLoadingPoints = false;
+
   @override
   void initState() {
     super.initState();
     _cashReceivedController.text = widget.total.toStringAsFixed(2);
+    _discountBefore = ref.read(discountProvider);
     _loadCustomers();
     _loadMpesaConfig();
   }
 
+  double get _effectiveTotal => (widget.total - _loyaltyDiscount).clamp(0, widget.total);
+
+  Future<void> _loadCustomerPoints() async {
+    final customer = _selectedCustomer;
+    if (customer == null) {
+      setState(() {
+        _customerPoints = null;
+        _loyaltyPreview = null;
+      });
+      return;
+    }
+    setState(() => _isLoadingPoints = true);
+    try {
+      final preview = await LoyaltyRepository.getRedemptionPreview(
+        customer['id'] as String,
+      );
+      if (!mounted) return;
+      setState(() {
+        _customerPoints = preview['available'] as int? ?? 0;
+        _loyaltyPreview = preview;
+        _isLoadingPoints = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingPoints = false);
+    }
+  }
+
+  void _selectCustomer(Map<String, dynamic> customer) {
+    // Reset any pending loyalty redemption when the customer changes.
+    _clearLoyaltyRedemption();
+    setState(() => _selectedCustomer = customer);
+    final phone = customer['phone'] as String?;
+    if (_mpesaPhoneController.text.trim().isEmpty &&
+        phone != null &&
+        phone.trim().isNotEmpty) {
+      _mpesaPhoneController.text = phone.trim();
+    }
+    _loadCustomerPoints();
+  }
+
+  Map<String, dynamic> get _loyaltyResult {
+    if (_loyaltyLedgerId == null) return const <String, dynamic>{};
+    _loyaltyCompleted = true;
+    return {
+      'loyaltyLedgerId': _loyaltyLedgerId,
+      'loyaltyPoints': _loyaltyPoints,
+    };
+  }
+
+  /// Reverses a redemption if the checkout was cancelled before the sale was
+  /// completed. Safe to call multiple times; only runs once per redemption.
+  Future<void> _refundPendingLoyalty() async {
+    final ledgerId = _loyaltyLedgerId;
+    final customerId = _loyaltyCustomerId;
+    final points = _loyaltyPoints;
+    if (ledgerId == null ||
+        customerId == null ||
+        points <= 0 ||
+        _loyaltyRefunded ||
+        _loyaltyCompleted) {
+      return;
+    }
+    _loyaltyRefunded = true;
+    try {
+      await LoyaltyRepository.refundRedemption(
+        ledgerId: ledgerId,
+        customerId: customerId,
+        points: points,
+      );
+    } catch (_) {
+      // Best-effort: the unlinked ledger entry remains and the customer keeps
+      // their points until a later reconcile; nothing else to do here.
+    }
+  }
+
+  void _clearLoyaltyRedemption() {
+    final prevLedgerId = _loyaltyLedgerId;
+    final prevCustomerId = _loyaltyCustomerId;
+    final prevPoints = _loyaltyPoints;
+    final hadDiscount = _loyaltyDiscount > 0;
+
+    _loyaltyDiscount = 0;
+    _loyaltyPoints = 0;
+    _loyaltyLedgerId = null;
+    _loyaltyCustomerId = null;
+
+    if (hadDiscount) {
+      ref.read(discountProvider.notifier).state = _discountBefore;
+    }
+
+    // If a redemption was previously created for another customer, reverse it
+    // so points are never left deducted without a completed sale.
+    if (prevLedgerId != null &&
+        prevCustomerId != null &&
+        prevPoints > 0 &&
+        !_loyaltyCompleted &&
+        !_loyaltyRefunded) {
+      unawaited(
+        LoyaltyRepository.refundRedemption(
+          ledgerId: prevLedgerId,
+          customerId: prevCustomerId,
+          points: prevPoints,
+        ).catchError((_) {}),
+      );
+    }
+  }
+
+  Future<void> _openRedeemDialog() async {
+    final customer = _selectedCustomer;
+    final preview = _loyaltyPreview;
+    if (customer == null || preview == null) return;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _RedeemPointsDialog(
+        available: preview['available'] as int? ?? 0,
+        minRedemption: preview['minRedemption'] as int? ?? 0,
+        factor: (preview['factor'] as num?)?.toDouble() ?? 1,
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    final points = result['points'] as int;
+    if (points <= 0) return;
+
+    setState(() => _isLoadingPoints = true);
+    try {
+      final redemption = await LoyaltyRepository.redeemPoints(
+        customerId: customer['id'] as String,
+        points: points,
+      );
+      if (!mounted) return;
+      final discount = (redemption['discount'] as num?)?.toDouble() ?? 0;
+      final ledgerId = redemption['ledgerId'] as String;
+      setState(() {
+        _loyaltyPoints = points;
+        _loyaltyDiscount = discount;
+        _loyaltyLedgerId = ledgerId;
+        _loyaltyCustomerId = customer['id'] as String?;
+        _customerPoints = (_customerPoints ?? 0) - points;
+        _isLoadingPoints = false;
+      });
+      // Reflect the discount on the cart total immediately.
+      ref.read(discountProvider.notifier).state = _discountBefore + discount;
+      if (_isCashMethod(_selectedMethod)) {
+        _cashReceivedController.text = _effectiveTotal.toStringAsFixed(2);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingPoints = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: 'Could not redeem points.'),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
+    _refundPendingLoyalty();
     _searchController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
@@ -374,6 +553,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       _selectedCustomer = selected;
       _isLoading = false;
     });
+    if (selected != null) {
+      _loadCustomerPoints();
+    }
   }
 
   Future<void> _openCreateAccountScreen() async {
@@ -386,8 +568,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     await _loadCustomers(_searchController.text);
     if (!mounted) return;
 
+    _selectCustomer(created);
     setState(() {
-      _selectedCustomer = created;
       _nameController.clear();
       _phoneController.clear();
       _emailController.clear();
@@ -446,6 +628,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       'type': 'kopesha',
       'customer': _selectedCustomer,
       'dueDate': _dueDateStorage(_selectedDueDate),
+      ..._loyaltyResult,
     });
   }
 
@@ -456,11 +639,11 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     if (isCashDrawer) {
       amountTendered =
           double.tryParse(_cashReceivedController.text.trim()) ?? 0.0;
-      if (amountTendered + 0.001 < widget.total) {
+      if (amountTendered + 0.001 < _effectiveTotal) {
         setState(() => _cashError = 'Cash received must cover the sale total');
         return;
       }
-      changeGiven = amountTendered - widget.total;
+      changeGiven = amountTendered - _effectiveTotal;
     }
     Navigator.pop(context, {
       'type': 'other',
@@ -468,6 +651,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       'customer': _selectedCustomer,
       'amountTendered': amountTendered,
       'changeGiven': changeGiven,
+      ..._loyaltyResult,
     });
   }
 
@@ -492,8 +676,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   ({double tendered, double change, bool hasEnoughCash}) _cashSummary() {
     final tendered =
         double.tryParse(_cashReceivedController.text.trim()) ?? 0.0;
-    final hasEnough = tendered + 0.001 >= widget.total;
-    final change = hasEnough ? tendered - widget.total : 0.0;
+    final hasEnough = tendered + 0.001 >= _effectiveTotal;
+    final change = hasEnough ? tendered - _effectiveTotal : 0.0;
     return (tendered: tendered, change: change, hasEnoughCash: hasEnough);
   }
 
@@ -522,6 +706,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       'type': 'mpesa',
       'phoneNumber': phone,
       'customer': _selectedCustomer,
+      ..._loyaltyResult,
     });
   }
 
@@ -614,6 +799,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
           'payment': payment,
           'checkoutCode': _manualMpesaCheckoutCode,
           'customer': _selectedCustomer,
+          ..._loyaltyResult,
         });
         return;
       }
@@ -674,15 +860,15 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     final paymentMethodsAsync = ref.watch(activePaymentMethodsProvider);
 
     return AlertDialog(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: isCompact ? 12 : 40,
-        vertical: isCompact ? 12 : 24,
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      titlePadding: EdgeInsets.fromLTRB(
-        isCompact ? 16 : 24,
-        isCompact ? 16 : 24,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 12 : 40,
+          vertical: isCompact ? 12 : 24,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        titlePadding: EdgeInsets.fromLTRB(
+          isCompact ? 16 : 24,
+          isCompact ? 16 : 24,
         isCompact ? 16 : 24,
         0,
       ),
@@ -764,7 +950,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Sale Total',
+                              _loyaltyDiscount > 0
+                                  ? 'Sale Total (after loyalty)'
+                                  : 'Sale Total',
                               style: TextStyle(
                                 color: Theme.of(
                                   context,
@@ -773,7 +961,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                               ),
                             ),
                             Text(
-                              '${ShopSettings.currency}${widget.total.toStringAsFixed(2)}',
+                              '${ShopSettings.currency}${_effectiveTotal.toStringAsFixed(2)}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -781,6 +969,29 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
+                            if (_loyaltyDiscount > 0) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withValues(
+                                    alpha: 0.14,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Loyalty -${ShopSettings.currency}${_loyaltyDiscount.toStringAsFixed(2)} ($_loyaltyPoints pts)',
+                                  style: TextStyle(
+                                    color: AppColors.success,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1079,13 +1290,52 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                   fontSize: 12,
                                 ),
                               ),
+                              if (_customerPoints != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.loyalty_outlined,
+                                      size: 14,
+                                      color: AppColors.success,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Loyalty: ${_customerPoints!} pts',
+                                      style: TextStyle(
+                                        color: AppColors.success,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
+                        if (_customerPoints != null &&
+                            _customerPoints! > 0 &&
+                            (_loyaltyPreview?['configured'] == true))
+                          TextButton(
+                            onPressed: _isLoadingPoints
+                                ? null
+                                : _openRedeemDialog,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Redeem'),
+                          ),
                         IconButton(
                           icon: Icon(Icons.close, size: 18),
-                          onPressed: () =>
-                              setState(() => _selectedCustomer = null),
+                          onPressed: () {
+                            _clearLoyaltyRedemption();
+                            setState(() => _selectedCustomer = null);
+                          },
                           tooltip: 'Clear selection',
                         ),
                       ],
@@ -1175,17 +1425,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                                     : context.appSurface,
                                 borderRadius: BorderRadius.circular(14),
                                 child: InkWell(
-                                  onTap: () => setState(() {
-                                    _selectedCustomer = customer;
-                                    final phone = customer['phone'] as String?;
-                                    if (_mpesaPhoneController.text
-                                            .trim()
-                                            .isEmpty &&
-                                        phone != null &&
-                                        phone.trim().isNotEmpty) {
-                                      _mpesaPhoneController.text = phone.trim();
-                                    }
-                                  }),
+                                  onTap: () => _selectCustomer(customer),
                                   borderRadius: BorderRadius.circular(14),
                                   child: Container(
                                     padding: const EdgeInsets.all(12),
@@ -1305,7 +1545,12 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
         SizedBox(
           width: isCompact ? double.infinity : null,
           child: TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await _refundPendingLoyalty();
+              if (!mounted) return;
+              navigator.pop();
+            },
             child: Text('Cancel'),
           ),
         ),
@@ -1929,6 +2174,121 @@ class _DueDateChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _RedeemPointsDialog extends StatefulWidget {
+  final int available;
+  final int minRedemption;
+  final double factor;
+
+  const _RedeemPointsDialog({
+    required this.available,
+    required this.minRedemption,
+    required this.factor,
+  });
+
+  @override
+  State<_RedeemPointsDialog> createState() => _RedeemPointsDialogState();
+}
+
+class _RedeemPointsDialogState extends State<_RedeemPointsDialog> {
+  late final TextEditingController _pointsController;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.available > widget.minRedemption
+        ? widget.available
+        : widget.minRedemption;
+    _pointsController = TextEditingController(
+      text: initial > 0 ? initial.toString() : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _pointsController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final points = int.tryParse(_pointsController.text.trim()) ?? 0;
+    if (points <= 0) {
+      setState(() => _error = 'Enter a valid number of points.');
+      return;
+    }
+    if (points > widget.available) {
+      setState(() => _error = 'This customer only has ${widget.available} points.');
+      return;
+    }
+    if (points < widget.minRedemption) {
+      setState(
+        () => _error =
+            'A minimum of ${widget.minRedemption} points is required to redeem.',
+      );
+      return;
+    }
+    Navigator.of(context).pop({'points': points});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxDiscount = widget.available * widget.factor;
+    return AlertDialog(
+      title: const Text('Redeem Loyalty Points'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.loyalty_outlined, size: 18, color: AppColors.success),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Available: ${widget.available} pts'
+                      '${maxDiscount > 0 ? '  (up to ${ShopSettings.currency}${maxDiscount.toStringAsFixed(2)})' : ''}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _pointsController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: false),
+              decoration: InputDecoration(
+                labelText: 'Points to redeem',
+                hintText: 'e.g. ${widget.available}',
+                prefixIcon: const Icon(Icons.stars_outlined),
+                errorText: _error,
+              ),
+              onChanged: (_) => setState(() => _error = null),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Redeem'),
+        ),
+      ],
     );
   }
 }

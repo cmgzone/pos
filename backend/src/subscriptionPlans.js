@@ -22,6 +22,7 @@ const FEATURE_KEYS = Object.freeze({
   branches: 'branches',
   auditLogs: 'audit_logs',
   proactivePiki: 'proactive_piki',
+  loyalty: 'loyalty',
 });
 
 const SELLING_MODES = Object.freeze({
@@ -66,6 +67,7 @@ const GROWTH_FEATURES = [
   FEATURE_KEYS.branches,
   FEATURE_KEYS.services,
   FEATURE_KEYS.profitLoss,
+  FEATURE_KEYS.loyalty,
 ];
 
 const ALL_FEATURES = [

@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 22;
+  static const int _databaseVersion = 23;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -42,6 +42,8 @@ class DatabaseService {
     'services',
     'service_orders',
     'audit_logs',
+    'loyalty_rules',
+    'loyalty_ledger',
   };
 
   static Database? _database;
@@ -1476,6 +1478,7 @@ class DatabaseService {
     await _ensureBrandColumn(database);
     await _ensureProductStorefrontSchema(database);
     await _ensurePaymentMethodsSchema(database);
+    await _ensureLoyaltySchema(database);
     await _ensureEnterpriseSchema(database);
     await _ensureStockTransferSchema(database);
     await _ensurePublicCatalogOrderSchema(database);
@@ -3152,6 +3155,47 @@ class DatabaseService {
   }
 
   /// Ensures payment_methods table has is_credit column for credit/kopesha payments.
+  static Future<void> _ensureLoyaltySchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS loyalty_rules (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        points_per_currency REAL NOT NULL DEFAULT 0,
+        currency_divisor REAL NOT NULL DEFAULT 100,
+        min_redemption_points INTEGER NOT NULL DEFAULT 0,
+        points_to_currency_factor REAL NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS loyalty_ledger (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        customer_id TEXT NOT NULL,
+        sale_id TEXT,
+        type TEXT NOT NULL,
+        points INTEGER NOT NULL DEFAULT 0,
+        balance_after INTEGER NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _ensureColumn(
+      database,
+      table: 'customers',
+      column: 'loyalty_points',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
   static Future<void> _ensurePaymentMethodsSchema(
     DatabaseExecutor database,
   ) async {

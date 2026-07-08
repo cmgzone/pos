@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
+import '../../loyalty/data/loyalty_repository.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../sales/data/sale_repository.dart';
 import '../../sales/presentation/payment_checkout_dialog.dart';
@@ -2050,6 +2051,8 @@ Future<void> chargeServiceOrder(
   final type = checkoutResult['type'] as String;
   final customer = checkoutResult['customer'] as Map<String, dynamic>?;
   final dueDate = checkoutResult['dueDate'] as String?;
+  final loyaltyLedgerId = checkoutResult['loyaltyLedgerId'] as String?;
+  final loyaltyPoints = checkoutResult['loyaltyPoints'] as int?;
 
   if (type == 'kopesha') {
     if (customer == null || dueDate == null) {
@@ -2072,6 +2075,8 @@ Future<void> chargeServiceOrder(
       customerId: customer['id'] as String,
       customerName: customer['name'] as String,
       dueDate: dueDate,
+      loyaltyLedgerId: loyaltyLedgerId,
+      loyaltyPoints: loyaltyPoints,
     );
     return;
   }
@@ -2117,6 +2122,8 @@ Future<void> chargeServiceOrder(
       changeGiven: cashCheckout.changeGiven,
       customerId: customer?['id'] as String?,
       customerName: customer?['name'] as String?,
+      loyaltyLedgerId: loyaltyLedgerId,
+      loyaltyPoints: loyaltyPoints,
     );
     return;
   }
@@ -2131,6 +2138,8 @@ Future<void> chargeServiceOrder(
     total: total,
     customerId: customer?['id'] as String?,
     customerName: customer?['name'] as String?,
+    loyaltyLedgerId: loyaltyLedgerId,
+    loyaltyPoints: loyaltyPoints,
   );
 }
 
@@ -2417,6 +2426,8 @@ Future<void> _completeServiceOrderPayment(
   String? customerId,
   String? customerName,
   String? dueDate,
+  String? loyaltyLedgerId,
+  int? loyaltyPoints,
 }) async {
   final orderId = order['id'] as String;
   final serviceId = order['service_id'] as String;
@@ -2464,6 +2475,41 @@ Future<void> _completeServiceOrderPayment(
     ref.invalidate(serviceSalesByDateProvider);
     invalidateShiftProviders(ref);
 
+    if (customerId != null && customerId.isNotEmpty) {
+      try {
+        if (loyaltyLedgerId != null && loyaltyLedgerId.isNotEmpty) {
+          await LoyaltyRepository.linkRedemptionToSale(
+            ledgerId: loyaltyLedgerId,
+            saleId: saleId,
+          );
+        }
+        final earned = await LoyaltyRepository.earnPointsForSale(
+          customerId: customerId,
+          saleId: saleId,
+          saleTotal: total,
+        );
+        if (earned > 0 && context.mounted) {
+          _showServicePaymentSnackBar(
+            context,
+            '$earned loyalty point${earned == 1 ? '' : 's'} earned.',
+            backgroundColor: AppColors.success,
+          );
+        }
+      } catch (error) {
+        if (context.mounted) {
+          _showServicePaymentSnackBar(
+            context,
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Payment saved, but loyalty was not updated.',
+              fallback: 'Payment saved, but loyalty was not updated.',
+            ),
+            backgroundColor: AppColors.warning,
+          );
+        }
+      }
+    }
+
     if (context.mounted) {
       _showServicePaymentSuccessDialog(
         context,
@@ -2481,6 +2527,20 @@ Future<void> _completeServiceOrderPayment(
       );
     }
   } catch (error) {
+    if (loyaltyLedgerId != null &&
+        loyaltyLedgerId.isNotEmpty &&
+        customerId != null &&
+        customerId.isNotEmpty) {
+      try {
+        await LoyaltyRepository.refundRedemption(
+          ledgerId: loyaltyLedgerId,
+          customerId: customerId,
+          points: loyaltyPoints ?? 0,
+        );
+      } catch (_) {
+        // best-effort; ledger entry remains for later reconciliation
+      }
+    }
     if (context.mounted) {
       _showServicePaymentSnackBar(
         context,

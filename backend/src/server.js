@@ -1073,6 +1073,91 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
   }
 });
 
+// ============================================================================
+// Loyalty & Rewards
+// ============================================================================
+
+app.get('/api/loyalty/rules', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.loyalty);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT * FROM loyalty_rules
+       WHERE business_id = $1 AND deleted_at IS NULL ${branchFilter}
+       ORDER BY updated_at DESC LIMIT 1`,
+      params,
+    );
+    res.json({ ok: true, rule: rows.rows[0] ?? null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/loyalty/ledger', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.loyalty);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const customerId = normalizeOptionalText(req.query.customerId);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    const params = [businessContext.businessId];
+    if (customerId) {
+      where.push(`customer_id = $${params.length + 1}`);
+      params.push(customerId);
+    }
+    if (scope.branchIds != null) {
+      where.push(
+        `COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+      );
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT * FROM loyalty_ledger
+       WHERE ${where.join(' AND ')}
+       ORDER BY created_at DESC LIMIT ${limit}`,
+      params,
+    );
+    res.json({ ok: true, ledger: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/loyalty/points/:customerId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.loyalty);
+    const customerId = req.params.customerId;
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId, customerId];
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT loyalty_points FROM customers
+       WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL ${branchFilter}
+       LIMIT 1`,
+      params,
+    );
+    const points = rows.rows.length
+      ? Number(rows.rows[0].loyalty_points) || 0
+      : 0;
+    res.json({ ok: true, customerId, points });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/sync/status', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req, {
@@ -9180,6 +9265,9 @@ function featureRequiredForTable(tableName) {
       return FEATURE_KEYS.sales;
     case 'shifts':
       return FEATURE_KEYS.shifts;
+    case 'loyalty_rules':
+    case 'loyalty_ledger':
+      return FEATURE_KEYS.loyalty;
     default:
       return null;
   }
@@ -13949,6 +14037,8 @@ const syncTableFeatures = Object.freeze({
   service_fields: 'services',
   service_orders: 'services',
   service_field_values: 'services',
+  loyalty_rules: 'loyalty',
+  loyalty_ledger: 'loyalty',
 });
 
 const employeeAttributionTables = new Set([

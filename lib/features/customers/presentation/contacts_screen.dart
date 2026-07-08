@@ -837,6 +837,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       itemBuilder: (context, index) {
         final c = _customers[index];
         final balance = (c['balance'] as num?)?.toDouble() ?? 0;
+        final points = (c['loyalty_points'] as num?)?.toInt() ?? 0;
         final hasPhone = _hasPhone(c);
 
         return _ContactCard(
@@ -847,19 +848,50 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
           iconColor: hasPhone
               ? AppColors.primaryLight
               : Theme.of(context).colorScheme.onSurfaceVariant,
-          trailing: balance > 0
-              ? _BalanceBadge(
-                  label: 'Balance',
-                  value:
-                      '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
-                  color: AppColors.warning,
-                )
-              : null,
+          trailing: _buildCustomerTrailing(balance: balance, points: points),
           onEdit: () => _editCustomer(c),
           onMessage: () => _messageContact(c),
           isMobile: isMobile,
         );
       },
+    );
+  }
+
+  Widget _buildCustomerTrailing({
+    required double balance,
+    required int points,
+  }) {
+    final badges = <Widget>[];
+    if (balance > 0) {
+      badges.add(
+        _BalanceBadge(
+          label: 'Balance',
+          value: '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
+          color: AppColors.warning,
+        ),
+      );
+    }
+    if (points > 0) {
+      badges.add(
+        _BalanceBadge(
+          label: 'Points',
+          value: '$points',
+          color: AppColors.success,
+        ),
+      );
+    }
+    if (badges.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: badges
+          .map(
+            (badge) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: badge,
+            ),
+          )
+          .toList(),
     );
   }
 

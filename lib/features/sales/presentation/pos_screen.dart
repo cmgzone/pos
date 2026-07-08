@@ -18,6 +18,7 @@ import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../agent/data/piki_models.dart';
+import '../../loyalty/data/loyalty_repository.dart';
 import '../../agent/data/piki_provider.dart';
 import '../../products/data/product_provider.dart';
 import '../../products/data/product_repository.dart';
@@ -4459,6 +4460,8 @@ class _CartSide extends ConsumerWidget {
     final type = checkoutResult['type'] as String;
     final customer = checkoutResult['customer'] as Map<String, dynamic>?;
     final dueDate = checkoutResult['dueDate'] as String?;
+    final loyaltyLedgerId = checkoutResult['loyaltyLedgerId'] as String?;
+    final loyaltyPoints = checkoutResult['loyaltyPoints'] as int?;
 
     if (type == 'kopesha') {
       // Kopesha payment - requires customer
@@ -4482,6 +4485,8 @@ class _CartSide extends ConsumerWidget {
         customerName: customer['name'] as String?,
         dueDate: dueDate,
         convertFromQuotationId: pendingQuotationId,
+        loyaltyLedgerId: loyaltyLedgerId,
+        loyaltyPoints: loyaltyPoints,
       );
     } else if (type == 'mpesa') {
       final phoneNumber = checkoutResult['phoneNumber'] as String?;
@@ -4500,6 +4505,8 @@ class _CartSide extends ConsumerWidget {
         phoneNumber: phoneNumber,
         customer: customer,
         convertFromQuotationId: pendingQuotationId,
+        loyaltyLedgerId: loyaltyLedgerId,
+        loyaltyPoints: loyaltyPoints,
       );
     } else if (type == 'mpesa_manual') {
       final payment = checkoutResult['payment'];
@@ -4518,6 +4525,8 @@ class _CartSide extends ConsumerWidget {
         payment: payment,
         customer: customer,
         convertFromQuotationId: pendingQuotationId,
+        loyaltyLedgerId: loyaltyLedgerId,
+        loyaltyPoints: loyaltyPoints,
       );
     } else {
       // Other payment methods
@@ -4569,6 +4578,8 @@ class _CartSide extends ConsumerWidget {
           customerId: customer?['id'] as String?,
           customerName: customer?['name'] as String?,
           convertFromQuotationId: pendingQuotationId,
+          loyaltyLedgerId: loyaltyLedgerId,
+          loyaltyPoints: loyaltyPoints,
         );
       } else {
         await _completeSale(
@@ -4580,6 +4591,8 @@ class _CartSide extends ConsumerWidget {
           customerId: customer?['id'] as String?,
           customerName: customer?['name'] as String?,
           convertFromQuotationId: pendingQuotationId,
+          loyaltyLedgerId: loyaltyLedgerId,
+          loyaltyPoints: loyaltyPoints,
         );
       }
     }
@@ -4591,6 +4604,8 @@ class _CartSide extends ConsumerWidget {
     required String phoneNumber,
     Map<String, dynamic>? customer,
     String? convertFromQuotationId,
+    String? loyaltyLedgerId,
+    int? loyaltyPoints,
   }) async {
     final total = ref.read(cartTotalProvider);
     try {
@@ -4624,6 +4639,11 @@ class _CartSide extends ConsumerWidget {
         if (convertFromQuotationId != null) {
           ref.read(activeQuotationIdProvider.notifier).state = null;
         }
+        await _refundLoyaltyIfPending(
+          ledgerId: loyaltyLedgerId,
+          customerId: customer?['id'] as String?,
+          points: loyaltyPoints,
+        );
         return;
       }
 
@@ -4640,6 +4660,11 @@ class _CartSide extends ConsumerWidget {
           context,
           'M-Pesa payment was confirmed, but the sale was not saved.',
           backgroundColor: AppColors.warning,
+        );
+        await _refundLoyaltyIfPending(
+          ledgerId: loyaltyLedgerId,
+          customerId: customer?['id'] as String?,
+          points: loyaltyPoints,
         );
         return;
       }
@@ -4663,6 +4688,8 @@ class _CartSide extends ConsumerWidget {
           'providerSaleLinkStatus': 'pending_reconcile',
         },
         convertFromQuotationId: convertFromQuotationId,
+        loyaltyLedgerId: loyaltyLedgerId,
+        loyaltyPoints: loyaltyPoints,
       );
       if (!context.mounted || saleId == null) return;
       await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
@@ -4687,6 +4714,8 @@ class _CartSide extends ConsumerWidget {
     required PosPayment payment,
     Map<String, dynamic>? customer,
     String? convertFromQuotationId,
+    String? loyaltyLedgerId,
+    int? loyaltyPoints,
   }) async {
     if (!context.mounted) return;
     final saleId = await _completeSale(
@@ -4708,6 +4737,8 @@ class _CartSide extends ConsumerWidget {
         'providerSaleLinkStatus': 'pending_reconcile',
       },
       convertFromQuotationId: convertFromQuotationId,
+      loyaltyLedgerId: loyaltyLedgerId,
+      loyaltyPoints: loyaltyPoints,
     );
     if (!context.mounted || saleId == null) return;
     await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
@@ -4778,6 +4809,31 @@ class _CartSide extends ConsumerWidget {
     }
   }
 
+  /// Reverses a pending loyalty redemption when the checkout flow ends without
+  /// a completed sale (e.g. M-Pesa payment fails or is cancelled).
+  Future<void> _refundLoyaltyIfPending({
+    required String? ledgerId,
+    required String? customerId,
+    required int? points,
+  }) async {
+    if (ledgerId == null ||
+        ledgerId.isEmpty ||
+        customerId == null ||
+        customerId.isEmpty ||
+        (points ?? 0) <= 0) {
+      return;
+    }
+    try {
+      await LoyaltyRepository.refundRedemption(
+        ledgerId: ledgerId,
+        customerId: customerId,
+        points: points!,
+      );
+    } catch (_) {
+      // best-effort; ledger entry remains for later reconciliation
+    }
+  }
+
   Future<String?> _completeSale(
     BuildContext context,
     WidgetRef ref, {
@@ -4796,6 +4852,8 @@ class _CartSide extends ConsumerWidget {
     Map<String, dynamic>? paymentMetadata,
     String? convertFromQuotationId,
     String? preAllocatedSaleId,
+    String? loyaltyLedgerId,
+    int? loyaltyPoints,
   }) async {
     final cart = ref.read(cartProvider);
     final subtotal = ref.read(cartSubtotalProvider);
@@ -4842,6 +4900,20 @@ class _CartSide extends ConsumerWidget {
       );
     } catch (e) {
       ref.read(activeQuotationIdProvider.notifier).state = null;
+      if (loyaltyLedgerId != null &&
+          loyaltyLedgerId.isNotEmpty &&
+          customerId != null &&
+          customerId.isNotEmpty) {
+        try {
+          await LoyaltyRepository.refundRedemption(
+            ledgerId: loyaltyLedgerId,
+            customerId: customerId,
+            points: loyaltyPoints ?? 0,
+          );
+        } catch (_) {
+          // best-effort; ledger entry remains for later reconciliation
+        }
+      }
       if (context.mounted) {
         _showSnackBar(
           context,
@@ -4929,6 +5001,43 @@ class _CartSide extends ConsumerWidget {
         }
       } finally {
         ref.read(activeQuotationIdProvider.notifier).state = null;
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────
+
+    // ── Loyalty: link a pending redemption and award earn points ────────
+    if (customerId != null && customerId.isNotEmpty) {
+      try {
+        if (loyaltyLedgerId != null && loyaltyLedgerId.isNotEmpty) {
+          await LoyaltyRepository.linkRedemptionToSale(
+            ledgerId: loyaltyLedgerId,
+            saleId: saleId,
+          );
+        }
+        final earned = await LoyaltyRepository.earnPointsForSale(
+          customerId: customerId,
+          saleId: saleId,
+          saleTotal: total,
+        );
+        if (earned > 0 && context.mounted) {
+          _showSnackBar(
+            context,
+            '$earned loyalty point${earned == 1 ? '' : 's'} earned.',
+            backgroundColor: AppColors.success,
+          );
+        }
+      } catch (error) {
+        if (context.mounted) {
+          _showSnackBar(
+            context,
+            AppErrorMessage.withContext(
+              error,
+              prefix: 'Sale saved, but loyalty was not updated.',
+              fallback: 'Sale saved, but loyalty was not updated.',
+            ),
+            backgroundColor: AppColors.warning,
+          );
+        }
       }
     }
     // ──────────────────────────────────────────────────────────────────

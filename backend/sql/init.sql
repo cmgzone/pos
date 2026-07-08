@@ -1490,3 +1490,49 @@ CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation_id
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quotations_branch_number_unique
   ON quotations(business_id, branch_id, quotation_no)
   WHERE deleted_at IS NULL;
+
+-- ============================================================================
+-- Loyalty & Rewards
+-- ============================================================================
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS loyalty_points integer NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS loyalty_rules (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  points_per_currency double precision NOT NULL DEFAULT 0,
+  currency_divisor double precision NOT NULL DEFAULT 100,
+  min_redemption_points integer NOT NULL DEFAULT 0,
+  points_to_currency_factor double precision NOT NULL DEFAULT 1,
+  is_active boolean NOT NULL DEFAULT true,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+);
+
+CREATE TABLE IF NOT EXISTS loyalty_ledger (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  customer_id text NOT NULL,
+  sale_id text,
+  type text NOT NULL,
+  points integer NOT NULL DEFAULT 0,
+  balance_after integer NOT NULL DEFAULT 0,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+);
+
+CREATE INDEX IF NOT EXISTS idx_loyalty_rules_updated_at ON loyalty_rules(updated_at);
+CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_updated_at ON loyalty_ledger(updated_at);
+CREATE INDEX IF NOT EXISTS idx_loyalty_rules_business_revision ON loyalty_rules(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_business_revision ON loyalty_ledger(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_customer ON loyalty_ledger(business_id, customer_id, created_at);
