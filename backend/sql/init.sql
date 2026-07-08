@@ -1536,3 +1536,27 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_updated_at ON loyalty_ledger(updat
 CREATE INDEX IF NOT EXISTS idx_loyalty_rules_business_revision ON loyalty_rules(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_business_revision ON loyalty_ledger(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_customer ON loyalty_ledger(business_id, customer_id, created_at);
+
+CREATE TABLE IF NOT EXISTS gift_cards (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  code text NOT NULL,
+  customer_id text,
+  initial_balance double precision NOT NULL DEFAULT 0,
+  balance double precision NOT NULL DEFAULT 0,
+  currency text,
+  is_active boolean NOT NULL DEFAULT true,
+  expires_at timestamptz,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+);
+
+CREATE INDEX IF NOT EXISTS idx_gift_cards_code ON gift_cards(business_id, code);
+CREATE INDEX IF NOT EXISTS idx_gift_cards_updated_at ON gift_cards(updated_at);
+CREATE INDEX IF NOT EXISTS idx_gift_cards_business_revision ON gift_cards(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_gift_cards_customer ON gift_cards(business_id, customer_id);

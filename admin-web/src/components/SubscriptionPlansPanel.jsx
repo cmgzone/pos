@@ -22,6 +22,7 @@ const FEATURE_LABELS = {
   audit_logs: 'Audit Logs',
   proactive_piki: 'Proactive Piki',
   loyalty: 'Loyalty',
+  gift_cards: 'Gift Cards',
 }
 
 const defaultFeatures = Object.keys(FEATURE_LABELS)

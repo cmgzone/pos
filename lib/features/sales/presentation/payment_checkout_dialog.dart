@@ -10,6 +10,7 @@ import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
 import '../../loyalty/data/loyalty_repository.dart';
+import '../../gift_cards/data/gift_card_repository.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../settings/data/payment_method_provider.dart';
 import '../../settings/data/payment_method_repository.dart';
@@ -661,6 +662,132 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
         PaymentMethodRepository.providerCash;
   }
 
+  Future<void> _handleGiftCardCheckout() async {
+    final codeController = TextEditingController();
+    final amountController = TextEditingController(
+      text: _effectiveTotal.toStringAsFixed(2),
+    );
+    final formKey = GlobalKey<FormState>();
+    Map<String, dynamic>? card;
+    double balance = 0;
+
+    if (!mounted) return;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Redeem Gift Card'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: codeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Gift card code',
+                    hintText: 'e.g. GC-1001',
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Required' : null,
+                  onChanged: (_) async {
+                    final found = await GiftCardRepository.getByCode(
+                      codeController.text,
+                    );
+                    setDialogState(() {
+                      card = found;
+                      balance = (found?['balance'] as num? ?? 0).toDouble();
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (card != null) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Available balance: ${GiftCardRepository.formatBalance(balance)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                TextFormField(
+                  controller: amountController,
+                  decoration: InputDecoration(
+                    labelText: 'Amount to redeem',
+                    prefixText: ShopSettings.currency,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (v) {
+                    final value = double.tryParse(v ?? '');
+                    if (value == null || value <= 0) {
+                      return 'Enter an amount greater than zero';
+                    }
+                    if (card == null) return 'Enter a valid card code';
+                    if (value > balance + 0.001) {
+                      return 'Exceeds card balance';
+                    }
+                    if (value > _effectiveTotal + 0.001) {
+                      return 'Exceeds amount due';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.of(ctx).pop({
+                    'cardId': card!['id'],
+                    'code': card!['code'],
+                    'amount': double.parse(amountController.text.trim()),
+                  });
+                }
+              },
+              child: const Text('Redeem'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    try {
+      await GiftCardRepository.redeem(
+        id: result['cardId'] as String,
+        amount: result['amount'] as double,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, {
+        'type': 'other',
+        'paymentMethod': _selectedMethod,
+        'customer': _selectedCustomer,
+        'giftCardId': result['cardId'],
+        'giftCardCode': result['code'],
+        'giftCardAmount': result['amount'],
+        ..._loyaltyResult,
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: 'Gift card redemption failed.'),
+          ),
+        ),
+      );
+    }
+  }
+
   bool _isKopeshaMethod(Map<String, dynamic>? method) {
     if (method == null) return false;
     return PaymentMethodRepository.providerKeyFor(method) ==
@@ -671,6 +798,12 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     if (method == null) return false;
     return PaymentMethodRepository.providerKeyFor(method) ==
         PaymentMethodRepository.providerMpesa;
+  }
+
+  bool _isGiftCardMethod(Map<String, dynamic>? method) {
+    if (method == null) return false;
+    return PaymentMethodRepository.providerKeyFor(method) ==
+        PaymentMethodRepository.providerGiftCard;
   }
 
   ({double tendered, double change, bool hasEnoughCash}) _cashSummary() {
@@ -834,6 +967,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       PaymentMethodRepository.providerCard => Icons.credit_card_outlined,
       PaymentMethodRepository.providerBankTransfer =>
         Icons.account_balance_outlined,
+      PaymentMethodRepository.providerGiftCard =>
+        Icons.card_giftcard_outlined,
       _ => Icons.payment_outlined,
     };
   }
@@ -846,6 +981,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
         context,
       ).colorScheme.secondary,
       PaymentMethodRepository.providerCard => AppColors.primaryLight,
+      PaymentMethodRepository.providerGiftCard => AppColors.fuchsia,
       _ => AppColors.primary,
     };
   }
@@ -1569,6 +1705,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                             _handleKopeshaCheckout();
                           } else if (_isMpesaMethod(_selectedMethod)) {
                             _handleMpesaCheckout();
+                          } else if (_isGiftCardMethod(_selectedMethod)) {
+                            _handleGiftCardCheckout();
                           } else {
                             _handleOtherPaymentCheckout(_selectedMethod!);
                           }

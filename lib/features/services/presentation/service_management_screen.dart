@@ -11,6 +11,7 @@ import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../loyalty/data/loyalty_repository.dart';
+import '../../gift_cards/data/gift_card_repository.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../sales/data/sale_repository.dart';
 import '../../sales/presentation/payment_checkout_dialog.dart';
@@ -2053,6 +2054,10 @@ Future<void> chargeServiceOrder(
   final dueDate = checkoutResult['dueDate'] as String?;
   final loyaltyLedgerId = checkoutResult['loyaltyLedgerId'] as String?;
   final loyaltyPoints = checkoutResult['loyaltyPoints'] as int?;
+  final giftCardId = checkoutResult['giftCardId'] as String?;
+  final giftCardCode = checkoutResult['giftCardCode'] as String?;
+  final giftCardAmount =
+      (checkoutResult['giftCardAmount'] as num?)?.toDouble();
 
   if (type == 'kopesha') {
     if (customer == null || dueDate == null) {
@@ -2077,6 +2082,9 @@ Future<void> chargeServiceOrder(
       dueDate: dueDate,
       loyaltyLedgerId: loyaltyLedgerId,
       loyaltyPoints: loyaltyPoints,
+      giftCardId: giftCardId,
+      giftCardCode: giftCardCode,
+      giftCardAmount: giftCardAmount,
     );
     return;
   }
@@ -2124,6 +2132,9 @@ Future<void> chargeServiceOrder(
       customerName: customer?['name'] as String?,
       loyaltyLedgerId: loyaltyLedgerId,
       loyaltyPoints: loyaltyPoints,
+      giftCardId: giftCardId,
+      giftCardCode: giftCardCode,
+      giftCardAmount: giftCardAmount,
     );
     return;
   }
@@ -2140,6 +2151,9 @@ Future<void> chargeServiceOrder(
     customerName: customer?['name'] as String?,
     loyaltyLedgerId: loyaltyLedgerId,
     loyaltyPoints: loyaltyPoints,
+    giftCardId: giftCardId,
+    giftCardCode: giftCardCode,
+    giftCardAmount: giftCardAmount,
   );
 }
 
@@ -2428,6 +2442,9 @@ Future<void> _completeServiceOrderPayment(
   String? dueDate,
   String? loyaltyLedgerId,
   int? loyaltyPoints,
+  String? giftCardId,
+  String? giftCardCode,
+  double? giftCardAmount,
 }) async {
   final orderId = order['id'] as String;
   final serviceId = order['service_id'] as String;
@@ -2510,6 +2527,17 @@ Future<void> _completeServiceOrderPayment(
       }
     }
 
+    if (giftCardId != null &&
+        giftCardId.isNotEmpty &&
+        (giftCardAmount ?? 0) > 0 &&
+        context.mounted) {
+      _showServicePaymentSnackBar(
+        context,
+        'Gift card ${giftCardCode ?? ''} redeemed: ${GiftCardRepository.formatBalance(giftCardAmount!)}',
+        backgroundColor: AppColors.success,
+      );
+    }
+
     if (context.mounted) {
       _showServicePaymentSuccessDialog(
         context,
@@ -2539,6 +2567,18 @@ Future<void> _completeServiceOrderPayment(
         );
       } catch (_) {
         // best-effort; ledger entry remains for later reconciliation
+      }
+    }
+    if (giftCardId != null &&
+        giftCardId.isNotEmpty &&
+        (giftCardAmount ?? 0) > 0) {
+      try {
+        await GiftCardRepository.refundRedemption(
+          id: giftCardId,
+          amount: giftCardAmount!,
+        );
+      } catch (_) {
+        // best-effort; balance remains for later reconciliation
       }
     }
     if (context.mounted) {

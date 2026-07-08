@@ -1158,6 +1158,222 @@ app.get('/api/loyalty/points/:customerId', async (req, res, next) => {
   }
 });
 
+// ============================================================================
+// Gift Cards / Vouchers
+// ============================================================================
+
+app.get('/api/gift-cards', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.giftCards);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    if (req.query.code) {
+      where.push(`code ILIKE $${params.length + 1}`);
+      params.push(`%${normalizeOptionalText(req.query.code)}%`);
+    }
+    if (req.query.activeOnly === 'true') {
+      where.push('is_active = true');
+    }
+    if (req.query.customerId) {
+      where.push(`customer_id = $${params.length + 1}`);
+      params.push(normalizeOptionalText(req.query.customerId));
+    }
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT * FROM gift_cards
+       WHERE ${where.join(' AND ')} ${branchFilter}
+       ORDER BY created_at DESC LIMIT 500`,
+      params,
+    );
+    res.json({ ok: true, giftCards: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/gift-cards', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.giftCards);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const scope = resolveDataScope(businessContext, req.body.branchId);
+    const branchId = scope.branchId || 'main_branch';
+    const code = normalizeText(req.body.code);
+    if (!code) {
+      throw createHttpError(400, 'A gift card code is required.');
+    }
+    const amount = Number(req.body.initialBalance || req.body.balance || 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw createHttpError(400, 'Initial balance must be zero or greater.');
+    }
+    const existing = await query(
+      'SELECT id FROM gift_cards WHERE business_id = $1 AND code = $2 AND deleted_at IS NULL',
+      [businessContext.businessId, code],
+    );
+    if (existing.rows.length) {
+      throw createHttpError(409, 'A gift card with this code already exists.');
+    }
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await query(
+      `INSERT INTO gift_cards (
+        id, business_id, branch_id, code, customer_id, initial_balance,
+        balance, currency, is_active, expires_at, note, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $11)`,
+      [
+        id,
+        businessContext.businessId,
+        branchId,
+        code,
+        normalizeOptionalText(req.body.customerId) || null,
+        amount,
+        amount,
+        normalizeOptionalText(req.body.currency) || null,
+        req.body.expiresAt ? toIsoString(req.body.expiresAt) : null,
+        normalizeOptionalText(req.body.note) || null,
+        now,
+      ],
+    );
+    const row = await query('SELECT * FROM gift_cards WHERE id = $1', [id]);
+    res.json({ ok: true, giftCard: row.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/gift-cards/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.giftCards);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const id = req.params.id;
+    const row = await query(
+      'SELECT * FROM gift_cards WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL',
+      [id, businessContext.businessId],
+    );
+    if (!row.rows.length) {
+      throw createHttpError(404, 'Gift card not found.');
+    }
+    const current = row.rows[0];
+    const topUp = Number(req.body.topUp || 0);
+    const fields = [];
+    const params = [];
+    let idx = 1;
+    if (req.body.note !== undefined) {
+      fields.push(`note = $${idx++}`);
+      params.push(normalizeOptionalText(req.body.note) || null);
+    }
+    if (req.body.isActive !== undefined) {
+      fields.push(`is_active = $${idx++}`);
+      params.push(req.body.isActive ? true : false);
+    }
+    if (req.body.expiresAt !== undefined) {
+      fields.push(`expires_at = $${idx++}`);
+      params.push(req.body.expiresAt ? toIsoString(req.body.expiresAt) : null);
+    }
+    if (req.body.customerId !== undefined) {
+      fields.push(`customer_id = $${idx++}`);
+      params.push(normalizeOptionalText(req.body.customerId) || null);
+    }
+    if (topUp > 0) {
+      fields.push(`balance = balance + $${idx++}`);
+      params.push(topUp);
+      fields.push(`initial_balance = initial_balance + $${idx++}`);
+      params.push(topUp);
+    } else if (topUp < 0) {
+      throw createHttpError(400, 'Top-up amount must be positive.');
+    }
+    if (fields.isEmpty) {
+      return res.json({ ok: true, giftCard: current });
+    }
+    fields.push(`updated_at = $${idx++}`);
+    params.push(new Date().toISOString());
+    params.push(id);
+    await query(
+      `UPDATE gift_cards SET ${fields.join(', ')} WHERE id = $${idx}`,
+      params,
+    );
+    const updated = await query('SELECT * FROM gift_cards WHERE id = $1', [id]);
+    res.json({ ok: true, giftCard: updated.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/gift-cards/:id/redeem', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.giftCards);
+    const id = req.params.id;
+    const amount = Number(req.body.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw createHttpError(400, 'Redemption amount must be greater than zero.');
+    }
+    const row = await query(
+      'SELECT * FROM gift_cards WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL',
+      [id, businessContext.businessId],
+    );
+    if (!row.rows.length) {
+      throw createHttpError(404, 'Gift card not found.');
+    }
+    const card = row.rows[0];
+    if (!card.is_active) {
+      throw createHttpError(400, 'This gift card is not active.');
+    }
+    if (card.expires_at && new Date(card.expires_at).getTime() < Date.now()) {
+      throw createHttpError(400, 'This gift card has expired.');
+    }
+    const balance = Number(card.balance || 0);
+    if (amount > balance) {
+      throw createHttpError(400, 'The gift card balance is insufficient.');
+    }
+    const now = new Date().toISOString();
+    await query(
+      'UPDATE gift_cards SET balance = balance - $1, updated_at = $2 WHERE id = $3',
+      [amount, now, id],
+    );
+    const updated = await query('SELECT * FROM gift_cards WHERE id = $1', [id]);
+    res.json({ ok: true, giftCard: updated.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/gift-cards/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.giftCards);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const id = req.params.id;
+    const now = new Date().toISOString();
+    const result = await query(
+      `UPDATE gift_cards SET deleted_at = $1, updated_at = $1
+       WHERE id = $2 AND business_id = $3 AND deleted_at IS NULL`,
+      [now, id, businessContext.businessId],
+    );
+    if (result.rowCount === 0) {
+      throw createHttpError(404, 'Gift card not found.');
+    }
+    res.json({ ok: true, id });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/sync/status', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req, {
@@ -14039,6 +14255,7 @@ const syncTableFeatures = Object.freeze({
   service_field_values: 'services',
   loyalty_rules: 'loyalty',
   loyalty_ledger: 'loyalty',
+  gift_cards: 'gift_cards',
 });
 
 const employeeAttributionTables = new Set([

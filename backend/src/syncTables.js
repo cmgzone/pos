@@ -683,6 +683,25 @@ const syncTables = [
       'sync_status',
     ],
   },
+  {
+    name: 'gift_cards',
+    columns: [
+      'id',
+      'branch_id',
+      'code',
+      'customer_id',
+      'initial_balance',
+      'balance',
+      'currency',
+      'is_active',
+      'expires_at',
+      'note',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'sync_status',
+    ],
+  },
 ];
 
 const syncTableMap = new Map(syncTables.map((table) => [table.name, table]));

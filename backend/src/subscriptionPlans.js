@@ -23,6 +23,7 @@ const FEATURE_KEYS = Object.freeze({
   auditLogs: 'audit_logs',
   proactivePiki: 'proactive_piki',
   loyalty: 'loyalty',
+  giftCards: 'gift_cards',
 });
 
 const SELLING_MODES = Object.freeze({
@@ -68,6 +69,7 @@ const GROWTH_FEATURES = [
   FEATURE_KEYS.services,
   FEATURE_KEYS.profitLoss,
   FEATURE_KEYS.loyalty,
+  FEATURE_KEYS.giftCards,
 ];
 
 const ALL_FEATURES = [
@@ -459,10 +461,10 @@ async function ensureSubscriptionSchema(target = query) {
     ],
   );
 
-  // Backfill the loyalty feature into paid plans that were seeded before
-  // loyalty existed in the canonical feature lists. Without this, devices on
-  // those plans receive a license token whose entitlements omit 'loyalty', so
-  // the Loyalty screen stays hidden even for admins on paid plans.
+  // Backfill paid-plan features (loyalty, gift cards, etc.) into plans that
+  // were seeded before those features existed in the canonical feature lists.
+  // Without this, devices on those plans receive a license token whose
+  // entitlements omit the features, so the corresponding screens stay hidden.
   for (const [planCode, canonicalFeatures] of [
     ['growth', GROWTH_FEATURES],
     ['pro', ALL_FEATURES],

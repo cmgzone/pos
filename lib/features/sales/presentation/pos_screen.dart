@@ -19,6 +19,7 @@ import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../agent/data/piki_models.dart';
 import '../../loyalty/data/loyalty_repository.dart';
+import '../../gift_cards/data/gift_card_repository.dart';
 import '../../agent/data/piki_provider.dart';
 import '../../products/data/product_provider.dart';
 import '../../products/data/product_repository.dart';
@@ -4462,6 +4463,10 @@ class _CartSide extends ConsumerWidget {
     final dueDate = checkoutResult['dueDate'] as String?;
     final loyaltyLedgerId = checkoutResult['loyaltyLedgerId'] as String?;
     final loyaltyPoints = checkoutResult['loyaltyPoints'] as int?;
+    final giftCardId = checkoutResult['giftCardId'] as String?;
+    final giftCardCode = checkoutResult['giftCardCode'] as String?;
+    final giftCardAmount =
+        (checkoutResult['giftCardAmount'] as num?)?.toDouble();
 
     if (type == 'kopesha') {
       // Kopesha payment - requires customer
@@ -4487,6 +4492,9 @@ class _CartSide extends ConsumerWidget {
         convertFromQuotationId: pendingQuotationId,
         loyaltyLedgerId: loyaltyLedgerId,
         loyaltyPoints: loyaltyPoints,
+        giftCardId: giftCardId,
+        giftCardCode: giftCardCode,
+        giftCardAmount: giftCardAmount,
       );
     } else if (type == 'mpesa') {
       final phoneNumber = checkoutResult['phoneNumber'] as String?;
@@ -4507,6 +4515,9 @@ class _CartSide extends ConsumerWidget {
         convertFromQuotationId: pendingQuotationId,
         loyaltyLedgerId: loyaltyLedgerId,
         loyaltyPoints: loyaltyPoints,
+        giftCardId: giftCardId,
+        giftCardCode: giftCardCode,
+        giftCardAmount: giftCardAmount,
       );
     } else if (type == 'mpesa_manual') {
       final payment = checkoutResult['payment'];
@@ -4527,6 +4538,9 @@ class _CartSide extends ConsumerWidget {
         convertFromQuotationId: pendingQuotationId,
         loyaltyLedgerId: loyaltyLedgerId,
         loyaltyPoints: loyaltyPoints,
+        giftCardId: giftCardId,
+        giftCardCode: giftCardCode,
+        giftCardAmount: giftCardAmount,
       );
     } else {
       // Other payment methods
@@ -4580,6 +4594,9 @@ class _CartSide extends ConsumerWidget {
           convertFromQuotationId: pendingQuotationId,
           loyaltyLedgerId: loyaltyLedgerId,
           loyaltyPoints: loyaltyPoints,
+          giftCardId: giftCardId,
+          giftCardCode: giftCardCode,
+          giftCardAmount: giftCardAmount,
         );
       } else {
         await _completeSale(
@@ -4593,6 +4610,9 @@ class _CartSide extends ConsumerWidget {
           convertFromQuotationId: pendingQuotationId,
           loyaltyLedgerId: loyaltyLedgerId,
           loyaltyPoints: loyaltyPoints,
+          giftCardId: giftCardId,
+          giftCardCode: giftCardCode,
+          giftCardAmount: giftCardAmount,
         );
       }
     }
@@ -4606,6 +4626,9 @@ class _CartSide extends ConsumerWidget {
     String? convertFromQuotationId,
     String? loyaltyLedgerId,
     int? loyaltyPoints,
+    String? giftCardId,
+    String? giftCardCode,
+    double? giftCardAmount,
   }) async {
     final total = ref.read(cartTotalProvider);
     try {
@@ -4644,6 +4667,10 @@ class _CartSide extends ConsumerWidget {
           customerId: customer?['id'] as String?,
           points: loyaltyPoints,
         );
+        await _refundGiftCardIfPending(
+          giftCardId: giftCardId,
+          giftCardAmount: giftCardAmount,
+        );
         return;
       }
 
@@ -4665,6 +4692,10 @@ class _CartSide extends ConsumerWidget {
           ledgerId: loyaltyLedgerId,
           customerId: customer?['id'] as String?,
           points: loyaltyPoints,
+        );
+        await _refundGiftCardIfPending(
+          giftCardId: giftCardId,
+          giftCardAmount: giftCardAmount,
         );
         return;
       }
@@ -4690,6 +4721,9 @@ class _CartSide extends ConsumerWidget {
         convertFromQuotationId: convertFromQuotationId,
         loyaltyLedgerId: loyaltyLedgerId,
         loyaltyPoints: loyaltyPoints,
+        giftCardId: giftCardId,
+        giftCardCode: giftCardCode,
+        giftCardAmount: giftCardAmount,
       );
       if (!context.mounted || saleId == null) return;
       await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
@@ -4716,6 +4750,9 @@ class _CartSide extends ConsumerWidget {
     String? convertFromQuotationId,
     String? loyaltyLedgerId,
     int? loyaltyPoints,
+    String? giftCardId,
+    String? giftCardCode,
+    double? giftCardAmount,
   }) async {
     if (!context.mounted) return;
     final saleId = await _completeSale(
@@ -4834,6 +4871,27 @@ class _CartSide extends ConsumerWidget {
     }
   }
 
+  /// Reverses a pending gift card redemption when the checkout flow ends
+  /// without a completed sale.
+  Future<void> _refundGiftCardIfPending({
+    required String? giftCardId,
+    required double? giftCardAmount,
+  }) async {
+    if (giftCardId == null ||
+        giftCardId.isEmpty ||
+        (giftCardAmount ?? 0) <= 0) {
+      return;
+    }
+    try {
+      await GiftCardRepository.refundRedemption(
+        id: giftCardId,
+        amount: giftCardAmount!,
+      );
+    } catch (_) {
+      // best-effort; balance remains for later reconciliation
+    }
+  }
+
   Future<String?> _completeSale(
     BuildContext context,
     WidgetRef ref, {
@@ -4854,6 +4912,9 @@ class _CartSide extends ConsumerWidget {
     String? preAllocatedSaleId,
     String? loyaltyLedgerId,
     int? loyaltyPoints,
+    String? giftCardId,
+    String? giftCardCode,
+    double? giftCardAmount,
   }) async {
     final cart = ref.read(cartProvider);
     final subtotal = ref.read(cartSubtotalProvider);
@@ -4912,6 +4973,18 @@ class _CartSide extends ConsumerWidget {
           );
         } catch (_) {
           // best-effort; ledger entry remains for later reconciliation
+        }
+      }
+      if (giftCardId != null &&
+          giftCardId.isNotEmpty &&
+          (giftCardAmount ?? 0) > 0) {
+        try {
+          await GiftCardRepository.refundRedemption(
+            id: giftCardId,
+            amount: giftCardAmount!,
+          );
+        } catch (_) {
+          // best-effort; balance remains for later reconciliation
         }
       }
       if (context.mounted) {
@@ -5039,6 +5112,17 @@ class _CartSide extends ConsumerWidget {
           );
         }
       }
+    }
+    // ── Gift card: confirm redemption applied to this sale ───────────────
+    if (giftCardId != null &&
+        giftCardId.isNotEmpty &&
+        (giftCardAmount ?? 0) > 0 &&
+        context.mounted) {
+      _showSnackBar(
+        context,
+        'Gift card ${giftCardCode ?? ''} redeemed: ${GiftCardRepository.formatBalance(giftCardAmount!)}',
+        backgroundColor: AppColors.success,
+      );
     }
     // ──────────────────────────────────────────────────────────────────
 

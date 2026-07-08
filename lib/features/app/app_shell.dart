@@ -24,6 +24,7 @@ import '../customers/presentation/contacts_screen.dart';
 import '../customers/presentation/kopesha_screen.dart';
 import '../invoices/presentation/customer_invoices_screen.dart';
 import '../loyalty/presentation/loyalty_screen.dart';
+import '../gift_cards/presentation/gift_card_screen.dart';
 import '../products/presentation/catalog_orders_screen.dart';
 import '../products/presentation/category_management_screen.dart';
 import '../products/presentation/product_list_screen.dart';
@@ -249,6 +250,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.loyalty_outlined,
         selectedIcon: Icons.loyalty_rounded,
         label: 'Loyalty',
+      ),
+    ),
+    _NavDestination(
+      index: 22,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.card_giftcard_outlined,
+        selectedIcon: Icons.card_giftcard_rounded,
+        label: 'Gift Cards',
       ),
     ),
     _NavDestination(
@@ -1882,6 +1892,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return const QuotationsScreen();
       case 21:
         return const LoyaltyScreen();
+      case 22:
+        return const GiftCardScreen();
       default:
         return const PosScreen();
     }

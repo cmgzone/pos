@@ -302,6 +302,18 @@ class SeedService {
         'updated_at': now,
         'sync_status': 'synced',
       },
+      {
+        'id': _uuid.v4(),
+        'name': 'Gift Card',
+        'provider_key': 'gift_card',
+        'is_cash_drawer': 0,
+        'is_credit': 0,
+        'is_active': 1,
+        'sort_order': 5,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      },
     ];
 
     for (final method in paymentMethods) {

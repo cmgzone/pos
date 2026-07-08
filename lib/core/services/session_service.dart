@@ -290,6 +290,7 @@ class UserAccessProfile {
   static const featureAuditLogs = 'audit_logs';
   static const featureProactivePiki = 'proactive_piki';
   static const featureLoyalty = 'loyalty';
+  static const featureGiftCards = 'gift_cards';
 
   static const posModeBoth = 'both';
   static const posModeProducts = 'products';
@@ -317,6 +318,7 @@ class UserAccessProfile {
     featureAuditLogs,
     featureProactivePiki,
     featureLoyalty,
+    featureGiftCards,
   ];
 
   static const configurableFeatures = [
@@ -353,6 +355,7 @@ class UserAccessProfile {
     featureAuditLogs: 14,
     featureTransfers: 15,
     featureLoyalty: 21,
+    featureGiftCards: 22,
   };
 
   static List<String> defaultFeatureAccessForRole(String? role) {
@@ -519,6 +522,8 @@ class UserAccessProfile {
         return 'Proactive Piki';
       case featureLoyalty:
         return 'Loyalty';
+      case featureGiftCards:
+        return 'Gift Cards';
       default:
         return featureKey;
     }

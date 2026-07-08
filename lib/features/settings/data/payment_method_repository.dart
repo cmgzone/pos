@@ -11,6 +11,7 @@ class PaymentMethodRepository {
   static const providerMpesa = 'mpesa';
   static const providerCard = 'card';
   static const providerBankTransfer = 'bank_transfer';
+  static const providerGiftCard = 'gift_card';
   static const providerOther = 'other';
 
   static String normalizeProviderKey(String? value) {
@@ -21,6 +22,7 @@ class PaymentMethodRepository {
       'm_pesa' || 'mpesa' => providerMpesa,
       providerCard => providerCard,
       'bank' || 'transfer' || providerBankTransfer => providerBankTransfer,
+      'gift' || 'voucher' || providerGiftCard => providerGiftCard,
       _ => providerOther,
     };
   }

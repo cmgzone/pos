@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 23;
+  static const int _databaseVersion = 24;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -42,9 +42,10 @@ class DatabaseService {
     'services',
     'service_orders',
     'audit_logs',
-    'loyalty_rules',
-    'loyalty_ledger',
-  };
+  'loyalty_rules',
+  'loyalty_ledger',
+  'gift_cards',
+};
 
   static Database? _database;
   static String? _databasePath;
@@ -1479,6 +1480,7 @@ class DatabaseService {
     await _ensureProductStorefrontSchema(database);
     await _ensurePaymentMethodsSchema(database);
     await _ensureLoyaltySchema(database);
+    await _ensureGiftCardSchema(database);
     await _ensureEnterpriseSchema(database);
     await _ensureStockTransferSchema(database);
     await _ensurePublicCatalogOrderSchema(database);
@@ -3194,6 +3196,27 @@ class DatabaseService {
       column: 'loyalty_points',
       definition: 'INTEGER NOT NULL DEFAULT 0',
     );
+  }
+
+  static Future<void> _ensureGiftCardSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS gift_cards (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        code TEXT NOT NULL,
+        customer_id TEXT,
+        initial_balance REAL NOT NULL DEFAULT 0,
+        balance REAL NOT NULL DEFAULT 0,
+        currency TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        expires_at TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
   }
 
   static Future<void> _ensurePaymentMethodsSchema(
