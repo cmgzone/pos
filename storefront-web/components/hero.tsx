@@ -3,15 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, ArrowRight } from "lucide-react";
-import type { Business } from "@/lib/types";
+import type { Business, Storefront } from "@/lib/types";
 import { FadeIn } from "./motion";
 
 interface HeroProps {
   business?: Business;
+  storefront?: Storefront;
   onBrowse: () => void;
 }
 
-export function Hero({ business, onBrowse }: HeroProps) {
+export function Hero({ business, storefront, onBrowse }: HeroProps) {
   const brand = business?.brand;
   const coverUrls = brand?.coverUrls?.length
     ? brand.coverUrls
@@ -31,11 +32,18 @@ export function Hero({ business, onBrowse }: HeroProps) {
     return () => clearInterval(timer);
   }, [hasSlides, nextSlide]);
 
-  const headline = brand?.tagline || business?.name || "Your online store";
+  const defaultHeadline = storefront?.type === "services"
+    ? "Book a service that fits your day"
+    : storefront?.type === "restaurant"
+      ? "Made fresh. Ready when you are."
+      : "Your online store";
+  const headline = brand?.tagline || business?.name || defaultHeadline;
   const description =
     brand?.description ||
-    "Shop products, book services, choose variants, and place orders in seconds.";
+    storefront?.description ||
+    "Browse, choose what you need, and send your order in seconds.";
   const branchName = business?.selectedBranch?.name;
+  const eyebrow = [storefront?.label, branchName].filter(Boolean).join(" · ");
 
   if (coverUrls.length > 0) {
     return (
@@ -88,10 +96,10 @@ export function Hero({ business, onBrowse }: HeroProps) {
 
         <div className="relative z-10 mx-auto max-w-4xl px-4 py-24 sm:px-6 sm:py-32 lg:px-10 lg:py-40">
           <FadeIn delay={0.05}>
-            {branchName && (
+            {eyebrow && (
               <div className="mb-5 inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.14em] text-muted-strong">
                 <MapPin className="h-3.5 w-3.5" />
-                {branchName}
+                {eyebrow}
               </div>
             )}
           </FadeIn>
@@ -110,7 +118,7 @@ export function Hero({ business, onBrowse }: HeroProps) {
               onClick={onBrowse}
               className="group mt-8 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
             >
-              Browse collection
+              {storefront?.browseLabel || "Browse collection"}
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </button>
           </FadeIn>
@@ -123,10 +131,10 @@ export function Hero({ business, onBrowse }: HeroProps) {
     <section className="relative border-b border-border-subtle">
       <div className="mx-auto max-w-4xl px-4 py-20 sm:px-6 sm:py-28 lg:px-10 lg:py-32">
         <FadeIn delay={0.05}>
-          {branchName && (
+          {eyebrow && (
             <div className="mb-5 inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.14em] text-muted-strong">
               <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              {branchName}
+              {eyebrow}
             </div>
           )}
         </FadeIn>
@@ -145,7 +153,7 @@ export function Hero({ business, onBrowse }: HeroProps) {
             onClick={onBrowse}
             className="group mt-8 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
           >
-            Browse collection
+            {storefront?.browseLabel || "Browse collection"}
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </button>
         </FadeIn>

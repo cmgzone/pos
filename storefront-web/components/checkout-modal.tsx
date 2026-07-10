@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, Loader2, Truck, Store } from "lucide-react";
-import type { Business, OrderPayload } from "@/lib/types";
+import type { Business, OrderPayload, StorefrontType } from "@/lib/types";
 import { formatPrice } from "@/lib/utils";
 import { useStore } from "./store-provider";
 import { placeOrder } from "@/lib/api";
@@ -13,6 +13,7 @@ interface CheckoutModalProps {
   business: Business;
   currencySymbol: string;
   currencyCode: string;
+  storefrontType: StorefrontType;
   onClose: () => void;
 }
 
@@ -20,6 +21,7 @@ export function CheckoutModal({
   business,
   currencySymbol,
   currencyCode,
+  storefrontType,
   onClose,
 }: CheckoutModalProps) {
   const { cart, cartTotal, clearCart } = useStore();
@@ -41,6 +43,7 @@ export function CheckoutModal({
 
     const payload: OrderPayload = {
       branchId: business.selectedBranch.id,
+      storefrontType,
       customerName: customerName.trim(),
       phone: phone.trim(),
       deliveryAddress: deliveryAddress.trim() || undefined,

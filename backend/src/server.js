@@ -140,11 +140,12 @@ const {
 } = require('./etims');
 const { searchWithSerpApi } = require('./serpApi');
 const {
+  buildCatalogStorefrontSubdomain,
   buildCatalogStorefrontUrl,
   ensureBusinessCatalogSubdomain,
   ensureCatalogSubdomainSchema,
   extractCatalogSubdomain,
-  findBusinessIdByCatalogSubdomain,
+  findBusinessCatalogStorefrontBySubdomain,
   initializeCatalogSubdomainSchema,
   isCatalogStorefrontOrigin,
 } = require('./catalogSubdomains');
@@ -192,7 +193,30 @@ const CATALOG_CACHE_TABLES = new Set([
   'purchase_invoices',
   'stock_transfers',
 ]);
-const CATALOG_CACHE_CODE_VERSION = '1';
+const CATALOG_CACHE_CODE_VERSION = '2';
+const STOREFRONT_TYPES = Object.freeze({
+  retail: Object.freeze({
+    type: 'retail',
+    label: 'Retail store',
+    title: 'Online shop',
+    description: 'Browse products, choose variants, and place an order in seconds.',
+    browseLabel: 'Shop products',
+  }),
+  services: Object.freeze({
+    type: 'services',
+    label: 'Services',
+    title: 'Service booking',
+    description: 'Explore services, choose what you need, and request a booking.',
+    browseLabel: 'Browse services',
+  }),
+  restaurant: Object.freeze({
+    type: 'restaurant',
+    label: 'Restaurant',
+    title: 'Restaurant menu',
+    description: 'Explore the menu, add your favourites, and send your order to the kitchen.',
+    browseLabel: 'View menu',
+  }),
+});
 const aiJobs = createAiJobsModule({
   query,
   withTransaction,
@@ -9761,6 +9785,7 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
       branchId: req.query?.branchId,
+      storefrontType: req.query?.storefront || req.query?.type,
     });
     res.json({ ok: true, data: catalog });
   } catch (error) {
@@ -9777,14 +9802,19 @@ app.get('/api/public/catalog', async (req, res, next) => {
     if (!subdomain) {
       throw createHttpError(400, 'Catalog subdomain is required');
     }
-    const businessId = await findBusinessIdByCatalogSubdomain(query, subdomain);
-    if (!businessId) {
+    const storefront = await findBusinessCatalogStorefrontBySubdomain(
+      query,
+      subdomain,
+    );
+    if (!storefront) {
       throw createHttpError(404, 'Catalog not found');
     }
 
-    const catalog = await loadPublicCatalog(businessId, {
+    const catalog = await loadPublicCatalog(storefront.businessId, {
       currencyOverride: req.query?.currency,
       branchId: req.query?.branchId,
+      storefrontType:
+        storefront.storefrontType || req.query?.storefront || req.query?.type,
     });
     res.json({ ok: true, data: catalog });
   } catch (error) {
@@ -9803,6 +9833,32 @@ app.get('/api/catalog/storefront', async (req, res, next) => {
       config.publicCatalogRootDomain,
       publicSubdomain,
     );
+    const storefrontTypes = storefrontTypesForEntitlements(
+      businessContext.entitlements,
+      businessContext.sellingMode,
+    );
+    const primaryResult = await query(
+      `SELECT primary_storefront_type
+       FROM businesses
+       WHERE id = $1 AND deleted_at IS NULL
+       LIMIT 1`,
+      [businessContext.businessId],
+    );
+    const primaryType = resolvePrimaryStorefrontType({
+      primaryStorefrontType: primaryResult.rows[0]?.primary_storefront_type,
+      availableStorefrontTypes: storefrontTypes,
+      sellingMode: businessContext.sellingMode,
+    });
+    const requestedType = normalizeStorefrontType(req.query?.type, {
+      fallback: null,
+    });
+    if (req.query?.type != null && !requestedType) {
+      throw createHttpError(400, 'Storefront type must be retail, services, or restaurant.');
+    }
+    const selectedType = requestedType || primaryType;
+    if (!storefrontTypes.includes(selectedType)) {
+      throw createHttpError(403, 'This subscription does not include that storefront.');
+    }
     const legacyBaseUrl =
       config.publicBaseUrl ||
       `https://${config.publicCatalogRootDomain}`;
@@ -9812,12 +9868,59 @@ app.get('/api/catalog/storefront', async (req, res, next) => {
       data: {
         businessId: businessContext.businessId,
         subdomain: publicSubdomain,
-        url,
+        type: selectedType,
+        primaryType,
+        rootUrl: url,
+        url: buildTypedStorefrontUrl(publicSubdomain, selectedType),
+        storefronts: storefrontTypes.map((type) => ({
+          ...storefrontDefinition(type),
+          url: buildTypedStorefrontUrl(publicSubdomain, type),
+        })),
         legacyUrl: `${legacyBaseUrl}/catalog/${encodeURIComponent(
           businessContext.businessId,
-        )}`,
+        )}/${selectedType}`,
       },
     });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/storefront/primary', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const primaryType = normalizeStorefrontType(
+      req.body?.type || req.body?.storefrontType || req.body?.storefront_type,
+      { fallback: null },
+    );
+    if (!primaryType) {
+      throw createHttpError(400, 'Choose retail, services, or restaurant as the main website.');
+    }
+    const storefrontTypes = storefrontTypesForEntitlements(
+      businessContext.entitlements,
+      businessContext.sellingMode,
+    );
+    if (!storefrontTypes.includes(primaryType)) {
+      throw createHttpError(403, 'This subscription does not include that storefront.');
+    }
+    await ensureCatalogSubdomainSchema(query);
+    await query(
+      `UPDATE businesses
+       SET primary_storefront_type = $2,
+           updated_at = NOW()
+       WHERE id = $1
+         AND deleted_at IS NULL`,
+      [businessContext.businessId, primaryType],
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'storefront_primary',
+      tables: ['businesses'],
+    });
+    res.json({ ok: true, data: { primaryType } });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -10001,7 +10104,7 @@ app.post('/api/public/demo-requests', publicWriteRateLimit, async (req, res, nex
   }
 });
 
-app.get('/catalog/:businessId', async (req, res, next) => {
+app.get(['/catalog/:businessId', '/catalog/:businessId/:storefrontType'], async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.params.businessId);
     if (!businessId) {
@@ -10011,6 +10114,7 @@ app.get('/catalog/:businessId', async (req, res, next) => {
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
       branchId: req.query?.branchId,
+      storefrontType: req.params.storefrontType || req.query?.storefront || req.query?.type,
     });
     res
       .status(200)
@@ -10027,7 +10131,7 @@ app.get('/catalog/:businessId', async (req, res, next) => {
   }
 });
 
-app.get(['/', '/catalog'], async (req, res, next) => {
+app.get(['/', '/catalog', '/retail', '/services', '/restaurant'], async (req, res, next) => {
   try {
     const subdomain = extractCatalogSubdomain(
       req.get('x-forwarded-host') || req.get('host'),
@@ -10038,14 +10142,22 @@ app.get(['/', '/catalog'], async (req, res, next) => {
       return;
     }
 
-    const businessId = await findBusinessIdByCatalogSubdomain(query, subdomain);
-    if (!businessId) {
+    const storefrontLookup = await findBusinessCatalogStorefrontBySubdomain(
+      query,
+      subdomain,
+    );
+    if (!storefrontLookup) {
       throw createHttpError(404, 'Catalog not found');
     }
 
-    const catalog = await loadPublicCatalog(businessId, {
+    const catalog = await loadPublicCatalog(storefrontLookup.businessId, {
       currencyOverride: req.query?.currency,
       branchId: req.query?.branchId,
+      storefrontType:
+        storefrontLookup.storefrontType ||
+        (req.path === '/retail' || req.path === '/services' || req.path === '/restaurant'
+          ? req.path.slice(1)
+          : req.query?.storefront || req.query?.type),
     });
     res
       .status(200)
@@ -12419,6 +12531,94 @@ function hasPlanFeature(businessContext, feature) {
   return Array.isArray(features) && features.includes(feature);
 }
 
+function normalizeStorefrontType(value, { fallback = 'retail' } = {}) {
+  const normalized = normalizeOptionalText(value)?.toLowerCase();
+  switch (normalized) {
+    case 'retail':
+    case 'store':
+    case 'shop':
+    case 'products':
+    case 'product':
+      return 'retail';
+    case 'services':
+    case 'service':
+    case 'booking':
+      return 'services';
+    case 'restaurant':
+    case 'menu':
+    case 'food':
+      return 'restaurant';
+    default:
+      return fallback && STOREFRONT_TYPES[fallback] ? fallback : null;
+  }
+}
+
+function defaultStorefrontTypeForSellingMode(sellingMode) {
+  return normalizeSellingMode(sellingMode) === 'services'
+    ? 'services'
+    : 'retail';
+}
+
+function storefrontTypesForEntitlements(entitlements, sellingMode) {
+  const features = new Set(entitlements?.features || []);
+  const types = [];
+  if (features.has(FEATURE_KEYS.products)) {
+    types.push('retail');
+  }
+  if (features.has(FEATURE_KEYS.services)) {
+    types.push('services');
+  }
+  if (
+    features.has(FEATURE_KEYS.products) &&
+    features.has(FEATURE_KEYS.restaurantMode)
+  ) {
+    types.push('restaurant');
+  }
+
+  // Older businesses may not have a subscription record yet. Preserve the
+  // existing public catalog while still selecting the right first experience.
+  if (types.length === 0) {
+    types.push(defaultStorefrontTypeForSellingMode(sellingMode));
+  }
+  return types;
+}
+
+function resolvePrimaryStorefrontType({
+  primaryStorefrontType,
+  availableStorefrontTypes,
+  sellingMode,
+}) {
+  const configured = normalizeStorefrontType(primaryStorefrontType, {
+    fallback: null,
+  });
+  if (configured && availableStorefrontTypes.includes(configured)) {
+    return configured;
+  }
+  const modeDefault = defaultStorefrontTypeForSellingMode(sellingMode);
+  return availableStorefrontTypes.includes(modeDefault)
+    ? modeDefault
+    : availableStorefrontTypes[0];
+}
+
+function storefrontDefinition(type) {
+  const normalized = normalizeStorefrontType(type);
+  return STOREFRONT_TYPES[normalized];
+}
+
+function buildTypedStorefrontUrl(businessSubdomain, type) {
+  return buildCatalogStorefrontUrl(
+    config.publicCatalogRootDomain,
+    buildCatalogStorefrontSubdomain(businessSubdomain, type),
+  );
+}
+
+function storefrontItemMatchesType(item, storefrontType) {
+  const itemType = normalizePublicCatalogItemType(item?.itemType || item?.type);
+  return storefrontType === 'services'
+    ? itemType === 'service'
+    : itemType === 'product';
+}
+
 function ensurePlanFeatureAllowed(businessContext, feature) {
   if (!hasPlanFeature(businessContext, feature)) {
     throw createHttpError(403, `This subscription plan does not include ${feature}.`);
@@ -12705,22 +12905,15 @@ function paymentMetadataMessage(metadata = {}) {
 
 async function loadPublicCatalog(
   businessId,
-  { currencyOverride, branchId: requestedBranchId } = {},
+  { currencyOverride, branchId: requestedBranchId, storefrontType } = {},
 ) {
   await ensureCatalogSubdomainSchema(query);
   await ensureStorefrontBrandSchema(query);
   await ensureProductStorefrontSchema(query);
-  const cacheKey = await buildCatalogCacheKey(businessId, {
-    currencyOverride,
-    branchId: requestedBranchId,
-  });
-  const cached = await cacheGetJson(cacheKey);
-  if (cached) {
-    return cached;
-  }
   const businessResult = await query(
     `
-    SELECT b.id, b.name, b.country_code, b.currency, b.updated_at,
+    SELECT b.id, b.name, b.country_code, b.currency, b.selling_mode,
+           b.primary_storefront_type, b.updated_at,
            b.catalog_logo_url, b.catalog_cover_url, b.catalog_primary_color,
            b.catalog_cover_urls_json, b.catalog_tagline, b.catalog_description,
            cs.whatsapp_number
@@ -12736,6 +12929,44 @@ async function loadPublicCatalog(
   const business = businessResult.rows[0];
   if (!business) {
     throw createHttpError(404, 'Catalog not found');
+  }
+
+  const subscriptionResult = await query(
+    'SELECT plan FROM subscriptions WHERE business_id = $1 LIMIT 1',
+    [businessId],
+  );
+  const entitlements = applySellingModeToEntitlements(
+    await loadEntitlementsForPlan(subscriptionResult.rows[0]?.plan),
+    business.selling_mode,
+  );
+  const availableStorefrontTypes = storefrontTypesForEntitlements(
+    entitlements,
+    business.selling_mode,
+  );
+  const requestedType = normalizeStorefrontType(storefrontType, {
+    fallback: null,
+  });
+  if (storefrontType != null && !requestedType) {
+    throw createHttpError(404, 'Storefront not found');
+  }
+  const primaryStorefrontType = resolvePrimaryStorefrontType({
+    primaryStorefrontType: business.primary_storefront_type,
+    availableStorefrontTypes,
+    sellingMode: business.selling_mode,
+  });
+  const selectedStorefrontType = requestedType || primaryStorefrontType;
+  if (!availableStorefrontTypes.includes(selectedStorefrontType)) {
+    throw createHttpError(404, 'Storefront not found');
+  }
+  const storefront = storefrontDefinition(selectedStorefrontType);
+  const cacheKey = await buildCatalogCacheKey(businessId, {
+    currencyOverride,
+    branchId: requestedBranchId,
+    storefrontType: selectedStorefrontType,
+  });
+  const cached = await cacheGetJson(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   const branchesResult = await query(
@@ -12880,7 +13111,9 @@ async function loadPublicCatalog(
   const serviceItems = servicesResult.rows.map((row) =>
     normalizePublicCatalogService(row),
   );
-  const catalogItems = [...products, ...serviceItems];
+  const catalogItems = [...products, ...serviceItems].filter((item) =>
+    storefrontItemMatchesType(item, selectedStorefrontType),
+  );
   const categories = [
     ...new Set(
       catalogItems
@@ -12909,6 +13142,7 @@ async function loadPublicCatalog(
       branches,
       selectedBranch,
     },
+    storefront,
     currency: currencyInfo.code,
     currencyCode: currencyInfo.code,
     currencySymbol: currencyInfo.symbol,
@@ -12927,7 +13161,7 @@ async function loadPublicCatalog(
 
 async function buildCatalogCacheKey(
   businessId,
-  { currencyOverride, branchId } = {},
+  { currencyOverride, branchId, storefrontType } = {},
 ) {
   const version = (await cacheGetText(catalogCacheVersionKey(businessId))) || '0';
   return [
@@ -12936,6 +13170,7 @@ async function buildCatalogCacheKey(
     normalizeCacheKeyPart(version),
     normalizeCacheKeyPart(branchId || 'default'),
     normalizeCacheKeyPart(currencyOverride || 'default'),
+    normalizeCacheKeyPart(storefrontType || 'default'),
     CATALOG_CACHE_CODE_VERSION,
   ].join(':');
 }
@@ -12974,6 +13209,16 @@ async function createPublicCatalogOrder(businessId, payload) {
       payload.deliveryMethod ||
       payload.delivery_method,
   );
+  const requestedStorefrontType = normalizeStorefrontType(
+    payload.storefrontType || payload.storefront_type,
+    { fallback: null },
+  );
+  if (
+    (payload.storefrontType != null || payload.storefront_type != null) &&
+    !requestedStorefrontType
+  ) {
+    throw createHttpError(400, 'Storefront type is invalid');
+  }
   const note = normalizeOptionalText(payload.note);
   const rawItems = Array.isArray(payload.items)
     ? payload.items
@@ -13032,6 +13277,17 @@ async function createPublicCatalogOrder(businessId, payload) {
       quantity,
       branchId: requestedBranchId,
     });
+    if (
+      requestedStorefrontType &&
+      !storefrontItemMatchesType(item, requestedStorefrontType)
+    ) {
+      throw createHttpError(
+        400,
+        requestedStorefrontType === 'services'
+          ? 'A service booking can only include services.'
+          : 'This storefront can only include menu or retail items.',
+      );
+    }
     preparedItems.push(item);
   }
 
@@ -13068,7 +13324,7 @@ async function createPublicCatalogOrder(businessId, payload) {
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, 'catalog_link', $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13)
       `,
       [
         orderId,
@@ -13081,6 +13337,9 @@ async function createPublicCatalogOrder(businessId, payload) {
         note,
         subtotal,
         itemCount,
+        requestedStorefrontType
+          ? `storefront_${requestedStorefrontType}`
+          : 'catalog_link',
         now,
         now,
       ],
@@ -13990,6 +14249,7 @@ function buildStorefrontBootstrapScript(catalog) {
 function injectStorefrontMeta(html, catalog) {
   const businessName = normalizeOptionalText(catalog.business?.name) || 'Online Store';
   const brand = catalog.business?.brand || {};
+  const storefront = storefrontDefinition(catalog.storefront?.type);
   const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
     fallback: '#111827',
     throwOnInvalid: false,
@@ -14001,8 +14261,8 @@ function injectStorefrontMeta(html, catalog) {
   const coverUrl = coverUrls[0] || safePublicImageUrl(brand.coverUrl);
   const description =
     normalizeOptionalText(brand.description) ||
-    'Shop products and services, choose variants, and send your order directly to the store.';
-  const title = `${escapeHtml(businessName)} - Online Store`;
+    storefront.description;
+  const title = `${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}`;
 
   const headTags = [
     `<title>${title}</title>`,
@@ -14064,6 +14324,7 @@ function injectStorefrontRootFallback(html, catalog) {
 function renderStorefrontRootFallback(catalog) {
   const business = catalog.business || {};
   const brand = business.brand || {};
+  const storefront = storefrontDefinition(catalog.storefront?.type);
   const businessName = normalizeOptionalText(business.name) || 'Online Store';
   const branchName = normalizeOptionalText(business.selectedBranch?.name);
   const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
@@ -14075,15 +14336,17 @@ function renderStorefrontRootFallback(catalog) {
     brand.coverUrls,
     safePublicImageUrl(brand.coverUrl),
   );
-  const tagline = normalizeOptionalText(brand.tagline) || 'Online catalog';
+  const tagline = normalizeOptionalText(brand.tagline) || storefront.title;
   const description =
     normalizeOptionalText(brand.description) ||
-    'Shop products and services, choose variants, and send your order directly to the store.';
+    storefront.description;
   const products = Array.isArray(catalog.products) ? catalog.products : [];
   const visibleItems = products.slice(0, 12);
   const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
-  const itemCountLabel =
-    products.length === 1 ? '1 item available' : `${products.length} items available`;
+  const itemNoun = storefront.type === 'services' ? 'service' : 'item';
+  const itemCountLabel = products.length === 1
+    ? `1 ${itemNoun} available`
+    : `${products.length} ${itemNoun}s available`;
   const slideDurationSeconds = Math.max(coverUrls.length * 5, 10);
   const slideWindow = coverUrls.length > 1 ? 100 / coverUrls.length : 100;
   const slideFadePercent = Math.min(6, slideWindow * 0.25);
@@ -14122,8 +14385,8 @@ function renderStorefrontRootFallback(catalog) {
 
   const emptyState = `
         <div style="border:1px dashed #d1d5db;border-radius:22px;background:#fff;padding:36px 24px;text-align:center;color:#6b7280">
-          <h2 style="margin:0 0 8px;color:#111827;font-size:22px">No products published yet</h2>
-          <p style="margin:0">This store is online. Products will appear here once the business publishes its catalog.</p>
+          <h2 style="margin:0 0 8px;color:#111827;font-size:22px">No ${escapeHtml(itemNoun)}s published yet</h2>
+          <p style="margin:0">This ${escapeHtml(storefront.label.toLowerCase())} is online. Items will appear once the business publishes them.</p>
         </div>`;
 
   return `<div id="root">
@@ -14157,7 +14420,7 @@ function renderStorefrontRootFallback(catalog) {
               }
             </div>
             <div>
-              <p style="margin:0 0 4px;color:rgba(255,255,255,.72);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.06em">Online Store</p>
+              <p style="margin:0 0 4px;color:rgba(255,255,255,.72);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.06em">${escapeHtml(storefront.label)}</p>
               <h1 style="margin:0;font-size:clamp(28px,4.2vw,48px);line-height:1.02">${escapeHtml(businessName)}</h1>
             </div>
           </div>
@@ -14219,6 +14482,7 @@ function formatStorefrontFallbackPrice(item, catalog) {
 
 function renderPublicCatalogPage(catalog) {
   const businessName = catalog.business.name || 'Catalog';
+  const storefront = storefrontDefinition(catalog.storefront?.type);
   const productCount = catalog.products.length;
   const branchName = catalog.business.selectedBranch?.name || 'Main store';
   const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
@@ -14233,10 +14497,10 @@ function renderPublicCatalogPage(catalog) {
     safePublicImageUrl(brand.coverUrl),
   );
   const coverUrl = coverUrls[0] || safePublicImageUrl(brand.coverUrl);
-  const tagline = normalizeOptionalText(brand.tagline) || 'Online store';
+  const tagline = normalizeOptionalText(brand.tagline) || storefront.title;
   const description =
     normalizeOptionalText(brand.description) ||
-    'Shop products and services, choose variants, and send your order directly to the store.';
+    storefront.description;
   const safeCatalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
   const whatsappNumber = normalizePublicPhone(catalog.business.whatsappNumber || '');
   const branchCount = Array.isArray(catalog.business.branches)
@@ -14253,9 +14517,9 @@ function renderPublicCatalogPage(catalog) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
   <meta name="theme-color" content="${escapeHtml(primaryColor)}" />
-  <title>${escapeHtml(businessName)} - Online Store</title>
+  <title>${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
-  <meta property="og:title" content="${escapeHtml(businessName)} - Online Store" />
+  <meta property="og:title" content="${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}" />
   <meta property="og:description" content="${escapeHtml(description)}" />
   <meta property="og:type" content="website" />
   ${coverUrl ? `<meta property="og:image" content="${escapeHtml(coverUrl)}" />` : ''}
@@ -15065,7 +15329,7 @@ function renderPublicCatalogPage(catalog) {
           </div>
           <span class="brand-meta">
             <span>${escapeHtml(businessName)}</span>
-            <small>Online Store${branchCount > 1 ? ' - ' + escapeHtml(branchName) : ''}</small>
+            <small>${escapeHtml(storefront.label)}${branchCount > 1 ? ' - ' + escapeHtml(branchName) : ''}</small>
           </span>
         </a>
         <div class="nav-search">

@@ -10,24 +10,91 @@ import 'shop_settings.dart';
 import 'sync_service.dart';
 import 'sync_settings_service.dart';
 
+enum CatalogStorefrontType { retail, services, restaurant }
+
+extension CatalogStorefrontTypeDetails on CatalogStorefrontType {
+  String get apiValue => switch (this) {
+        CatalogStorefrontType.retail => 'retail',
+        CatalogStorefrontType.services => 'services',
+        CatalogStorefrontType.restaurant => 'restaurant',
+      };
+
+  String get label => switch (this) {
+        CatalogStorefrontType.retail => 'Retail store',
+        CatalogStorefrontType.services => 'Services',
+        CatalogStorefrontType.restaurant => 'Restaurant menu',
+      };
+
+  String get shareDescription => switch (this) {
+        CatalogStorefrontType.retail =>
+          'Browse products, add to cart, and send an order for confirmation.',
+        CatalogStorefrontType.services =>
+          'Browse services and send a booking request for confirmation.',
+        CatalogStorefrontType.restaurant =>
+          'Browse the menu, add items, and send an order to the restaurant.',
+      };
+
+  static CatalogStorefrontType? fromApiValue(Object? value) {
+    return switch (value?.toString().trim().toLowerCase()) {
+      'retail' || 'store' || 'shop' => CatalogStorefrontType.retail,
+      'services' || 'service' => CatalogStorefrontType.services,
+      'restaurant' || 'menu' => CatalogStorefrontType.restaurant,
+      _ => null,
+    };
+  }
+}
+
+class CatalogStorefrontLink {
+  final CatalogStorefrontType type;
+  final String url;
+
+  const CatalogStorefrontLink({required this.type, required this.url});
+}
+
 class CatalogShareInfo {
   final String url;
+  final String mainUrl;
   final String businessName;
+  final CatalogStorefrontType storefrontType;
+  final CatalogStorefrontType primaryStorefrontType;
+  final List<CatalogStorefrontLink> storefronts;
   final SyncRunSummary? syncSummary;
   final String? syncWarning;
 
   const CatalogShareInfo({
     required this.url,
+    String? mainUrl,
     required this.businessName,
+    this.storefrontType = CatalogStorefrontType.retail,
+    this.primaryStorefrontType = CatalogStorefrontType.retail,
+    this.storefronts = const [],
     this.syncSummary,
     this.syncWarning,
-  });
+  }) : mainUrl = mainUrl ?? url;
+
+  CatalogShareInfo selectStorefront(CatalogStorefrontType type) {
+    final selected = storefronts.where((link) => link.type == type);
+    if (selected.isEmpty) return this;
+    return CatalogShareInfo(
+      url: type == primaryStorefrontType ? mainUrl : selected.first.url,
+      mainUrl: mainUrl,
+      businessName: businessName,
+      storefrontType: type,
+      primaryStorefrontType: primaryStorefrontType,
+      storefronts: storefronts,
+      syncSummary: syncSummary,
+      syncWarning: syncWarning,
+    );
+  }
 }
 
 class CatalogShareService {
   static const _timeout = Duration(seconds: 20);
 
-  static Future<CatalogShareInfo> prepare({bool syncBeforeShare = true}) async {
+  static Future<CatalogShareInfo> prepare({
+    bool syncBeforeShare = true,
+    CatalogStorefrontType? storefrontType,
+  }) async {
     await SyncSettingsService.init();
     await LicenseService.init();
 
@@ -50,11 +117,30 @@ class CatalogShareService {
     }
 
     var catalogUrl = buildCatalogUrl(businessId);
+    var mainUrl = catalogUrl;
+    var selectedType = storefrontType ?? CatalogStorefrontType.retail;
+    var primaryType = selectedType;
+    var storefronts = <CatalogStorefrontLink>[];
     try {
-      final storefrontBaseUrl = await _loadStorefrontBaseUrl(
+      final response = await _loadStorefrontLinks(
         snapshot.accessToken!,
       );
-      catalogUrl = buildStorefrontCatalogUrl(storefrontBaseUrl);
+      primaryType = response.primaryType;
+      selectedType = storefrontType ?? primaryType;
+      storefronts = response.links
+          .map(
+            (link) => CatalogStorefrontLink(
+              type: link.type,
+              url: buildStorefrontCatalogUrl(link.url),
+            ),
+          )
+          .toList(growable: false);
+      final selected = storefronts.where((link) => link.type == selectedType);
+      if (selected.isEmpty) {
+        throw Exception('${selectedType.label} is not included in this plan.');
+      }
+      mainUrl = buildStorefrontCatalogUrl(response.rootUrl);
+      catalogUrl = storefrontType == null ? mainUrl : selected.first.url;
     } catch (error) {
       final storefrontWarning =
           'Custom store link could not be refreshed, so the classic catalog link is being used: ${_errorMessage(error)}';
@@ -65,9 +151,13 @@ class CatalogShareService {
 
     return CatalogShareInfo(
       url: catalogUrl,
+      mainUrl: mainUrl,
       businessName: snapshot.businessName?.trim().isNotEmpty == true
           ? snapshot.businessName!.trim()
           : 'our shop',
+      storefrontType: selectedType,
+      primaryStorefrontType: primaryType,
+      storefronts: storefronts,
       syncSummary: syncSummary,
       syncWarning: syncWarning,
     );
@@ -107,7 +197,7 @@ class CatalogShareService {
   }
 
   static String buildMessage(CatalogShareInfo info) {
-    return 'Hello, you can shop ${info.businessName} online here:\n${info.url}\n\nBrowse products, add to cart, and send your order for confirmation.';
+    return 'Hello, you can visit ${info.businessName} online here:\n${info.url}\n\n${info.storefrontType.shareDescription}';
   }
 
   static Future<void> openCatalog(CatalogShareInfo info) async {
@@ -129,11 +219,58 @@ class CatalogShareService {
     throw Exception('Could not open WhatsApp.');
   }
 
+  static Future<void> setPrimaryStorefront(
+    CatalogStorefrontType storefrontType,
+  ) async {
+    await SyncSettingsService.init();
+    await LicenseService.init();
+    final snapshot = LicenseService.currentSnapshot;
+    if (!snapshot.hasBinding || snapshot.accessToken == null) {
+      throw Exception('Cloud sync is not activated yet.');
+    }
+    final backendUrl = SyncSettingsService.backendUrl.replaceFirst(
+      RegExp(r'/+$'),
+      '',
+    );
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud backend is not configured.');
+    }
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final uri = Uri.parse('$backendUrl/catalog/storefront/primary').replace(
+      queryParameters: {'deviceId': deviceId},
+    );
+    final response = await http
+        .put(
+          uri,
+          headers: {
+            'Authorization': 'Bearer ${snapshot.accessToken}',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'type': storefrontType.apiValue}),
+        )
+        .timeout(_timeout);
+    Map<String, dynamic> body;
+    try {
+      body = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Storefront service returned an invalid response.');
+    }
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        body['ok'] != true) {
+      throw Exception(
+        body['error']?.toString() ?? 'Could not set the main website.',
+      );
+    }
+  }
+
   static String _errorMessage(Object error) {
     return error.toString().replaceFirst('Exception: ', '');
   }
 
-  static Future<String> _loadStorefrontBaseUrl(String accessToken) async {
+  static Future<_StorefrontLinksResponse> _loadStorefrontLinks(
+    String accessToken,
+  ) async {
     final backendUrl = SyncSettingsService.backendUrl.replaceFirst(
       RegExp(r'/+$'),
       '',
@@ -165,13 +302,75 @@ class CatalogShareService {
     }
 
     final data = body['data'];
-    final url = data is Map<String, dynamic>
-        ? data['url']?.toString().trim() ?? ''
-        : '';
-    final parsed = Uri.tryParse(url);
-    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+    if (data is! Map<String, dynamic>) {
       throw Exception('Storefront service did not return a valid URL.');
     }
-    return parsed.toString();
+
+    final selectedType =
+        CatalogStorefrontTypeDetails.fromApiValue(data['type']) ??
+            CatalogStorefrontType.retail;
+    final primaryType =
+        CatalogStorefrontTypeDetails.fromApiValue(data['primaryType']) ??
+            selectedType;
+    final rootUrl = data['rootUrl']?.toString().trim() ??
+        data['url']?.toString().trim() ??
+        '';
+    final rootParsed = Uri.tryParse(rootUrl);
+    if (rootParsed == null ||
+        !rootParsed.hasScheme ||
+        rootParsed.host.isEmpty) {
+      throw Exception('Storefront service did not return a valid URL.');
+    }
+    final links = <_StorefrontLinkResponse>[];
+    final rawStorefronts = data['storefronts'];
+    if (rawStorefronts is List) {
+      for (final raw in rawStorefronts) {
+        if (raw is! Map) continue;
+        final type = CatalogStorefrontTypeDetails.fromApiValue(raw['type']);
+        final url = raw['url']?.toString().trim() ?? '';
+        final parsed = Uri.tryParse(url);
+        if (type != null && parsed != null && parsed.hasScheme && parsed.host.isNotEmpty) {
+          links.add(_StorefrontLinkResponse(type: type, url: parsed.toString()));
+        }
+      }
+    }
+
+    // Older cloud servers returned one URL. Keep that rollout path working.
+    if (links.isEmpty) {
+      final url = data['url']?.toString().trim() ?? '';
+      final parsed = Uri.tryParse(url);
+      if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+        throw Exception('Storefront service did not return a valid URL.');
+      }
+      links.add(_StorefrontLinkResponse(type: selectedType, url: parsed.toString()));
+    }
+
+    return _StorefrontLinksResponse(
+      selectedType: selectedType,
+      primaryType: primaryType,
+      rootUrl: rootParsed.toString(),
+      links: links,
+    );
   }
+}
+
+class _StorefrontLinkResponse {
+  final CatalogStorefrontType type;
+  final String url;
+
+  const _StorefrontLinkResponse({required this.type, required this.url});
+}
+
+class _StorefrontLinksResponse {
+  final CatalogStorefrontType selectedType;
+  final CatalogStorefrontType primaryType;
+  final String rootUrl;
+  final List<_StorefrontLinkResponse> links;
+
+  const _StorefrontLinksResponse({
+    required this.selectedType,
+    required this.primaryType,
+    required this.rootUrl,
+    required this.links,
+  });
 }

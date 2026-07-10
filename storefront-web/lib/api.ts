@@ -1,4 +1,4 @@
-import type { Catalog, Order, OrderPayload } from "./types";
+import type { Catalog, Order, OrderPayload, StorefrontType } from "./types";
 
 interface ApiJsonResponse {
   ok?: boolean;
@@ -43,6 +43,13 @@ function buildUrl(path: string): string {
   return `${getApiBase()}${path}`;
 }
 
+export function storefrontTypeFromPath(pathname?: string): StorefrontType {
+  const path = pathname ?? (typeof window === "undefined" ? "" : window.location.pathname);
+  if (/(^|\/)services?\/?$/i.test(path)) return "services";
+  if (/(^|\/)restaurant\/?$/i.test(path)) return "restaurant";
+  return "retail";
+}
+
 async function readApiJson(res: Response): Promise<ApiJsonResponse> {
   const text = await res.text();
   if (!text.trim()) return {};
@@ -55,10 +62,12 @@ async function readApiJson(res: Response): Promise<ApiJsonResponse> {
 
 export async function fetchCatalog(
   businessId: string,
-  branchId?: string
+  branchId?: string,
+  storefrontType: StorefrontType = storefrontTypeFromPath(),
 ): Promise<Catalog> {
   const params = new URLSearchParams();
   if (branchId) params.set("branchId", branchId);
+  params.set("storefront", storefrontType);
   const query = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(
     buildUrl(`/public/catalog/${encodeURIComponent(businessId)}${query}`)
@@ -79,7 +88,11 @@ export async function placeOrder(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, businessId }),
+      body: JSON.stringify({
+        ...payload,
+        storefrontType: payload.storefrontType || storefrontTypeFromPath(),
+        businessId,
+      }),
     }
   );
   const json = await readApiJson(res);

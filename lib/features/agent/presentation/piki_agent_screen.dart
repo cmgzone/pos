@@ -18,7 +18,7 @@ import '../../sales/data/cart_provider.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/piki_models.dart';
 import '../data/piki_provider.dart';
-import 'piki_agent_workspace.dart';
+import 'piki_message_bubble.dart';
 
 enum _PikiAttachmentAction { cameraPhoto, galleryPhoto, smartUpload }
 
@@ -833,14 +833,14 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
         automaticallyImplyLeading: false,
         title: isMobile
             ? _AiIndicator(status: status, compact: true)
-            : const Text('Piki Agent Console'),
+            : Text('AI Agent'),
         actions: [
           if (!isMobile) _AiIndicator(status: status),
           Builder(
             builder: (context) {
               return IconButton(
                 icon: Icon(Icons.history_rounded),
-                tooltip: 'Run History',
+                tooltip: 'Chat History',
                 onPressed: () => Scaffold.of(context).openEndDrawer(),
               );
             },
@@ -857,13 +857,16 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
             Expanded(
               child: messages.isEmpty
                   ? _buildEmptyState(mode)
-                  : PikiAgentWorkspace(
-                      messages: messages,
-                      status: status,
-                      mode: mode,
-                      onSendPrompt: (prompt) {
-                        unawaited(_sendPromptFromUi(prompt));
-                      },
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) => PikiMessageBubble(
+                        message: messages[index],
+                        onSendPrompt: (prompt) {
+                          unawaited(_sendPromptFromUi(prompt));
+                        },
+                      ),
                     ),
             ),
 
@@ -1603,10 +1606,10 @@ class _BottomBar extends StatelessWidget {
                     style: TextStyle(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: mode == PikiMode.sell
-                          ? 'Assign a POS action, e.g. "2 Fanta"...'
+                          ? 'Say "2 Fanta" or "checkout"...'
                           : mode == PikiMode.advice
-                          ? 'Assign a business question...'
-                          : 'Assign Piki a task...',
+                          ? 'Ask for business advice...'
+                          : 'Ask Piki AI...',
                       hintStyle: TextStyle(
                         color: Theme.of(
                           context,
@@ -1978,7 +1981,7 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                   Icon(Icons.history_rounded, color: AppColors.primary),
                   SizedBox(width: 12),
                   Text(
-                    'Run History',
+                    'Chat History',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   Spacer(),
@@ -2000,7 +2003,7 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                   Navigator.pop(context);
                 },
                 icon: Icon(Icons.add_rounded),
-                label: Text('New Run'),
+                label: Text('New Chat'),
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   backgroundColor: AppColors.primary.withValues(alpha: 0.1),
@@ -2028,7 +2031,7 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                   if (sessions.isEmpty) {
                     return Center(
                       child: Text(
-                        'No past runs yet.',
+                        'No past chats yet.',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -2041,7 +2044,10 @@ class _ChatHistoryDrawer extends ConsumerWidget {
                       final session = sessions[index];
                       final isActive = session.id == activeId;
                       return ListTile(
-                        leading: Icon(Icons.account_tree_outlined, size: 20),
+                        leading: Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 20,
+                        ),
                         title: Text(
                           session.title,
                           maxLines: 1,

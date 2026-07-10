@@ -7,6 +7,16 @@ export interface BusinessBrand {
   description?: string | null;
 }
 
+export type StorefrontType = "retail" | "services" | "restaurant";
+
+export interface Storefront {
+  type: StorefrontType;
+  label: string;
+  title: string;
+  description: string;
+  browseLabel: string;
+}
+
 export interface Branch {
   id: string;
   name: string;
@@ -59,6 +69,7 @@ export interface CatalogItem {
 
 export interface Catalog {
   business: Business;
+  storefront: Storefront;
   currency: string;
   currencyCode: string;
   currencySymbol: string;
@@ -85,6 +96,7 @@ export interface CustomerInfo {
 
 export interface OrderPayload {
   branchId: string;
+  storefrontType?: StorefrontType;
   paymentMethod?: "manual" | "mpesa" | "paypal" | "stripe";
   customerName: string;
   phone: string;

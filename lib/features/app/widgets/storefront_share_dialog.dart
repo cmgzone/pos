@@ -25,6 +25,7 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
   bool _loading = true;
   bool _sharing = false;
   bool _printing = false;
+  bool _settingPrimary = false;
   CatalogShareInfo? _info;
   Object? _error;
 
@@ -34,13 +35,15 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
     _prepare();
   }
 
-  Future<void> _prepare() async {
+  Future<void> _prepare({bool syncBeforeShare = true}) async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final info = await CatalogShareService.prepare();
+      final info = await CatalogShareService.prepare(
+        syncBeforeShare: syncBeforeShare,
+      );
       if (!mounted) return;
       setState(() {
         _info = info;
@@ -89,6 +92,40 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  void _selectStorefront(CatalogStorefrontType type) {
+    final info = _info;
+    if (info == null || info.storefrontType == type) return;
+    setState(() => _info = info.selectStorefront(type));
+  }
+
+  Future<void> _makeMainWebsite() async {
+    final info = _info;
+    if (info == null ||
+        _settingPrimary ||
+        info.storefrontType == info.primaryStorefrontType) {
+      return;
+    }
+    setState(() => _settingPrimary = true);
+    try {
+      await CatalogShareService.setPrimaryStorefront(info.storefrontType);
+      if (!mounted) return;
+      await _prepare(syncBeforeShare: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${info.storefrontType.label} is now the main website'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error, 'Could not set the main website.');
+    } finally {
+      if (mounted) setState(() => _settingPrimary = false);
+    }
   }
 
   Future<void> _openStore() async {
@@ -213,6 +250,11 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
   Widget _buildContent(ThemeData theme) {
     final url = _info?.url ?? '';
     final businessName = _info?.businessName ?? 'Your shop';
+    final storefrontType =
+        _info?.storefrontType ?? CatalogStorefrontType.retail;
+    final primaryStorefrontType =
+        _info?.primaryStorefrontType ?? CatalogStorefrontType.retail;
+    final storefronts = _info?.storefronts ?? const <CatalogStorefrontLink>[];
 
     return Flexible(
       child: SingleChildScrollView(
@@ -228,11 +270,50 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Share this link or QR code so customers can browse products and place orders.',
+              'Share your ${storefrontType.label.toLowerCase()} link or QR code with customers.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            if (storefronts.length > 1) ...[
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: storefronts
+                    .map(
+                      (link) => ChoiceChip(
+                        label: Text(link.type.label),
+                        selected: link.type == storefrontType,
+                        onSelected: (_) => _selectStorefront(link.type),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+              const SizedBox(height: 10),
+              if (storefrontType == primaryStorefrontType)
+                Text(
+                  '${storefrontType.label} opens from your main business link.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                )
+              else
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _settingPrimary ? null : _makeMainWebsite,
+                    icon: _settingPrimary
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.home_outlined),
+                    label: Text('Make ${storefrontType.label} main'),
+                  ),
+                ),
+            ],
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
@@ -276,7 +357,9 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
               minLines: 1,
               style: theme.textTheme.bodySmall,
               decoration: InputDecoration(
-                labelText: 'Store link',
+                labelText: storefrontType == primaryStorefrontType
+                    ? 'Main business website'
+                    : storefrontType.label,
                 suffixIcon: IconButton(
                   tooltip: 'Copy link',
                   onPressed: _copyLink,

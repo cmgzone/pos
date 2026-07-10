@@ -515,6 +515,121 @@ class AppShellState extends ConsumerState<AppShell> {
       .where((destination) => _allowedIndices.contains(destination.index))
       .toList();
 
+  List<_BusinessModule> get _businessModules {
+    final allowed = _allowedDestinations;
+    const sharedIndexes = <int>[
+      5,
+      1,
+      12,
+      2,
+      3,
+      15,
+      25,
+      26,
+      28,
+      32,
+      8,
+      34,
+      7,
+      6,
+      27,
+      21,
+      22,
+      23,
+      31,
+      9,
+      13,
+      14,
+      24,
+      30,
+      16,
+    ];
+
+    List<_NavDestination> entriesFor(List<int> indexes) => allowed
+        .where((destination) => indexes.contains(destination.index))
+        .toList(growable: false);
+    List<int> indexesForBusiness(List<int> coreIndexes) => [
+      ...coreIndexes,
+      ...sharedIndexes,
+    ];
+
+    final modules = <_BusinessModule>[];
+    void addModule({
+      required String id,
+      required String title,
+      required String subtitle,
+      required IconData icon,
+      required Color accent,
+      required List<int> indexes,
+      required List<int> coreIndexes,
+      required bool enabled,
+    }) {
+      final destinations = entriesFor(indexes);
+      if (enabled && destinations.isNotEmpty) {
+        modules.add(
+          _BusinessModule(
+            id: id,
+            title: title,
+            subtitle: subtitle,
+            icon: icon,
+            accent: accent,
+            destinations: destinations,
+            coreDestinationIndexes: coreIndexes,
+          ),
+        );
+      }
+    }
+
+    addModule(
+      id: 'retail_pos',
+      title: 'Retail POS',
+      subtitle: 'Checkout, orders, sales, and customer balances.',
+      icon: Icons.point_of_sale_rounded,
+      accent: AppColors.primary,
+      indexes: indexesForBusiness(const [0, 17, 4, 19, 20, 6, 18, 10]),
+      coreIndexes: const [0, 17, 4, 19, 20, 6, 18, 10],
+      enabled: SessionService.canUseProductPos,
+    );
+    addModule(
+      id: 'services',
+      title: 'Services',
+      subtitle: 'Service desk, queues, quotes, and customer work.',
+      icon: Icons.design_services_rounded,
+      accent: const Color(0xFF8E4EC6),
+      indexes: indexesForBusiness(const [11, 4, 19, 20, 18, 10]),
+      coreIndexes: const [11, 4, 19, 20, 18, 10],
+      enabled: SessionService.canUseServicePos,
+    );
+    addModule(
+      id: 'restaurant',
+      title: 'Restaurant',
+      subtitle: 'Tables, kitchen flow, orders, and delivery.',
+      icon: Icons.restaurant_rounded,
+      accent: const Color(0xFFE1762F),
+      indexes: indexesForBusiness(const [29, 0, 17, 33, 18, 4, 10]),
+      coreIndexes: const [29, 0, 17, 33, 18, 4, 10],
+      enabled: SessionService.canAccessFeature(
+        UserAccessProfile.featureRestaurantMode,
+      ),
+    );
+    if (modules.isEmpty && allowed.isNotEmpty) {
+      modules.add(
+        _BusinessModule(
+          id: 'workspace',
+          title: 'My workspace',
+          subtitle: 'Modules available to this account.',
+          icon: Icons.apps_rounded,
+          accent: AppColors.primary,
+          destinations: allowed,
+          coreDestinationIndexes: allowed
+              .map((destination) => destination.index)
+              .toList(growable: false),
+        ),
+      );
+    }
+    return modules;
+  }
+
   List<_NavDestination> get _mobileBottomDestinations {
     final indices = _mobileBottomDefaults
         .where(_allowedIndices.contains)
@@ -611,6 +726,15 @@ class AppShellState extends ConsumerState<AppShell> {
     return _navigationHistory.any(
       (index) => index != _currentIndex && allowed.contains(index),
     );
+  }
+
+  String _moduleLabelForIndex(int index) {
+    for (final destination in _destinations) {
+      if (destination.index == index) {
+        return destination.item.label;
+      }
+    }
+    return 'Module';
   }
 
   void _showNotificationsSheet() {
@@ -1633,30 +1757,18 @@ class AppShellState extends ConsumerState<AppShell> {
         child: Scaffold(
           key: AppShell.scaffoldKey,
           backgroundColor: theme.scaffoldBackgroundColor,
-          body: _buildScreenStack(moduleCurrentIndex),
-          floatingActionButton: moduleCurrentIndex == 35
+          appBar: moduleCurrentIndex == 35
               ? null
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    FloatingActionButton.small(
-                      heroTag: 'module-back',
-                      tooltip: _hasBackDestination
-                          ? 'Back to previous module'
-                          : 'Back to modules',
-                      onPressed: _goBack,
-                      child: const Icon(Icons.arrow_back_rounded),
-                    ),
-                    const SizedBox(height: 12),
-                    FloatingActionButton.extended(
-                      heroTag: 'module-launcher',
-                      onPressed: () => _selectIndex(35),
-                      icon: const Icon(Icons.grid_view_rounded),
-                      label: const Text('Modules'),
-                    ),
-                  ],
+              : PreferredSize(
+                  preferredSize: const Size.fromHeight(48),
+                  child: _ModuleNavigationBar(
+                    moduleLabel: _moduleLabelForIndex(moduleCurrentIndex),
+                    hasBackDestination: _hasBackDestination,
+                    onBack: _goBack,
+                    onModules: () => _selectIndex(35),
+                  ),
                 ),
+          body: _buildScreenStack(moduleCurrentIndex),
         ),
       );
     }
@@ -2140,7 +2252,7 @@ class AppShellState extends ConsumerState<AppShell> {
         return const AdvancedBiScreen();
       case 35:
         return _ModuleLauncherScreen(
-          destinations: _allowedDestinations,
+          businessModules: _businessModules,
           onSelect: _selectIndex,
         );
       default:
@@ -2304,6 +2416,78 @@ class _BranchPill extends StatelessWidget {
   }
 }
 
+class _ModuleNavigationBar extends StatelessWidget {
+  final String moduleLabel;
+  final bool hasBackDestination;
+  final VoidCallback onBack;
+  final VoidCallback onModules;
+
+  const _ModuleNavigationBar({
+    required this.moduleLabel,
+    required this.hasBackDestination,
+    required this.onBack,
+    required this.onModules,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface,
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: hasBackDestination
+                    ? 'Back to previous module'
+                    : 'Back to modules',
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back_rounded, size: 20),
+              ),
+              const SizedBox(width: 2),
+              TextButton.icon(
+                onPressed: onModules,
+                icon: const Icon(Icons.grid_view_rounded, size: 18),
+                label: const Text('Modules'),
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 1,
+                height: 20,
+                color: theme.colorScheme.outlineVariant,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  moduleLabel,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 enum _NavSection { main, inventory, reports, system }
 
 class _NavDestination {
@@ -2318,12 +2502,44 @@ class _NavDestination {
   });
 }
 
-class _ModuleLauncherScreen extends StatefulWidget {
+class _BusinessModule {
+  final String id;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accent;
   final List<_NavDestination> destinations;
+  final List<int> coreDestinationIndexes;
+
+  const _BusinessModule({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    required this.destinations,
+    required this.coreDestinationIndexes,
+  });
+}
+
+class _FeatureGridGroup {
+  final String title;
+  final String subtitle;
+  final List<_NavDestination> destinations;
+
+  const _FeatureGridGroup({
+    required this.title,
+    required this.subtitle,
+    required this.destinations,
+  });
+}
+
+class _ModuleLauncherScreen extends StatefulWidget {
+  final List<_BusinessModule> businessModules;
   final ValueChanged<int> onSelect;
 
   const _ModuleLauncherScreen({
-    required this.destinations,
+    required this.businessModules,
     required this.onSelect,
   });
 
@@ -2372,26 +2588,149 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
     );
   }
 
-  String _sectionTitle(_NavSection section) {
-    switch (section) {
-      case _NavSection.main:
-        return 'Shop operations';
-      case _NavSection.inventory:
-        return 'Stock & services';
-      case _NavSection.reports:
-        return 'Reports & growth';
-      case _NavSection.system:
-        return 'Administration';
+  String? _activeModuleId;
+
+  _BusinessModule? get _activeModule {
+    final id = _activeModuleId;
+    if (id == null) return null;
+    for (final module in widget.businessModules) {
+      if (module.id == id) return module;
     }
+    return null;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ModuleLauncherScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_activeModuleId != null && _activeModule == null) {
+      _activeModuleId = null;
+    }
+  }
+
+  void _openBusinessModule(_BusinessModule module) {
+    setState(() => _activeModuleId = module.id);
+    _entranceController.forward(from: 0);
+  }
+
+  void _returnToBusinessModules() {
+    setState(() => _activeModuleId = null);
+    _entranceController.forward(from: 0);
+  }
+
+  Widget _buildBusinessModuleRoot(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              sliver: SliverToBoxAdapter(
+                child: _ModuleLauncherRootHeader(
+                  onOpenSettings: () => widget.onSelect(9),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              sliver: SliverToBoxAdapter(
+                child: _AnimatedModuleHero(controller: _entranceController),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'BUSINESS MODULES',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.7,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Your plan and business type decide what is available.',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+              sliver: SliverGrid(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final module = widget.businessModules[index];
+                  final start = (0.34 + index * 0.045)
+                      .clamp(0.34, 0.78)
+                      .toDouble();
+                  return _fadeSlide(
+                    begin: start,
+                    end: (start + 0.22).clamp(0.56, 1).toDouble(),
+                    offsetY: 0.10,
+                    child: _BusinessModuleTile(
+                      module: module,
+                      onTap: () => _openBusinessModule(module),
+                    ),
+                  );
+                }, childCount: widget.businessModules.length),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 220,
+                  mainAxisExtent: 166,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final grouped = <_NavSection, List<_NavDestination>>{};
-    for (final destination in widget.destinations) {
-      grouped.putIfAbsent(destination.section, () => []).add(destination);
+    final activeModule = _activeModule;
+    if (activeModule == null) {
+      return _buildBusinessModuleRoot(context);
     }
+    final theme = Theme.of(context);
+    final coreDestinations = activeModule.destinations
+        .where(
+          (destination) =>
+              activeModule.coreDestinationIndexes.contains(destination.index),
+        )
+        .toList(growable: false);
+    final sharedDestinations = activeModule.destinations
+        .where(
+          (destination) =>
+              !activeModule.coreDestinationIndexes.contains(destination.index),
+        )
+        .toList(growable: false);
+    final featureGroups = <_FeatureGridGroup>[
+      if (coreDestinations.isNotEmpty)
+        _FeatureGridGroup(
+          title: 'CORE FEATURES',
+          subtitle: 'Day-to-day tools for this business type.',
+          destinations: coreDestinations,
+        ),
+      if (sharedDestinations.isNotEmpty)
+        _FeatureGridGroup(
+          title: 'SHARED TOOLS',
+          subtitle: 'Inventory, insights, and management for this business.',
+          destinations: sharedDestinations,
+        ),
+    ];
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -2408,6 +2747,12 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                   offsetY: -0.08,
                   child: Row(
                     children: [
+                      IconButton(
+                        tooltip: 'Back to business modules',
+                        onPressed: _returnToBusinessModules,
+                        icon: const Icon(Icons.arrow_back_rounded),
+                      ),
+                      const SizedBox(width: 4),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(13),
                         child: Image.asset(
@@ -2432,7 +2777,7 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              ShopSettings.shopName,
+                              activeModule.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -2442,7 +2787,7 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                             ),
                             const SizedBox(height: 1),
                             Text(
-                              '${SessionService.currentUserName} · ${RolePermissions.label(SessionService.currentUserRole)}',
+                              activeModule.subtitle,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: theme.colorScheme.onSurfaceVariant,
@@ -2467,29 +2812,42 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                 child: _AnimatedModuleHero(controller: _entranceController),
               ),
             ),
-            for (final section in _NavSection.values) ...[
-              if ((grouped[section] ?? const []).isNotEmpty)
+            for (final group in featureGroups) ...[
+              if (group.destinations.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                   sliver: SliverToBoxAdapter(
-                    child: Text(
-                      _sectionTitle(section),
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.7,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.title,
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.7,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          group.subtitle,
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              if ((grouped[section] ?? const []).isNotEmpty)
+              if (group.destinations.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                   sliver: SliverGrid(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      final destination = grouped[section]![index];
-                      final overallIndex = widget.destinations.indexOf(
+                      final destination = group.destinations[index];
+                      final overallIndex = activeModule.destinations.indexOf(
                         destination,
                       );
                       final start = (0.34 + overallIndex * 0.027)
@@ -2504,7 +2862,7 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                           onTap: () => widget.onSelect(destination.index),
                         ),
                       );
-                    }, childCount: grouped[section]!.length),
+                    }, childCount: group.destinations.length),
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 190,
@@ -2516,6 +2874,158 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                 ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModuleLauncherRootHeader extends StatelessWidget {
+  final VoidCallback onOpenSettings;
+
+  const _ModuleLauncherRootHeader({required this.onOpenSettings});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(13),
+          child: Image.asset(
+            'assets/images/logo.png',
+            width: 42,
+            height: 42,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              width: 42,
+              height: 42,
+              color: theme.colorScheme.primary,
+              child: const Icon(
+                Icons.point_of_sale_rounded,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                ShopSettings.shopName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                '${SessionService.currentUserName} · ${RolePermissions.label(SessionService.currentUserRole)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: onOpenSettings,
+          icon: const Icon(Icons.settings_outlined),
+        ),
+      ],
+    );
+  }
+}
+
+class _BusinessModuleTile extends StatefulWidget {
+  final _BusinessModule module;
+  final VoidCallback onTap;
+
+  const _BusinessModuleTile({required this.module, required this.onTap});
+
+  @override
+  State<_BusinessModuleTile> createState() => _BusinessModuleTileState();
+}
+
+class _BusinessModuleTileState extends State<_BusinessModuleTile> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final module = widget.module;
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
+      scale: _pressed ? 0.975 : 1,
+      child: Material(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: InkWell(
+          onTap: widget.onTap,
+          onHighlightChanged: (pressed) => setState(() => _pressed = pressed),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(
+                color: _pressed
+                    ? module.accent.withValues(alpha: 0.76)
+                    : theme.colorScheme.outline.withValues(alpha: 0.6),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: module.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(module.icon, color: module.accent),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      color: module.accent,
+                      size: 18,
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  module.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${module.destinations.length} features available',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

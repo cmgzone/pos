@@ -17,7 +17,7 @@ import { ErrorState } from "./error-state";
 import { getBootstrap, getBranchIdFromQuery } from "@/lib/utils";
 import { fetchCatalog } from "@/lib/api";
 import { FadeIn } from "./motion";
-import type { BusinessBrand } from "@/lib/types";
+import type { BusinessBrand, StorefrontType } from "@/lib/types";
 
 function StorefrontInner() {
   const {
@@ -35,13 +35,13 @@ function StorefrontInner() {
   const [showTracker, setShowTracker] = useState(false);
 
   const loadCatalog = useCallback(
-    async (businessId: string, branchId?: string) => {
+    async (businessId: string, branchId?: string, storefrontType?: StorefrontType) => {
       setError(null);
       try {
-        const data = await fetchCatalog(businessId, branchId);
+        const data = await fetchCatalog(businessId, branchId, storefrontType);
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
-        applyBrandStyles(data.business.brand);
+        applyStorefrontStyles(data.business.brand, data.storefront.type);
       } catch (err) {
         setCatalog(null);
         setError(err instanceof Error ? err.message : "Failed to load store");
@@ -55,7 +55,10 @@ function StorefrontInner() {
     if (bootstrap.catalog) {
       setCatalog(bootstrap.catalog);
       setSelectedBranch(bootstrap.catalog.business.selectedBranch);
-      applyBrandStyles(bootstrap.catalog.business.brand);
+      applyStorefrontStyles(
+        bootstrap.catalog.business.brand,
+        bootstrap.catalog.storefront.type,
+      );
       return;
     }
     if (!bootstrap.businessId) {
@@ -67,6 +70,7 @@ function StorefrontInner() {
     loadCatalog(
       bootstrap.businessId,
       bootstrap.branchId || getBranchIdFromQuery(),
+      bootstrap.catalog?.storefront?.type,
     );
   }, [loadCatalog, setCatalog, setSelectedBranch]);
 
@@ -76,7 +80,7 @@ function StorefrontInner() {
       const branch = catalog.business.branches.find((b) => b.id === branchId);
       if (branch) {
         setSelectedBranch(branch);
-        loadCatalog(catalog.business.id, branchId);
+        loadCatalog(catalog.business.id, branchId, catalog.storefront.type);
       }
     },
     [catalog, loadCatalog, setSelectedBranch]
@@ -139,10 +143,15 @@ function StorefrontInner() {
     <>
       <SiteHeader
         business={catalog?.business}
+        storefront={catalog?.storefront}
         onTrackOrder={() => setShowTracker(true)}
       />
 
-      <Hero business={catalog?.business} onBrowse={scrollToCatalog} />
+      <Hero
+        business={catalog?.business}
+        storefront={catalog?.storefront}
+        onBrowse={scrollToCatalog}
+      />
 
       <main className="flex-1 w-full px-4 pb-20 pt-10 sm:px-6 lg:px-10">
         <CatalogToolbar
@@ -166,7 +175,11 @@ function StorefrontInner() {
               {catalog.products.length === 0 && !isSearching ? (
                 <>
                   <p className="font-display text-2xl tracking-tight">
-                    No products published for this branch yet
+                    {catalog.storefront.type === "services"
+                      ? "No services published for this branch yet"
+                      : catalog.storefront.type === "restaurant"
+                        ? "No menu items published for this branch yet"
+                        : "No products published for this branch yet"}
                   </p>
                   <p className="mt-2 text-[13px] text-muted">
                     {selectedBranch?.name
@@ -200,10 +213,16 @@ function StorefrontInner() {
                 <div className="mb-6 flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
                   <div>
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-                      {isSearching ? "Results" : "Collection"}
+                      {isSearching ? "Results" : catalog.storefront.type === "services" ? "Services" : catalog.storefront.type === "restaurant" ? "Today’s menu" : "Collection"}
                     </p>
                     <h2 className="mt-1.5 font-display text-3xl tracking-tight sm:text-4xl">
-                      {isSearching ? "Search results" : "Browse the store"}
+                      {isSearching
+                        ? "Search results"
+                        : catalog.storefront.type === "services"
+                          ? "Choose a service"
+                          : catalog.storefront.type === "restaurant"
+                            ? "Order from the menu"
+                            : "Browse the store"}
                     </h2>
                   </div>
                   <p className="hidden text-[13px] text-muted sm:block">
@@ -216,6 +235,7 @@ function StorefrontInner() {
                 items={filteredItems}
                 currencySymbol={catalog.currencySymbol}
                 currencyCode={catalog.currencyCode}
+                storefrontType={catalog.storefront.type}
               />
             </section>
           )}
@@ -241,6 +261,7 @@ function StorefrontInner() {
             business={catalog.business}
             currencySymbol={catalog.currencySymbol}
             currencyCode={catalog.currencyCode}
+            storefrontType={catalog.storefront.type}
             onClose={() => setShowCheckout(false)}
           />
         )}
@@ -257,8 +278,12 @@ function StorefrontInner() {
   );
 }
 
-function applyBrandStyles(brand?: BusinessBrand) {
+function applyStorefrontStyles(
+  brand?: BusinessBrand,
+  storefrontType: StorefrontType = "retail",
+) {
   const root = document.documentElement;
+  root.dataset.storefrontType = storefrontType;
   if (brand?.primaryColor) {
     root.style.setProperty("--accent", brand.primaryColor);
   } else {

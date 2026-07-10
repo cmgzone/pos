@@ -24,7 +24,13 @@ class CatalogQrPosterService {
             ),
             pw.SizedBox(height: 12),
             pw.Text(
-              'Scan to view products and place your order',
+              info.storefrontType.label,
+              textAlign: pw.TextAlign.center,
+              style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Text(
+              info.storefrontType.shareDescription,
               textAlign: pw.TextAlign.center,
               style: const pw.TextStyle(fontSize: 14),
             ),

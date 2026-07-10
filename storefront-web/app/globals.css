@@ -12,6 +12,28 @@
   --border-strong: rgba(245, 243, 239, 0.16);
 }
 
+:root[data-storefront-type="services"] {
+  --background: #091820;
+  --foreground: #e9f7f5;
+  --muted: #91adaa;
+  --muted-strong: #bed3d0;
+  --surface: #0e252d;
+  --surface-elevated: #13313a;
+  --border: rgba(233, 247, 245, 0.1);
+  --border-strong: rgba(233, 247, 245, 0.19);
+}
+
+:root[data-storefront-type="restaurant"] {
+  --background: #1b0d09;
+  --foreground: #fff4e8;
+  --muted: #c6a99a;
+  --muted-strong: #e2c7b8;
+  --surface: #27130d;
+  --surface-elevated: #351a11;
+  --border: rgba(255, 244, 232, 0.1);
+  --border-strong: rgba(255, 244, 232, 0.2);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

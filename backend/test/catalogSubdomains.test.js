@@ -3,13 +3,16 @@ const assert = require('node:assert/strict');
 
 const {
   buildCatalogStorefrontUrl,
+  buildCatalogStorefrontSubdomain,
   buildCatalogSubdomainCandidates,
   catalogSubdomainBase,
   ensureBusinessCatalogSubdomain,
   extractCatalogSubdomain,
+  findBusinessCatalogStorefrontBySubdomain,
   findBusinessIdByCatalogSubdomain,
   isCatalogStorefrontOrigin,
   normalizeCatalogSubdomain,
+  parseCatalogStorefrontSubdomain,
 } = require('../src/catalogSubdomains');
 
 test('catalog subdomain base creates a clean DNS label', () => {
@@ -58,6 +61,17 @@ test('catalog storefront URL uses HTTPS and the configured root domain', () => {
   assert.equal(
     buildCatalogStorefrontUrl('pikipos.com', 'my-shop'),
     'https://my-shop.pikipos.com',
+  );
+});
+
+test('catalog storefront subdomains keep a business name and module type', () => {
+  assert.equal(
+    buildCatalogStorefrontSubdomain('my-shop', 'services'),
+    'my-shop-services',
+  );
+  assert.deepEqual(
+    parseCatalogStorefrontSubdomain('my-shop-restaurant'),
+    { businessSubdomain: 'my-shop', storefrontType: 'restaurant' },
   );
 });
 
@@ -148,4 +162,31 @@ test('catalog subdomain lookup ignores deleted businesses', async () => {
     calls.find((call) => /SELECT id/i.test(call.sql))?.sql || '',
     /deleted_at IS NULL/i,
   );
+});
+
+test('catalog storefront subdomain resolves its business and module', async () => {
+  const target = {
+    query: async (sql, params = []) => {
+      if (/ALTER TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
+        return { rows: [] };
+      }
+      if (/SELECT id/i.test(sql) && params[0] === 'my-shop-services') {
+        return { rows: [] };
+      }
+      if (/SELECT id/i.test(sql) && params[0] === 'my-shop') {
+        return { rows: [{ id: 'business-1' }] };
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    },
+  };
+
+  const storefront = await findBusinessCatalogStorefrontBySubdomain(
+    target,
+    'my-shop-services',
+  );
+
+  assert.deepEqual(storefront, {
+    businessId: 'business-1',
+    storefrontType: 'services',
+  });
 });

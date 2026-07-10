@@ -1,21 +1,39 @@
 "use client";
 
-import type { CatalogItem } from "@/lib/types";
+import type { CatalogItem, StorefrontType } from "@/lib/types";
 import { StaggerContainer } from "./motion";
 import { ProductCard } from "./product-card";
 import { ServiceCard } from "./service-card";
+import { RestaurantMenuCard } from "./restaurant-menu-card";
 
 interface ProductGridProps {
   items: CatalogItem[];
   currencySymbol: string;
   currencyCode: string;
+  storefrontType?: StorefrontType;
 }
 
-export function ProductGrid({ items, currencySymbol, currencyCode }: ProductGridProps) {
+export function ProductGrid({
+  items,
+  currencySymbol,
+  currencyCode,
+  storefrontType = "retail",
+}: ProductGridProps) {
   return (
-    <StaggerContainer className="grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4 xl:gap-6">
+    <StaggerContainer className={
+      storefrontType === "restaurant"
+        ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:gap-6"
+        : "grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4 xl:gap-6"
+    }>
       {items.map((item) =>
-        (item.itemType || item.type) === "service" ? (
+        storefrontType === "restaurant" ? (
+          <RestaurantMenuCard
+            key={item.id}
+            item={item}
+            currencySymbol={currencySymbol}
+            currencyCode={currencyCode}
+          />
+        ) : (item.itemType || item.type) === "service" ? (
           <ServiceCard
             key={item.id}
             item={item}

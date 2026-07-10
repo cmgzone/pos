@@ -14,6 +14,11 @@ const RESERVED_SUBDOMAINS = new Set([
   'support',
   'www',
 ]);
+const STOREFRONT_SUBDOMAIN_TYPES = new Set([
+  'retail',
+  'services',
+  'restaurant',
+]);
 
 let defaultSchemaPromise = null;
 
@@ -32,6 +37,11 @@ async function applyCatalogSubdomainSchema(target) {
     target,
     `ALTER TABLE businesses
      ADD COLUMN IF NOT EXISTS public_subdomain text`,
+  );
+  await runQuery(
+    target,
+    `ALTER TABLE businesses
+     ADD COLUMN IF NOT EXISTS primary_storefront_type text`,
   );
   await runQuery(
     target,
@@ -160,6 +170,14 @@ async function ensureBusinessCatalogSubdomain(
 }
 
 async function findBusinessIdByCatalogSubdomain(target, subdomain) {
+  const storefront = await findBusinessCatalogStorefrontBySubdomain(
+    target,
+    subdomain,
+  );
+  return storefront?.businessId || null;
+}
+
+async function findBusinessCatalogStorefrontBySubdomain(target, subdomain) {
   const normalized = normalizeCatalogSubdomain(subdomain);
   if (!normalized) {
     return null;
@@ -175,7 +193,77 @@ async function findBusinessIdByCatalogSubdomain(target, subdomain) {
      LIMIT 1`,
     [normalized],
   );
-  return normalizeText(result.rows[0]?.id);
+  const businessId = normalizeText(result.rows[0]?.id);
+  if (businessId) {
+    return { businessId, storefrontType: null };
+  }
+
+  const parsed = parseCatalogStorefrontSubdomain(normalized);
+  if (!parsed) {
+    return null;
+  }
+  const storefrontResult = await runQuery(
+    target,
+    `SELECT id
+     FROM businesses
+     WHERE LOWER(public_subdomain) = LOWER($1)
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [parsed.businessSubdomain],
+  );
+  const storefrontBusinessId = normalizeText(storefrontResult.rows[0]?.id);
+  return storefrontBusinessId
+    ? { businessId: storefrontBusinessId, storefrontType: parsed.storefrontType }
+    : null;
+}
+
+function normalizeCatalogStorefrontType(value) {
+  const type = normalizeText(value)?.toLowerCase();
+  switch (type) {
+    case 'retail':
+    case 'store':
+    case 'shop':
+      return 'retail';
+    case 'services':
+    case 'service':
+      return 'services';
+    case 'restaurant':
+    case 'menu':
+      return 'restaurant';
+    default:
+      return null;
+  }
+}
+
+function buildCatalogStorefrontSubdomain(businessSubdomain, storefrontType) {
+  const business = normalizeCatalogSubdomain(businessSubdomain);
+  const type = normalizeCatalogStorefrontType(storefrontType);
+  if (!business || !type) {
+    throw new Error('Catalog storefront subdomain is invalid');
+  }
+  const suffix = `-${type}`;
+  const base = fitDnsLabel(business, 63 - suffix.length);
+  const value = normalizeCatalogSubdomain(`${base}${suffix}`);
+  if (!value) {
+    throw new Error('Catalog storefront subdomain is invalid');
+  }
+  return value;
+}
+
+function parseCatalogStorefrontSubdomain(subdomain) {
+  const normalized = normalizeCatalogSubdomain(subdomain);
+  if (!normalized) return null;
+  for (const type of STOREFRONT_SUBDOMAIN_TYPES) {
+    const suffix = `-${type}`;
+    if (!normalized.endsWith(suffix)) continue;
+    const businessSubdomain = normalizeCatalogSubdomain(
+      normalized.slice(0, -suffix.length),
+    );
+    if (businessSubdomain) {
+      return { businessSubdomain, storefrontType: type };
+    }
+  }
+  return null;
 }
 
 function buildCatalogSubdomainCandidates(businessName, businessId) {
@@ -309,14 +397,19 @@ function runQuery(target, sql, params = []) {
 
 module.exports = {
   RESERVED_SUBDOMAINS,
+  STOREFRONT_SUBDOMAIN_TYPES,
+  buildCatalogStorefrontSubdomain,
   buildCatalogStorefrontUrl,
   buildCatalogSubdomainCandidates,
   catalogSubdomainBase,
   ensureBusinessCatalogSubdomain,
   ensureCatalogSubdomainSchema,
   extractCatalogSubdomain,
+  findBusinessCatalogStorefrontBySubdomain,
   findBusinessIdByCatalogSubdomain,
   initializeCatalogSubdomainSchema,
   isCatalogStorefrontOrigin,
+  normalizeCatalogStorefrontType,
   normalizeCatalogSubdomain,
+  parseCatalogStorefrontSubdomain,
 };

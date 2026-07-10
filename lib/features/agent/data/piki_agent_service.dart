@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../../../core/services/catalog_order_service.dart';
+import '../../../core/services/catalog_share_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/services/storefront_brand_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/openrouter_service.dart';
@@ -172,6 +174,7 @@ class PikiAgentService {
   static const toolDeliveryOverview = 'delivery_overview';
   static const toolBusinessIntelligence = 'business_intelligence';
   static const toolCustomerPortalOverview = 'customer_portal_overview';
+  static const toolBuildStorefront = 'build_storefront';
 
   // Each skill has a list of keyword-group patterns (ALL keywords in a group
   // must appear for a match).
@@ -468,6 +471,7 @@ class PikiAgentService {
     toolCheckout: 'Checkout',
     toolHoldSale: 'Hold sale',
     toolTeachAlias: 'Teach cashier alias',
+    toolBuildStorefront: 'Build storefront website',
   };
 
   static final _toolDescriptions = <String, String>{
@@ -589,6 +593,8 @@ class PikiAgentService {
     toolHoldSale: 'Save the current cart as a held sale and clear the cart.',
     toolTeachAlias:
         'Remember a cashier phrase, nickname, or local term for a product query.',
+    toolBuildStorefront:
+        'Create or refresh a retail, service, or restaurant storefront using approved brand copy, colour, and module settings. The website change is staged for confirmation before publishing.',
   };
 
   static final _toolArguments = <String, String>{
@@ -669,6 +675,8 @@ class PikiAgentService {
     toolRepeatLast: 'qty(number)',
     toolCheckout: 'payment_type(string)',
     toolTeachAlias: 'alias(string, required), target(string, required)',
+    toolBuildStorefront:
+        'storefront_type(string: retail|services|restaurant, required), business_name(string), tagline(string), description(string), theme(string: modern|warm|fresh|elegant|bold|dark), primary_color(string #RRGGBB), make_main(bool)',
   };
 
   static String toolCatalogPrompt() {
@@ -712,6 +720,7 @@ class PikiAgentService {
     toolCheckout,
     toolHoldSale,
     toolTeachAlias,
+    toolBuildStorefront,
   };
 
   static bool requiresConfirmation(String tool) => _writeTools.contains(tool);
@@ -1716,6 +1725,7 @@ Example: ["detergent", "soap", "laundry"]
         toolPurchaseDraft => Icons.note_alt_rounded,
         toolEnhanceProductImage => Icons.auto_fix_high_rounded,
         toolImageOrderDraft => Icons.document_scanner_rounded,
+        toolBuildStorefront => Icons.web_rounded,
         toolWebSearch => Icons.public_rounded,
         _ => Icons.auto_awesome_rounded,
       },
@@ -1800,6 +1810,8 @@ Example: ["detergent", "soap", "laundry"]
         return _reconcileStock(safeArgs);
       case toolAddServiceField:
         return _addServiceField(safeArgs);
+      case toolBuildStorefront:
+        return _buildStorefront(safeArgs);
       case toolCustomerSearch:
         return _searchCustomers(safeArgs);
       case toolSupplierSearch:
@@ -3445,6 +3457,131 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       'summary':
           'Created service "$name" at ${ShopSettings.currency}${price.toStringAsFixed(2)}',
     }, args: args);
+  }
+
+  static Future<Map<String, dynamic>> _buildStorefront(
+    Map<String, dynamic> args,
+  ) async {
+    final storefrontType = _requiredStorefrontType(args);
+    final existing = await StorefrontBrandService.fetchSettings();
+    final businessName =
+        _stringArg(args, ['business_name', 'name', 'store_name']) ??
+        existing.businessName;
+    final tagline = _stringArg(args, ['tagline', 'headline']) ??
+        existing.tagline;
+    final description = _stringArg(args, ['description', 'intro', 'copy']) ??
+        existing.description;
+    final primaryColor = _storefrontThemeColor(args, existing.primaryColor);
+    final saved = await StorefrontBrandService.saveSettings(
+      StorefrontBrandSettings(
+        businessId: existing.businessId,
+        businessName: businessName,
+        branchId: existing.branchId,
+        logoUrl: existing.logoUrl,
+        coverUrl: existing.coverUrl,
+        coverUrls: existing.coverUrls,
+        primaryColor: primaryColor,
+        tagline: tagline,
+        description: description,
+        updatedAt: existing.updatedAt,
+      ),
+    );
+
+    final makeMain = _boolArg(args, ['make_main', 'set_main']);
+    if (makeMain) {
+      await CatalogShareService.setPrimaryStorefront(storefrontType);
+    }
+
+    String? url;
+    try {
+      final links = await CatalogShareService.prepare(syncBeforeShare: false);
+      final isAvailable = links.storefronts.any(
+        (link) => link.type == storefrontType,
+      );
+      if (!isAvailable) {
+        throw Exception('${storefrontType.label} is not included in this plan.');
+      }
+      url = storefrontType == links.primaryStorefrontType
+          ? links.mainUrl
+          : links.selectStorefront(storefrontType).url;
+    } catch (_) {
+      // Publishing the storefront has succeeded even if the link refresh is
+      // temporarily unavailable, so do not turn a successful save into a failure.
+    }
+
+    final capabilities = switch (storefrontType) {
+      CatalogStorefrontType.retail => const [
+          'product catalogue',
+          'variants and cart',
+          'online order tracking',
+        ],
+      CatalogStorefrontType.services => const [
+          'service catalogue',
+          'booking requests',
+          'online booking tracking',
+        ],
+      CatalogStorefrontType.restaurant => const [
+          'restaurant menu',
+          'customer orders',
+          'kitchen-ready order flow',
+        ],
+    };
+    return _enrichToolResult(toolBuildStorefront, {
+      'type': toolBuildStorefront,
+      'success': true,
+      'storefront_type': storefrontType.apiValue,
+      'business_name': saved.businessName,
+      'tagline': saved.tagline,
+      'primary_color': saved.primaryColor,
+      'is_main': makeMain,
+      'url': url,
+      'features': capabilities,
+      'summary':
+          '${storefrontType.label} website for "${saved.businessName}" was published${makeMain ? ' as the main business website' : ''}${url == null ? '.' : ': $url'}',
+    }, args: args);
+  }
+
+  static CatalogStorefrontType _requiredStorefrontType(
+    Map<String, dynamic> args,
+  ) {
+    final type = CatalogStorefrontTypeDetails.fromApiValue(
+      _stringArg(args, ['storefront_type', 'module', 'website_type', 'type']),
+    );
+    if (type == null) {
+      throw Exception('Choose retail, services, or restaurant for the website.');
+    }
+    return type;
+  }
+
+  static String _storefrontThemeColor(
+    Map<String, dynamic> args,
+    String fallback,
+  ) {
+    final requested = _stringArg(args, ['primary_color', 'color']);
+    final normalized = requested?.trim().startsWith('#') == true
+        ? requested!.trim()
+        : requested == null
+        ? null
+        : '#${requested.trim()}';
+    if (normalized != null && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(normalized)) {
+      return normalized.toLowerCase();
+    }
+    switch (_stringArg(args, ['theme'])?.toLowerCase()) {
+      case 'warm':
+        return '#c65d36';
+      case 'fresh':
+        return '#0f9f8e';
+      case 'elegant':
+        return '#7357d6';
+      case 'bold':
+        return '#e23d6f';
+      case 'dark':
+        return '#d19a28';
+      case 'modern':
+        return '#2563eb';
+      default:
+        return fallback;
+    }
   }
 
   static Future<Map<String, dynamic>> _recordProductSale(

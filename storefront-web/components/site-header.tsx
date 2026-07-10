@@ -1,16 +1,17 @@
 "use client";
 
 import { ShoppingBag, Search } from "lucide-react";
-import type { Business } from "@/lib/types";
+import type { Business, Storefront } from "@/lib/types";
 import { useStore } from "./store-provider";
 import { getInitials } from "@/lib/utils";
 
 interface SiteHeaderProps {
   business?: Business;
+  storefront?: Storefront;
   onTrackOrder: () => void;
 }
 
-export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
+export function SiteHeader({ business, storefront, onTrackOrder }: SiteHeaderProps) {
   const { cartCount, setIsCartOpen } = useStore();
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
@@ -38,9 +39,9 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
             <span className="block truncate text-[15px] font-semibold leading-tight tracking-tight">
               {business?.name || "Storefront"}
             </span>
-            {(brand?.tagline || business?.selectedBranch?.name) && (
+            {(storefront?.label || brand?.tagline || business?.selectedBranch?.name) && (
               <span className="block truncate text-[11px] text-muted">
-                {brand?.tagline || business?.selectedBranch?.name}
+                {storefront?.label || brand?.tagline || business?.selectedBranch?.name}
               </span>
             )}
           </div>
@@ -51,14 +52,14 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
             onClick={scrollToCatalog}
             className="hidden rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground sm:inline-flex"
           >
-            Shop
+            {storefront?.type === "services" ? "Services" : storefront?.type === "restaurant" ? "Menu" : "Shop"}
           </button>
           <button
             onClick={onTrackOrder}
             className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground"
           >
             <Search className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Track order</span>
+            <span className="hidden sm:inline">{storefront?.type === "services" ? "Track booking" : "Track order"}</span>
           </button>
           {business?.id && (
             <a
@@ -73,7 +74,7 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
             className="relative inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-[13px] font-semibold text-background transition hover:opacity-90"
           >
             <ShoppingBag className="h-4 w-4" />
-            <span className="hidden sm:inline">Cart</span>
+            <span className="hidden sm:inline">{storefront?.type === "services" ? "Bookings" : storefront?.type === "restaurant" ? "Order" : "Cart"}</span>
             {cartCount > 0 && (
               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1 text-[11px] font-bold text-foreground ring-1 ring-border-strong">
                 {cartCount > 9 ? "9+" : cartCount}
