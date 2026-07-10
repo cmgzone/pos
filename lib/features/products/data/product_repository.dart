@@ -179,6 +179,15 @@ class ProductRepository {
     }
     variantArgs.addAll([like, like, like]);
 
+    final serialArgs = <dynamic>[..._currentBranchArgs, ..._currentBranchArgs];
+    final serialCategoryClause = categoryId != null
+        ? ' AND p.category_id = ?'
+        : '';
+    if (categoryId != null) {
+      serialArgs.add(categoryId);
+    }
+    serialArgs.add(like);
+
     return DatabaseService.rawQuery(
       '''
       SELECT *
@@ -198,6 +207,7 @@ class ProductRepository {
           NULL AS matched_variant_cost,
           NULL AS matched_variant_stock,
           NULL AS matched_variant_low_stock,
+          NULL AS matched_serial_number,
           'product' AS result_type
         FROM $_table p
         WHERE p.deleted_at IS NULL
@@ -223,6 +233,7 @@ class ProductRepository {
           pv.cost AS matched_variant_cost,
           pv.stock AS matched_variant_stock,
           pv.low_stock AS matched_variant_low_stock,
+          NULL AS matched_serial_number,
           'variant' AS result_type
         FROM $_table p
         JOIN product_variants pv
@@ -233,13 +244,51 @@ class ProductRepository {
           $variantCategoryClause
           ${_typeFilterClause('p', typeFilter)}
           AND (pv.name LIKE ? OR pv.barcode LIKE ? OR pv.sku LIKE ?)
+
+        UNION ALL
+
+        SELECT
+          p.*,
+          (
+            SELECT COUNT(*)
+            FROM product_variants pv2
+            WHERE pv2.product_id = p.id AND pv2.deleted_at IS NULL
+          ) AS active_variant_count,
+          ps.variant_id AS matched_variant_id,
+          pv.name AS matched_variant_name,
+          pv.sku AS matched_variant_sku,
+          pv.barcode AS matched_variant_barcode,
+          pv.price AS matched_variant_price,
+          pv.cost AS matched_variant_cost,
+          pv.stock AS matched_variant_stock,
+          pv.low_stock AS matched_variant_low_stock,
+          ps.serial_number AS matched_serial_number,
+          'serial' AS result_type
+        FROM product_serials ps
+        JOIN $_table p
+          ON p.id = ps.product_id
+         AND p.deleted_at IS NULL
+        LEFT JOIN product_variants pv
+          ON pv.id = ps.variant_id
+         AND pv.deleted_at IS NULL
+        WHERE ps.deleted_at IS NULL
+          AND ps.status = 'available'
+          AND COALESCE(ps.branch_id, ?) = ?
+          AND COALESCE(p.branch_id, ?) = ?
+          $serialCategoryClause
+          ${_typeFilterClause('p', typeFilter)}
+          AND ps.serial_number LIKE ?
       ) results
       ORDER BY
-        CASE WHEN result_type = 'variant' THEN 0 ELSE 1 END,
+        CASE result_type
+          WHEN 'serial' THEN 0
+          WHEN 'variant' THEN 1
+          ELSE 2
+        END,
         name ASC,
         matched_variant_name ASC
       ''',
-      [...productArgs, ...variantArgs],
+      [...productArgs, ...variantArgs, ...serialArgs],
     );
   }
 
@@ -259,11 +308,59 @@ class ProductRepository {
     return results.isNotEmpty ? results.first : null;
   }
 
-  /// Look up a barcode in a single roundtrip: variant first, then simple product.
-  /// Returns a unified row with `result_type` of `'variant'` or `'product'`.
+  /// Look up a scan value in a single roundtrip: serial first, then variant,
+  /// then simple product.
+  /// Returns a unified row with `result_type` of `serial`, `variant`, or
+  /// `product`.
   static Future<Map<String, dynamic>?> lookupBarcode(String barcode) async {
     final results = await DatabaseService.rawQuery(
       '''
+      SELECT *
+      FROM (
+        SELECT
+        'serial' AS result_type,
+        ps.variant_id AS variant_id,
+        p.id AS id,
+        p.name AS name,
+        p.price AS price,
+        p.cost AS cost,
+        p.stock AS stock,
+        p.low_stock AS low_stock,
+        p.unit AS unit,
+        p.stock_unit AS stock_unit,
+        p.sale_unit AS sale_unit,
+        p.sale_to_stock_factor AS sale_to_stock_factor,
+        p.purchase_unit AS purchase_unit,
+        p.purchase_to_stock_factor AS purchase_to_stock_factor,
+        p.sku AS sku,
+        p.barcode AS barcode,
+        p.image_url AS image_url,
+        p.brand AS brand,
+        p.category_id AS category_id,
+        p.track_stock AS track_stock,
+        p.has_variants AS has_variants,
+        pv.name AS variant_name,
+        pv.sku AS variant_sku,
+        pv.barcode AS variant_barcode,
+        pv.price AS variant_price,
+        pv.cost AS variant_cost,
+        pv.stock AS variant_stock,
+        pv.low_stock AS variant_low_stock,
+        ps.serial_number AS serial_number
+      FROM product_serials ps
+      JOIN products p ON p.id = ps.product_id
+      LEFT JOIN product_variants pv
+        ON pv.id = ps.variant_id
+       AND pv.deleted_at IS NULL
+      WHERE LOWER(ps.serial_number) = LOWER(?)
+        AND ps.status = 'available'
+        AND ps.deleted_at IS NULL
+        AND COALESCE(ps.branch_id, ?) = ?
+        AND p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+
+      UNION ALL
+
       SELECT
         'variant' AS result_type,
         pv.id AS variant_id,
@@ -292,7 +389,8 @@ class ProductRepository {
         pv.price AS variant_price,
         pv.cost AS variant_cost,
         pv.stock AS variant_stock,
-        pv.low_stock AS variant_low_stock
+        pv.low_stock AS variant_low_stock,
+        NULL AS serial_number
       FROM product_variants pv
       JOIN products p ON p.id = pv.product_id
       WHERE pv.barcode = ?
@@ -331,15 +429,24 @@ class ProductRepository {
         NULL AS variant_price,
         NULL AS variant_cost,
         NULL AS variant_stock,
-        NULL AS variant_low_stock
+        NULL AS variant_low_stock,
+        NULL AS serial_number
       FROM products p
       WHERE p.barcode = ?
         AND p.deleted_at IS NULL
         AND COALESCE(p.branch_id, ?) = ?
-      ORDER BY result_type ASC
+      ) results
+      ORDER BY CASE result_type
+        WHEN 'serial' THEN 0
+        WHEN 'variant' THEN 1
+        ELSE 2
+      END
       LIMIT 1
       ''',
       [
+        barcode,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
         barcode,
         ..._currentBranchArgs,
         ..._currentBranchArgs,
@@ -473,6 +580,241 @@ class ProductRepository {
         AND COALESCE(branch_id, ?) = ?
       ORDER BY stock ASC
       ''', _currentBranchArgs);
+  }
+
+  static Future<List<Map<String, dynamic>>> getReorderSuggestions({
+    int lookbackDays = 30,
+    int defaultLeadTimeDays = 7,
+    int limit = 10,
+  }) async {
+    final safeLookbackDays = lookbackDays.clamp(7, 365);
+    final safeDefaultLeadTimeDays = defaultLeadTimeDays.clamp(1, 90);
+    final safeLimit = limit.clamp(1, 50);
+    final salesWindow = '-$safeLookbackDays days';
+
+    final candidates = await DatabaseService.rawQuery('''
+      WITH sales_base AS (
+        SELECT
+          si.product_id,
+          si.variant_id,
+          si.variant_color_id,
+          COALESCE(SUM(CASE WHEN si.quantity > 0 THEN si.quantity ELSE 0 END), 0) AS sold_qty,
+          COUNT(DISTINCT s.id) AS sale_count,
+          MAX(s.created_at) AS last_sold_at
+        FROM sale_items si
+        JOIN sales s ON s.id = si.sale_id
+        WHERE si.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+          AND s.refund_sale_id IS NULL
+          AND datetime(s.created_at) >= datetime('now', ?)
+          AND COALESCE(s.branch_id, ?) = ?
+        GROUP BY si.product_id, si.variant_id, si.variant_color_id
+      )
+      SELECT
+        'product' AS item_type,
+        p.id AS product_id,
+        NULL AS variant_id,
+        NULL AS variant_color_id,
+        p.name AS item_name,
+        p.name AS product_name,
+        p.sku,
+        p.barcode,
+        p.stock AS stock,
+        p.low_stock AS low_stock,
+        p.stock_unit,
+        p.cost AS unit_cost,
+        COALESCE(s.sold_qty, 0) AS sold_qty,
+        COALESCE(s.sale_count, 0) AS sale_count,
+        s.last_sold_at
+      FROM $_table p
+      LEFT JOIN sales_base s
+        ON s.product_id = p.id
+       AND s.variant_id IS NULL
+       AND s.variant_color_id IS NULL
+      WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(p.track_stock, 1) <> 0
+        AND COALESCE(p.has_variants, 0) = 0
+      UNION ALL
+      SELECT
+        CASE WHEN pvc.id IS NULL THEN 'variant' ELSE 'color' END AS item_type,
+        p.id AS product_id,
+        pv.id AS variant_id,
+        pvc.id AS variant_color_id,
+        p.name || ' - ' || pv.name ||
+          CASE WHEN pvc.id IS NULL THEN '' ELSE ' - ' || pvc.name END AS item_name,
+        p.name AS product_name,
+        COALESCE(NULLIF(pv.sku, ''), p.sku) AS sku,
+        COALESCE(NULLIF(pv.barcode, ''), p.barcode) AS barcode,
+        COALESCE(pvc.stock, pv.stock, 0) AS stock,
+        COALESCE(NULLIF(pv.low_stock, 0), p.low_stock, 0) AS low_stock,
+        p.stock_unit,
+        COALESCE(pv.cost, p.cost, 0) AS unit_cost,
+        COALESCE(s.sold_qty, 0) AS sold_qty,
+        COALESCE(s.sale_count, 0) AS sale_count,
+        s.last_sold_at
+      FROM product_variants pv
+      JOIN $_table p ON p.id = pv.product_id
+      LEFT JOIN product_variant_colors pvc
+        ON pvc.variant_id = pv.id
+       AND pvc.deleted_at IS NULL
+       AND COALESCE(pvc.branch_id, ?) = ?
+      LEFT JOIN sales_base s
+        ON s.product_id = p.id
+       AND s.variant_id = pv.id
+       AND (
+          (pvc.id IS NULL AND s.variant_color_id IS NULL)
+          OR s.variant_color_id = pvc.id
+       )
+      WHERE p.deleted_at IS NULL
+        AND pv.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(pv.branch_id, ?) = ?
+        AND COALESCE(p.track_stock, 1) <> 0
+        AND COALESCE(p.has_variants, 0) <> 0
+        AND (
+          pvc.id IS NOT NULL
+          OR NOT EXISTS (
+            SELECT 1
+            FROM product_variant_colors c
+            WHERE c.variant_id = pv.id
+              AND c.deleted_at IS NULL
+              AND COALESCE(c.branch_id, ?) = ?
+          )
+        )
+    ''', [
+      salesWindow,
+      ..._currentBranchArgs,
+      ..._currentBranchArgs,
+      ..._currentBranchArgs,
+      ..._currentBranchArgs,
+      ..._currentBranchArgs,
+      ..._currentBranchArgs,
+    ]);
+
+    final receiptRows = await DatabaseService.rawQuery('''
+      SELECT product_id, received_at
+      FROM stock_batches
+      WHERE deleted_at IS NULL
+        AND received_at IS NOT NULL
+        AND TRIM(received_at) <> ''
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY product_id ASC, datetime(received_at) ASC
+    ''', _currentBranchArgs);
+    final leadTimeByProduct = _estimateLeadTimes(
+      receiptRows,
+      safeDefaultLeadTimeDays.toDouble(),
+    );
+
+    final suggestions = <Map<String, dynamic>>[];
+    for (final candidate in candidates) {
+      final productId = candidate['product_id']?.toString();
+      final stock = (candidate['stock'] as num? ?? 0).toDouble();
+      final lowStock = (candidate['low_stock'] as num? ?? 0).toDouble();
+      final soldQty = (candidate['sold_qty'] as num? ?? 0).toDouble();
+      final dailyVelocity = soldQty / safeLookbackDays;
+      final leadTimeDays =
+          leadTimeByProduct[productId] ?? safeDefaultLeadTimeDays.toDouble();
+      final daysOfCover = dailyVelocity > 0 ? stock / dailyVelocity : null;
+      final triggerWindowDays = leadTimeDays + 2;
+      final needsReorder =
+          stock <= lowStock ||
+          (dailyVelocity > 0 && (daysOfCover ?? double.infinity) <= triggerWindowDays);
+      if (!needsReorder) {
+        continue;
+      }
+
+      final targetStock = dailyVelocity > 0
+          ? [
+              lowStock * 2,
+              dailyVelocity * (leadTimeDays + 7),
+              lowStock + (dailyVelocity * 7),
+            ].reduce((a, b) => a > b ? a : b)
+          : lowStock * 2;
+      final suggestedQty = targetStock - stock;
+      if (suggestedQty <= 0.001) {
+        continue;
+      }
+
+      suggestions.add({
+        ...candidate,
+        'daily_velocity': double.parse(dailyVelocity.toStringAsFixed(2)),
+        'lead_time_days': double.parse(leadTimeDays.toStringAsFixed(1)),
+        'days_of_cover': daysOfCover == null
+            ? null
+            : double.parse(daysOfCover.toStringAsFixed(1)),
+        'target_stock': double.parse(targetStock.toStringAsFixed(2)),
+        'suggested_qty': double.parse(suggestedQty.toStringAsFixed(2)),
+        'urgency': stock <= 0
+            ? 'out'
+            : stock <= lowStock
+            ? 'low'
+            : 'soon',
+      });
+    }
+
+    suggestions.sort((a, b) {
+      final priorityA = _reorderPriority(a);
+      final priorityB = _reorderPriority(b);
+      if (priorityA != priorityB) {
+        return priorityA.compareTo(priorityB);
+      }
+      final coverA = (a['days_of_cover'] as num?)?.toDouble() ?? 999999;
+      final coverB = (b['days_of_cover'] as num?)?.toDouble() ?? 999999;
+      final coverCompare = coverA.compareTo(coverB);
+      if (coverCompare != 0) {
+        return coverCompare;
+      }
+      final qtyA = (a['suggested_qty'] as num? ?? 0).toDouble();
+      final qtyB = (b['suggested_qty'] as num? ?? 0).toDouble();
+      return qtyB.compareTo(qtyA);
+    });
+
+    return suggestions.take(safeLimit).toList(growable: false);
+  }
+
+  static Map<String, double> _estimateLeadTimes(
+    List<Map<String, dynamic>> receiptRows,
+    double fallbackDays,
+  ) {
+    final receiptDates = <String, List<DateTime>>{};
+    for (final row in receiptRows) {
+      final productId = row['product_id']?.toString();
+      final receivedAt = DateTime.tryParse(row['received_at']?.toString() ?? '');
+      if (productId == null || productId.isEmpty || receivedAt == null) {
+        continue;
+      }
+      receiptDates.putIfAbsent(productId, () => <DateTime>[]).add(receivedAt);
+    }
+
+    final leadTimes = <String, double>{};
+    receiptDates.forEach((productId, dates) {
+      if (dates.length < 2) {
+        return;
+      }
+      dates.sort();
+      final gaps = <int>[];
+      for (var i = 1; i < dates.length; i++) {
+        final gap = dates[i].difference(dates[i - 1]).inDays.abs();
+        if (gap > 0) {
+          gaps.add(gap);
+        }
+      }
+      if (gaps.isEmpty) {
+        return;
+      }
+      final average = gaps.reduce((a, b) => a + b) / gaps.length;
+      leadTimes[productId] = average.clamp(3, 45).toDouble();
+    });
+    return leadTimes;
+  }
+
+  static int _reorderPriority(Map<String, dynamic> row) {
+    return switch (row['urgency']?.toString()) {
+      'out' => 0,
+      'low' => 1,
+      _ => 2,
+    };
   }
 
   static Future<List<Map<String, dynamic>>> getExpiryAlerts({

@@ -23,6 +23,7 @@ import 'package:pos_app/core/providers/theme_provider.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
 import 'package:pos_app/features/auth/data/user_repository.dart';
 import 'package:pos_app/features/auth/presentation/login_screen.dart';
+import 'package:pos_app/features/settings/data/custom_role_repository.dart';
 import 'package:pos_app/features/settings/data/payment_method_provider.dart';
 import 'package:pos_app/features/services/data/service_repository.dart';
 import 'package:pos_app/features/training/application/training_controller.dart';
@@ -32,6 +33,8 @@ import 'package:pos_app/features/settings/presentation/audit_log_screen.dart';
 import 'package:pos_app/features/settings/presentation/branch_management_screen.dart';
 import 'package:pos_app/features/settings/presentation/payment_methods_section.dart';
 import 'package:pos_app/features/settings/presentation/communication_settings_section.dart';
+import 'package:pos_app/features/settings/presentation/custom_roles_section.dart';
+import 'package:pos_app/features/settings/presentation/multi_currency_section.dart';
 import 'package:pos_app/features/settings/presentation/storefront_brand_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
 
@@ -77,9 +80,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _hasChanges = false;
   bool _backupBusy = false;
   bool _teamLoading = false;
+  bool _customRolesLoading = false;
   List<Map<String, dynamic>> _backups = [];
   List<Map<String, dynamic>> _teamMembers = [];
   List<Map<String, dynamic>> _filteredTeamMembers = [];
+  List<Map<String, dynamic>> _customRoles = [];
   late TextEditingController _teamSearchController;
 
   bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
@@ -89,6 +94,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
   bool get _canManageUsers =>
       RolePermissions.canManageUsers(SessionService.currentUserRole);
+  bool get _canUseCustomRoles => LicenseService.currentSnapshot.allowsFeature(
+    UserAccessProfile.featureCustomRoles,
+  );
 
   @override
   void initState() {
@@ -137,6 +145,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _loadEtimsSettings();
     if (_canManageUsers) {
       _loadTeamMembers();
+      _loadCustomRoles();
     }
   }
 
@@ -369,6 +378,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
   }
 
+  Future<void> _loadCustomRoles() async {
+    if (!_canManageUsers || !_canUseCustomRoles) {
+      return;
+    }
+    setState(() => _customRolesLoading = true);
+    final roles = await CustomRoleRepository.getAll(activeOnly: true);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _customRoles = roles;
+      _customRolesLoading = false;
+    });
+  }
+
   void _filterTeamMembers() {
     final query = _teamSearchController.text.trim().toLowerCase();
     if (query.isEmpty) {
@@ -380,9 +404,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final name = (user['name'] as String? ?? '').toLowerCase();
         final email = (user['email'] as String? ?? '').toLowerCase();
         final role = (user['role'] as String? ?? '').toLowerCase();
+        final customRole = (user['custom_role_name'] as String? ?? '')
+            .toLowerCase();
         return name.contains(query) ||
             email.contains(query) ||
-            role.contains(query);
+            role.contains(query) ||
+            customRole.contains(query);
       }).toList();
     });
   }
@@ -392,6 +419,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     String role = RolePermissions.cashier;
+    String customRoleId = '';
     bool saving = false;
     bool showPassword = false;
 
@@ -459,10 +487,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         .toList(),
                     onChanged: (value) {
                       if (value != null) {
-                        setDialogState(() => role = value);
+                        setDialogState(() {
+                          role = value;
+                          customRoleId = '';
+                        });
                       }
                     },
                   ),
+                  if (_canUseCustomRoles && _customRoles.isNotEmpty) ...[
+                    SizedBox(height: 16),
+                    _buildSelectField<String>(
+                      label: 'Role Template',
+                      value: customRoleId,
+                      icon: Icons.admin_panel_settings_outlined,
+                      items: [
+                        DropdownMenuItem(value: '', child: Text('No template')),
+                        ..._customRoles.map(
+                          (template) => DropdownMenuItem(
+                            value: template['id'] as String? ?? '',
+                            child: Text(
+                              CustomRoleRepository.roleName(template),
+                            ),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        final nextId = value ?? '';
+                        Map<String, dynamic>? template;
+                        for (final item in _customRoles) {
+                          if (item['id'] == nextId) {
+                            template = item;
+                            break;
+                          }
+                        }
+                        setDialogState(() {
+                          customRoleId = nextId;
+                          if (template != null) {
+                            role = RolePermissions.normalizeRole(
+                              template['base_role'] as String?,
+                            );
+                          }
+                        });
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -483,6 +551,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           email: emailController.text,
                           password: passwordController.text,
                           role: role,
+                          customRoleId: customRoleId,
                         );
                         if (context.mounted) {
                           Navigator.pop(ctx, true);
@@ -548,6 +617,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('User role updated'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _assignTeamCustomRole(String userId, String customRoleId) async {
+    try {
+      await UserRepository.assignCustomRole(
+        userId: userId,
+        customRoleId: customRoleId,
+      );
+      await _loadTeamMembers();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            customRoleId.trim().isEmpty
+                ? 'Role template removed'
+                : 'Role template assigned',
+          ),
           backgroundColor: AppColors.success,
         ),
       );
@@ -959,8 +1063,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _buildStaffAccessSummary(Map<String, dynamic> user) {
     final role = RolePermissions.normalizeRole(user['role'] as String?);
     if (role == RolePermissions.admin) {
-      return 'Full access • POS: Both • Services: All';
+      return 'Full access - POS: Both - Services: All';
     }
+    final templateName = (user['custom_role_name'] as String?)?.trim() ?? '';
     final features = UserAccessProfile.resolveFeatureAccess(
       role: role,
       rawFeatureAccessJson: user['feature_access_json'] as String?,
@@ -986,7 +1091,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final branchSummary = branches.isEmpty
         ? 'All branches'
         : '${branches.length} branches';
-    return '$featureCount features • POS: ${_labelForPosMode(posMode)} • $serviceSummary • $branchSummary';
+    final accessParts = [
+      if (templateName.isNotEmpty) 'Template: $templateName',
+      '$featureCount features',
+      'POS: ${_labelForPosMode(posMode)}',
+      serviceSummary,
+      branchSummary,
+    ];
+    return accessParts.join(' - ');
   }
 
   String _labelForPosMode(String posMode) {
@@ -2464,6 +2576,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
+                if (SessionService.canAccessFeature(
+                  UserAccessProfile.featureMultiCurrency,
+                ))
+                  SizedBox(
+                    width: cardWidth,
+                    child: _buildFeaturePageCard(
+                      icon: Icons.currency_exchange_outlined,
+                      title: 'Multi-Currency',
+                      subtitle: 'Secondary currency and POS dual display.',
+                      onTap: () => _openSettingsMiniPage(
+                        title: 'Multi-Currency',
+                        icon: Icons.currency_exchange_outlined,
+                        child: const MultiCurrencySection(),
+                      ),
+                    ),
+                  ),
                 SizedBox(
                   width: cardWidth,
                   child: _buildFeaturePageCard(
@@ -2634,6 +2762,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                   ),
+                if (_canManageUsers && _canUseCustomRoles)
+                  SizedBox(
+                    width: cardWidth,
+                    child: _buildFeaturePageCard(
+                      icon: Icons.admin_panel_settings_outlined,
+                      title: 'Roles & Permissions',
+                      subtitle:
+                          'Reusable permission templates for staff accounts.',
+                      onTap: () => _openSettingsMiniPage(
+                        title: 'Roles & Permissions',
+                        icon: Icons.admin_panel_settings_outlined,
+                        maxWidth: 900,
+                        child: CustomRolesSection(
+                          onRolesChanged: () async {
+                            await _loadCustomRoles();
+                            await _loadTeamMembers();
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
                 SizedBox(
                   width: cardWidth,
                   child: _buildFeaturePageCard(
@@ -2775,6 +2924,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (previous != null && next != previous && mounted) {
           if (_canManageUsers) {
             _loadTeamMembers();
+            _loadCustomRoles();
           }
           ref.invalidate(paymentMethodsProvider);
           ref.invalidate(activePaymentMethodsProvider);
@@ -3134,6 +3284,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final selectedRole = (user['role'] as String? ?? RolePermissions.cashier)
         .toUpperCase();
     final normalizedRole = RolePermissions.normalizeRole(selectedRole);
+    final selectedCustomRoleId = user['custom_role_id'] as String? ?? '';
+    final canAssignTemplate =
+        _canUseCustomRoles && normalizedRole != RolePermissions.admin;
+    final customRoleItems = _customRoleDropdownItems(user);
     final initials = name.trim().isNotEmpty
         ? name
               .trim()
@@ -3165,7 +3319,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 480;
+            final isWide = constraints.maxWidth >= 720;
             return Column(
               children: [
                 Row(
@@ -3301,6 +3455,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ],
                       ),
                     ),
+                    if (canAssignTemplate) ...[
+                      if (isWide)
+                        const SizedBox(width: 12)
+                      else
+                        const SizedBox(height: 10),
+                      SizedBox(
+                        width: isWide ? 230 : double.infinity,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FieldLabel('Template'),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              initialValue: selectedCustomRoleId,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              items: customRoleItems,
+                              onChanged: _customRolesLoading
+                                  ? null
+                                  : (value) {
+                                      if (value != null &&
+                                          value != selectedCustomRoleId) {
+                                        _assignTeamCustomRole(userId, value);
+                                      }
+                                    },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (isWide)
                       const SizedBox(width: 12)
                     else
@@ -3434,11 +3626,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  List<DropdownMenuItem<String>> _customRoleDropdownItems(
+    Map<String, dynamic> user,
+  ) {
+    final selectedCustomRoleId = user['custom_role_id'] as String? ?? '';
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(value: '', child: Text('No template')),
+    ];
+    var selectedTemplatePresent = selectedCustomRoleId.isEmpty;
+    for (final template in _customRoles) {
+      final templateId = template['id'] as String? ?? '';
+      if (templateId.isEmpty) {
+        continue;
+      }
+      if (templateId == selectedCustomRoleId) {
+        selectedTemplatePresent = true;
+      }
+      items.add(
+        DropdownMenuItem(
+          value: templateId,
+          child: Text(CustomRoleRepository.roleName(template)),
+        ),
+      );
+    }
+    if (!selectedTemplatePresent) {
+      final label =
+          (user['custom_role_name'] as String?)?.trim().isNotEmpty == true
+          ? user['custom_role_name'] as String
+          : 'Template unavailable';
+      items.add(
+        DropdownMenuItem(
+          value: selectedCustomRoleId,
+          child: Text('$label (inactive)'),
+        ),
+      );
+    }
+    return items;
+  }
+
   Future<void> _showTeamMemberProfileDialog(Map<String, dynamic> user) async {
     final colors = Theme.of(context).colorScheme;
     final name = user['name'] as String? ?? 'User';
     final email = user['email'] as String? ?? '';
     final role = RolePermissions.normalizeRole(user['role'] as String?);
+    final templateName = (user['custom_role_name'] as String?)?.trim() ?? '';
     final initials = name.trim().isNotEmpty
         ? name
               .trim()
@@ -3545,6 +3776,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         const SizedBox(height: 8),
                         _buildRoleBadge(role),
+                        if (templateName.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _buildProfileInfoChip(
+                            'Template: $templateName',
+                            colors,
+                          ),
+                        ],
                         if (email.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Text(

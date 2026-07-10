@@ -14,6 +14,7 @@ import '../../gift_cards/data/gift_card_repository.dart';
 import '../../sales/data/cart_provider.dart';
 import '../../settings/data/payment_method_provider.dart';
 import '../../settings/data/payment_method_repository.dart';
+import 'barcode_scanner.dart';
 
 class PaymentCheckoutDialog extends ConsumerStatefulWidget {
   final double total;
@@ -58,7 +59,7 @@ Future<bool> showMpesaPaymentConfirmationDialog(
     builder: (ctx) {
       final media = MediaQuery.of(ctx);
       final isCompact = media.size.width < 560;
-    return AlertDialog(
+      return AlertDialog(
         insetPadding: EdgeInsets.symmetric(
           horizontal: isCompact ? 12 : 40,
           vertical: isCompact ? 12 : 24,
@@ -343,7 +344,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     _loadMpesaConfig();
   }
 
-  double get _effectiveTotal => (widget.total - _loyaltyDiscount).clamp(0, widget.total);
+  double get _effectiveTotal =>
+      (widget.total - _loyaltyDiscount).clamp(0, widget.total);
 
   Future<void> _loadCustomerPoints() async {
     final customer = _selectedCustomer;
@@ -664,12 +666,21 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
 
   Future<void> _handleGiftCardCheckout() async {
     final codeController = TextEditingController();
+    final amountDue = _effectiveTotal;
     final amountController = TextEditingController(
-      text: _effectiveTotal.toStringAsFixed(2),
+      text: amountDue.toStringAsFixed(2),
     );
     final formKey = GlobalKey<FormState>();
     Map<String, dynamic>? card;
     double balance = 0;
+    Future<void> lookupGiftCard(String code, StateSetter setDialogState) async {
+      final found = await GiftCardRepository.getByCode(code);
+      if (!mounted) return;
+      setDialogState(() {
+        card = found;
+        balance = (found?['balance'] as num? ?? 0).toDouble();
+      });
+    }
 
     if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
@@ -684,20 +695,31 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
               children: [
                 TextFormField(
                   controller: codeController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Gift card code',
                     hintText: 'e.g. GC-1001',
+                    suffixIcon: IconButton(
+                      tooltip: 'Scan gift card',
+                      icon: const Icon(Icons.qr_code_scanner_outlined),
+                      onPressed: () async {
+                        final code = await Navigator.of(context).push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => const BarcodeScannerScreen(
+                              allowQr: true,
+                              title: 'Scan Gift Card',
+                            ),
+                          ),
+                        );
+                        if (code == null || code.trim().isEmpty) return;
+                        codeController.text = code.trim();
+                        await lookupGiftCard(code, setDialogState);
+                      },
+                    ),
                   ),
                   validator: (v) =>
                       v == null || v.trim().isEmpty ? 'Required' : null,
-                  onChanged: (_) async {
-                    final found = await GiftCardRepository.getByCode(
-                      codeController.text,
-                    );
-                    setDialogState(() {
-                      card = found;
-                      balance = (found?['balance'] as num? ?? 0).toDouble();
-                    });
+                  onChanged: (value) {
+                    unawaited(lookupGiftCard(value, setDialogState));
                   },
                 ),
                 const SizedBox(height: 12),
@@ -711,6 +733,16 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                   ),
                   const SizedBox(height: 8),
                 ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Gift card must cover the full amount due: ${GiftCardRepository.formatBalance(amountDue)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: amountController,
                   decoration: InputDecoration(
@@ -729,8 +761,11 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
                     if (value > balance + 0.001) {
                       return 'Exceeds card balance';
                     }
-                    if (value > _effectiveTotal + 0.001) {
+                    if (value > amountDue + 0.001) {
                       return 'Exceeds amount due';
+                    }
+                    if (value < amountDue - 0.001) {
+                      return 'Gift card must cover the full amount due';
                     }
                     return null;
                   },
@@ -746,10 +781,14 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
             FilledButton(
               onPressed: () {
                 if (formKey.currentState!.validate()) {
+                  final amount = double.parse(amountController.text.trim());
+                  final remaining = balance - amount;
                   Navigator.of(ctx).pop({
                     'cardId': card!['id'],
                     'code': card!['code'],
-                    'amount': double.parse(amountController.text.trim()),
+                    'amount': amount,
+                    'balanceBefore': balance,
+                    'balanceAfter': remaining < 0 ? 0.0 : remaining,
                   });
                 }
               },
@@ -762,18 +801,22 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
 
     if (result == null || !mounted) return;
     try {
-      await GiftCardRepository.redeem(
-        id: result['cardId'] as String,
-        amount: result['amount'] as double,
-      );
+      final cardId = result['cardId'] as String;
+      final amount = (result['amount'] as num).toDouble();
+      await GiftCardRepository.redeem(id: cardId, amount: amount);
+      final updatedCard = await GiftCardRepository.getById(cardId);
+      final balanceAfter =
+          (updatedCard?['balance'] as num?)?.toDouble() ??
+          (result['balanceAfter'] as num?)?.toDouble();
       if (!mounted) return;
       Navigator.pop(context, {
         'type': 'other',
         'paymentMethod': _selectedMethod,
         'customer': _selectedCustomer,
-        'giftCardId': result['cardId'],
+        'giftCardId': cardId,
         'giftCardCode': result['code'],
-        'giftCardAmount': result['amount'],
+        'giftCardAmount': amount,
+        'giftCardBalanceAfter': balanceAfter,
         ..._loyaltyResult,
       });
     } catch (e) {
@@ -967,8 +1010,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       PaymentMethodRepository.providerCard => Icons.credit_card_outlined,
       PaymentMethodRepository.providerBankTransfer =>
         Icons.account_balance_outlined,
-      PaymentMethodRepository.providerGiftCard =>
-        Icons.card_giftcard_outlined,
+      PaymentMethodRepository.providerGiftCard => Icons.card_giftcard_outlined,
       _ => Icons.payment_outlined,
     };
   }
@@ -996,15 +1038,15 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     final paymentMethodsAsync = ref.watch(activePaymentMethodsProvider);
 
     return AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        insetPadding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 12 : 40,
-          vertical: isCompact ? 12 : 24,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        titlePadding: EdgeInsets.fromLTRB(
-          isCompact ? 16 : 24,
-          isCompact ? 16 : 24,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 12 : 40,
+        vertical: isCompact ? 12 : 24,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: EdgeInsets.fromLTRB(
+        isCompact ? 16 : 24,
+        isCompact ? 16 : 24,
         isCompact ? 16 : 24,
         0,
       ),
@@ -2359,7 +2401,9 @@ class _RedeemPointsDialogState extends State<_RedeemPointsDialog> {
       return;
     }
     if (points > widget.available) {
-      setState(() => _error = 'This customer only has ${widget.available} points.');
+      setState(
+        () => _error = 'This customer only has ${widget.available} points.',
+      );
       return;
     }
     if (points < widget.minRedemption) {
@@ -2385,12 +2429,18 @@ class _RedeemPointsDialogState extends State<_RedeemPointsDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.loyalty_outlined, size: 18, color: AppColors.success),
+                  Icon(
+                    Icons.loyalty_outlined,
+                    size: 18,
+                    color: AppColors.success,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -2405,7 +2455,9 @@ class _RedeemPointsDialogState extends State<_RedeemPointsDialog> {
             const SizedBox(height: 16),
             TextField(
               controller: _pointsController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: false),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: false,
+              ),
               decoration: InputDecoration(
                 labelText: 'Points to redeem',
                 hintText: 'e.g. ${widget.available}',
@@ -2422,10 +2474,7 @@ class _RedeemPointsDialogState extends State<_RedeemPointsDialog> {
           onPressed: () => Navigator.of(context).pop(null),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Redeem'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Redeem')),
       ],
     );
   }

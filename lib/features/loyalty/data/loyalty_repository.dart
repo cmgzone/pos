@@ -4,8 +4,37 @@ import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../gift_cards/data/gift_card_repository.dart';
 
 const _uuid = Uuid();
+
+class LoyaltyGiftCardReward {
+  final String giftCardId;
+  final String code;
+  final double amount;
+  final int pointsSpent;
+  final int pointsBalance;
+  final String? expiresAt;
+
+  const LoyaltyGiftCardReward({
+    required this.giftCardId,
+    required this.code,
+    required this.amount,
+    required this.pointsSpent,
+    required this.pointsBalance,
+    this.expiresAt,
+  });
+
+  Map<String, dynamic> toMetadata() => {
+    'earnedGiftCardId': giftCardId,
+    'earnedGiftCardCode': code,
+    'earnedGiftCardAmount': amount,
+    'earnedGiftCardPointsSpent': pointsSpent,
+    'loyaltyPointsBalance': pointsBalance,
+    if (expiresAt != null && expiresAt!.trim().isNotEmpty)
+      'earnedGiftCardExpiresAt': expiresAt,
+  };
+}
 
 class LoyaltyRepository {
   static List<dynamic> get _currentBranchArgs => [
@@ -30,6 +59,10 @@ class LoyaltyRepository {
     required int minRedemptionPoints,
     required double pointsToCurrencyFactor,
     required bool isActive,
+    bool giftCardRewardEnabled = false,
+    int giftCardRewardPointsThreshold = 0,
+    double giftCardRewardAmount = 0,
+    int giftCardRewardExpiryDays = 0,
     String? note,
   }) async {
     await LicenseService.ensureWriteAccess(action: 'configure loyalty rules');
@@ -42,6 +75,10 @@ class LoyaltyRepository {
       'min_redemption_points': minRedemptionPoints,
       'points_to_currency_factor': pointsToCurrencyFactor,
       'is_active': isActive ? 1 : 0,
+      'gift_card_reward_enabled': giftCardRewardEnabled ? 1 : 0,
+      'gift_card_reward_points_threshold': giftCardRewardPointsThreshold,
+      'gift_card_reward_amount': giftCardRewardAmount,
+      'gift_card_reward_expiry_days': giftCardRewardExpiryDays,
       'note': note?.trim(),
       'updated_at': now,
       'sync_status': 'pending',
@@ -98,9 +135,11 @@ class LoyaltyRepository {
   }) async {
     final rules = await getRules();
     if (rules == null) return 0;
-    final isActive = (rules['is_active'] is int
-        ? rules['is_active'] as int
-        : int.tryParse(rules['is_active']?.toString() ?? '') ?? 0) != 0;
+    final isActive =
+        (rules['is_active'] is int
+            ? rules['is_active'] as int
+            : int.tryParse(rules['is_active']?.toString() ?? '') ?? 0) !=
+        0;
     if (!isActive) return 0;
 
     final pointsPerCurrency =
@@ -134,6 +173,104 @@ class LoyaltyRepository {
     return earned;
   }
 
+  static Future<LoyaltyGiftCardReward?> issueGiftCardRewardIfEligible({
+    required String customerId,
+    required String saleId,
+  }) async {
+    final rules = await getRules();
+    if (rules == null) return null;
+    final isActive =
+        (rules['is_active'] is int
+            ? rules['is_active'] as int
+            : int.tryParse(rules['is_active']?.toString() ?? '') ?? 0) !=
+        0;
+    if (!isActive) return null;
+
+    final rewardEnabled =
+        (rules['gift_card_reward_enabled'] is int
+            ? rules['gift_card_reward_enabled'] as int
+            : int.tryParse(
+                    rules['gift_card_reward_enabled']?.toString() ?? '',
+                  ) ??
+                  0) !=
+        0;
+    final threshold =
+        (rules['gift_card_reward_points_threshold'] as num?)?.toInt() ?? 0;
+    final amount = (rules['gift_card_reward_amount'] as num?)?.toDouble() ?? 0;
+    final expiryDays =
+        (rules['gift_card_reward_expiry_days'] as num?)?.toInt() ?? 0;
+    if (!rewardEnabled || threshold <= 0 || amount <= 0) {
+      return null;
+    }
+
+    final balance = await getCustomerPoints(customerId);
+    if (balance < threshold) {
+      return null;
+    }
+
+    final newBalance = balance - threshold;
+    final code = await _generateGiftCardRewardCode();
+    final expiresAt = expiryDays > 0
+        ? DateTime.now()
+              .add(Duration(days: expiryDays))
+              .toIso8601String()
+              .substring(0, 10)
+        : null;
+    final shortSaleId = saleId.length <= 8 ? saleId : saleId.substring(0, 8);
+    final card = await GiftCardRepository.create(
+      code: code,
+      initialBalance: amount,
+      customerId: customerId,
+      expiresAt: expiresAt,
+      saleId: saleId,
+      note: 'Loyalty gift card reward from sale $shortSaleId',
+    );
+
+    final now = DateTime.now().toIso8601String();
+    final ledgerId = _uuid.v4();
+    await DatabaseService.insert('loyalty_ledger', {
+      'id': ledgerId,
+      'customer_id': customerId,
+      'sale_id': saleId,
+      'type': 'gift_card_reward',
+      'points': -threshold,
+      'balance_after': newBalance,
+      'note': 'Converted $threshold points to gift card $code',
+      'created_at': now,
+      'updated_at': now,
+    });
+    await DatabaseService.update('customers', {
+      'loyalty_points': newBalance,
+      'sync_status': 'pending',
+    }, customerId);
+    await AuditLogService.log(
+      action: 'reward',
+      entityTable: 'loyalty_ledger',
+      entityId: ledgerId,
+    );
+
+    return LoyaltyGiftCardReward(
+      giftCardId: card['id'] as String,
+      code: code,
+      amount: amount,
+      pointsSpent: threshold,
+      pointsBalance: newBalance,
+      expiresAt: expiresAt,
+    );
+  }
+
+  static Future<String> _generateGiftCardRewardCode() async {
+    for (var attempt = 0; attempt < 8; attempt += 1) {
+      final suffix = _uuid.v4().replaceAll('-', '').substring(0, 8);
+      final code = 'GC-${suffix.toUpperCase()}';
+      final existing = await GiftCardRepository.getByCode(code);
+      if (existing == null) {
+        return code;
+      }
+    }
+    return 'GC-${DateTime.now().millisecondsSinceEpoch}';
+  }
+
   /// Redeem points as a currency discount. Deducts the points immediately and
   /// records a ledger entry. Returns the discount amount applied (in business
   /// currency) along with the ledger id so the caller can link it to a sale.
@@ -149,7 +286,8 @@ class LoyaltyRepository {
     if (rules == null) {
       throw Exception('Loyalty is not configured for this branch.');
     }
-    final minRedemption = (rules['min_redemption_points'] as num?)?.toInt() ?? 0;
+    final minRedemption =
+        (rules['min_redemption_points'] as num?)?.toInt() ?? 0;
     if (points < minRedemption) {
       throw Exception(
         'A minimum of $minRedemption points is required to redeem.',
@@ -251,8 +389,10 @@ class LoyaltyRepository {
         'maxDiscount': 0.0,
       };
     }
-    final factor = (rules['points_to_currency_factor'] as num?)?.toDouble() ?? 1;
-    final minRedemption = (rules['min_redemption_points'] as num?)?.toInt() ?? 0;
+    final factor =
+        (rules['points_to_currency_factor'] as num?)?.toDouble() ?? 1;
+    final minRedemption =
+        (rules['min_redemption_points'] as num?)?.toInt() ?? 0;
     final redeemable = balance - minRedemption < 0 ? 0 : balance;
     return {
       'configured': true,
@@ -295,8 +435,7 @@ class LoyaltyRepository {
   static Future<List<Map<String, dynamic>>> getTopCustomersByPoints({
     int limit = 20,
   }) async {
-    return DatabaseService.rawQuery(
-      '''
+    return DatabaseService.rawQuery('''
       SELECT id, name, phone, email, loyalty_points
       FROM customers
       WHERE deleted_at IS NULL
@@ -304,9 +443,7 @@ class LoyaltyRepository {
         AND loyalty_points > 0
       ORDER BY loyalty_points DESC, name COLLATE NOCASE ASC
       LIMIT $limit
-      ''',
-      _currentBranchArgs,
-    );
+      ''', _currentBranchArgs);
   }
 
   /// Returns a formatted currency string for a points discount value.

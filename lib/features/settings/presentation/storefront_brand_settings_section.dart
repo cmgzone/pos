@@ -3,6 +3,7 @@ import '../../../core/theme/app_theme_extensions.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:pos_app/core/services/branch_service.dart';
 import 'package:pos_app/core/services/catalog_share_service.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
 import 'package:pos_app/core/services/storefront_brand_service.dart';
@@ -37,18 +38,21 @@ class _StorefrontBrandSettingsSectionState
   final _colorController = TextEditingController(text: '#ff2a6d');
   final _taglineController = TextEditingController(text: 'Online catalog');
   final _descriptionController = TextEditingController();
+  final _nameController = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
   bool _uploadingLogo = false;
   bool _uploadingCover = false;
   List<String> _coverUrls = [];
+  List<Map<String, dynamic>> _branches = [];
+  String _selectedBranchId = 'main_branch';
   StorefrontBrandSettings _settings = StorefrontBrandSettings.empty();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadBranches();
   }
 
   @override
@@ -58,19 +62,34 @@ class _StorefrontBrandSettingsSectionState
     _colorController.dispose();
     _taglineController.dispose();
     _descriptionController.dispose();
+    _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadBranches() async {
+    try {
+      _branches = await BranchService.getBranches(activeOnly: true);
+    } catch (_) {
+      _branches = [];
+    }
+    if (!mounted) return;
+    _load();
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final settings = await StorefrontBrandService.fetchSettings();
+      final settings = await StorefrontBrandService.fetchSettings(
+        branchId: _selectedBranchId,
+      );
       if (!mounted) return;
       _applySettings(settings);
     } catch (error) {
       if (!mounted) return;
       _showError(error, 'Could not load storefront settings.');
-      _applySettings(StorefrontBrandSettings.empty());
+      _applySettings(
+        StorefrontBrandSettings.empty(branchId: _selectedBranchId),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -80,6 +99,10 @@ class _StorefrontBrandSettingsSectionState
 
   void _applySettings(StorefrontBrandSettings settings) {
     _settings = settings;
+    _selectedBranchId = settings.branchId.isNotEmpty
+        ? settings.branchId
+        : 'main_branch';
+    _nameController.text = settings.businessName;
     _logoController.text = settings.logoUrl;
     _coverUrls = settings.coverUrls.isNotEmpty
         ? List<String>.from(settings.coverUrls)
@@ -97,9 +120,10 @@ class _StorefrontBrandSettingsSectionState
     final coverUrls = _normalizedCoverUrls();
     return StorefrontBrandSettings(
       businessId: _settings.businessId,
-      businessName: _settings.businessName.isNotEmpty
-          ? _settings.businessName
+      businessName: _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
           : ShopSettings.shopName,
+      branchId: _selectedBranchId,
       logoUrl: _logoController.text.trim(),
       coverUrl: coverUrls.isNotEmpty ? coverUrls.first : '',
       coverUrls: coverUrls,
@@ -223,6 +247,55 @@ class _StorefrontBrandSettingsSectionState
       children: [
         _buildPreview(color),
         SizedBox(height: 16),
+        if (_branches.length > 1)
+          _buildCard([
+            Text(
+              'Storefront branch',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+            SizedBox(height: 12),
+            InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'Edit branding for branch',
+                prefixIcon: Icon(Icons.store_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _branches.any((b) => b['id'] == _selectedBranchId)
+                      ? _selectedBranchId
+                      : _branches.first['id']?.toString() ?? _selectedBranchId,
+                  items: _branches.map((branch) {
+                    final id = branch['id']?.toString() ?? '';
+                    final name = branch['name']?.toString() ?? id;
+                    return DropdownMenuItem<String>(
+                      value: id,
+                      child: Text(name),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value == null || value == _selectedBranchId) return;
+                    setState(() => _selectedBranchId = value);
+                    _load();
+                  },
+                ),
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              _selectedBranchId == 'main_branch'
+                  ? 'This is the default storefront branding shared when a branch has no custom branding.'
+                  : 'These settings apply only to the selected branch’s online store.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ]),
+        if (_branches.length > 1) SizedBox(height: 16),
         _buildCard([
           Text(
             'Images',
@@ -255,6 +328,17 @@ class _StorefrontBrandSettingsSectionState
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
           SizedBox(height: 12),
+          TextField(
+            controller: _nameController,
+            maxLength: 60,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Store name',
+              hintText: ShopSettings.shopName,
+              prefixIcon: Icon(Icons.badge_outlined),
+            ),
+          ),
+          SizedBox(height: 14),
           _buildColorPickerField(color),
           SizedBox(height: 14),
           TextField(
@@ -316,8 +400,8 @@ class _StorefrontBrandSettingsSectionState
     final logo = _logoController.text.trim();
     final coverUrls = _normalizedCoverUrls();
     final cover = coverUrls.isNotEmpty ? coverUrls.first : '';
-    final title = _settings.businessName.isNotEmpty
-        ? _settings.businessName
+    final title = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
         : ShopSettings.shopName;
     return Container(
       height: 260,

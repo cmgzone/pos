@@ -63,6 +63,7 @@ const {
   ensureEmailOtpSchema,
   requestEmailOtp,
   resetPasswordWithVerifiedOtp,
+  sendOtpEmail,
   verifyEmailOtp,
 } = require('./authOtp');
 const {
@@ -700,6 +701,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
           email: ownerEmail.toLowerCase(),
           phone,
           role: 'ADMIN',
+          custom_role_id: null,
           feature_access_json: null,
           allowed_service_ids_json: null,
           allowed_branch_ids_json: null,
@@ -1073,9 +1075,2115 @@ app.get('/api/reports/daily-cashier-summary', async (req, res, next) => {
   }
 });
 
+app.get('/api/reports/tax-summary', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    const { from, to } = normalizeReportDateRange(req.query);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const clauses = [
+      's.business_id = $1',
+      'DATE(s.created_at) BETWEEN $2::date AND $3::date',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+    ];
+    const params = [businessContext.businessId, from, to];
+    addReportBranchFilter(clauses, params, 's', scope);
+    const rows = await query(
+      `SELECT
+         COALESCE(SUM(s.total_amount), 0) AS gross_sales,
+         COALESCE(SUM(s.tax), 0) AS output_vat,
+         COALESCE(SUM(s.total_amount - s.tax), 0) AS net_sales,
+         COALESCE(SUM(s.discount), 0) AS discounts,
+         COUNT(s.id)::int AS receipt_count
+       FROM sales s
+       WHERE ${clauses.join(' AND ')}`,
+      params,
+    );
+    res.json({ ok: true, from, to, summary: rows.rows[0] || {} });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/reports/sales-summary', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    const { from, to } = normalizeReportDateRange(req.query);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const clauses = [
+      's.business_id = $1',
+      'DATE(s.created_at) BETWEEN $2::date AND $3::date',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+    ];
+    const params = [businessContext.businessId, from, to];
+    addReportBranchFilter(clauses, params, 's', scope);
+    const summary = await query(
+      `SELECT
+         COUNT(s.id)::int AS sale_count,
+         COALESCE(SUM(s.total_amount), 0) AS total_sales,
+         COALESCE(SUM(s.tax), 0) AS total_tax,
+         COALESCE(SUM(s.discount), 0) AS total_discount,
+         COALESCE(AVG(s.total_amount), 0) AS average_sale,
+         COALESCE(SUM(s.amount_paid), 0) AS amount_paid,
+         COALESCE(SUM(s.balance_due), 0) AS balance_due
+       FROM sales s
+       WHERE ${clauses.join(' AND ')}`,
+      params,
+    );
+    const byPayment = await query(
+      `SELECT
+         COALESCE(NULLIF(s.payment_type, ''), 'unknown') AS payment_type,
+         COUNT(s.id)::int AS sale_count,
+         COALESCE(SUM(s.total_amount), 0) AS amount
+       FROM sales s
+       WHERE ${clauses.join(' AND ')}
+       GROUP BY payment_type
+       ORDER BY amount DESC`,
+      params,
+    );
+    res.json({
+      ok: true,
+      from,
+      to,
+      summary: summary.rows[0] || {},
+      paymentBreakdown: byPayment.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Advanced BI dashboard
+// ============================================================================
+
+app.get('/api/bi/customer-lifetime-value', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const limit = Math.max(1, Math.min(100, Number.parseInt(req.query.limit, 10) || 20));
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const salesClauses = [
+      's.business_id = $1',
+      's.deleted_at IS NULL',
+      's.refund_for_sale_id IS NULL',
+    ];
+    const params = [businessContext.businessId];
+    addReportBranchFilter(salesClauses, params, 's', scope);
+    params.push(limit);
+    const rows = await query(
+      `SELECT
+         c.id AS customer_id,
+         c.name AS customer_name,
+         COUNT(s.id)::int AS transaction_count,
+         COALESCE(SUM(s.total_amount), 0) AS lifetime_value,
+         COALESCE(AVG(s.total_amount), 0) AS average_order_value,
+         MIN(s.created_at) AS first_purchase_at,
+         MAX(s.created_at) AS last_purchase_at
+       FROM customers c
+       JOIN sales s ON s.customer_id = c.id AND ${salesClauses.join(' AND ')}
+       WHERE c.business_id = $1 AND c.deleted_at IS NULL
+       GROUP BY c.id, c.name
+       ORDER BY lifetime_value DESC, transaction_count DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+    const customers = rows.rows;
+    const totalValue = customers.reduce((sum, row) => sum + Number(row.lifetime_value || 0), 0);
+    res.json({
+      ok: true,
+      summary: {
+        customerCount: customers.length,
+        totalValue,
+        averageClv: customers.length ? totalValue / customers.length : 0,
+      },
+      customers,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/bi/sales-forecast', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const lookbackDays = Math.max(14, Math.min(365, Number.parseInt(req.query.lookbackDays, 10) || 56));
+    const forecastDays = Math.max(7, Math.min(90, Number.parseInt(req.query.forecastDays, 10) || 30));
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const clauses = [
+      's.business_id = $1',
+      's.deleted_at IS NULL',
+      's.refund_for_sale_id IS NULL',
+      's.created_at >= CURRENT_DATE - ($2::integer - 1)',
+    ];
+    const params = [businessContext.businessId, lookbackDays];
+    addReportBranchFilter(clauses, params, 's', scope);
+    const rows = await query(
+      `SELECT DATE(s.created_at)::text AS day,
+              COALESCE(SUM(s.total_amount), 0) AS revenue,
+              COUNT(s.id)::int AS sale_count
+       FROM sales s
+       WHERE ${clauses.join(' AND ')}
+       GROUP BY DATE(s.created_at)
+       ORDER BY DATE(s.created_at) ASC`,
+      params,
+    );
+    const revenueByDay = new Map(rows.rows.map((row) => [String(row.day), Number(row.revenue || 0)]));
+    const history = [];
+    const today = new Date();
+    for (let offset = lookbackDays - 1; offset >= 0; offset -= 1) {
+      const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - offset));
+      const key = day.toISOString().slice(0, 10);
+      history.push({ day: key, revenue: revenueByDay.get(key) || 0 });
+    }
+    const n = history.length;
+    const meanX = (n - 1) / 2;
+    const meanY = history.reduce((sum, point) => sum + point.revenue, 0) / Math.max(1, n);
+    const denominator = history.reduce((sum, _, index) => sum + (index - meanX) ** 2, 0);
+    const slope = denominator
+      ? history.reduce((sum, point, index) => sum + (index - meanX) * (point.revenue - meanY), 0) / denominator
+      : 0;
+    const intercept = meanY - slope * meanX;
+    const forecast = [];
+    for (let index = 0; index < forecastDays; index += 1) {
+      const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + index + 1));
+      forecast.push({
+        day: day.toISOString().slice(0, 10),
+        revenue: Math.max(0, Number((intercept + slope * (n + index)).toFixed(2))),
+      });
+    }
+    res.json({
+      ok: true,
+      lookbackDays,
+      forecastDays,
+      summary: {
+        averageDailyRevenue: meanY,
+        trendPerDay: slope,
+        forecastRevenue: forecast.reduce((sum, point) => sum + point.revenue, 0),
+      },
+      history,
+      forecast,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/bi/customer-cohorts', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const months = Math.max(3, Math.min(24, Number.parseInt(req.query.months, 10) || 12));
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId, months];
+    const branchFilter = scope.branchIds == null
+      ? ''
+      : ` AND COALESCE(s.branch_id, 'main_branch') = ANY($3::text[])`;
+    if (scope.branchIds != null) params.push(scope.branchIds);
+    const rows = await query(
+      `WITH first_purchase AS (
+         SELECT s.customer_id, DATE_TRUNC('month', MIN(s.created_at)) AS cohort_month
+         FROM sales s
+         WHERE s.business_id = $1
+           AND s.customer_id IS NOT NULL
+           AND s.deleted_at IS NULL
+           AND s.refund_for_sale_id IS NULL
+           ${branchFilter}
+         GROUP BY s.customer_id
+       ),
+       cohort_customers AS (
+         SELECT * FROM first_purchase
+         WHERE cohort_month >= DATE_TRUNC('month', CURRENT_DATE) - MAKE_INTERVAL(months => ($2::integer - 1))
+       ),
+       cohort_sizes AS (
+         SELECT cohort_month, COUNT(*)::int AS cohort_size
+         FROM cohort_customers GROUP BY cohort_month
+       ),
+       activity AS (
+         SELECT cc.customer_id, cc.cohort_month, DATE_TRUNC('month', s.created_at) AS activity_month
+         FROM cohort_customers cc
+         JOIN sales s ON s.customer_id = cc.customer_id
+         WHERE s.business_id = $1
+           AND s.deleted_at IS NULL
+           AND s.refund_for_sale_id IS NULL
+           ${branchFilter}
+       )
+       SELECT
+         TO_CHAR(a.cohort_month, 'YYYY-MM') AS cohort_month,
+         (
+           EXTRACT(YEAR FROM AGE(a.activity_month, a.cohort_month)) * 12
+           + EXTRACT(MONTH FROM AGE(a.activity_month, a.cohort_month))
+         )::int AS period_number,
+         cs.cohort_size,
+         COUNT(DISTINCT a.customer_id)::int AS retained_customers
+       FROM activity a
+       JOIN cohort_sizes cs ON cs.cohort_month = a.cohort_month
+       WHERE a.activity_month >= a.cohort_month
+       GROUP BY a.cohort_month, period_number, cs.cohort_size
+       ORDER BY a.cohort_month ASC, period_number ASC`,
+      params,
+    );
+    res.json({ ok: true, months, cohorts: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/bi/employee-turnover', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const months = Math.max(3, Math.min(24, Number.parseInt(req.query.months, 10) || 12));
+    const rows = await query(
+      `WITH month_series AS (
+         SELECT DATE_TRUNC('month', value)::date AS month_start
+         FROM GENERATE_SERIES(
+           DATE_TRUNC('month', CURRENT_DATE) - MAKE_INTERVAL(months => ($2::integer - 1)),
+           DATE_TRUNC('month', CURRENT_DATE),
+           INTERVAL '1 month'
+         ) AS value
+       )
+       SELECT
+         TO_CHAR(m.month_start, 'YYYY-MM') AS month,
+         COUNT(u.id) FILTER (WHERE DATE_TRUNC('month', u.created_at) = m.month_start)::int AS hires,
+         COUNT(u.id) FILTER (WHERE u.deleted_at IS NOT NULL AND DATE_TRUNC('month', u.deleted_at) = m.month_start)::int AS departures,
+         COUNT(u.id) FILTER (
+           WHERE u.created_at < m.month_start + INTERVAL '1 month'
+             AND (u.deleted_at IS NULL OR u.deleted_at >= m.month_start + INTERVAL '1 month')
+         )::int AS ending_headcount
+       FROM month_series m
+       LEFT JOIN users u ON u.business_id = $1
+       GROUP BY m.month_start
+       ORDER BY m.month_start ASC`,
+      [businessContext.businessId, months],
+    );
+    const data = rows.rows.map((row) => ({
+      ...row,
+      turnover_rate: Number(row.ending_headcount || 0) > 0
+        ? Number(((Number(row.departures || 0) / Number(row.ending_headcount || 0)) * 100).toFixed(1))
+        : 0,
+    }));
+    res.json({
+      ok: true,
+      months,
+      summary: {
+        hires: data.reduce((sum, row) => sum + Number(row.hires || 0), 0),
+        departures: data.reduce((sum, row) => sum + Number(row.departures || 0), 0),
+        currentHeadcount: Number(data[data.length - 1]?.ending_headcount || 0),
+      },
+      turnover: data,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/reports/inventory-valuation', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const clauses = ['p.business_id = $1', 'p.deleted_at IS NULL'];
+    const params = [businessContext.businessId];
+    addReportBranchFilter(clauses, params, 'p', scope);
+    const rows = await query(
+      `SELECT
+         COUNT(p.id)::int AS product_count,
+         COALESCE(SUM(p.stock), 0) AS stock_units,
+         COALESCE(SUM(p.stock * COALESCE(p.cost, 0)), 0) AS cost_value,
+         COALESCE(SUM(p.stock * COALESCE(p.price, 0)), 0) AS retail_value,
+         COUNT(*) FILTER (WHERE p.stock <= p.low_stock)::int AS low_stock_count
+       FROM products p
+       WHERE ${clauses.join(' AND ')}`,
+      params,
+    );
+    res.json({ ok: true, valuation: rows.rows[0] || {} });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/reports/reorder-suggestions', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    const lookbackDays = Math.max(
+      7,
+      Math.min(365, Number.parseInt(req.query.lookbackDays, 10) || 30),
+    );
+    const defaultLeadTimeDays = Math.max(
+      1,
+      Math.min(90, Number.parseInt(req.query.defaultLeadTimeDays, 10) || 7),
+    );
+    const limit = Math.max(
+      1,
+      Math.min(50, Number.parseInt(req.query.limit, 10) || 20),
+    );
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const productClauses = [
+      'p.business_id = $1',
+      'p.deleted_at IS NULL',
+      'COALESCE(p.track_stock, 1) <> 0',
+      'COALESCE(p.has_variants, 0) = 0',
+    ];
+    const salesClauses = [
+      'si.business_id = $1',
+      's.business_id = $1',
+      'si.deleted_at IS NULL',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+      "s.created_at >= NOW() - make_interval(days => $2::integer)",
+    ];
+    const batchClauses = [
+      'sb.business_id = $1',
+      'sb.deleted_at IS NULL',
+      'sb.received_at IS NOT NULL',
+    ];
+    const params = [
+      businessContext.businessId,
+      lookbackDays,
+      defaultLeadTimeDays,
+    ];
+    addReportBranchFilter(productClauses, params, 'p', scope);
+    addReportBranchFilter(salesClauses, params, 's', scope);
+    addReportBranchFilter(batchClauses, params, 'sb', scope);
+    params.push(limit);
+
+    const rows = await query(
+      `WITH sales_velocity AS (
+         SELECT
+           si.product_id,
+           COALESCE(SUM(GREATEST(si.quantity, 0)), 0) / $2::double precision
+             AS daily_velocity,
+           MAX(s.created_at) AS last_sold_at
+         FROM sale_items si
+         JOIN sales s ON s.id = si.sale_id AND s.business_id = si.business_id
+         WHERE ${salesClauses.join(' AND ')}
+         GROUP BY si.product_id
+       ),
+       receipt_gaps AS (
+         SELECT
+           sb.product_id,
+           EXTRACT(
+             EPOCH FROM (
+               sb.received_at - LAG(sb.received_at) OVER (
+                 PARTITION BY sb.product_id
+                 ORDER BY sb.received_at
+               )
+             )
+           ) / 86400.0 AS days_between_receipts
+         FROM stock_batches sb
+         WHERE ${batchClauses.join(' AND ')}
+       ),
+       lead_times AS (
+         SELECT
+           product_id,
+           LEAST(
+             45::double precision,
+             GREATEST(3::double precision, AVG(days_between_receipts))
+           ) AS lead_time_days
+         FROM receipt_gaps
+         WHERE days_between_receipts > 0
+         GROUP BY product_id
+       ),
+       inventory AS (
+         SELECT
+           p.id AS product_id,
+           p.name AS item_name,
+           p.name AS product_name,
+           p.sku,
+           p.barcode,
+           p.stock,
+           p.low_stock,
+           p.stock_unit,
+           p.cost AS unit_cost,
+           COALESCE(sv.daily_velocity, 0) AS daily_velocity,
+           COALESCE(lt.lead_time_days, $3::double precision) AS lead_time_days,
+           sv.last_sold_at
+         FROM products p
+         LEFT JOIN sales_velocity sv ON sv.product_id = p.id
+         LEFT JOIN lead_times lt ON lt.product_id = p.id
+         WHERE ${productClauses.join(' AND ')}
+       ),
+       computed AS (
+         SELECT
+           *,
+           CASE
+             WHEN daily_velocity > 0 THEN stock / daily_velocity
+             ELSE NULL
+           END AS days_of_cover,
+           CASE
+             WHEN daily_velocity > 0 THEN GREATEST(
+               low_stock * 2,
+               daily_velocity * (lead_time_days + 7),
+               low_stock + (daily_velocity * 7)
+             )
+             ELSE low_stock * 2
+           END AS target_stock
+         FROM inventory
+       )
+       SELECT
+         'product' AS item_type,
+         product_id,
+         item_name,
+         product_name,
+         sku,
+         barcode,
+         stock,
+         low_stock,
+         stock_unit,
+         unit_cost,
+         ROUND(daily_velocity::numeric, 2)::double precision AS daily_velocity,
+         ROUND(lead_time_days::numeric, 1)::double precision AS lead_time_days,
+         CASE
+           WHEN days_of_cover IS NULL THEN NULL
+           ELSE ROUND(days_of_cover::numeric, 1)::double precision
+         END AS days_of_cover,
+         ROUND(target_stock::numeric, 2)::double precision AS target_stock,
+         ROUND(GREATEST(target_stock - stock, 0)::numeric, 2)::double precision
+           AS suggested_qty,
+         last_sold_at,
+         CASE
+           WHEN stock <= 0 THEN 'out'
+           WHEN stock <= low_stock THEN 'low'
+           ELSE 'soon'
+         END AS urgency
+       FROM computed
+       WHERE (
+         stock <= low_stock
+         OR (daily_velocity > 0 AND days_of_cover <= lead_time_days + 2)
+       )
+         AND target_stock - stock > 0.001
+       ORDER BY
+         CASE
+           WHEN stock <= 0 THEN 0
+           WHEN stock <= low_stock THEN 1
+           ELSE 2
+         END,
+         days_of_cover NULLS LAST,
+         suggested_qty DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+    res.json({
+      ok: true,
+      lookbackDays,
+      defaultLeadTimeDays,
+      suggestions: rows.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/reports/profit-loss', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.reports);
+    const { from, to } = normalizeReportDateRange(req.query);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const salesClauses = [
+      's.business_id = $1',
+      'DATE(s.created_at) BETWEEN $2::date AND $3::date',
+      's.deleted_at IS NULL',
+      's.refund_sale_id IS NULL',
+    ];
+    const salesParams = [businessContext.businessId, from, to];
+    addReportBranchFilter(salesClauses, salesParams, 's', scope);
+    const expenseClauses = [
+      'e.business_id = $1',
+      'DATE(e.incurred_on) BETWEEN $2::date AND $3::date',
+      'e.deleted_at IS NULL',
+    ];
+    const expenseParams = [businessContext.businessId, from, to];
+    addReportBranchFilter(expenseClauses, expenseParams, 'e', scope);
+    const sales = await query(
+      `SELECT
+         COALESCE(SUM(s.total_amount), 0) AS revenue,
+         COALESCE(SUM(s.discount), 0) AS discounts,
+         COALESCE(SUM(s.tax), 0) AS tax_collected,
+         COALESCE(SUM((
+           SELECT SUM(si.quantity * COALESCE(si.unit_cost, 0))
+           FROM sale_items si
+           WHERE si.sale_id = s.id AND si.business_id = s.business_id
+         )), 0) AS cost_of_goods
+       FROM sales s
+       WHERE ${salesClauses.join(' AND ')}`,
+      salesParams,
+    );
+    const expenses = await query(
+      `SELECT COALESCE(SUM(e.amount), 0) AS operating_expenses
+       FROM expenses e
+       WHERE ${expenseClauses.join(' AND ')}`,
+      expenseParams,
+    );
+    const row = sales.rows[0] || {};
+    const expenseRow = expenses.rows[0] || {};
+    const revenue = Number(row.revenue || 0);
+    const costOfGoods = Number(row.cost_of_goods || 0);
+    const operatingExpenses = Number(expenseRow.operating_expenses || 0);
+    const grossProfit = revenue - costOfGoods - Number(row.discounts || 0);
+    res.json({
+      ok: true,
+      from,
+      to,
+      profitLoss: {
+        ...row,
+        operating_expenses: operatingExpenses,
+        gross_profit: grossProfit,
+        net_profit: grossProfit - operatingExpenses,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Supplier Statements / Accounts Payable
+// ============================================================================
+
+function supplierBranchFilter(alias, scope, params) {
+  if (scope.branchIds == null) {
+    return '';
+  }
+  params.push(scope.branchIds);
+  return ` AND COALESCE(${alias}.branch_id, 'main_branch') = ANY($${params.length}::text[])`;
+}
+
+function supplierAgingColumns(alias = 'p') {
+  const dueDate = `NULLIF(${alias}.due_date, '')::date`;
+  return `
+    COALESCE(SUM(CASE
+      WHEN ${dueDate} IS NULL OR ${dueDate} >= CURRENT_DATE
+      THEN ${alias}.balance_due ELSE 0 END), 0) AS current_amount,
+    COALESCE(SUM(CASE
+      WHEN ${dueDate} < CURRENT_DATE AND CURRENT_DATE - ${dueDate} BETWEEN 1 AND 30
+      THEN ${alias}.balance_due ELSE 0 END), 0) AS d1_30_amount,
+    COALESCE(SUM(CASE
+      WHEN CURRENT_DATE - ${dueDate} BETWEEN 31 AND 60
+      THEN ${alias}.balance_due ELSE 0 END), 0) AS d31_60_amount,
+    COALESCE(SUM(CASE
+      WHEN CURRENT_DATE - ${dueDate} BETWEEN 61 AND 90
+      THEN ${alias}.balance_due ELSE 0 END), 0) AS d61_90_amount,
+    COALESCE(SUM(CASE
+      WHEN CURRENT_DATE - ${dueDate} > 90
+      THEN ${alias}.balance_due ELSE 0 END), 0) AS over90_amount,
+    COALESCE(SUM(${alias}.balance_due), 0) AS total_outstanding,
+    COUNT(CASE WHEN ${alias}.balance_due > 0.009 THEN 1 END)::int AS open_invoice_count
+  `;
+}
+
+app.get('/api/suppliers/aging', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.purchases);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const supplierParams = [businessContext.businessId];
+    const supplierFilter = supplierBranchFilter('s', scope, supplierParams);
+    const invoiceFilter =
+      scope.branchIds == null
+        ? ''
+        : ` AND COALESCE(p.branch_id, 'main_branch') = ANY($${supplierParams.length}::text[])`;
+    const result = await query(
+      `SELECT
+         s.id,
+         s.name,
+         s.phone,
+         s.email,
+         ${supplierAgingColumns('p')}
+       FROM suppliers s
+       JOIN purchase_invoices p
+         ON p.business_id = s.business_id
+        AND p.supplier_id = s.id
+        AND p.deleted_at IS NULL
+        AND p.balance_due > 0.009
+        ${invoiceFilter}
+       WHERE s.business_id = $1
+         AND s.deleted_at IS NULL
+         ${supplierFilter}
+       GROUP BY s.id, s.name, s.phone, s.email
+       ORDER BY total_outstanding DESC, s.name ASC`,
+      supplierParams,
+    );
+    res.json({ ok: true, suppliers: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/suppliers/:id/statement', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.purchases);
+    const supplierId = normalizeOptionalText(req.params.id);
+    if (!supplierId) {
+      throw createHttpError(400, 'Supplier id is required.');
+    }
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+
+    const supplierParams = [businessContext.businessId, supplierId];
+    const supplierFilter = supplierBranchFilter('s', scope, supplierParams);
+    const supplierResult = await query(
+      `SELECT *
+       FROM suppliers s
+       WHERE s.business_id = $1
+         AND s.id = $2
+         AND s.deleted_at IS NULL
+         ${supplierFilter}
+       LIMIT 1`,
+      supplierParams,
+    );
+    const supplier = supplierResult.rows[0];
+    if (!supplier) {
+      throw createHttpError(404, 'Supplier not found.');
+    }
+
+    const ledgerParams = [businessContext.businessId, supplierId];
+    const ledgerBranchFilter =
+      scope.branchIds == null
+        ? ''
+        : ` AND COALESCE(branch_id, 'main_branch') = ANY($${ledgerParams.push(scope.branchIds)}::text[])`;
+    const ledgerResult = await query(
+      `SELECT *
+       FROM (
+         SELECT
+           'purchase' AS entry_type,
+           id,
+           invoice_number AS reference,
+           total_amount AS debit,
+           0::double precision AS credit,
+           balance_due,
+           due_date,
+           status,
+           created_at AS entry_at,
+           note
+         FROM purchase_invoices
+         WHERE business_id = $1
+           AND supplier_id = $2
+           AND deleted_at IS NULL
+           ${ledgerBranchFilter}
+         UNION ALL
+         SELECT
+           'payment' AS entry_type,
+           id,
+           reference,
+           0::double precision AS debit,
+           amount AS credit,
+           0::double precision AS balance_due,
+           NULL AS due_date,
+           'paid' AS status,
+           paid_at AS entry_at,
+           note
+         FROM supplier_payments
+         WHERE business_id = $1
+           AND supplier_id = $2
+           AND deleted_at IS NULL
+           ${ledgerBranchFilter}
+       ) ledger
+       ORDER BY entry_at ASC, entry_type ASC`,
+      ledgerParams,
+    );
+    let runningBalance = 0;
+    const ledger = ledgerResult.rows.map((row) => {
+      runningBalance += Number(row.debit || 0) - Number(row.credit || 0);
+      return { ...row, running_balance: runningBalance };
+    });
+
+    const invoiceParams = [businessContext.businessId, supplierId];
+    const invoiceFilter = supplierBranchFilter('p', scope, invoiceParams);
+    const agingResult = await query(
+      `SELECT ${supplierAgingColumns('p')}
+       FROM purchase_invoices p
+       WHERE p.business_id = $1
+         AND p.supplier_id = $2
+         AND p.deleted_at IS NULL
+         AND p.balance_due > 0.009
+         ${invoiceFilter}`,
+      invoiceParams,
+    );
+    const openInvoices = await query(
+      `SELECT *
+       FROM purchase_invoices p
+       WHERE p.business_id = $1
+         AND p.supplier_id = $2
+         AND p.deleted_at IS NULL
+         AND p.balance_due > 0.009
+         ${invoiceFilter}
+       ORDER BY
+         CASE WHEN p.due_date IS NULL OR p.due_date = '' THEN 1 ELSE 0 END,
+         p.due_date ASC,
+         p.created_at ASC`,
+      invoiceParams,
+    );
+
+    res.json({
+      ok: true,
+      supplier,
+      aging: agingResult.rows[0] || null,
+      ledger,
+      openInvoices: openInvoices.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Product Serials / Warranty Tracking
+// ============================================================================
+
+function normalizeSerialStatus(value) {
+  const clean = normalizeOptionalText(value)?.toLowerCase();
+  if (
+    clean === 'available' ||
+    clean === 'sold' ||
+    clean === 'reserved' ||
+    clean === 'warranty' ||
+    clean === 'returned'
+  ) {
+    return clean;
+  }
+  return 'available';
+}
+
+app.get('/api/serials', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.serialTracking);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const where = ['ps.business_id = $1', 'ps.deleted_at IS NULL'];
+    const params = [businessContext.businessId];
+    const productId = normalizeOptionalText(req.query.productId);
+    const serial = normalizeOptionalText(req.query.serialNumber || req.query.serial);
+    const status = normalizeOptionalText(req.query.status);
+    if (productId) {
+      where.push(`ps.product_id = $${params.length + 1}`);
+      params.push(productId);
+    }
+    if (serial) {
+      where.push(`LOWER(ps.serial_number) = LOWER($${params.length + 1})`);
+      params.push(serial);
+    }
+    if (status) {
+      where.push(`ps.status = $${params.length + 1}`);
+      params.push(normalizeSerialStatus(status));
+    }
+    if (scope.branchIds != null) {
+      where.push(
+        `COALESCE(ps.branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+      );
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT
+         ps.*,
+         p.name AS product_name,
+         pv.name AS variant_name
+       FROM product_serials ps
+       LEFT JOIN products p
+         ON p.business_id = ps.business_id AND p.id = ps.product_id
+       LEFT JOIN product_variants pv
+         ON pv.business_id = ps.business_id AND pv.id = ps.variant_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY ps.updated_at DESC, ps.serial_number ASC
+       LIMIT 500`,
+      params,
+    );
+    res.json({ ok: true, serials: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/serials', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.serialTracking);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const productId = normalizeOptionalText(req.body?.productId || req.body?.product_id);
+    if (!productId) {
+      throw createHttpError(400, 'productId is required.');
+    }
+    const rawSerials = Array.isArray(req.body?.serialNumbers)
+      ? req.body.serialNumbers
+      : Array.isArray(req.body?.serial_numbers)
+        ? req.body.serial_numbers
+        : [req.body?.serialNumber || req.body?.serial_number];
+    const serialNumbers = [
+      ...new Set(rawSerials.map(normalizeOptionalText).filter(Boolean)),
+    ];
+    if (!serialNumbers.length) {
+      throw createHttpError(400, 'At least one serial number is required.');
+    }
+    const scope = resolveDataScope(businessContext, req.body?.branchId || req.body?.branch_id);
+    const branchId = scope.branchIds?.[0] || 'main_branch';
+    const now = new Date().toISOString();
+    const inserted = await withTransaction(async (client) => {
+      const product = await client.query(
+        `SELECT id
+         FROM products
+         WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL
+         LIMIT 1`,
+        [businessContext.businessId, productId],
+      );
+      if (!product.rows.length) {
+        throw createHttpError(404, 'Product not found.');
+      }
+      const rows = [];
+      for (const serialNumber of serialNumbers) {
+        const duplicate = await client.query(
+          `SELECT id
+           FROM product_serials
+           WHERE business_id = $1
+             AND LOWER(serial_number) = LOWER($2)
+             AND deleted_at IS NULL
+           LIMIT 1`,
+          [businessContext.businessId, serialNumber],
+        );
+        if (duplicate.rows.length) {
+          continue;
+        }
+        const id = crypto.randomUUID();
+        const result = await client.query(
+          `INSERT INTO product_serials (
+             id, business_id, branch_id, product_id, variant_id, stock_batch_id,
+             purchase_id, serial_number, status, warranty_expires_at, note,
+             created_at, updated_at, sync_status, server_revision
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7, $8, 'available', $9, $10,
+             $11, $11, 'synced', nextval('sync_revision_seq')
+           )
+           RETURNING *`,
+          [
+            id,
+            businessContext.businessId,
+            branchId,
+            productId,
+            normalizeOptionalText(req.body?.variantId || req.body?.variant_id) ||
+              null,
+            normalizeOptionalText(
+              req.body?.stockBatchId || req.body?.stock_batch_id,
+            ) || null,
+            normalizeOptionalText(req.body?.purchaseId || req.body?.purchase_id) ||
+              null,
+            serialNumber,
+            normalizeOptionalText(
+              req.body?.warrantyExpiresAt || req.body?.warranty_expires_at,
+            ) || null,
+            normalizeOptionalText(req.body?.note) || null,
+            now,
+          ],
+        );
+        rows.push(result.rows[0]);
+      }
+      return rows;
+    });
+    res.json({ ok: true, serials: inserted });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Stocktake / Cycle Counting
+// ============================================================================
+
+function normalizeStocktakeStatus(value) {
+  const clean = normalizeOptionalText(value)?.toLowerCase();
+  if (clean === 'completed' || clean === 'cancelled' || clean === 'draft') {
+    return clean;
+  }
+  return 'draft';
+}
+
+app.get('/api/stocktakes', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.stocktake);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    const where = ['s.business_id = $1', 's.deleted_at IS NULL'];
+    const status = normalizeOptionalText(req.query.status);
+    if (status && status !== 'all') {
+      where.push(`s.status = $${params.length + 1}`);
+      params.push(normalizeStocktakeStatus(status));
+    }
+    if (scope.branchIds != null) {
+      where.push(
+        `COALESCE(s.branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+      );
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT
+         s.*,
+         COUNT(i.id)::int AS item_count,
+         COUNT(i.id) FILTER (WHERE i.status = 'counted')::int AS counted_count,
+         COALESCE(SUM(ABS(COALESCE(i.variance_qty, 0))), 0)::double precision AS total_variance
+       FROM stocktake_sessions s
+       LEFT JOIN stocktake_items i
+         ON i.business_id = s.business_id
+        AND i.session_id = s.id
+        AND i.deleted_at IS NULL
+       WHERE ${where.join(' AND ')}
+       GROUP BY s.id
+       ORDER BY s.updated_at DESC, s.created_at DESC
+       LIMIT 200`,
+      params,
+    );
+    res.json({ ok: true, sessions: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/stocktakes', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.stocktake);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const scope = resolveDataScope(businessContext, req.body?.branchId || req.body?.branch_id);
+    const branchId = scope.branchIds?.[0] || 'main_branch';
+    const name =
+      normalizeOptionalText(req.body?.name) ||
+      `Stocktake ${new Date().toISOString().slice(0, 10)}`;
+    const note = normalizeOptionalText(req.body?.note) || null;
+    const now = new Date().toISOString();
+    const session = await withTransaction(async (client) => {
+      const sessionId = crypto.randomUUID();
+      const sessionResult = await client.query(
+        `INSERT INTO stocktake_sessions (
+           id, business_id, branch_id, name, status, started_by, started_at,
+           note, created_at, updated_at, sync_status, server_revision
+         ) VALUES (
+           $1, $2, $3, $4, 'draft', $5, $6, $7, $6, $6, 'synced',
+           nextval('sync_revision_seq')
+         )
+         RETURNING *`,
+        [
+          sessionId,
+          businessContext.businessId,
+          branchId,
+          name,
+          businessContext.userId || null,
+          now,
+          note,
+        ],
+      );
+      const products = await client.query(
+        `SELECT id, name, stock, stock_unit, unit, cost
+         FROM products
+         WHERE business_id = $1
+           AND deleted_at IS NULL
+           AND COALESCE(branch_id, 'main_branch') = $2
+           AND COALESCE(track_stock, 1) <> 0
+         ORDER BY name ASC`,
+        [businessContext.businessId, branchId],
+      );
+      for (const product of products.rows) {
+        await client.query(
+          `INSERT INTO stocktake_items (
+             id, business_id, branch_id, session_id, product_id, product_name,
+             expected_qty, counted_qty, variance_qty, unit, unit_cost, status,
+             created_at, updated_at, sync_status, server_revision
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7, NULL, 0, $8, $9, 'pending',
+             $10, $10, 'synced', nextval('sync_revision_seq')
+           )`,
+          [
+            crypto.randomUUID(),
+            businessContext.businessId,
+            branchId,
+            sessionId,
+            product.id,
+            product.name,
+            Number(product.stock || 0),
+            product.stock_unit || product.unit || 'pcs',
+            Number(product.cost || 0),
+            now,
+          ],
+        );
+      }
+      return sessionResult.rows[0];
+    });
+    res.json({ ok: true, session });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/stocktakes/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.stocktake);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId, req.params.id];
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const sessionResult = await query(
+      `SELECT *
+       FROM stocktake_sessions
+       WHERE business_id = $1
+         AND id = $2
+         AND deleted_at IS NULL
+         ${branchFilter}
+       LIMIT 1`,
+      params,
+    );
+    if (!sessionResult.rows.length) {
+      throw createHttpError(404, 'Stocktake not found.');
+    }
+    const items = await query(
+      `SELECT *
+       FROM stocktake_items
+       WHERE business_id = $1
+         AND session_id = $2
+         AND deleted_at IS NULL
+       ORDER BY product_name ASC`,
+      [businessContext.businessId, req.params.id],
+    );
+    res.json({ ok: true, session: sessionResult.rows[0], items: items.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/stocktakes/:id/items/:itemId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.stocktake);
+    const countedQty = Number(req.body?.countedQty ?? req.body?.counted_qty);
+    if (!Number.isFinite(countedQty) || countedQty < 0) {
+      throw createHttpError(400, 'countedQty must be zero or greater.');
+    }
+    const note = normalizeOptionalText(req.body?.note) || null;
+    const now = new Date().toISOString();
+    const result = await query(
+      `UPDATE stocktake_items
+       SET counted_qty = $1,
+           variance_qty = $1 - COALESCE(expected_qty, 0),
+           status = 'counted',
+           note = $2,
+           counted_at = $3,
+           updated_at = $3,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $4
+         AND session_id = $5
+         AND id = $6
+         AND deleted_at IS NULL
+       RETURNING *`,
+      [countedQty, note, now, businessContext.businessId, req.params.id, req.params.itemId],
+    );
+    if (!result.rows.length) {
+      throw createHttpError(404, 'Stocktake item not found.');
+    }
+    await query(
+      `UPDATE stocktake_sessions
+       SET updated_at = $1,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $2 AND id = $3`,
+      [now, businessContext.businessId, req.params.id],
+    );
+    res.json({ ok: true, item: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/stocktakes/:id/complete', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.stocktake);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const now = new Date().toISOString();
+    const result = await query(
+      `UPDATE stocktake_sessions
+       SET status = 'completed',
+           completed_by = $1,
+           completed_at = $2,
+           updated_at = $2,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $3
+         AND id = $4
+         AND deleted_at IS NULL
+       RETURNING *`,
+      [businessContext.userId || null, now, businessContext.businessId, req.params.id],
+    );
+    if (!result.rows.length) {
+      throw createHttpError(404, 'Stocktake not found.');
+    }
+    res.json({ ok: true, session: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/stocktakes/:id/cancel', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.stocktake);
+    const now = new Date().toISOString();
+    const result = await query(
+      `UPDATE stocktake_sessions
+       SET status = 'cancelled',
+           updated_at = $1,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $2
+         AND id = $3
+         AND deleted_at IS NULL
+       RETURNING *`,
+      [now, businessContext.businessId, req.params.id],
+    );
+    if (!result.rows.length) {
+      throw createHttpError(404, 'Stocktake not found.');
+    }
+    res.json({ ok: true, session: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// SMS Marketing Campaigns
+// ============================================================================
+
+function normalizeCampaignSegment(value) {
+  const clean = normalizeOptionalText(value)?.toLowerCase();
+  if (clean === 'debtors' || clean === 'loyalty' || clean === 'inactive') {
+    return clean;
+  }
+  return 'all';
+}
+
+function personalizeCampaignMessage(message, customer) {
+  return String(message || '').replace(
+    /\{name\}/gi,
+    customer.name || 'Customer',
+  );
+}
+
+async function loadCampaignRecipients(businessContext, segment, branchId) {
+  const params = [businessContext.businessId];
+  const where = [
+    'business_id = $1',
+    'deleted_at IS NULL',
+    "COALESCE(phone, '') <> ''",
+  ];
+  if (branchId) {
+    where.push(`COALESCE(branch_id, 'main_branch') = $${params.length + 1}`);
+    params.push(branchId);
+  }
+  if (segment === 'debtors') {
+    where.push('COALESCE(balance, 0) > 0');
+  } else if (segment === 'loyalty') {
+    where.push('COALESCE(loyalty_points, 0) > 0');
+  } else if (segment === 'inactive') {
+    where.push(
+      `id NOT IN (
+        SELECT DISTINCT customer_id
+        FROM sales
+        WHERE business_id = $1
+          AND customer_id IS NOT NULL
+          AND deleted_at IS NULL
+          AND created_at >= NOW() - INTERVAL '60 days'
+      )`,
+    );
+  }
+  const rows = await query(
+    `SELECT id, name, phone
+     FROM customers
+     WHERE ${where.join(' AND ')}
+     ORDER BY name ASC
+     LIMIT 1000`,
+    params,
+  );
+  return rows.rows;
+}
+
+app.get('/api/campaigns', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.smsCampaigns);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    if (scope.branchIds != null) {
+      where.push(
+        `COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+      );
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT *
+       FROM sms_campaigns
+       WHERE ${where.join(' AND ')}
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 200`,
+      params,
+    );
+    res.json({ ok: true, campaigns: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/campaigns', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.smsCampaigns);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const scope = resolveDataScope(businessContext, req.body?.branchId || req.body?.branch_id);
+    const branchId = scope.branchIds?.[0] || 'main_branch';
+    const name = normalizeOptionalText(req.body?.name);
+    const message = normalizeOptionalText(req.body?.message || req.body?.body);
+    if (!name) throw createHttpError(400, 'Campaign name is required.');
+    if (!message) throw createHttpError(400, 'Campaign message is required.');
+    const segment = normalizeCampaignSegment(req.body?.segment);
+    const recipients = await loadCampaignRecipients(businessContext, segment, branchId);
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const result = await query(
+      `INSERT INTO sms_campaigns (
+         id, business_id, branch_id, name, segment, message, recipient_count,
+         sent_count, failed_count, status, recipient_snapshot_json, created_by,
+         created_at, updated_at, sync_status, server_revision
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, 0, 0, 'draft', $8, $9, $10, $10,
+         'synced', nextval('sync_revision_seq')
+       )
+       RETURNING *`,
+      [
+        id,
+        businessContext.businessId,
+        branchId,
+        name,
+        segment,
+        message,
+        recipients.length,
+        JSON.stringify(recipients),
+        businessContext.userId || null,
+        now,
+      ],
+    );
+    res.json({ ok: true, campaign: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/campaigns/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.smsCampaigns);
+    const name = normalizeOptionalText(req.body?.name);
+    const message = normalizeOptionalText(req.body?.message || req.body?.body);
+    if (!name) throw createHttpError(400, 'Campaign name is required.');
+    if (!message) throw createHttpError(400, 'Campaign message is required.');
+    const segment = normalizeCampaignSegment(req.body?.segment);
+    const branchId = normalizeOptionalText(req.body?.branchId || req.body?.branch_id);
+    const recipients = await loadCampaignRecipients(
+      businessContext,
+      segment,
+      branchId || null,
+    );
+    const now = new Date().toISOString();
+    const result = await query(
+      `UPDATE sms_campaigns
+       SET name = $1,
+           segment = $2,
+           message = $3,
+           recipient_count = $4,
+           recipient_snapshot_json = $5,
+           updated_at = $6,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $7
+         AND id = $8
+         AND status = 'draft'
+         AND deleted_at IS NULL
+       RETURNING *`,
+      [
+        name,
+        segment,
+        message,
+        recipients.length,
+        JSON.stringify(recipients),
+        now,
+        businessContext.businessId,
+        req.params.id,
+      ],
+    );
+    if (!result.rows.length) {
+      throw createHttpError(404, 'Draft campaign not found.');
+    }
+    res.json({ ok: true, campaign: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/campaigns/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.smsCampaigns);
+    const now = new Date().toISOString();
+    await query(
+      `UPDATE sms_campaigns
+       SET deleted_at = $1,
+           updated_at = $1,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $2 AND id = $3`,
+      [now, businessContext.businessId, req.params.id],
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/campaigns/:id/send', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.smsCampaigns);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const campaignResult = await query(
+      `SELECT *
+       FROM sms_campaigns
+       WHERE business_id = $1
+         AND id = $2
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [businessContext.businessId, req.params.id],
+    );
+    if (!campaignResult.rows.length) {
+      throw createHttpError(404, 'Campaign not found.');
+    }
+    const campaign = campaignResult.rows[0];
+    let recipients = [];
+    try {
+      recipients = JSON.parse(campaign.recipient_snapshot_json || '[]');
+    } catch (_) {
+      recipients = [];
+    }
+    if (!Array.isArray(recipients) || !recipients.length) {
+      recipients = await loadCampaignRecipients(
+        businessContext,
+        normalizeCampaignSegment(campaign.segment),
+        campaign.branch_id || null,
+      );
+    }
+    let sent = 0;
+    let failed = 0;
+    let lastError = null;
+    for (const customer of recipients) {
+      try {
+        await sendBusinessMessage({
+          businessContext,
+          userId: businessContext.userId,
+          channel: 'sms',
+          recipient: customer.phone,
+          body: personalizeCampaignMessage(campaign.message, customer),
+          metadata: {
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            customerId: customer.id,
+          },
+        });
+        sent += 1;
+      } catch (error) {
+        failed += 1;
+        lastError = error.message || 'Message failed';
+      }
+    }
+    const now = new Date().toISOString();
+    const updated = await query(
+      `UPDATE sms_campaigns
+       SET status = $1,
+           recipient_count = $2,
+           sent_count = $3,
+           failed_count = $4,
+           last_error = $5,
+           sent_at = $6,
+           updated_at = $6,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $7 AND id = $8
+       RETURNING *`,
+      [
+        failed > 0 && sent === 0 ? 'failed' : 'sent',
+        recipients.length,
+        sent,
+        failed,
+        lastError,
+        now,
+        businessContext.businessId,
+        campaign.id,
+      ],
+    );
+    res.json({ ok: true, campaign: updated.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Exchange Rates / Multi-Currency
+// ============================================================================
+
+app.get('/api/exchange-rates', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.multiCurrency);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    if (scope.branchIds != null) {
+      where.push(
+        `COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+      );
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT *
+       FROM exchange_rates
+       WHERE ${where.join(' AND ')}
+       ORDER BY is_active DESC, updated_at DESC
+       LIMIT 100`,
+      params,
+    );
+    res.json({ ok: true, rates: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/exchange-rates', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.multiCurrency);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const baseCurrency = normalizeOptionalText(
+      req.body?.baseCurrency || req.body?.base_currency,
+    );
+    const quoteCurrency = normalizeOptionalText(
+      req.body?.quoteCurrency || req.body?.quote_currency,
+    );
+    const rate = Number(req.body?.rate);
+    if (!baseCurrency) throw createHttpError(400, 'baseCurrency is required.');
+    if (!quoteCurrency) throw createHttpError(400, 'quoteCurrency is required.');
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw createHttpError(400, 'rate must be greater than zero.');
+    }
+    const scope = resolveDataScope(businessContext, req.body?.branchId || req.body?.branch_id);
+    const branchId = scope.branchIds?.[0] || 'main_branch';
+    const isActive = req.body?.isActive ?? req.body?.is_active ?? true;
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const row = await withTransaction(async (client) => {
+      if (isActive) {
+        await client.query(
+          `UPDATE exchange_rates
+           SET is_active = 0,
+               updated_at = $1,
+               sync_status = 'synced',
+               server_revision = nextval('sync_revision_seq')
+           WHERE business_id = $2
+             AND COALESCE(branch_id, 'main_branch') = $3
+             AND deleted_at IS NULL`,
+          [now, businessContext.businessId, branchId],
+        );
+      }
+      const result = await client.query(
+        `INSERT INTO exchange_rates (
+           id, business_id, branch_id, base_currency, quote_currency, rate,
+           is_active, updated_by, created_at, updated_at, sync_status,
+           server_revision
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $9, 'synced',
+           nextval('sync_revision_seq')
+         )
+         RETURNING *`,
+        [
+          id,
+          businessContext.businessId,
+          branchId,
+          baseCurrency,
+          quoteCurrency,
+          rate,
+          isActive ? 1 : 0,
+          businessContext.userId || null,
+          now,
+        ],
+      );
+      return result.rows[0];
+    });
+    res.json({ ok: true, rate: row });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/exchange-rates/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.multiCurrency);
+    const now = new Date().toISOString();
+    await query(
+      `UPDATE exchange_rates
+       SET deleted_at = $1,
+           updated_at = $1,
+           sync_status = 'synced',
+           server_revision = nextval('sync_revision_seq')
+       WHERE business_id = $2 AND id = $3`,
+      [now, businessContext.businessId, req.params.id],
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Wastage / Spoilage
+// ============================================================================
+
+app.get('/api/wastage', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.wastage);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    if (scope.branchIds != null) {
+      where.push(`COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`);
+      params.push(scope.branchIds);
+    }
+    const limit = Math.max(1, Math.min(500, Number.parseInt(req.query.limit, 10) || 100));
+    params.push(limit);
+    const rows = await query(
+      `SELECT * FROM wastage_logs WHERE ${where.join(' AND ')}
+       ORDER BY recorded_at DESC, created_at DESC LIMIT $${params.length}`,
+      params,
+    );
+    res.json({ ok: true, logs: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/wastage', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.wastage);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const productId = normalizeOptionalText(req.body?.productId || req.body?.product_id);
+    const quantity = Number(req.body?.quantity);
+    if (!productId) throw createHttpError(400, 'productId is required.');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw createHttpError(400, 'quantity must be greater than zero.');
+    const scope = resolveDataScope(businessContext, req.body?.branchId || req.body?.branch_id);
+    const branchId = scope.branchIds?.[0] || 'main_branch';
+    const reason = ['wastage', 'spoilage', 'damage', 'expiry', 'theft', 'other'].includes(req.body?.reason)
+      ? req.body.reason : 'wastage';
+    const now = new Date().toISOString();
+    const log = await withTransaction(async (client) => {
+      const product = await client.query(
+        `SELECT * FROM products WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL
+         AND COALESCE(branch_id, 'main_branch') = $3 FOR UPDATE`,
+        [businessContext.businessId, productId, branchId],
+      );
+      if (product.rows.length === 0) throw createHttpError(404, 'Product not found.');
+      const item = product.rows[0];
+      if (Number(item.stock || 0) + 0.001 < quantity) throw createHttpError(400, 'Wastage quantity exceeds available stock.');
+      await client.query(
+        `UPDATE products SET stock = stock - $1, updated_at = $2, sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq') WHERE business_id = $3 AND id = $4`,
+        [quantity, now, businessContext.businessId, productId],
+      );
+      const result = await client.query(
+        `INSERT INTO wastage_logs (id, business_id, branch_id, product_id, product_name, quantity,
+           unit, unit_cost, reason, note, recorded_by, recorded_at, created_at, updated_at,
+           sync_status, server_revision)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$12,'synced',nextval('sync_revision_seq'))
+         RETURNING *`,
+        [crypto.randomUUID(), businessContext.businessId, branchId, productId, item.name,
+          quantity, item.stock_unit || item.unit || 'pcs', item.cost || 0, reason,
+          normalizeOptionalText(req.body?.note), businessContext.userId || null, now],
+      );
+      return result.rows[0];
+    });
+    res.status(201).json({ ok: true, log });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/wastage/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.wastage);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const reason = ['wastage', 'spoilage', 'damage', 'expiry', 'theft', 'other'].includes(req.body?.reason)
+      ? req.body.reason : 'other';
+    const now = new Date().toISOString();
+    const result = await query(
+      `UPDATE wastage_logs SET reason = $1, note = $2, updated_at = $3, sync_status = 'synced',
+       server_revision = nextval('sync_revision_seq') WHERE business_id = $4 AND id = $5 AND deleted_at IS NULL RETURNING *`,
+      [reason, normalizeOptionalText(req.body?.note), now, businessContext.businessId, req.params.id],
+    );
+    if (result.rows.length === 0) throw createHttpError(404, 'Wastage record not found.');
+    res.json({ ok: true, log: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/wastage/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.wastage);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const now = new Date().toISOString();
+    const log = await withTransaction(async (client) => {
+      const result = await client.query(
+        `UPDATE wastage_logs SET deleted_at = $1, updated_at = $1, sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq') WHERE business_id = $2 AND id = $3 AND deleted_at IS NULL RETURNING *`,
+        [now, businessContext.businessId, req.params.id],
+      );
+      if (result.rows.length === 0) throw createHttpError(404, 'Wastage record not found.');
+      const row = result.rows[0];
+      await client.query(`UPDATE products SET stock = stock + $1, updated_at = $2, sync_status = 'synced',
+        server_revision = nextval('sync_revision_seq') WHERE business_id = $3 AND id = $4`,
+        [row.quantity, now, businessContext.businessId, row.product_id]);
+      return row;
+    });
+    res.json({ ok: true, log });
+  } catch (error) { next(error); }
+});
+
 // ============================================================================
 // Loyalty & Rewards
 // ============================================================================
+
+// ============================================================================
+// Restaurant / Hospitality
+// ============================================================================
+
+app.post('/api/online-orders', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.body?.businessId || req.body?.business_id);
+    if (!businessId) throw createHttpError(400, 'businessId is required.');
+    const order = await createPublicCatalogOrder(businessId, req.body || {});
+    const paymentMethod = ['manual', 'mpesa', 'paypal', 'stripe'].includes(req.body?.paymentMethod)
+      ? req.body.paymentMethod : 'manual';
+    const trackingCode = `DLV-${order.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const deliveryStatus = order.fulfillmentMethod === 'delivery' ? 'pending' : null;
+    let checkoutUrl = null;
+    await withTransaction(async (client) => {
+      await client.query(`UPDATE public_catalog_orders SET payment_method = $1, payment_status = $2, delivery_status = $3, tracking_code = $4, updated_at = NOW() WHERE id = $5`, [paymentMethod, paymentMethod === 'manual' ? 'pending' : 'initiated', deliveryStatus, trackingCode, order.id]);
+      if (deliveryStatus) {
+        await client.query(`INSERT INTO deliveries (id,business_id,branch_id,order_id,status,tracking_code,created_at,updated_at) VALUES ($1,$2,$3,$4,'pending',$5,NOW(),NOW())`, [crypto.randomUUID(), businessId, order.branchId, order.id, trackingCode]);
+      }
+    });
+    if (paymentMethod === 'paypal') {
+      const gateway = await loadPaymentGateway('paypal');
+      if (!gateway?.isActive) throw createHttpError(400, 'PayPal is not active.');
+      assertPublicPaymentReturnUrl();
+      const paypalConfig = resolvePayPalGatewayConfig(gateway);
+      const accessToken = await getPayPalAccessToken(paypalConfig);
+      const fetch = (await import('node-fetch')).default;
+      const response = await fetch(`${paypalConfig.baseUrl}/v2/checkout/orders`, {
+        method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': order.id },
+        body: JSON.stringify({ intent: 'CAPTURE', purchase_units: [{ reference_id: order.id, description: `Online order ${order.orderNumber}`, amount: { currency_code: 'USD', value: Number(order.subtotal).toFixed(2) } }], application_context: { brand_name: 'Piki POS', user_action: 'PAY_NOW', return_url: `${config.publicBaseUrl}/api/online-orders/paypal/return?orderId=${encodeURIComponent(order.id)}`, cancel_url: `${config.publicBaseUrl}/?order=${encodeURIComponent(order.orderNumber)}&payment=cancelled` } }),
+      });
+      const body = await readMaybeJson(response);
+      checkoutUrl = (body.links || []).find((link) => link.rel === 'approve')?.href || null;
+      if (!response.ok || !body.id || !checkoutUrl) throw createHttpError(502, body.message || 'PayPal checkout could not be created.');
+      await query(`UPDATE public_catalog_orders SET payment_reference = $1, updated_at = NOW() WHERE id = $2`, [body.id, order.id]);
+    }
+    res.status(201).json({ ok: true, order: {...order, paymentMethod, paymentStatus: paymentMethod === 'manual' ? 'pending' : 'initiated', trackingCode, deliveryStatus, checkoutUrl} });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/delivery/zones', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.delivery);
+    const scope = resolveDataScope(context, req.query.branchId);
+    const params = [context.businessId];
+    let branchFilter = '';
+    if (scope.branchIds != null) { branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`; params.push(scope.branchIds); }
+    const rows = await query(`SELECT * FROM delivery_zones WHERE business_id = $1 AND deleted_at IS NULL ${branchFilter} ORDER BY name`, params);
+    res.json({ ok: true, zones: rows.rows });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/delivery/zones', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.delivery);
+    ensureRoleAtLeast(context, 'MANAGER');
+    const name = normalizeOptionalText(req.body?.name);
+    if (!name) throw createHttpError(400, 'Zone name is required.');
+    const scope = resolveDataScope(context, req.body?.branchId);
+    const result = await query(`INSERT INTO delivery_zones (id,business_id,branch_id,name,fee,minimum_order,is_active,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW()) RETURNING *`, [crypto.randomUUID(), context.businessId, scope.branchIds?.[0] || 'main_branch', name, Math.max(0, Number(req.body?.fee) || 0), Math.max(0, Number(req.body?.minimumOrder) || 0), req.body?.isActive === false ? 0 : 1]);
+    res.status(201).json({ ok: true, zone: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/delivery/:id/status', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.delivery);
+    const status = ['pending', 'assigned', 'out_for_delivery', 'delivered', 'failed', 'cancelled'].includes(req.body?.status) ? req.body.status : null;
+    if (!status) throw createHttpError(400, 'Invalid delivery status.');
+    const result = await query(`UPDATE deliveries SET status = $1, rider_name = COALESCE($2, rider_name), rider_phone = COALESCE($3, rider_phone), delivered_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE delivered_at END, updated_at = NOW() WHERE business_id = $4 AND id = $5 RETURNING *`, [status, normalizeOptionalText(req.body?.riderName), normalizeOptionalText(req.body?.riderPhone), context.businessId, req.params.id]);
+    if (result.rows.length === 0) throw createHttpError(404, 'Delivery not found.');
+    await query(`UPDATE public_catalog_orders SET delivery_status = $1, updated_at = NOW() WHERE business_id = $2 AND id = $3`, [status, context.businessId, result.rows[0].order_id]);
+    res.json({ ok: true, delivery: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/online-orders/paypal/return', async (req, res, next) => {
+  try {
+    const orderId = normalizeOptionalText(req.query?.orderId);
+    const paypalOrderId = normalizeOptionalText(req.query?.token);
+    if (!orderId || !paypalOrderId) throw createHttpError(400, 'PayPal order is missing.');
+    const orderResult = await query(`SELECT * FROM public_catalog_orders WHERE id = $1 AND payment_reference = $2 LIMIT 1`, [orderId, paypalOrderId]);
+    const order = orderResult.rows[0];
+    if (!order) throw createHttpError(404, 'Online order not found.');
+    const gateway = await loadPaymentGateway('paypal');
+    if (!gateway?.isActive) throw createHttpError(400, 'PayPal is not active.');
+    const paypalConfig = resolvePayPalGatewayConfig(gateway);
+    const accessToken = await getPayPalAccessToken(paypalConfig);
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(`${paypalConfig.baseUrl}/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' });
+    const body = await readMaybeJson(response);
+    if (!response.ok || body.status !== 'COMPLETED') throw createHttpError(400, body.message || 'PayPal payment was not completed.');
+    await query(`UPDATE public_catalog_orders SET payment_status = 'paid', status = CASE WHEN status = 'pending' THEN 'accepted' ELSE status END, updated_at = NOW() WHERE id = $1`, [orderId]);
+    res.redirect(`${config.publicBaseUrl}/?order=${encodeURIComponent(shortOrderNumber(orderId))}&payment=success`);
+  } catch (error) { next(error); }
+});
+
+// ============================================================================
+// Customer self-service portal
+// ============================================================================
+
+app.post('/api/customer-portal/request-code', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.body?.businessId);
+    const email = normalizeCustomerPortalEmail(req.body?.email);
+    if (!businessId || !email) {
+      throw createHttpError(400, 'businessId and a valid email address are required.');
+    }
+    const result = await requestCustomerPortalEmailCode({ businessId, email });
+    // Keep the response generic to avoid exposing whether an email is a customer account.
+    res.json({ ok: true, ...result });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer-portal/login', async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.body?.businessId);
+    const email = normalizeCustomerPortalEmail(req.body?.email);
+    const code = String(req.body?.code || '').replace(/\D/g, '');
+    if (!businessId || !email || !/^\d{6}$/.test(code)) {
+      throw createHttpError(400, 'businessId, email, and a 6-digit verification code are required.');
+    }
+    const customer = await verifyCustomerPortalEmailCode({ businessId, email, code });
+    const token = jwt.sign(
+      { type: 'customer_portal', businessId, customerId: customer.id },
+      config.platformJwtSecret,
+      { expiresIn: '2h' },
+    );
+    res.json({ ok: true, token, customer: { id: customer.id, name: customer.name, balance: customer.balance } });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/customer-portal/statement', async (req, res, next) => {
+  try {
+    const portal = requireCustomerPortalSession(req);
+    const customer = await query(`SELECT id,name,email,balance FROM customers WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL LIMIT 1`, [portal.businessId, portal.customerId]);
+    if (!customer.rows[0]) throw createHttpError(404, 'Customer account not found.');
+    const sales = await query(`SELECT id,created_at,total_amount,amount_paid,balance_due,due_date,status FROM sales WHERE business_id = $1 AND customer_id = $2 AND deleted_at IS NULL AND balance_due > 0 ORDER BY created_at DESC`, [portal.businessId, portal.customerId]);
+    res.json({ ok: true, customer: customer.rows[0], sales: sales.rows });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer-portal/payments/mpesa', async (req, res, next) => {
+  try {
+    const portal = requireCustomerPortalSession(req);
+    const amount = Number(req.body?.amount);
+    const amountMinor = Math.round(amount * 100);
+    const phoneNumber = normalizeOptionalText(req.body?.phoneNumber);
+    if (!Number.isFinite(amount) || amountMinor <= 0 || !phoneNumber) {
+      throw createHttpError(400, 'A positive payment amount and M-Pesa phone number are required.');
+    }
+    const account = await query(
+      `SELECT c.balance, b.country_code
+       FROM customers c JOIN businesses b ON b.id = c.business_id
+       WHERE c.business_id = $1 AND c.id = $2 AND c.deleted_at IS NULL
+       LIMIT 1`,
+      [portal.businessId, portal.customerId],
+    );
+    const customer = account.rows[0];
+    if (!customer) throw createHttpError(404, 'Customer account not found.');
+    if (amount - Number(customer.balance || 0) > 0.009) {
+      throw createHttpError(400, 'Payment cannot be greater than the current outstanding balance.');
+    }
+    const payment = await createMpesaPosCheckout({
+      businessContext: { businessId: portal.businessId, countryCode: customer.country_code || 'KE' },
+      amountMinor,
+      phoneNumber,
+      metadata: { customerPortal: { customerId: portal.customerId } },
+    });
+    res.json({ ok: true, payment: customerPortalPaymentResponse(payment) });
+  } catch (error) { next(normalizeRouteError(error)); }
+});
+
+app.get('/api/customer-portal/payments/:id', async (req, res, next) => {
+  try {
+    const portal = requireCustomerPortalSession(req);
+    const payment = await loadPosPayment({ businessId: portal.businessId, paymentId: req.params.id });
+    if (!payment || payment.metadata?.customerPortal?.customerId !== portal.customerId) {
+      throw createHttpError(404, 'Payment request not found.');
+    }
+    res.json({ ok: true, payment: customerPortalPaymentResponse(payment) });
+  } catch (error) { next(normalizeRouteError(error)); }
+});
+
+app.get('/api/purchase-orders/approvals', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req);
+    ensureRoleAtLeast(context, 'MANAGER');
+    const scope = resolveDataScope(context, req.query.branchId);
+    const params = [context.businessId];
+    let branchFilter = '';
+    if (scope.branchIds != null) { branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`; params.push(scope.branchIds); }
+    const rows = await query(`SELECT * FROM purchase_orders WHERE business_id = $1 AND status = 'pending_approval' AND deleted_at IS NULL ${branchFilter} ORDER BY submitted_at ASC`, params);
+    res.json({ ok: true, orders: rows.rows });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/purchase-orders/:id/submit', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    const threshold = Math.max(0, Number(req.body?.threshold) || 50000);
+    const now = new Date().toISOString();
+    const result = await query(`UPDATE purchase_orders SET approval_required = CASE WHEN total_amount >= $1 THEN 1 ELSE 0 END, status = CASE WHEN total_amount >= $1 THEN 'pending_approval' ELSE 'approved' END, submitted_by = $2, submitted_at = $3, approved_by = CASE WHEN total_amount >= $1 THEN NULL ELSE $2 END, approved_at = CASE WHEN total_amount >= $1 THEN NULL ELSE $3 END, updated_at = $3, sync_status = 'synced', server_revision = nextval('sync_revision_seq') WHERE business_id = $4 AND id = $5 AND status = 'draft' AND deleted_at IS NULL RETURNING *`, [threshold, context.userId || null, now, context.businessId, req.params.id]);
+    if (!result.rows.length) throw createHttpError(409, 'Only draft purchase orders can be submitted.');
+    res.json({ ok: true, order: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/purchase-orders/:id/approval', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensureRoleAtLeast(context, 'MANAGER');
+    const decision = req.body?.decision === 'reject' ? 'rejected' : req.body?.decision === 'approve' ? 'approved' : null;
+    if (!decision) throw createHttpError(400, 'decision must be approve or reject.');
+    const result = await query(`UPDATE purchase_orders SET status = $1, approved_by = $2, approved_at = NOW(), approval_note = $3, updated_at = NOW(), sync_status = 'synced', server_revision = nextval('sync_revision_seq') WHERE business_id = $4 AND id = $5 AND status = 'pending_approval' AND deleted_at IS NULL RETURNING *`, [decision, context.userId || null, normalizeOptionalText(req.body?.note), context.businessId, req.params.id]);
+    if (!result.rows.length) throw createHttpError(404, 'Pending purchase order not found.');
+    res.json({ ok: true, order: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/customer-groups', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.customerSegments);
+    const scope = resolveDataScope(context, req.query.branchId);
+    const params = [context.businessId];
+    let filter = '';
+    if (scope.branchIds != null) { filter = `AND COALESCE(g.branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`; params.push(scope.branchIds); }
+    const rows = await query(`SELECT g.*, COUNT(m.id)::int AS member_count FROM customer_groups g LEFT JOIN customer_group_members m ON m.group_id = g.id AND m.deleted_at IS NULL WHERE g.business_id = $1 AND g.deleted_at IS NULL ${filter} GROUP BY g.id ORDER BY g.name`, params);
+    res.json({ ok: true, groups: rows.rows });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer-groups', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.customerSegments);
+    const name = normalizeOptionalText(req.body?.name);
+    if (!name) throw createHttpError(400, 'Group name is required.');
+    const scope = resolveDataScope(context, req.body?.branchId);
+    const now = new Date().toISOString();
+    const result = await query(`INSERT INTO customer_groups (id,business_id,branch_id,name,description,color,created_by,created_at,updated_at,sync_status,server_revision) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,'synced',nextval('sync_revision_seq')) RETURNING *`, [crypto.randomUUID(), context.businessId, scope.branchIds?.[0] || 'main_branch', name, normalizeOptionalText(req.body?.description), normalizeOptionalText(req.body?.color), context.userId || null, now]);
+    res.status(201).json({ ok: true, group: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/customer-groups/:id/members/:customerId', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.customerSegments);
+    const scope = resolveDataScope(context, req.body?.branchId);
+    const now = new Date().toISOString();
+    await query(`INSERT INTO customer_group_members (id,business_id,branch_id,group_id,customer_id,created_at,updated_at,sync_status) VALUES ($1,$2,$3,$4,$5,$6,$6,'synced') ON CONFLICT (group_id,customer_id) DO UPDATE SET deleted_at = NULL, updated_at = EXCLUDED.updated_at`, [crypto.randomUUID(), context.businessId, scope.branchIds?.[0] || 'main_branch', req.params.id, req.params.customerId, now]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/customer-groups/:id/members/:customerId', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.customerSegments);
+    await query(`UPDATE customer_group_members SET deleted_at = NOW(), updated_at = NOW(), sync_status = 'synced' WHERE business_id = $1 AND group_id = $2 AND customer_id = $3`, [context.businessId, req.params.id, req.params.customerId]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/attendance', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.attendance);
+    const scope = resolveDataScope(context, req.query.branchId);
+    const params = [context.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    const userId = normalizeOptionalText(req.query.userId);
+    if (userId) { where.push(`user_id = $${params.length + 1}`); params.push(userId); }
+    if (scope.branchIds != null) { where.push(`COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`); params.push(scope.branchIds); }
+    const rows = await query(`SELECT * FROM employee_attendance WHERE ${where.join(' AND ')} ORDER BY clock_in_at DESC LIMIT 500`, params);
+    res.json({ ok: true, records: rows.rows });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/attendance/clock-in', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.attendance);
+    const scope = resolveDataScope(context, req.body?.branchId);
+    const branchId = scope.branchIds?.[0] || 'main_branch';
+    const now = new Date().toISOString();
+    const record = await withTransaction(async (client) => {
+      const open = await client.query(`SELECT id FROM employee_attendance WHERE business_id = $1 AND user_id = $2 AND status = 'open' AND deleted_at IS NULL FOR UPDATE`, [context.businessId, context.userId]);
+      if (open.rows.length) throw createHttpError(409, 'You are already clocked in.');
+      const result = await client.query(`INSERT INTO employee_attendance (id,business_id,branch_id,user_id,user_name,clock_in_at,note,status,created_at,updated_at,sync_status,server_revision) VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$6,$6,'synced',nextval('sync_revision_seq')) RETURNING *`, [crypto.randomUUID(), context.businessId, branchId, context.userId, context.userName || null, now, normalizeOptionalText(req.body?.note)]);
+      return result.rows[0];
+    });
+    res.status(201).json({ ok: true, record });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/attendance/:id/clock-out', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.attendance);
+    const result = await query(`UPDATE employee_attendance SET clock_out_at = NOW(), note = COALESCE($1, note), status = 'closed', updated_at = NOW(), sync_status = 'synced', server_revision = nextval('sync_revision_seq') WHERE business_id = $2 AND id = $3 AND user_id = $4 AND status = 'open' AND deleted_at IS NULL RETURNING *`, [normalizeOptionalText(req.body?.note), context.businessId, req.params.id, context.userId]);
+    if (!result.rows.length) throw createHttpError(404, 'Open attendance record not found.');
+    res.json({ ok: true, record: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/attendance/report', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.attendance);
+    ensureRoleAtLeast(context, 'MANAGER');
+    const scope = resolveDataScope(context, req.query.branchId);
+    const params = [context.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    if (scope.branchIds != null) { where.push(`COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`); params.push(scope.branchIds); }
+    const rows = await query(`SELECT user_id, MAX(user_name) AS user_name, COUNT(*)::int AS shifts, COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_at, NOW()) - clock_in_at)) / 3600),0)::double precision AS hours_worked FROM employee_attendance WHERE ${where.join(' AND ')} GROUP BY user_id ORDER BY hours_worked DESC`, params);
+    res.json({ ok: true, report: rows.rows });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/restaurant/tables', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.restaurantMode);
+    const scope = resolveDataScope(context, req.query.branchId);
+    const params = [context.businessId];
+    let branchFilter = '';
+    if (scope.branchIds != null) { branchFilter = `AND COALESCE(t.branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`; params.push(scope.branchIds); }
+    const rows = await query(`SELECT t.*, o.id AS order_id, o.order_no, o.status AS order_status, o.guest_count, o.items_json, o.total, o.split_count FROM restaurant_tables t LEFT JOIN table_orders o ON o.id = t.current_order_id AND o.deleted_at IS NULL WHERE t.business_id = $1 AND t.deleted_at IS NULL ${branchFilter} ORDER BY COALESCE(t.area, ''), t.name`, params);
+    res.json({ ok: true, tables: rows.rows });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/restaurant/tables', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.restaurantMode);
+    ensureRoleAtLeast(context, 'MANAGER');
+    const name = normalizeOptionalText(req.body?.name);
+    if (!name) throw createHttpError(400, 'Table name is required.');
+    const scope = resolveDataScope(context, req.body?.branchId);
+    const now = new Date().toISOString();
+    const result = await query(`INSERT INTO restaurant_tables (id,business_id,branch_id,name,area,seats,status,position_x,position_y,created_at,updated_at,sync_status,server_revision) VALUES ($1,$2,$3,$4,$5,$6,'available',0,0,$7,$7,'synced',nextval('sync_revision_seq')) RETURNING *`, [crypto.randomUUID(), context.businessId, scope.branchIds?.[0] || 'main_branch', name, normalizeOptionalText(req.body?.area), Math.max(1, Math.min(50, Number(req.body?.seats) || 2)), now]);
+    res.status(201).json({ ok: true, table: result.rows[0] });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/restaurant/tables/:id/orders', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.restaurantMode);
+    const now = new Date().toISOString();
+    const order = await withTransaction(async (client) => {
+      const table = await client.query(`SELECT * FROM restaurant_tables WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`, [context.businessId, req.params.id]);
+      if (table.rows.length === 0) throw createHttpError(404, 'Table not found.');
+      if (table.rows[0].current_order_id) throw createHttpError(409, 'Table already has an open order.');
+      const id = crypto.randomUUID();
+      const result = await client.query(`INSERT INTO table_orders (id,business_id,branch_id,table_id,order_no,status,guest_count,items_json,subtotal,tax,discount,total,split_count,opened_by,opened_at,created_at,updated_at,sync_status,server_revision) VALUES ($1,$2,$3,$4,$5,'open',$6,'[]',0,0,0,0,1,$7,$8,$8,$8,'synced',nextval('sync_revision_seq')) RETURNING *`, [id, context.businessId, table.rows[0].branch_id || 'main_branch', req.params.id, `T${Date.now().toString().slice(-6)}`, Math.max(1, Number(req.body?.guestCount) || 1), context.userId || null, now]);
+      await client.query(`UPDATE restaurant_tables SET status = 'occupied', current_order_id = $1, updated_at = $2, sync_status = 'synced', server_revision = nextval('sync_revision_seq') WHERE id = $3`, [id, now, req.params.id]);
+      return result.rows[0];
+    });
+    res.status(201).json({ ok: true, order });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/restaurant/orders/:id', async (req, res, next) => {
+  try {
+    const context = await requireBusinessContext(req, { requireWrite: true });
+    ensurePlanFeatureAllowed(context, FEATURE_KEYS.restaurantMode);
+    const items = Array.isArray(req.body?.items) ? req.body.items : null;
+    if (!items) throw createHttpError(400, 'items is required.');
+    const subtotal = items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unit_price) || 0), 0);
+    const now = new Date().toISOString();
+    const result = await query(`UPDATE table_orders SET items_json = $1, subtotal = $2, total = $2, notes = $3, split_count = $4, updated_at = $5, sync_status = 'synced', server_revision = nextval('sync_revision_seq') WHERE business_id = $6 AND id = $7 AND deleted_at IS NULL RETURNING *`, [JSON.stringify(items), subtotal, normalizeOptionalText(req.body?.notes), Math.max(1, Math.min(20, Number(req.body?.splitCount) || 1)), now, context.businessId, req.params.id]);
+    if (result.rows.length === 0) throw createHttpError(404, 'Table order not found.');
+    res.json({ ok: true, order: result.rows[0] });
+  } catch (error) { next(error); }
+});
 
 app.get('/api/loyalty/rules', async (req, res, next) => {
   try {
@@ -1249,6 +3357,32 @@ app.post('/api/gift-cards', async (req, res, next) => {
   }
 });
 
+app.get('/api/gift-cards/code/:code', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.giftCards);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId, normalizeText(req.params.code)];
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const row = await query(
+      `SELECT * FROM gift_cards
+       WHERE business_id = $1 AND code = $2 AND deleted_at IS NULL ${branchFilter}
+       LIMIT 1`,
+      params,
+    );
+    if (!row.rows.length) {
+      throw createHttpError(404, 'Gift card not found.');
+    }
+    res.json({ ok: true, giftCard: row.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.put('/api/gift-cards/:id', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req, {
@@ -1367,6 +3501,684 @@ app.delete('/api/gift-cards/:id', async (req, res, next) => {
     );
     if (result.rowCount === 0) {
       throw createHttpError(404, 'Gift card not found.');
+    }
+    res.json({ ok: true, id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Custom Roles / Granular Permissions
+// ============================================================================
+
+function normalizeCustomRoleBaseRole(value) {
+  const role = normalizeBusinessRole(value);
+  return role === 'ADMIN' ? 'MANAGER' : role;
+}
+
+function normalizeCustomRolePosMode(value) {
+  const clean = normalizeOptionalText(value)?.toLowerCase();
+  if (clean === 'products' || clean === 'services' || clean === 'both') {
+    return clean;
+  }
+  return 'both';
+}
+
+function normalizeCustomRoleServiceOrderScope(value) {
+  const clean = normalizeOptionalText(value)?.toLowerCase();
+  if (clean === 'assigned_only') {
+    return 'assigned_only';
+  }
+  return 'all_visible_services';
+}
+
+function normalizeJsonStringList(value) {
+  const values = Array.isArray(value) ? value : parseJsonStringList(value);
+  return JSON.stringify([...new Set(values.map(normalizeOptionalText).filter(Boolean))]);
+}
+
+function normalizeCustomRolePayload(body, existing = {}) {
+  const has = (key) => Object.prototype.hasOwnProperty.call(body || {}, key);
+  const read = (camel, snake) =>
+    has(camel) ? body[camel] : has(snake) ? body[snake] : existing[snake];
+  const name = has('name')
+    ? normalizeText(body.name)
+    : normalizeText(existing.name || '');
+  const featureSource = read('featureAccess', 'feature_access_json');
+  const allowedServicesSource = read(
+    'allowedServiceIds',
+    'allowed_service_ids_json',
+  );
+  const allowedBranchesSource = read(
+    'allowedBranchIds',
+    'allowed_branch_ids_json',
+  );
+  return {
+    name,
+    description:
+      has('description') || existing.description !== undefined
+        ? normalizeOptionalText(
+            has('description') ? body.description : existing.description,
+          ) || null
+        : null,
+    baseRole: normalizeCustomRoleBaseRole(read('baseRole', 'base_role')),
+    featureAccessJson: normalizeJsonStringList(featureSource),
+    allowedServiceIdsJson: normalizeJsonStringList(allowedServicesSource),
+    allowedBranchIdsJson: normalizeJsonStringList(allowedBranchesSource),
+    posMode: normalizeCustomRolePosMode(read('posMode', 'pos_mode')),
+    serviceOrderScope: normalizeCustomRoleServiceOrderScope(
+      read('serviceOrderScope', 'service_order_scope'),
+    ),
+    isActive: has('isActive')
+      ? body.isActive !== false
+      : has('is_active')
+        ? body.is_active !== false
+        : Number(existing.is_active ?? 1) !== 0,
+  };
+}
+
+async function propagateCustomRoleToUsers(client, role, businessId, now) {
+  await client.query(
+    `UPDATE users
+     SET role = $3,
+         feature_access_json = $4,
+         allowed_service_ids_json = NULLIF($5, '[]'),
+         allowed_branch_ids_json = NULLIF($6, '[]'),
+         pos_mode = $7,
+         service_order_scope = $8,
+         updated_at = $9,
+         sync_status = 'synced',
+         server_revision = nextval('sync_revision_seq')
+     WHERE business_id = $1
+       AND custom_role_id = $2
+       AND deleted_at IS NULL`,
+    [
+      businessId,
+      role.id,
+      role.base_role,
+      role.feature_access_json,
+      role.allowed_service_ids_json || '[]',
+      role.allowed_branch_ids_json || '[]',
+      role.pos_mode,
+      role.service_order_scope,
+      now,
+    ],
+  );
+}
+
+app.get('/api/roles', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.customRoles);
+    requireAdmin(businessContext);
+    const activeOnly = req.query.activeOnly === 'true';
+    const params = [businessContext.businessId];
+    const where = ['cr.business_id = $1', 'cr.deleted_at IS NULL'];
+    if (activeOnly) {
+      where.push('COALESCE(cr.is_active, 1) <> 0');
+    }
+    const rows = await query(
+      `SELECT cr.*,
+              COUNT(u.id)::int AS assigned_count
+       FROM custom_roles cr
+       LEFT JOIN users u
+         ON u.business_id = cr.business_id
+        AND u.custom_role_id = cr.id
+        AND u.deleted_at IS NULL
+       WHERE ${where.join(' AND ')}
+       GROUP BY cr.id
+       ORDER BY COALESCE(cr.is_active, 1) DESC, cr.name ASC`,
+      params,
+    );
+    res.json({ ok: true, roles: rows.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/roles', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.customRoles);
+    requireAdmin(businessContext);
+    const role = normalizeCustomRolePayload(req.body || {});
+    if (!role.name) {
+      throw createHttpError(400, 'Role name is required.');
+    }
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const result = await query(
+      `INSERT INTO custom_roles (
+         id, business_id, branch_id, name, description, base_role,
+         feature_access_json, allowed_service_ids_json, allowed_branch_ids_json,
+         pos_mode, service_order_scope, is_active, created_at, updated_at,
+         sync_status, server_revision
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, NULLIF($8, '[]'), NULLIF($9, '[]'),
+         $10, $11, $12, $13, $13, 'synced', nextval('sync_revision_seq')
+       )
+       RETURNING *`,
+      [
+        id,
+        businessContext.businessId,
+        normalizeOptionalText(req.body?.branchId || req.body?.branch_id) ||
+          'main_branch',
+        role.name,
+        role.description,
+        role.baseRole,
+        role.featureAccessJson,
+        role.allowedServiceIdsJson,
+        role.allowedBranchIdsJson,
+        role.posMode,
+        role.serviceOrderScope,
+        role.isActive ? 1 : 0,
+        now,
+      ],
+    );
+    res.json({ ok: true, role: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/roles/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.customRoles);
+    requireAdmin(businessContext);
+    const existing = await query(
+      `SELECT *
+       FROM custom_roles
+       WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [businessContext.businessId, req.params.id],
+    );
+    if (!existing.rows.length) {
+      throw createHttpError(404, 'Role was not found.');
+    }
+    const role = normalizeCustomRolePayload(req.body || {}, existing.rows[0]);
+    if (!role.name) {
+      throw createHttpError(400, 'Role name is required.');
+    }
+    const now = new Date().toISOString();
+    const updated = await withTransaction(async (client) => {
+      const result = await client.query(
+        `UPDATE custom_roles
+         SET name = $3,
+             description = $4,
+             base_role = $5,
+             feature_access_json = $6,
+             allowed_service_ids_json = NULLIF($7, '[]'),
+             allowed_branch_ids_json = NULLIF($8, '[]'),
+             pos_mode = $9,
+             service_order_scope = $10,
+             is_active = $11,
+             updated_at = $12,
+             sync_status = 'synced',
+             server_revision = nextval('sync_revision_seq')
+         WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL
+         RETURNING *`,
+        [
+          businessContext.businessId,
+          req.params.id,
+          role.name,
+          role.description,
+          role.baseRole,
+          role.featureAccessJson,
+          role.allowedServiceIdsJson,
+          role.allowedBranchIdsJson,
+          role.posMode,
+          role.serviceOrderScope,
+          role.isActive ? 1 : 0,
+          now,
+        ],
+      );
+      const row = result.rows[0];
+      await propagateCustomRoleToUsers(client, row, businessContext.businessId, now);
+      return row;
+    });
+    res.json({ ok: true, role: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/roles/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.customRoles);
+    requireAdmin(businessContext);
+    const now = new Date().toISOString();
+    const deleted = await withTransaction(async (client) => {
+      const result = await client.query(
+        `UPDATE custom_roles
+         SET deleted_at = $3,
+             updated_at = $3,
+             is_active = 0,
+             sync_status = 'synced',
+             server_revision = nextval('sync_revision_seq')
+         WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL
+         RETURNING *`,
+        [businessContext.businessId, req.params.id, now],
+      );
+      await client.query(
+        `UPDATE users
+         SET custom_role_id = NULL,
+             updated_at = $3,
+             sync_status = 'synced',
+             server_revision = nextval('sync_revision_seq')
+         WHERE business_id = $1
+           AND custom_role_id = $2
+           AND deleted_at IS NULL`,
+        [businessContext.businessId, req.params.id, now],
+      );
+      return result.rows[0] || null;
+    });
+    if (!deleted) {
+      throw createHttpError(404, 'Role was not found.');
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// Promotions
+// ============================================================================
+
+function normalizePromotionRule(rule = {}) {
+  return {
+    id: normalizeOptionalText(rule.id) || crypto.randomUUID(),
+    ruleType: normalizeOptionalText(rule.ruleType || rule.rule_type) || 'cart',
+    productId: normalizeOptionalText(rule.productId || rule.product_id) || null,
+    categoryId:
+      normalizeOptionalText(rule.categoryId || rule.category_id) || null,
+    minQuantity: Number(rule.minQuantity ?? rule.min_quantity ?? 0) || 0,
+    freeQuantity: Number(rule.freeQuantity ?? rule.free_quantity ?? 0) || 0,
+    bundleQuantity:
+      Number(rule.bundleQuantity ?? rule.bundle_quantity ?? 0) || 0,
+    minSubtotal: Number(rule.minSubtotal ?? rule.min_subtotal ?? 0) || 0,
+    ruleJson:
+      typeof rule.ruleJson === 'string'
+        ? normalizeOptionalText(rule.ruleJson)
+        : rule.ruleJson || rule.rule_json
+          ? JSON.stringify(rule.ruleJson || rule.rule_json)
+          : null,
+  };
+}
+
+async function loadPromotionRules(businessId, promotionIds, target = query) {
+  if (!promotionIds.length) return new Map();
+  const rows = await target(
+    `SELECT * FROM promotion_rules
+     WHERE business_id = $1
+       AND promotion_id = ANY($2::text[])
+       AND deleted_at IS NULL
+     ORDER BY created_at ASC`,
+    [businessId, promotionIds],
+  );
+  const byPromotion = new Map();
+  for (const rule of rows.rows) {
+    const list = byPromotion.get(rule.promotion_id) || [];
+    list.push(rule);
+    byPromotion.set(rule.promotion_id, list);
+  }
+  return byPromotion;
+}
+
+app.get('/api/promotions', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.promotions);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId];
+    const where = ['business_id = $1', 'deleted_at IS NULL'];
+    if (req.query.activeOnly === 'true') {
+      where.push('is_active = true');
+    }
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT * FROM promotions
+       WHERE ${where.join(' AND ')} ${branchFilter}
+       ORDER BY priority DESC, updated_at DESC
+       LIMIT 500`,
+      params,
+    );
+    const rules = await loadPromotionRules(
+      businessContext.businessId,
+      rows.rows.map((row) => row.id),
+    );
+    res.json({
+      ok: true,
+      promotions: rows.rows.map((row) => ({
+        ...row,
+        rules: rules.get(row.id) || [],
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/promotions/active', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.promotions);
+    const scope = resolveDataScope(businessContext, req.query.branchId);
+    const params = [businessContext.businessId, new Date().toISOString()];
+    let branchFilter = '';
+    if (scope.branchIds != null) {
+      branchFilter = `AND COALESCE(branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`;
+      params.push(scope.branchIds);
+    }
+    const rows = await query(
+      `SELECT * FROM promotions
+       WHERE business_id = $1
+         AND deleted_at IS NULL
+         AND is_active = true
+         AND (starts_at IS NULL OR starts_at <= $2)
+         AND (ends_at IS NULL OR ends_at >= $2)
+         ${branchFilter}
+       ORDER BY priority DESC, updated_at DESC`,
+      params,
+    );
+    const rules = await loadPromotionRules(
+      businessContext.businessId,
+      rows.rows.map((row) => row.id),
+    );
+    res.json({
+      ok: true,
+      promotions: rows.rows.map((row) => ({
+        ...row,
+        rules: rules.get(row.id) || [],
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/promotions', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.promotions);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const scope = resolveDataScope(businessContext, req.body.branchId);
+    const branchId = scope.branchId || 'main_branch';
+    const name = normalizeText(req.body.name);
+    if (!name) {
+      throw createHttpError(400, 'Promotion name is required.');
+    }
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const rules = Array.isArray(req.body.rules)
+      ? req.body.rules.map(normalizePromotionRule)
+      : [];
+    const result = await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO promotions (
+          id, business_id, branch_id, name, description, promotion_type,
+          discount_type, discount_value, priority, starts_at, ends_at,
+          days_of_week, start_time, end_time, is_active, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16
+        )`,
+        [
+          id,
+          businessContext.businessId,
+          branchId,
+          name,
+          normalizeOptionalText(req.body.description) || null,
+          normalizeOptionalText(
+            req.body.promotionType || req.body.promotion_type,
+          ) || 'amount_off',
+          normalizeOptionalText(
+            req.body.discountType || req.body.discount_type,
+          ) || 'amount',
+          Number(req.body.discountValue ?? req.body.discount_value ?? 0) || 0,
+          Number(req.body.priority ?? 0) || 0,
+          req.body.startsAt || req.body.starts_at
+            ? toIsoString(req.body.startsAt || req.body.starts_at)
+            : null,
+          req.body.endsAt || req.body.ends_at
+            ? toIsoString(req.body.endsAt || req.body.ends_at)
+            : null,
+          normalizeOptionalText(req.body.daysOfWeek || req.body.days_of_week) ||
+            null,
+          normalizeOptionalText(req.body.startTime || req.body.start_time) ||
+            null,
+          normalizeOptionalText(req.body.endTime || req.body.end_time) || null,
+          req.body.isActive === undefined ? true : req.body.isActive !== false,
+          now,
+        ],
+      );
+      for (const rule of rules) {
+        await client.query(
+          `INSERT INTO promotion_rules (
+            id, business_id, branch_id, promotion_id, rule_type, product_id,
+            category_id, min_quantity, free_quantity, bundle_quantity,
+            min_subtotal, rule_json, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)`,
+          [
+            rule.id,
+            businessContext.businessId,
+            branchId,
+            id,
+            rule.ruleType,
+            rule.productId,
+            rule.categoryId,
+            rule.minQuantity,
+            rule.freeQuantity,
+            rule.bundleQuantity,
+            rule.minSubtotal,
+            rule.ruleJson,
+            now,
+          ],
+        );
+      }
+      const promotion = await client.query(
+        'SELECT * FROM promotions WHERE id = $1',
+        [id],
+      );
+      return promotion.rows[0];
+    });
+    res.json({ ok: true, promotion: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/promotions/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.promotions);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const id = req.params.id;
+    const existing = await query(
+      'SELECT * FROM promotions WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL',
+      [id, businessContext.businessId],
+    );
+    if (!existing.rows.length) {
+      throw createHttpError(404, 'Promotion not found.');
+    }
+    const now = new Date().toISOString();
+    const rules = Array.isArray(req.body.rules)
+      ? req.body.rules.map(normalizePromotionRule)
+      : null;
+    const updated = await withTransaction(async (client) => {
+      const fields = [];
+      const params = [];
+      let idx = 1;
+      const addField = (column, value) => {
+        fields.push(`${column} = $${idx++}`);
+        params.push(value);
+      };
+      if (req.body.name !== undefined) {
+        addField('name', normalizeText(req.body.name));
+      }
+      if (req.body.description !== undefined) {
+        addField('description', normalizeOptionalText(req.body.description) || null);
+      }
+      if (
+        req.body.promotionType !== undefined ||
+        req.body.promotion_type !== undefined
+      ) {
+        addField(
+          'promotion_type',
+          normalizeOptionalText(req.body.promotionType || req.body.promotion_type) ||
+            'amount_off',
+        );
+      }
+      if (
+        req.body.discountType !== undefined ||
+        req.body.discount_type !== undefined
+      ) {
+        addField(
+          'discount_type',
+          normalizeOptionalText(req.body.discountType || req.body.discount_type) ||
+            'amount',
+        );
+      }
+      if (
+        req.body.discountValue !== undefined ||
+        req.body.discount_value !== undefined
+      ) {
+        addField(
+          'discount_value',
+          Number(req.body.discountValue ?? req.body.discount_value ?? 0) || 0,
+        );
+      }
+      if (req.body.priority !== undefined) {
+        addField('priority', Number(req.body.priority ?? 0) || 0);
+      }
+      if (req.body.startsAt !== undefined || req.body.starts_at !== undefined) {
+        const value = req.body.startsAt ?? req.body.starts_at;
+        addField('starts_at', value ? toIsoString(value) : null);
+      }
+      if (req.body.endsAt !== undefined || req.body.ends_at !== undefined) {
+        const value = req.body.endsAt ?? req.body.ends_at;
+        addField('ends_at', value ? toIsoString(value) : null);
+      }
+      if (
+        req.body.daysOfWeek !== undefined ||
+        req.body.days_of_week !== undefined
+      ) {
+        addField(
+          'days_of_week',
+          normalizeOptionalText(req.body.daysOfWeek || req.body.days_of_week) ||
+            null,
+        );
+      }
+      if (req.body.startTime !== undefined || req.body.start_time !== undefined) {
+        addField(
+          'start_time',
+          normalizeOptionalText(req.body.startTime || req.body.start_time) ||
+            null,
+        );
+      }
+      if (req.body.endTime !== undefined || req.body.end_time !== undefined) {
+        addField(
+          'end_time',
+          normalizeOptionalText(req.body.endTime || req.body.end_time) || null,
+        );
+      }
+      if (req.body.isActive !== undefined || req.body.is_active !== undefined) {
+        addField('is_active', (req.body.isActive ?? req.body.is_active) !== false);
+      }
+      if (fields.length) {
+        addField('updated_at', now);
+        params.push(id);
+        await client.query(
+          `UPDATE promotions SET ${fields.join(', ')} WHERE id = $${idx}`,
+          params,
+        );
+      }
+      if (rules != null) {
+        await client.query(
+          `UPDATE promotion_rules
+           SET deleted_at = $1, updated_at = $1
+           WHERE promotion_id = $2 AND business_id = $3 AND deleted_at IS NULL`,
+          [now, id, businessContext.businessId],
+        );
+        for (const rule of rules) {
+          await client.query(
+            `INSERT INTO promotion_rules (
+              id, business_id, branch_id, promotion_id, rule_type, product_id,
+              category_id, min_quantity, free_quantity, bundle_quantity,
+              min_subtotal, rule_json, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)`,
+            [
+              rule.id,
+              businessContext.businessId,
+              existing.rows[0].branch_id || 'main_branch',
+              id,
+              rule.ruleType,
+              rule.productId,
+              rule.categoryId,
+              rule.minQuantity,
+              rule.freeQuantity,
+              rule.bundleQuantity,
+              rule.minSubtotal,
+              rule.ruleJson,
+              now,
+            ],
+          );
+        }
+      }
+      const promotion = await client.query(
+        'SELECT * FROM promotions WHERE id = $1',
+        [id],
+      );
+      return promotion.rows[0];
+    });
+    res.json({ ok: true, promotion: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/promotions/:id', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      requireWrite: true,
+    });
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.promotions);
+    ensureRoleAtLeast(businessContext, 'MANAGER');
+    const now = new Date().toISOString();
+    const id = req.params.id;
+    const result = await withTransaction(async (client) => {
+      const deleted = await client.query(
+        `UPDATE promotions SET deleted_at = $1, updated_at = $1
+         WHERE id = $2 AND business_id = $3 AND deleted_at IS NULL`,
+        [now, id, businessContext.businessId],
+      );
+      if (deleted.rowCount > 0) {
+        await client.query(
+          `UPDATE promotion_rules SET deleted_at = $1, updated_at = $1
+           WHERE promotion_id = $2 AND business_id = $3 AND deleted_at IS NULL`,
+          [now, id, businessContext.businessId],
+        );
+      }
+      return deleted.rowCount;
+    });
+    if (result === 0) {
+      throw createHttpError(404, 'Promotion not found.');
     }
     res.json({ ok: true, id });
   } catch (error) {
@@ -2895,10 +5707,11 @@ async function handlePosMpesaStkCallback(req, res, next) {
         metadata,
       });
       if (paymentResult?.businessId) {
+        await applyCustomerPortalMpesaPayment(paymentResult);
         notifyBusinessRealtimeChange({
           businessId: paymentResult.businessId,
           reason: 'payment',
-          tables: paymentResult.saleId ? ['sales'] : [],
+          tables: paymentResult.saleId ? ['sales'] : ['sales', 'customers', 'credit_payments'],
         });
       }
     }
@@ -6984,7 +9797,10 @@ app.get('/api/catalog/storefront', async (req, res, next) => {
 app.get('/api/catalog/brand', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
-    const brand = await loadStorefrontBrand(businessContext.businessId);
+    const branchId = normalizeOptionalText(req.query?.branchId);
+    const brand = await loadStorefrontBrand(businessContext.businessId, {
+      branchId,
+    });
     res.json({ ok: true, data: brand });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -6995,16 +9811,20 @@ app.put('/api/catalog/brand', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
     requireManagerOrAdmin(businessContext);
+    const branchId = normalizeOptionalText(
+      req.body?.branchId || req.query?.branchId,
+    );
     const brand = await saveStorefrontBrand(
       businessContext.businessId,
       req.body || {},
+      { branchId },
     );
     await invalidateCatalogCache(businessContext.businessId);
     notifyBusinessRealtimeChange({
       businessId: businessContext.businessId,
       sourceDeviceId: businessContext.deviceId,
       reason: 'catalog_brand',
-      tables: ['businesses'],
+      tables: ['businesses', 'storefront_brands'],
     });
     res.json({ ok: true, data: brand });
   } catch (error) {
@@ -7624,6 +10444,18 @@ function requireAdmin(businessContext) {
 function requireManagerOrAdmin(businessContext) {
   if (businessContext.role !== 'ADMIN' && businessContext.role !== 'MANAGER') {
     throw createHttpError(403, 'Manager or administrator access is required');
+  }
+}
+
+function ensureRoleAtLeast(businessContext, minimumRole) {
+  const rank = { CASHIER: 1, MANAGER: 2, ADMIN: 3 };
+  const current = rank[normalizeBusinessRole(businessContext?.role)] || 0;
+  const required = rank[normalizeBusinessRole(minimumRole)] || rank.MANAGER;
+  if (current < required) {
+    throw createHttpError(
+      403,
+      `${normalizeBusinessRole(minimumRole)} access is required`,
+    );
   }
 }
 
@@ -8763,6 +11595,26 @@ async function ensureStorefrontBrandSchema(target = query) {
     target,
     'ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_description text',
   );
+  await ensureStorefrontBranchBrandSchema(target);
+}
+
+async function ensureStorefrontBranchBrandSchema(target = query) {
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS storefront_brands (
+      business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      branch_id text NOT NULL DEFAULT 'main_branch',
+      name text,
+      logo_url text,
+      cover_url text,
+      cover_urls_json jsonb,
+      primary_color text,
+      tagline text,
+      description text,
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (business_id, branch_id)
+    )`,
+  );
 }
 
 async function ensureProductStorefrontSchema(target = query) {
@@ -8870,8 +11722,40 @@ async function ensureQuotationsSchema(target = query) {
   );
 }
 
-async function loadStorefrontBrand(businessId) {
+async function loadStorefrontBrand(businessId, options = {}) {
+  const branchId = normalizeOptionalText(options.branchId);
+  const branchName = normalizeOptionalText(options.branchName);
   await ensureStorefrontBrandSchema(query);
+
+  if (branchId && branchId !== 'main_branch') {
+    const branchResult = await query(
+      `SELECT
+         name,
+         logo_url AS catalog_logo_url,
+         cover_url AS catalog_cover_url,
+         cover_urls_json AS catalog_cover_urls_json,
+         primary_color AS catalog_primary_color,
+         tagline AS catalog_tagline,
+         description AS catalog_description,
+         updated_at
+       FROM storefront_brands
+       WHERE business_id = $1 AND branch_id = $2
+       LIMIT 1`,
+      [businessId, branchId],
+    );
+    if (branchResult.rows.length) {
+      const row = branchResult.rows[0];
+      return normalizeStorefrontBrandRow({
+        ...row,
+        id: businessId,
+        name:
+          normalizeOptionalText(row.name) ||
+          branchName ||
+          (await loadBusinessName(query, businessId)),
+      });
+    }
+  }
+
   const result = await query(
     `SELECT
        id,
@@ -8894,7 +11778,16 @@ async function loadStorefrontBrand(businessId) {
   return normalizeStorefrontBrandRow(result.rows[0]);
 }
 
-async function saveStorefrontBrand(businessId, input) {
+async function loadBusinessName(target, businessId) {
+  const result = await target(
+    `SELECT name FROM businesses WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+    [businessId],
+  );
+  return normalizeOptionalText(result.rows[0]?.name) || 'Store';
+}
+
+async function saveStorefrontBrand(businessId, input, options = {}) {
+  const branchId = normalizeOptionalText(options.branchId);
   await ensureStorefrontBrandSchema(query);
   const logoUrl = normalizeStorefrontImageUrl(
     input.logoUrl ?? input.logo_url,
@@ -8914,6 +11807,52 @@ async function saveStorefrontBrand(businessId, input) {
   );
   const tagline = limitText(input.tagline, 80);
   const description = limitText(input.description, 260);
+  const displayName = normalizeOptionalText(input.name ?? input.businessName);
+
+  if (branchId && branchId !== 'main_branch') {
+    const result = await query(
+      `INSERT INTO storefront_brands (
+         business_id, branch_id, name, logo_url, cover_url,
+         cover_urls_json, primary_color, tagline, description, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, NOW())
+       ON CONFLICT (business_id, branch_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         logo_url = EXCLUDED.logo_url,
+         cover_url = EXCLUDED.cover_url,
+         cover_urls_json = EXCLUDED.cover_urls_json,
+         primary_color = EXCLUDED.primary_color,
+         tagline = EXCLUDED.tagline,
+         description = EXCLUDED.description,
+         updated_at = NOW()
+       RETURNING
+         name,
+         logo_url AS catalog_logo_url,
+         cover_url AS catalog_cover_url,
+         cover_urls_json AS catalog_cover_urls_json,
+         primary_color AS catalog_primary_color,
+         tagline AS catalog_tagline,
+         description AS catalog_description,
+         updated_at`,
+      [
+        businessId,
+        branchId,
+        displayName,
+        logoUrl,
+        primaryCoverUrl,
+        JSON.stringify(coverUrls),
+        primaryColor,
+        tagline,
+        description,
+      ],
+    );
+    const row = result.rows[0];
+    return normalizeStorefrontBrandRow({
+      ...row,
+      id: businessId,
+      name: normalizeOptionalText(row.name) || displayName || 'Store',
+    });
+  }
 
   const result = await query(
     `UPDATE businesses
@@ -9465,6 +12404,9 @@ function featureRequiredForTable(tableName) {
     case 'categories':
       return FEATURE_KEYS.categories;
     case 'purchase_invoices':
+    case 'supplier_payments':
+    case 'purchase_orders':
+    case 'purchase_order_items':
     case 'suppliers':
     case 'stock_batches':
       return FEATURE_KEYS.purchases;
@@ -9476,6 +12418,28 @@ function featureRequiredForTable(tableName) {
     case 'product_variants':
     case 'product_variant_colors':
       return FEATURE_KEYS.products;
+    case 'product_serials':
+      return FEATURE_KEYS.serialTracking;
+    case 'stocktake_sessions':
+    case 'stocktake_items':
+      return FEATURE_KEYS.stocktake;
+    case 'sms_campaigns':
+      return FEATURE_KEYS.smsCampaigns;
+    case 'exchange_rates':
+      return FEATURE_KEYS.multiCurrency;
+    case 'wastage_logs':
+      return FEATURE_KEYS.wastage;
+    case 'restaurant_tables':
+    case 'table_orders':
+      return FEATURE_KEYS.restaurantMode;
+    case 'employee_attendance':
+      return FEATURE_KEYS.attendance;
+    case 'customer_groups':
+    case 'customer_group_members':
+      return FEATURE_KEYS.customerSegments;
+    case 'delivery_zones':
+    case 'deliveries':
+      return FEATURE_KEYS.delivery;
     case 'sales':
     case 'sale_items':
       return FEATURE_KEYS.sales;
@@ -9484,6 +12448,14 @@ function featureRequiredForTable(tableName) {
     case 'loyalty_rules':
     case 'loyalty_ledger':
       return FEATURE_KEYS.loyalty;
+    case 'gift_cards':
+    case 'gift_card_transactions':
+      return FEATURE_KEYS.giftCards;
+    case 'custom_roles':
+      return FEATURE_KEYS.customRoles;
+    case 'promotions':
+    case 'promotion_rules':
+      return FEATURE_KEYS.promotions;
     default:
       return null;
   }
@@ -9890,13 +12862,18 @@ async function loadPublicCatalog(
     business.country_code,
   );
 
+  const branchBrand = await loadStorefrontBrand(business.id, {
+    branchId: selectedBranch.id,
+    branchName: selectedBranch.name,
+  });
+
   const catalog = {
     business: {
       id: business.id,
-      name: business.name,
+      name: branchBrand.businessName || business.name,
       countryCode: business.country_code || 'GLOBAL',
       whatsappNumber: normalizeOptionalText(business.whatsapp_number),
-      brand: normalizeStorefrontBrandRow(business),
+      brand: branchBrand,
       branches,
       selectedBranch,
     },
@@ -10369,6 +13346,10 @@ function normalizePublicCatalogOrder(row, items) {
     subtotal: Number(row.subtotal || 0),
     itemCount: Number(row.item_count || 0),
     source: row.source || 'catalog_link',
+    paymentMethod: row.payment_method || 'manual',
+    paymentStatus: row.payment_status || 'pending',
+    deliveryStatus: row.delivery_status || null,
+    trackingCode: row.tracking_code || null,
     paymentRequestedAt: toIsoString(row.payment_requested_at),
     fulfilledAt: toIsoString(row.fulfilled_at),
     createdAt: toIsoString(row.created_at),
@@ -12843,6 +15824,253 @@ function phoneMatchCandidates(value) {
   return [...candidates];
 }
 
+let customerPortalAuthSchemaReady = false;
+
+async function ensureCustomerPortalAuthSchema(target = query) {
+  const canUseCache = target === query;
+  if (canUseCache && customerPortalAuthSchemaReady) return;
+  await runDbQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS customer_portal_email_otps (
+       id text PRIMARY KEY,
+       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+       customer_id text NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+       email text NOT NULL,
+       code_hash text NOT NULL,
+       attempts integer NOT NULL DEFAULT 0,
+       expires_at timestamptz NOT NULL,
+       sent_at timestamptz NOT NULL DEFAULT NOW(),
+       consumed_at timestamptz,
+       created_at timestamptz NOT NULL DEFAULT NOW(),
+       updated_at timestamptz NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_customer_portal_email_otps_lookup
+     ON customer_portal_email_otps (business_id, customer_id, email, created_at DESC)`,
+  );
+  if (canUseCache) customerPortalAuthSchemaReady = true;
+}
+
+function normalizeCustomerPortalEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function customerPortalOtpHash({ businessId, customerId, email, code }) {
+  return crypto
+    .createHmac('sha256', config.emailOtpSecret || config.platformJwtSecret)
+    .update([businessId, customerId, email, code].join(':'))
+    .digest('hex');
+}
+
+async function requestCustomerPortalEmailCode({ businessId, email }) {
+  await ensureCustomerPortalAuthSchema();
+  const customerResult = await query(
+    `SELECT id FROM customers
+     WHERE business_id = $1 AND LOWER(TRIM(COALESCE(email, ''))) = $2
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [businessId, email],
+  );
+  const customer = customerResult.rows[0];
+  // Do not reveal whether the address has a portal account.
+  if (!customer) return { sent: true };
+
+  const latest = await query(
+    `SELECT sent_at FROM customer_portal_email_otps
+     WHERE business_id = $1 AND customer_id = $2 AND email = $3
+       AND consumed_at IS NULL
+     ORDER BY sent_at DESC LIMIT 1`,
+    [businessId, customer.id, email],
+  );
+  const now = new Date();
+  const cooldownMs = Math.max(1, Number(config.emailOtpCooldownSeconds || 60)) * 1000;
+  const latestSentAt = latest.rows[0]?.sent_at ? new Date(latest.rows[0].sent_at) : null;
+  if (latestSentAt && now.getTime() - latestSentAt.getTime() < cooldownMs) {
+    return {
+      sent: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((cooldownMs - (now.getTime() - latestSentAt.getTime())) / 1000)),
+    };
+  }
+
+  const code = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+  const expiresAt = new Date(
+    now.getTime() + Math.max(1, Number(config.emailOtpTtlMinutes || 10)) * 60 * 1000,
+  );
+  const otpId = crypto.randomUUID();
+  await query(
+    `INSERT INTO customer_portal_email_otps (
+       id, business_id, customer_id, email, code_hash, attempts,
+       expires_at, sent_at, created_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $7, $7)`,
+    [
+      otpId,
+      businessId,
+      customer.id,
+      email,
+      customerPortalOtpHash({ businessId, customerId: customer.id, email, code }),
+      expiresAt.toISOString(),
+      now.toISOString(),
+    ],
+  );
+  try {
+    await sendOtpEmail({ email, code, expiresAt });
+  } catch (error) {
+    await query(
+      `UPDATE customer_portal_email_otps
+       SET consumed_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [otpId],
+    );
+    throw error;
+  }
+  return { sent: true, expiresAt: expiresAt.toISOString() };
+}
+
+async function verifyCustomerPortalEmailCode({ businessId, email, code }) {
+  await ensureCustomerPortalAuthSchema();
+  const customerResult = await query(
+    `SELECT id, name, balance FROM customers
+     WHERE business_id = $1 AND LOWER(TRIM(COALESCE(email, ''))) = $2
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [businessId, email],
+  );
+  const customer = customerResult.rows[0];
+  if (!customer) throw createHttpError(401, 'The verification code is invalid or expired.');
+  const otpResult = await query(
+    `SELECT * FROM customer_portal_email_otps
+     WHERE business_id = $1 AND customer_id = $2 AND email = $3
+       AND consumed_at IS NULL
+     ORDER BY created_at DESC LIMIT 1`,
+    [businessId, customer.id, email],
+  );
+  const otp = otpResult.rows[0];
+  const invalid = () => createHttpError(401, 'The verification code is invalid or expired.');
+  if (!otp || new Date(otp.expires_at).getTime() <= Date.now()) throw invalid();
+  if (Number(otp.attempts || 0) >= Math.max(1, Number(config.emailOtpMaxAttempts || 5))) {
+    throw createHttpError(429, 'Too many incorrect attempts. Request a new code.');
+  }
+  const expected = customerPortalOtpHash({ businessId, customerId: customer.id, email, code });
+  if (!safeEquals(expected, otp.code_hash)) {
+    await query(
+      `UPDATE customer_portal_email_otps SET attempts = attempts + 1, updated_at = NOW() WHERE id = $1`,
+      [otp.id],
+    );
+    throw invalid();
+  }
+  await query(
+    `UPDATE customer_portal_email_otps SET consumed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    [otp.id],
+  );
+  return customer;
+}
+
+function requireCustomerPortalSession(req) {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) throw createHttpError(401, 'Customer portal sign-in is required.');
+  const portal = jwt.verify(token, config.platformJwtSecret);
+  if (portal?.type !== 'customer_portal' || !portal.businessId || !portal.customerId) {
+    throw createHttpError(403, 'Customer portal token required.');
+  }
+  return portal;
+}
+
+function customerPortalPaymentResponse(payment) {
+  const portalMetadata = payment?.metadata?.customerPortal || {};
+  return {
+    id: payment.id,
+    amount: Number(payment.amountMinor || 0) / 100,
+    currency: payment.currency,
+    status: payment.status,
+    receiptNumber: payment.receiptNumber || null,
+    appliedAmount: Number(portalMetadata.appliedAmount || 0),
+    unappliedAmount: Number(portalMetadata.unappliedAmount || 0),
+    createdAt: payment.createdAt,
+    completedAt: payment.completedAt,
+  };
+}
+
+async function applyCustomerPortalMpesaPayment(paymentResult) {
+  if (paymentResult?.status !== 'paid' || !paymentResult?.businessId || !paymentResult?.paymentId) return;
+  const payment = await loadPosPayment({
+    businessId: paymentResult.businessId,
+    paymentId: paymentResult.paymentId,
+  });
+  const customerId = normalizeOptionalText(payment?.metadata?.customerPortal?.customerId);
+  if (!payment || !customerId) return;
+
+  await ensureSyncStockEffectSchema();
+  await withTransaction(async (client) => {
+    const customerResult = await client.query(
+      `SELECT id FROM customers WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
+      [payment.businessId, customerId],
+    );
+    if (!customerResult.rows[0]) return;
+    const sales = await client.query(
+      `SELECT id, balance_due FROM sales
+       WHERE business_id = $1 AND customer_id = $2 AND deleted_at IS NULL
+         AND refund_for_sale_id IS NULL AND balance_due > 0.009
+       ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, created_at ASC
+       FOR UPDATE`,
+      [payment.businessId, customerId],
+    );
+    let remaining = Math.max(0, Number(payment.amountMinor || 0) / 100);
+    const now = new Date().toISOString();
+    for (const sale of sales.rows) {
+      if (remaining <= 0.009) break;
+      const applied = Math.min(remaining, Math.max(0, Number(sale.balance_due || 0)));
+      if (applied <= 0) continue;
+      const paymentId = `portal_${payment.id}_${sale.id}`;
+      await client.query(
+        `INSERT INTO credit_payments (
+           id, business_id, payment_group_id, customer_id, sale_id, user_id,
+           amount, note, received_at, created_at, updated_at, sync_status
+         ) VALUES ($1, $2, $3, $4, $5, 'customer_portal', $6, $7, $8, $8, $8, 'synced')
+         ON CONFLICT (id) DO NOTHING RETURNING id`,
+        [
+          paymentId,
+          payment.businessId,
+          payment.id,
+          customerId,
+          sale.id,
+          applied,
+          `Customer portal M-Pesa${payment.receiptNumber ? ` ${payment.receiptNumber}` : ''}`,
+          now,
+        ],
+      );
+      remaining = Number((remaining - applied).toFixed(2));
+      await rebuildSaleCreditBalance(client, payment.businessId, sale.id);
+    }
+    const appliedResult = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) AS amount
+       FROM credit_payments
+       WHERE business_id = $1 AND payment_group_id = $2 AND deleted_at IS NULL`,
+      [payment.businessId, payment.id],
+    );
+    const appliedAmount = Number(appliedResult.rows[0]?.amount || 0);
+    await rebuildCustomerBalance(client, payment.businessId, customerId);
+    await client.query(
+      `UPDATE pos_payment_requests
+       SET metadata_json = metadata_json || $2::jsonb, updated_at = NOW()
+       WHERE id = $1`,
+      [
+        payment.id,
+        JSON.stringify({
+          customerPortal: {
+            ...(payment.metadata?.customerPortal || {}),
+            appliedAmount,
+            unappliedAmount: Math.max(0, Number(payment.amountMinor || 0) / 100 - appliedAmount),
+            creditedAt: now,
+          },
+        }),
+      ],
+    );
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
@@ -12943,6 +16171,27 @@ function normalizeReportDate(value) {
   }
 
   return normalized;
+}
+
+function normalizeReportDateRange(queryParams = {}) {
+  const now = new Date();
+  const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    .toISOString()
+    .slice(0, 10);
+  return {
+    from: queryParams.from ? normalizeReportDate(queryParams.from) : firstOfMonth,
+    to: queryParams.to ? normalizeReportDate(queryParams.to) : normalizeReportDate(),
+  };
+}
+
+function addReportBranchFilter(clauses, params, alias, scope) {
+  if (scope.branchIds == null) {
+    return;
+  }
+  clauses.push(
+    `COALESCE(${alias}.branch_id, 'main_branch') = ANY($${params.length + 1}::text[])`,
+  );
+  params.push(scope.branchIds);
 }
 
 async function transcribeAudio(aiConfig, { audioBase64, mimeType, filename }) {
@@ -14246,6 +17495,18 @@ const syncTableFeatures = Object.freeze({
   purchase_order_items: 'purchases',
   stock_batches: 'products',
   stock_transfers: 'transfers',
+  stocktake_sessions: 'stocktake',
+  stocktake_items: 'stocktake',
+  sms_campaigns: 'sms_campaigns',
+  exchange_rates: 'multi_currency',
+  wastage_logs: 'wastage',
+  restaurant_tables: 'restaurant_mode',
+  table_orders: 'restaurant_mode',
+  employee_attendance: 'attendance',
+  customer_groups: 'customer_segments',
+  customer_group_members: 'customer_segments',
+  delivery_zones: 'delivery',
+  deliveries: 'delivery',
   customer_invoices: 'sales',
   customer_invoice_items: 'sales',
   expenses: 'profit_loss',
@@ -14256,6 +17517,9 @@ const syncTableFeatures = Object.freeze({
   loyalty_rules: 'loyalty',
   loyalty_ledger: 'loyalty',
   gift_cards: 'gift_cards',
+  gift_card_transactions: 'gift_cards',
+  promotions: 'promotions',
+  promotion_rules: 'promotions',
 });
 
 const employeeAttributionTables = new Set([

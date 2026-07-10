@@ -322,6 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'phone': (cloudUser['phone'] as String?) ?? '',
         'password': passwordForLocalLogin,
         'role': (cloudUser['role'] as String?) ?? 'CASHIER',
+        'custom_role_id': cloudUser['custom_role_id'] as String?,
         'feature_access_json': cloudUser['feature_access_json'] as String?,
         'allowed_service_ids_json':
             cloudUser['allowed_service_ids_json'] as String?,
@@ -345,6 +346,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'phone': (cloudUser['phone'] as String?) ?? '',
           'password': passwordForLocalLogin,
           'role': (cloudUser['role'] as String?) ?? 'CASHIER',
+          'custom_role_id': cloudUser['custom_role_id'] as String?,
           'feature_access_json': cloudUser['feature_access_json'] as String?,
           'allowed_service_ids_json':
               cloudUser['allowed_service_ids_json'] as String?,
@@ -422,7 +424,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 72,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.primary, Theme.of(context).colorScheme.secondary],
+                      colors: [
+                        AppColors.primary,
+                        Theme.of(context).colorScheme.secondary,
+                      ],
                     ),
                     borderRadius: BorderRadius.circular(20),
                   ),
@@ -463,19 +468,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: AppColors.error,
-                    size: 18,
-                  ),
+                  Icon(Icons.error_outline, color: AppColors.error, size: 18),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: TextStyle(
-                        color: AppColors.error,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: AppColors.error, fontSize: 13),
                     ),
                   ),
                 ],
@@ -977,10 +975,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                     child: Text(
                       _error!,
-                      style: TextStyle(
-                        color: AppColors.error,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: AppColors.error, fontSize: 13),
                     ),
                   ),
                   SizedBox(height: 18),
@@ -1040,7 +1035,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       children: [
         Text(
           'Enter the code sent to $_email.',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 13,
+          ),
         ),
         if (expiryText != null) ...[
           SizedBox(height: 6),
@@ -1135,7 +1133,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           Expanded(
             child: Text(
               'Your password was reset successfully.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
             ),
           ),
         ],
@@ -1154,7 +1155,10 @@ class _GradientIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return ShaderMask(
       shaderCallback: (bounds) => LinearGradient(
-        colors: [Theme.of(context).colorScheme.secondary, AppColors.primaryLight],
+        colors: [
+          Theme.of(context).colorScheme.secondary,
+          AppColors.primaryLight,
+        ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(bounds),

@@ -180,6 +180,9 @@ export function OrderTracker({ business, currency, currencyCode, onClose }: Orde
                     Deliver to: {order.deliveryAddress}
                   </p>
                 )}
+                {order.trackingCode && (
+                  <p className="mt-2 text-[12px] text-muted">Tracking: {order.trackingCode}{order.deliveryStatus ? ` · ${order.deliveryStatus}` : ""}</p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

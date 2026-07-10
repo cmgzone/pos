@@ -21,24 +21,36 @@ import '../training/application/training_controller.dart';
 import '../training/presentation/training_hub_screen.dart';
 import '../training/widgets/training_anchor.dart';
 import '../customers/presentation/contacts_screen.dart';
+import '../customers/presentation/customer_groups_screen.dart';
 import '../customers/presentation/kopesha_screen.dart';
 import '../invoices/presentation/customer_invoices_screen.dart';
 import '../loyalty/presentation/loyalty_screen.dart';
+import '../marketing/presentation/sms_campaign_screen.dart';
 import '../gift_cards/presentation/gift_card_screen.dart';
+import '../promotions/presentation/promotion_screen.dart';
 import '../products/presentation/catalog_orders_screen.dart';
 import '../products/presentation/category_management_screen.dart';
 import '../products/presentation/product_list_screen.dart';
+import '../products/presentation/serial_tracking_screen.dart';
 import '../products/presentation/stock_list_screen.dart';
+import '../products/presentation/stocktake_screen.dart';
 import '../products/presentation/stock_transfer_screen.dart';
+import '../products/presentation/wastage_screen.dart';
+import '../restaurant/presentation/restaurant_screen.dart';
+import '../attendance/presentation/attendance_screen.dart';
+import '../delivery/presentation/delivery_screen.dart';
 import '../purchases/presentation/purchase_management_screen.dart';
+import '../purchases/presentation/purchase_approval_screen.dart';
 import '../reports/presentation/profit_loss_screen.dart';
 import '../reports/presentation/reports_screen.dart';
+import '../reports/presentation/advanced_bi_screen.dart';
 import '../sales/presentation/pos_screen.dart';
 import '../sales/presentation/quotations_screen.dart';
 import '../sales/presentation/sales_history_screen.dart';
 import '../services/presentation/service_management_screen.dart';
 import '../settings/presentation/audit_log_screen.dart';
 import '../settings/presentation/branch_management_screen.dart';
+import '../settings/presentation/custom_roles_screen.dart';
 import '../settings/presentation/settings_screen.dart';
 import '../settings/presentation/subscription_plans_section.dart';
 import '../shifts/presentation/shift_management_screen.dart';
@@ -208,12 +220,93 @@ class AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 25,
+      section: _NavSection.inventory,
+      item: _NavItem(
+        icon: Icons.qr_code_2_outlined,
+        selectedIcon: Icons.qr_code_2_rounded,
+        label: 'Serials',
+      ),
+    ),
+    _NavDestination(
+      index: 26,
+      section: _NavSection.inventory,
+      item: _NavItem(
+        icon: Icons.playlist_add_check_outlined,
+        selectedIcon: Icons.playlist_add_check_rounded,
+        label: 'Stocktake',
+      ),
+    ),
+    _NavDestination(
+      index: 28,
+      section: _NavSection.inventory,
+      item: _NavItem(
+        icon: Icons.delete_sweep_outlined,
+        selectedIcon: Icons.delete_sweep_rounded,
+        label: 'Wastage',
+      ),
+    ),
+    _NavDestination(
+      index: 29,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.restaurant_outlined,
+        selectedIcon: Icons.restaurant_rounded,
+        label: 'Restaurant',
+      ),
+    ),
+    _NavDestination(
+      index: 30,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.timer_outlined,
+        selectedIcon: Icons.timer_rounded,
+        label: 'Attendance',
+      ),
+    ),
+    _NavDestination(
+      index: 31,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.groups_outlined,
+        selectedIcon: Icons.groups_rounded,
+        label: 'Customer Groups',
+      ),
+    ),
+    _NavDestination(
+      index: 32,
+      section: _NavSection.inventory,
+      item: _NavItem(
+        icon: Icons.approval_outlined,
+        selectedIcon: Icons.approval_rounded,
+        label: 'Approvals',
+      ),
+    ),
+    _NavDestination(
+      index: 33,
+      section: _NavSection.inventory,
+      item: _NavItem(
+        icon: Icons.local_shipping_outlined,
+        selectedIcon: Icons.local_shipping_rounded,
+        label: 'Delivery',
+      ),
+    ),
+    _NavDestination(
       index: 8,
       section: _NavSection.reports,
       item: _NavItem(
         icon: Icons.analytics_outlined,
         selectedIcon: Icons.analytics_rounded,
         label: 'Reports',
+      ),
+    ),
+    _NavDestination(
+      index: 34,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.query_stats_outlined,
+        selectedIcon: Icons.query_stats_rounded,
+        label: 'BI Dashboard',
       ),
     ),
     _NavDestination(
@@ -244,6 +337,15 @@ class AppShellState extends ConsumerState<AppShell> {
       ),
     ),
     _NavDestination(
+      index: 27,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.sms_outlined,
+        selectedIcon: Icons.sms_rounded,
+        label: 'Campaigns',
+      ),
+    ),
+    _NavDestination(
       index: 21,
       section: _NavSection.reports,
       item: _NavItem(
@@ -259,6 +361,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.card_giftcard_outlined,
         selectedIcon: Icons.card_giftcard_rounded,
         label: 'Gift Cards',
+      ),
+    ),
+    _NavDestination(
+      index: 23,
+      section: _NavSection.reports,
+      item: _NavItem(
+        icon: Icons.local_offer_outlined,
+        selectedIcon: Icons.local_offer_rounded,
+        label: 'Promos',
       ),
     ),
     _NavDestination(
@@ -286,6 +397,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.manage_search_outlined,
         selectedIcon: Icons.manage_search_rounded,
         label: 'Audit Logs',
+      ),
+    ),
+    _NavDestination(
+      index: 24,
+      section: _NavSection.system,
+      item: _NavItem(
+        icon: Icons.admin_panel_settings_outlined,
+        selectedIcon: Icons.admin_panel_settings_rounded,
+        label: 'Roles',
       ),
     ),
   ];
@@ -328,7 +448,17 @@ class AppShellState extends ConsumerState<AppShell> {
         SessionService.canAccessFeature(UserAccessProfile.featurePurchases)) {
       indices.add(18);
     }
+    final role = RolePermissions.normalizeRole(SessionService.currentUserRole);
+    if (SessionService.canAccessFeature(UserAccessProfile.featureReports) &&
+        (role == RolePermissions.admin || role == RolePermissions.manager)) {
+      indices.add(34);
+    }
     final allowed = indices
+        .where(
+          (index) =>
+              index != 24 ||
+              RolePermissions.canManageUsers(SessionService.currentUserRole),
+        )
         .where(_isAllowedForCurrentSellingMode)
         .where(_isAllowedBySubscription)
         .toSet()
@@ -1894,6 +2024,30 @@ class AppShellState extends ConsumerState<AppShell> {
         return const LoyaltyScreen();
       case 22:
         return const GiftCardScreen();
+      case 23:
+        return const PromotionScreen();
+      case 24:
+        return const CustomRolesScreen();
+      case 25:
+        return const SerialTrackingScreen();
+      case 26:
+        return const StocktakeScreen();
+      case 27:
+        return const SmsCampaignScreen();
+      case 28:
+        return const WastageScreen();
+      case 29:
+        return const RestaurantScreen();
+      case 30:
+        return const AttendanceScreen();
+      case 31:
+        return const CustomerGroupsScreen();
+      case 32:
+        return const PurchaseApprovalScreen();
+      case 33:
+        return const DeliveryScreen();
+      case 34:
+        return const AdvancedBiScreen();
       default:
         return const PosScreen();
     }

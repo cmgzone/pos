@@ -8,6 +8,7 @@ import '../../../core/services/license_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/sync_settings_service.dart';
+import '../../settings/data/custom_role_repository.dart';
 import 'auth_exception.dart';
 import 'auth_password_service.dart';
 
@@ -19,13 +20,18 @@ class UserRepository {
 
   static Future<List<Map<String, dynamic>>> getAll() async {
     return DatabaseService.rawQuery('''
-      SELECT *
-      FROM $_table
-      WHERE deleted_at IS NULL
+      SELECT u.*,
+             cr.name AS custom_role_name,
+             cr.is_active AS custom_role_active
+      FROM $_table u
+      LEFT JOIN custom_roles cr
+        ON cr.id = u.custom_role_id
+       AND cr.deleted_at IS NULL
+      WHERE u.deleted_at IS NULL
       ORDER BY
-        CASE WHEN role = 'ADMIN' THEN 0 WHEN role = 'MANAGER' THEN 1 ELSE 2 END,
-        name COLLATE NOCASE ASC,
-        email COLLATE NOCASE ASC
+        CASE WHEN u.role = 'ADMIN' THEN 0 WHEN u.role = 'MANAGER' THEN 1 ELSE 2 END,
+        u.name COLLATE NOCASE ASC,
+        u.email COLLATE NOCASE ASC
     ''');
   }
 
@@ -76,13 +82,23 @@ class UserRepository {
     required String password,
     String? phone,
     String role = 'CASHIER',
+    String? customRoleId,
     String? businessNameForCloud,
   }) async {
     final cleanName = name.trim();
     final cleanEmail = email.trim().toLowerCase();
     final cleanPassword = password;
     final cleanPhone = phone?.trim() ?? '';
-    final normalizedRole = role.trim().toUpperCase();
+    var normalizedRole = role.trim().toUpperCase();
+    final cleanCustomRoleId = customRoleId?.trim() ?? '';
+    Map<String, dynamic>? customRoleAccess;
+    if (cleanCustomRoleId.isNotEmpty) {
+      customRoleAccess = await CustomRoleRepository.userAccessColumnsForRole(
+        cleanCustomRoleId,
+      );
+      normalizedRole =
+          customRoleAccess['role'] as String? ?? RolePermissions.cashier;
+    }
 
     await LicenseService.ensureWriteAccess(action: 'manage staff accounts');
     await LicenseService.ensureLimitAvailable(
@@ -107,13 +123,20 @@ class UserRepository {
 
     final now = DateTime.now().toIso8601String();
     final id = _uuid.v4();
-    final defaultFeatures = UserAccessProfile.defaultFeatureAccessForRole(
-      normalizedRole,
-    ).toList();
+    final defaultFeatures = customRoleAccess == null
+        ? UserAccessProfile.defaultFeatureAccessForRole(normalizedRole).toList()
+        : UserAccessProfile.resolveFeatureAccess(
+            role: normalizedRole,
+            rawFeatureAccessJson:
+                customRoleAccess['feature_access_json'] as String?,
+          ).toList();
     if (defaultFeatures.contains(UserAccessProfile.featureAgent) &&
         !(await _canGrantAdditionalAiSeat())) {
       defaultFeatures.remove(UserAccessProfile.featureAgent);
     }
+    final featureAccessJson = UserAccessProfile.encodeStringList(
+      defaultFeatures,
+    );
     final userPayload = <String, dynamic>{
       'id': id,
       'name': cleanName,
@@ -121,14 +144,20 @@ class UserRepository {
       'phone': cleanPhone.isEmpty ? null : cleanPhone,
       'password': AuthPasswordService.hashPassword(cleanPassword),
       'role': normalizedRole,
-      'feature_access_json': UserAccessProfile.encodeStringList(
-        defaultFeatures,
-      ),
-      'allowed_service_ids_json': null,
-      'allowed_branch_ids_json': null,
-      'pos_mode': UserAccessProfile.posModeBoth,
-      'service_order_scope':
-          UserAccessProfile.serviceOrderScopeAllVisibleServices,
+      'custom_role_id': cleanCustomRoleId.isEmpty ? null : cleanCustomRoleId,
+      'feature_access_json': featureAccessJson,
+      'allowed_service_ids_json': customRoleAccess == null
+          ? null
+          : customRoleAccess['allowed_service_ids_json'] as String?,
+      'allowed_branch_ids_json': customRoleAccess == null
+          ? null
+          : customRoleAccess['allowed_branch_ids_json'] as String?,
+      'pos_mode': customRoleAccess == null
+          ? UserAccessProfile.posModeBoth
+          : customRoleAccess['pos_mode'] as String?,
+      'service_order_scope': customRoleAccess == null
+          ? UserAccessProfile.serviceOrderScopeAllVisibleServices
+          : customRoleAccess['service_order_scope'] as String?,
       'created_at': now,
       'updated_at': now,
       'sync_status': 'pending',
@@ -168,6 +197,7 @@ class UserRepository {
     final defaultFeatureAccessJson = _defaultFeatureAccessJsonForRole(nextRole);
     await DatabaseService.update(_table, {
       'role': nextRole,
+      'custom_role_id': null,
       'feature_access_json': defaultFeatureAccessJson,
       'allowed_service_ids_json': null,
       'allowed_branch_ids_json': null,
@@ -242,6 +272,7 @@ class UserRepository {
 
     await DatabaseService.update(_table, {
       'feature_access_json': nextFeatureAccessJson,
+      'custom_role_id': null,
       'allowed_service_ids_json': nextAllowedServiceIdsJson,
       'allowed_branch_ids_json': nextAllowedBranchIdsJson,
       'pos_mode': nextPosMode,
@@ -257,6 +288,89 @@ class UserRepository {
         allowedBranchIdsJson: nextAllowedBranchIdsJson,
         posMode: nextPosMode,
         serviceOrderScope: nextServiceOrderScope,
+      );
+    }
+    await _syncCurrentUserRow(userId);
+  }
+
+  static Future<void> assignCustomRole({
+    required String userId,
+    String? customRoleId,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'assign custom roles');
+    await LicenseService.ensureFeatureAccess(
+      featureKey: UserAccessProfile.featureCustomRoles,
+      action: 'custom roles',
+    );
+    final cleanRoleId = customRoleId?.trim() ?? '';
+    final user = await findById(userId);
+    if (user == null) {
+      throw const AuthException('User not found.');
+    }
+    if (cleanRoleId.isEmpty) {
+      final currentRole = RolePermissions.normalizeRole(
+        user['role'] as String?,
+      );
+      await updateRole(userId: userId, role: currentRole);
+      return;
+    }
+
+    final accessColumns = await CustomRoleRepository.userAccessColumnsForRole(
+      cleanRoleId,
+    );
+    final nextRole = RolePermissions.normalizeRole(
+      accessColumns['role'] as String?,
+    );
+    final currentRole = RolePermissions.normalizeRole(user['role'] as String?);
+    if (currentRole == RolePermissions.admin &&
+        nextRole != RolePermissions.admin) {
+      final adminRows = await DatabaseService.rawQuery(
+        "SELECT COUNT(*) as count FROM $_table WHERE deleted_at IS NULL AND role = 'ADMIN'",
+      );
+      final adminCount = (adminRows.first['count'] as num? ?? 0).toInt();
+      if (adminCount <= 1) {
+        throw const AuthException('Keep at least one admin account active.');
+      }
+    }
+
+    final hadAiAccess = _isAiEnabledUser(user);
+    final wantsAiAccess =
+        nextRole == RolePermissions.admin ||
+        UserAccessProfile.resolveFeatureAccess(
+          role: nextRole,
+          rawFeatureAccessJson: accessColumns['feature_access_json'] as String?,
+        ).contains(UserAccessProfile.featureAgent);
+    if (!hadAiAccess && wantsAiAccess) {
+      await LicenseService.ensureLimitAvailable(
+        limit: SubscriptionLimit.aiAgents,
+        currentCount: await countAiEnabledUsers(),
+        label: 'Piki AI-enabled employee(s)',
+      );
+    }
+
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.update(_table, {
+      'role': nextRole,
+      'custom_role_id': cleanRoleId,
+      'feature_access_json': accessColumns['feature_access_json'],
+      'allowed_service_ids_json': accessColumns['allowed_service_ids_json'],
+      'allowed_branch_ids_json': accessColumns['allowed_branch_ids_json'],
+      'pos_mode': accessColumns['pos_mode'],
+      'service_order_scope': accessColumns['service_order_scope'],
+      'updated_at': now,
+      'sync_status': 'pending',
+    }, userId);
+
+    if (userId == SessionService.currentUserId) {
+      await SessionService.updateRole(nextRole);
+      await SessionService.updateAccess(
+        featureAccessJson: accessColumns['feature_access_json'] as String?,
+        allowedServiceIdsJson:
+            accessColumns['allowed_service_ids_json'] as String?,
+        allowedBranchIdsJson:
+            accessColumns['allowed_branch_ids_json'] as String?,
+        posMode: accessColumns['pos_mode'] as String?,
+        serviceOrderScope: accessColumns['service_order_scope'] as String?,
       );
     }
     await _syncCurrentUserRow(userId);
@@ -372,6 +486,7 @@ class UserRepository {
       'phone',
       'password',
       'role',
+      'custom_role_id',
       'feature_access_json',
       'allowed_service_ids_json',
       'allowed_branch_ids_json',

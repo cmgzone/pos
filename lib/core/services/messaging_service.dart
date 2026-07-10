@@ -204,8 +204,63 @@ class MessagingService {
     required String customerName,
     required String saleId,
     required String amount,
+    String? kopeshaBalance,
+    String? loyaltyPointsEarned,
+    String? loyaltyPointsBalance,
+    String? giftCardBalance,
+    String? earnedGiftCardCode,
+    String? earnedGiftCardAmount,
+    String? earnedGiftCardExpiresAt,
   }) {
-    return 'Hello $customerName, your receipt $saleId for $amount is ready. Thank you.';
+    final lines = <String>[
+      'Hello $customerName, your receipt $saleId for $amount is ready. Thank you.',
+    ];
+    if (kopeshaBalance != null && kopeshaBalance.trim().isNotEmpty) {
+      lines.add('Kopesha balance: $kopeshaBalance.');
+    }
+    if (loyaltyPointsEarned != null && loyaltyPointsEarned.trim().isNotEmpty) {
+      lines.add('Loyalty earned: $loyaltyPointsEarned.');
+    }
+    if (loyaltyPointsBalance != null &&
+        loyaltyPointsBalance.trim().isNotEmpty) {
+      lines.add('Loyalty balance: $loyaltyPointsBalance.');
+    }
+    if (giftCardBalance != null && giftCardBalance.trim().isNotEmpty) {
+      lines.add('Gift card balance: $giftCardBalance.');
+    }
+    if (earnedGiftCardCode != null &&
+        earnedGiftCardCode.trim().isNotEmpty &&
+        earnedGiftCardAmount != null &&
+        earnedGiftCardAmount.trim().isNotEmpty) {
+      lines.add(
+        'You earned a gift card: $earnedGiftCardAmount. Code: $earnedGiftCardCode.',
+      );
+      if (earnedGiftCardExpiresAt != null &&
+          earnedGiftCardExpiresAt.trim().isNotEmpty) {
+        lines.add('Gift card expires: $earnedGiftCardExpiresAt.');
+      }
+      lines.add('Show this code at checkout.');
+    }
+    return lines.join('\n');
+  }
+
+  static String giftCardRewardMessage({
+    required String customerName,
+    required String code,
+    required String amount,
+    String? expiresAt,
+    int? pointsSpent,
+  }) {
+    final lines = <String>[
+      'Hi $customerName, congratulations. You earned a $amount Piki gift card.',
+      'Code: $code',
+      if (pointsSpent != null && pointsSpent > 0)
+        'Reward used: $pointsSpent loyalty points.',
+      if (expiresAt != null && expiresAt.trim().isNotEmpty)
+        'Expires: $expiresAt',
+      'Show this code at checkout. Keep it safe.',
+    ];
+    return lines.join('\n');
   }
 
   static String balanceReminder({

@@ -11,6 +11,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/branch_service.dart';
 import '../../../core/services/etims_service.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/services/pos_payment_service.dart';
 import '../../../core/services/product_image_upload_service.dart';
 import '../../../core/utils/error_messages.dart';
@@ -20,6 +21,7 @@ import '../../../widgets/empty_state_widget.dart';
 import '../../agent/data/piki_models.dart';
 import '../../loyalty/data/loyalty_repository.dart';
 import '../../gift_cards/data/gift_card_repository.dart';
+import '../../promotions/data/promotion_repository.dart';
 import '../../agent/data/piki_provider.dart';
 import '../../products/data/product_provider.dart';
 import '../../products/data/product_repository.dart';
@@ -40,7 +42,9 @@ import '../data/quotation_repository.dart';
 import '../data/sale_repository.dart';
 import '../../app/app_shell.dart';
 import '../../customers/data/customer_repository.dart';
+import '../../customers/presentation/customer_message_dialog.dart';
 import '../../settings/data/payment_method_repository.dart';
+import '../../settings/data/exchange_rate_repository.dart';
 import '../../services/data/service_repository.dart';
 import '../../services/data/service_provider.dart';
 
@@ -121,6 +125,9 @@ class PosScreen extends ConsumerWidget {
           _showMobileCartSheet(context, ref);
         }
       });
+    });
+    ref.listen<List<CartItem>>(cartProvider, (_, next) {
+      unawaited(_CartSide._applyActivePromotions(ref, next));
     });
 
     return Scaffold(
@@ -239,7 +246,9 @@ class PosScreen extends ConsumerWidget {
             color: Theme.of(context).brightness == Brightness.dark
                 ? AppColors.darkSurface
                 : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadius.lg),
+            ),
           ),
           child: Column(
             children: [
@@ -287,7 +296,12 @@ class _PosBottomActionBar extends ConsumerWidget {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 10),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          10,
+        ),
         decoration: BoxDecoration(
           color: isDark
               ? AppColors.darkSurface
@@ -957,7 +971,10 @@ class _LicenseIndicatorChip extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(right: AppSpacing.sm),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -996,7 +1013,12 @@ class _PosModeTabBar extends ConsumerWidget {
       color: isDark
           ? AppColors.darkSurface
           : Theme.of(context).colorScheme.surface,
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.xs),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.xs,
+        AppSpacing.md,
+        AppSpacing.xs,
+      ),
       child: Row(
         children: [
           _ModeTab(
@@ -1096,7 +1118,10 @@ class _ModeTab extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.xl),
             border: Border.all(
@@ -1146,7 +1171,8 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   Map<String, dynamic>? _matchedVariantFromSearchResult(
     Map<String, dynamic> product,
   ) {
-    if (product['result_type'] != 'variant') {
+    if (product['result_type'] != 'variant' &&
+        product['result_type'] != 'serial') {
       return null;
     }
 
@@ -1166,6 +1192,14 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       'stock': product['matched_variant_stock'],
       'low_stock': product['matched_variant_low_stock'],
     };
+  }
+
+  String? _matchedSerialFromSearchResult(Map<String, dynamic> product) {
+    if (product['result_type'] != 'serial') {
+      return null;
+    }
+    final serial = product['matched_serial_number']?.toString().trim() ?? '';
+    return serial.isEmpty ? null : serial;
   }
 
   @override
@@ -1274,6 +1308,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
     Map<String, dynamic>? variantColor,
+    List<String> serialNumbers = const [],
   }) {
     final productName = product['name'] as String? ?? 'Product';
     final variantName = variant?['name'] as String? ?? '';
@@ -1285,6 +1320,9 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     if (colorName.trim().isNotEmpty) {
       parts.add(colorName.trim());
     }
+    if (serialNumbers.isNotEmpty) {
+      parts.add(serialNumbers.join(', '));
+    }
     return parts.join(' - ');
   }
 
@@ -1293,6 +1331,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
     Map<String, dynamic>? variantColor,
+    List<String> serialNumbers = const [],
   }) {
     if (!mounted) {
       return;
@@ -1302,6 +1341,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       product,
       variant: variant,
       variantColor: variantColor,
+      serialNumbers: serialNumbers,
     );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1334,10 +1374,16 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
     Map<String, dynamic>? variantColor,
+    List<String> serialNumbers = const [],
   }) {
     final success = ref
         .read(cartProvider.notifier)
-        .addProduct(product, variant: variant, variantColor: variantColor);
+        .addProduct(
+          product,
+          variant: variant,
+          variantColor: variantColor,
+          serialNumbers: serialNumbers,
+        );
     if (success) {
       _rememberQuickPick(product);
       _rememberVariantColor(product, variant, variantColor);
@@ -1347,6 +1393,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       product,
       variant: variant,
       variantColor: variantColor,
+      serialNumbers: serialNumbers,
     );
     _clearSearch();
     return success;
@@ -1570,6 +1617,16 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
   }
 
   Future<void> _handleProductSelection(Map<String, dynamic> product) async {
+    final matchedSerial = _matchedSerialFromSearchResult(product);
+    if (matchedSerial != null) {
+      _addProductToCart(
+        product,
+        variant: _matchedVariantFromSearchResult(product),
+        serialNumbers: [matchedSerial],
+      );
+      return;
+    }
+
     final matchedVariant = _matchedVariantFromSearchResult(product);
     if (matchedVariant != null) {
       await _handleVariantSelection(product, matchedVariant);
@@ -1606,6 +1663,45 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
           ),
         );
       }
+      return;
+    }
+
+    if (result['result_type'] == 'serial') {
+      final serialNumber = result['serial_number']?.toString().trim() ?? '';
+      final parentProduct = <String, dynamic>{
+        'id': result['id'],
+        'name': result['name'],
+        'price': result['price'],
+        'cost': result['cost'],
+        'stock': result['stock'],
+        'unit': result['unit'],
+        'stock_unit': result['stock_unit'],
+        'sale_unit': result['sale_unit'],
+        'sale_to_stock_factor': result['sale_to_stock_factor'],
+        'image_url': result['image_url'],
+        'category_id': result['category_id'],
+        'track_stock': result['track_stock'],
+        'has_variants': result['has_variants'],
+      };
+      final variantId = result['variant_id']?.toString();
+      final variant = variantId == null || variantId.isEmpty
+          ? null
+          : <String, dynamic>{
+              'id': variantId,
+              'product_id': result['id'],
+              'name': result['variant_name'],
+              'sku': result['variant_sku'],
+              'barcode': result['variant_barcode'],
+              'price': result['variant_price'],
+              'cost': result['variant_cost'],
+              'stock': result['variant_stock'],
+              'low_stock': result['variant_low_stock'],
+            };
+      _addProductToCart(
+        parentProduct,
+        variant: variant,
+        serialNumbers: [serialNumber.isEmpty ? barcode : serialNumber],
+      );
       return;
     }
 
@@ -1788,13 +1884,19 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                           ),
                         ),
                         if (canUseServices) ...[
-                          SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
+                          SizedBox(
+                            width: compact ? AppSpacing.sm : AppSpacing.md,
+                          ),
                           serviceShortcut(),
                         ],
-                        SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
+                        SizedBox(
+                          width: compact ? AppSpacing.sm : AppSpacing.md,
+                        ),
                         const _PosViewModeToggle(),
                         if (isMobileDevice) ...[
-                          SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
+                          SizedBox(
+                            width: compact ? AppSpacing.sm : AppSpacing.md,
+                          ),
                           _PremiumIconAction(
                             icon: Icons.qr_code_scanner_rounded,
                             tooltip: 'Scan barcode',
@@ -1925,8 +2027,9 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         return ListView.separated(
                           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                           itemCount: products.length,
-                          separatorBuilder: (_, _) =>
-                              SizedBox(height: compact ? AppSpacing.sm : AppSpacing.md),
+                          separatorBuilder: (_, _) => SizedBox(
+                            height: compact ? AppSpacing.sm : AppSpacing.md,
+                          ),
                           itemBuilder: (context, index) {
                             final product = products[index];
                             return _CompactProductTile(
@@ -2063,7 +2166,10 @@ class _PremiumSearchField extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 width: 24,
                 height: 24,
-                margin: const EdgeInsets.only(left: AppSpacing.sm, right: AppSpacing.sm),
+                margin: const EdgeInsets.only(
+                  left: AppSpacing.sm,
+                  right: AppSpacing.sm,
+                ),
                 decoration: BoxDecoration(
                   color: active
                       ? (isDark ? AppColors.darkAccent : AppColors.primary)
@@ -2137,7 +2243,10 @@ class _PremiumSearchField extends StatelessWidget {
                         onTap: onClear,
                         compact: compact,
                       )
-                    : SizedBox(key: ValueKey('empty-search-action'), width: AppSpacing.sm),
+                    : SizedBox(
+                        key: ValueKey('empty-search-action'),
+                        width: AppSpacing.sm,
+                      ),
               ),
             ],
           ),
@@ -2510,7 +2619,10 @@ class _QuickPickChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.xl),
             border: Border.all(
@@ -2887,7 +2999,9 @@ class _CartSide extends ConsumerWidget {
     final subtotal = ref.watch(cartSubtotalProvider);
     final tax = ref.watch(cartTaxProvider);
     final discount = ref.watch(discountProvider);
+    final appliedPromotions = ref.watch(appliedPromotionsProvider);
     final total = ref.watch(cartTotalProvider);
+    final convertedTotal = ExchangeRateRepository.formatConverted(total);
     final canViewProfit = SessionService.canAccessFeature(
       UserAccessProfile.featureProfitLoss,
     );
@@ -3010,7 +3124,9 @@ class _CartSide extends ConsumerWidget {
                                 : AppColors.warning,
                             size: isMobileCart ? 17 : 24,
                           ),
-                          SizedBox(width: isMobileCart ? AppSpacing.sm : AppSpacing.md),
+                          SizedBox(
+                            width: isMobileCart ? AppSpacing.sm : AppSpacing.md,
+                          ),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3057,8 +3173,12 @@ class _CartSide extends ConsumerWidget {
                                     ? VisualDensity.compact
                                     : VisualDensity.standard,
                                 padding: EdgeInsets.symmetric(
-                                  horizontal: isMobileCart ? AppSpacing.xs : AppSpacing.sm,
-                                  vertical: isMobileCart ? AppSpacing.xs : AppSpacing.sm,
+                                  horizontal: isMobileCart
+                                      ? AppSpacing.xs
+                                      : AppSpacing.sm,
+                                  vertical: isMobileCart
+                                      ? AppSpacing.xs
+                                      : AppSpacing.sm,
                                 ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -3090,7 +3210,9 @@ class _CartSide extends ConsumerWidget {
                         holdsLoading: heldSalesAsync.isLoading,
                       )
                     : ListView.separated(
-                        padding: EdgeInsets.all(isMobileCart ? AppSpacing.md : AppSpacing.lg),
+                        padding: EdgeInsets.all(
+                          isMobileCart ? AppSpacing.md : AppSpacing.lg,
+                        ),
                         itemCount: cart.length,
                         separatorBuilder: (_, _) => isMobileCart
                             ? SizedBox(height: AppSpacing.sm)
@@ -3106,7 +3228,9 @@ class _CartSide extends ConsumerWidget {
               ),
               if (cart.isNotEmpty)
                 Container(
-                  padding: EdgeInsets.all(isMobileCart ? AppSpacing.sm : AppSpacing.xxl),
+                  padding: EdgeInsets.all(
+                    isMobileCart ? AppSpacing.sm : AppSpacing.xxl,
+                  ),
                   decoration: BoxDecoration(
                     color: Theme.of(
                       context,
@@ -3166,13 +3290,33 @@ class _CartSide extends ConsumerWidget {
                                       textStyle: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w800,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                   ),
                                 ),
                               ],
                             ),
+                            if (convertedTotal.isNotEmpty) ...[
+                              SizedBox(height: AppSpacing.xs),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Also $convertedTotal',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                ),
+                              ),
+                            ],
                             if (discount > 0 || tax > 0) ...[
                               SizedBox(height: AppSpacing.sm),
                               Row(
@@ -3185,7 +3329,9 @@ class _CartSide extends ConsumerWidget {
                                           context,
                                         ).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -3199,7 +3345,9 @@ class _CartSide extends ConsumerWidget {
                                           context,
                                         ).colorScheme.onSurfaceVariant,
                                         fontSize: 11,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                   if (discount > 0) ...[
@@ -3209,11 +3357,20 @@ class _CartSide extends ConsumerWidget {
                                       style: TextStyle(
                                         color: AppColors.error,
                                         fontSize: 11,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                   ],
                                 ],
+                              ),
+                            ],
+                            if (appliedPromotions.isNotEmpty) ...[
+                              SizedBox(height: AppSpacing.xs),
+                              _PromotionBreakdown(
+                                promotions: appliedPromotions,
+                                compact: true,
                               ),
                             ],
                             SizedBox(height: AppSpacing.sm),
@@ -3248,11 +3405,19 @@ class _CartSide extends ConsumerWidget {
                                   SizedBox(width: AppSpacing.sm),
                                   IconButton(
                                     tooltip: 'Clear discount',
-                                    onPressed: () =>
-                                        ref
-                                                .read(discountProvider.notifier)
-                                                .state =
-                                            0,
+                                    onPressed: () {
+                                      ref
+                                              .read(discountProvider.notifier)
+                                              .state =
+                                          0;
+                                      ref
+                                              .read(
+                                                appliedPromotionsProvider
+                                                    .notifier,
+                                              )
+                                              .state =
+                                          const [];
+                                    },
                                     icon: Icon(
                                       Icons.close,
                                       size: 18,
@@ -3332,6 +3497,12 @@ class _CartSide extends ConsumerWidget {
                                     '-${ShopSettings.currency}${discount.toStringAsFixed(2)}',
                                 isDiscount: true,
                               ),
+                              if (appliedPromotions.isNotEmpty) ...[
+                                SizedBox(height: AppSpacing.xs),
+                                _PromotionBreakdown(
+                                  promotions: appliedPromotions,
+                                ),
+                              ],
                             ],
                             SizedBox(height: AppSpacing.md),
                             Row(
@@ -3354,11 +3525,19 @@ class _CartSide extends ConsumerWidget {
                                 if (discount > 0) ...[
                                   SizedBox(width: AppSpacing.md),
                                   TextButton.icon(
-                                    onPressed: () =>
-                                        ref
-                                                .read(discountProvider.notifier)
-                                                .state =
-                                            0,
+                                    onPressed: () {
+                                      ref
+                                              .read(discountProvider.notifier)
+                                              .state =
+                                          0;
+                                      ref
+                                              .read(
+                                                appliedPromotionsProvider
+                                                    .notifier,
+                                              )
+                                              .state =
+                                          const [];
+                                    },
                                     icon: Icon(Icons.close, size: 18),
                                     label: Text('Clear'),
                                   ),
@@ -3377,20 +3556,41 @@ class _CartSide extends ConsumerWidget {
                                 ),
                                 SizedBox(width: AppSpacing.md),
                                 Flexible(
-                                  child: Text(
-                                    '${ShopSettings.currency}${total.toStringAsFixed(2)}',
-                                    textAlign: TextAlign.end,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineMedium
-                                        ?.copyWith(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurface,
-                                          fontWeight: FontWeight.bold,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '${ShopSettings.currency}${total.toStringAsFixed(2)}',
+                                        textAlign: TextAlign.end,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .headlineMedium
+                                            ?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                      if (convertedTotal.isNotEmpty)
+                                        Text(
+                                          convertedTotal,
+                                          textAlign: TextAlign.end,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                                fontFeatures: const [
+                                                  FontFeature.tabularFigures(),
+                                                ],
+                                              ),
                                         ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -3493,7 +3693,9 @@ class _CartSide extends ConsumerWidget {
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontSize: 16,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                     style: ElevatedButton.styleFrom(
@@ -3766,7 +3968,9 @@ class _CartSide extends ConsumerWidget {
                   );
                   return Padding(
                     padding: EdgeInsets.only(
-                      bottom: entry.key == recent.length - 1 ? 0 : AppSpacing.sm,
+                      bottom: entry.key == recent.length - 1
+                          ? 0
+                          : AppSpacing.sm,
                     ),
                     child: _RecentSaleRow(
                       paymentType: paymentType,
@@ -3785,7 +3989,9 @@ class _CartSide extends ConsumerWidget {
               children: List.generate(
                 3,
                 (index) => Padding(
-                  padding: EdgeInsets.only(bottom: index == 2 ? 0 : AppSpacing.sm),
+                  padding: EdgeInsets.only(
+                    bottom: index == 2 ? 0 : AppSpacing.sm,
+                  ),
                   child: _RecentSaleRowSkeleton(isDark: isDark),
                 ),
               ),
@@ -3827,6 +4033,41 @@ class _CartSide extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  static Future<void> _applyActivePromotions(
+    WidgetRef ref,
+    List<CartItem> cart,
+  ) async {
+    final signature = _cartPromotionSignature(cart);
+    if (cart.isEmpty) {
+      ref.read(appliedPromotionsProvider.notifier).state = const [];
+      ref.read(discountProvider.notifier).state = 0;
+      return;
+    }
+    try {
+      final result = await PromotionRepository.evaluateCart(cart);
+      if (_cartPromotionSignature(ref.read(cartProvider)) != signature) {
+        return;
+      }
+      ref.read(appliedPromotionsProvider.notifier).state =
+          result.appliedPromotions;
+      ref.read(discountProvider.notifier).state = result.amount;
+    } catch (_) {
+      if (_cartPromotionSignature(ref.read(cartProvider)) != signature) {
+        return;
+      }
+      ref.read(appliedPromotionsProvider.notifier).state = const [];
+    }
+  }
+
+  static String _cartPromotionSignature(List<CartItem> cart) {
+    return cart
+        .map(
+          (item) =>
+              '${item.cartKey}:${item.quantity.toStringAsFixed(3)}:${item.unitPrice.toStringAsFixed(2)}',
+        )
+        .join('|');
   }
 
   String _formatRecentSaleItems(String? products, String? services) {
@@ -4277,6 +4518,7 @@ class _CartSide extends ConsumerWidget {
   void _clearCurrentSale(WidgetRef ref) {
     ref.read(cartProvider.notifier).clear();
     ref.read(discountProvider.notifier).state = 0;
+    ref.read(appliedPromotionsProvider.notifier).state = const [];
   }
 
   Future<String?> _showHoldNameDialog(
@@ -4465,8 +4707,10 @@ class _CartSide extends ConsumerWidget {
     final loyaltyPoints = checkoutResult['loyaltyPoints'] as int?;
     final giftCardId = checkoutResult['giftCardId'] as String?;
     final giftCardCode = checkoutResult['giftCardCode'] as String?;
-    final giftCardAmount =
-        (checkoutResult['giftCardAmount'] as num?)?.toDouble();
+    final giftCardAmount = (checkoutResult['giftCardAmount'] as num?)
+        ?.toDouble();
+    final giftCardBalanceAfter =
+        (checkoutResult['giftCardBalanceAfter'] as num?)?.toDouble();
 
     if (type == 'kopesha') {
       // Kopesha payment - requires customer
@@ -4495,6 +4739,7 @@ class _CartSide extends ConsumerWidget {
         giftCardId: giftCardId,
         giftCardCode: giftCardCode,
         giftCardAmount: giftCardAmount,
+        giftCardBalanceAfter: giftCardBalanceAfter,
       );
     } else if (type == 'mpesa') {
       final phoneNumber = checkoutResult['phoneNumber'] as String?;
@@ -4518,6 +4763,7 @@ class _CartSide extends ConsumerWidget {
         giftCardId: giftCardId,
         giftCardCode: giftCardCode,
         giftCardAmount: giftCardAmount,
+        giftCardBalanceAfter: giftCardBalanceAfter,
       );
     } else if (type == 'mpesa_manual') {
       final payment = checkoutResult['payment'];
@@ -4541,6 +4787,7 @@ class _CartSide extends ConsumerWidget {
         giftCardId: giftCardId,
         giftCardCode: giftCardCode,
         giftCardAmount: giftCardAmount,
+        giftCardBalanceAfter: giftCardBalanceAfter,
       );
     } else {
       // Other payment methods
@@ -4597,6 +4844,7 @@ class _CartSide extends ConsumerWidget {
           giftCardId: giftCardId,
           giftCardCode: giftCardCode,
           giftCardAmount: giftCardAmount,
+          giftCardBalanceAfter: giftCardBalanceAfter,
         );
       } else {
         await _completeSale(
@@ -4613,6 +4861,7 @@ class _CartSide extends ConsumerWidget {
           giftCardId: giftCardId,
           giftCardCode: giftCardCode,
           giftCardAmount: giftCardAmount,
+          giftCardBalanceAfter: giftCardBalanceAfter,
         );
       }
     }
@@ -4629,6 +4878,7 @@ class _CartSide extends ConsumerWidget {
     String? giftCardId,
     String? giftCardCode,
     double? giftCardAmount,
+    double? giftCardBalanceAfter,
   }) async {
     final total = ref.read(cartTotalProvider);
     try {
@@ -4724,6 +4974,7 @@ class _CartSide extends ConsumerWidget {
         giftCardId: giftCardId,
         giftCardCode: giftCardCode,
         giftCardAmount: giftCardAmount,
+        giftCardBalanceAfter: giftCardBalanceAfter,
       );
       if (!context.mounted || saleId == null) return;
       await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
@@ -4753,6 +5004,7 @@ class _CartSide extends ConsumerWidget {
     String? giftCardId,
     String? giftCardCode,
     double? giftCardAmount,
+    double? giftCardBalanceAfter,
   }) async {
     if (!context.mounted) return;
     final saleId = await _completeSale(
@@ -4776,6 +5028,10 @@ class _CartSide extends ConsumerWidget {
       convertFromQuotationId: convertFromQuotationId,
       loyaltyLedgerId: loyaltyLedgerId,
       loyaltyPoints: loyaltyPoints,
+      giftCardId: giftCardId,
+      giftCardCode: giftCardCode,
+      giftCardAmount: giftCardAmount,
+      giftCardBalanceAfter: giftCardBalanceAfter,
     );
     if (!context.mounted || saleId == null) return;
     await _linkSavedMpesaPayment(context, payment: payment, saleId: saleId);
@@ -4915,12 +5171,18 @@ class _CartSide extends ConsumerWidget {
     String? giftCardId,
     String? giftCardCode,
     double? giftCardAmount,
+    double? giftCardBalanceAfter,
   }) async {
     final cart = ref.read(cartProvider);
     final subtotal = ref.read(cartSubtotalProvider);
     final tax = ref.read(cartTaxProvider);
     final discount = ref.read(discountProvider);
     final total = ref.read(cartTotalProvider);
+    final appliedPromotions = ref.read(appliedPromotionsProvider);
+    var effectiveGiftCardBalanceAfter = giftCardBalanceAfter;
+    int? loyaltyPointsEarned;
+    int? loyaltyPointsBalance;
+    LoyaltyGiftCardReward? earnedGiftCardReward;
 
     final saleItems = cart
         .map(
@@ -4934,6 +5196,21 @@ class _CartSide extends ConsumerWidget {
           },
         )
         .toList();
+
+    final salePaymentMetadata = <String, dynamic>{
+      if (paymentMetadata != null) ...paymentMetadata,
+      if ((loyaltyLedgerId ?? '').isNotEmpty)
+        'loyaltyLedgerId': loyaltyLedgerId,
+      if ((loyaltyPoints ?? 0) > 0) 'loyaltyPointsRedeemed': loyaltyPoints,
+      if ((giftCardId ?? '').isNotEmpty) 'giftCardId': giftCardId,
+      if ((giftCardCode ?? '').isNotEmpty) 'giftCardCode': giftCardCode,
+      if ((giftCardAmount ?? 0) > 0) 'giftCardAmount': giftCardAmount,
+      ...?switch (effectiveGiftCardBalanceAfter) {
+        final balanceAfter? => {'giftCardBalanceAfter': balanceAfter},
+        null => null,
+      },
+      if (appliedPromotions.isNotEmpty) 'promotions': appliedPromotions,
+    };
 
     final String saleId;
     try {
@@ -4957,7 +5234,9 @@ class _CartSide extends ConsumerWidget {
         paymentProvider: paymentProvider,
         paymentReference: paymentReference,
         paymentStatus: paymentStatus,
-        paymentMetadata: paymentMetadata,
+        paymentMetadata: salePaymentMetadata.isEmpty
+            ? null
+            : salePaymentMetadata,
       );
     } catch (e) {
       ref.read(activeQuotationIdProvider.notifier).state = null;
@@ -5092,11 +5371,39 @@ class _CartSide extends ConsumerWidget {
           saleId: saleId,
           saleTotal: total,
         );
+        earnedGiftCardReward =
+            await LoyaltyRepository.issueGiftCardRewardIfEligible(
+              customerId: customerId,
+              saleId: saleId,
+            );
+        final currentPoints = await LoyaltyRepository.getCustomerPoints(
+          customerId,
+        );
+        if (earned > 0 || (loyaltyPoints ?? 0) > 0 || currentPoints > 0) {
+          loyaltyPointsEarned = earned;
+          loyaltyPointsBalance = currentPoints;
+        }
         if (earned > 0 && context.mounted) {
           _showSnackBar(
             context,
             '$earned loyalty point${earned == 1 ? '' : 's'} earned.',
             backgroundColor: AppColors.success,
+          );
+        }
+        final earnedReward = earnedGiftCardReward;
+        if (earnedReward != null && context.mounted) {
+          _showSnackBar(
+            context,
+            'Gift card ${earnedReward.code} earned: ${GiftCardRepository.formatBalance(earnedReward.amount)}',
+            backgroundColor: AppColors.success,
+          );
+        }
+        if (earnedReward != null) {
+          unawaited(
+            _sendEarnedGiftCardApiIfAvailable(
+              customerId: customerId,
+              reward: earnedReward,
+            ),
           );
         }
       } catch (error) {
@@ -5116,15 +5423,59 @@ class _CartSide extends ConsumerWidget {
     // ── Gift card: confirm redemption applied to this sale ───────────────
     if (giftCardId != null &&
         giftCardId.isNotEmpty &&
-        (giftCardAmount ?? 0) > 0 &&
-        context.mounted) {
-      _showSnackBar(
-        context,
-        'Gift card ${giftCardCode ?? ''} redeemed: ${GiftCardRepository.formatBalance(giftCardAmount!)}',
-        backgroundColor: AppColors.success,
-      );
+        (giftCardAmount ?? 0) > 0) {
+      try {
+        await GiftCardRepository.linkLatestRedemptionToSale(
+          giftCardId: giftCardId,
+          saleId: saleId,
+        );
+        final updatedGiftCard = await GiftCardRepository.getById(giftCardId);
+        effectiveGiftCardBalanceAfter =
+            (updatedGiftCard?['balance'] as num?)?.toDouble() ??
+            effectiveGiftCardBalanceAfter;
+      } catch (_) {
+        // Best-effort: checkout already carries the latest balance snapshot.
+      }
+      if (context.mounted) {
+        final redeemedAmount = giftCardAmount ?? 0;
+        final balanceAfter = effectiveGiftCardBalanceAfter;
+        final balanceText = balanceAfter == null
+            ? ''
+            : ' - balance ${GiftCardRepository.formatBalance(balanceAfter)}';
+        _showSnackBar(
+          context,
+          'Gift card ${giftCardCode ?? ''} redeemed: ${GiftCardRepository.formatBalance(redeemedAmount)}$balanceText',
+          backgroundColor: AppColors.success,
+        );
+      }
     }
     // ──────────────────────────────────────────────────────────────────
+
+    final balanceMetadata = <String, dynamic>{
+      ...?switch (loyaltyPointsEarned) {
+        final pointsEarned? => {'loyaltyPointsEarned': pointsEarned},
+        null => null,
+      },
+      ...?switch (loyaltyPointsBalance) {
+        final pointsBalance? => {'loyaltyPointsBalance': pointsBalance},
+        null => null,
+      },
+      if (earnedGiftCardReward case final reward?) ...reward.toMetadata(),
+      ...?switch (effectiveGiftCardBalanceAfter) {
+        final balanceAfter? => {'giftCardBalanceAfter': balanceAfter},
+        null => null,
+      },
+    };
+    if (balanceMetadata.isNotEmpty) {
+      try {
+        await SaleRepository.mergePaymentMetadata(
+          saleId: saleId,
+          metadata: balanceMetadata,
+        );
+      } catch (_) {
+        // Best-effort: receipt still receives the in-memory balance values.
+      }
+    }
 
     if (context.mounted) {
       await _openCashDrawerAfterSale(context, isCashDrawer);
@@ -5147,6 +5498,14 @@ class _CartSide extends ConsumerWidget {
         dueDate: dueDate,
         cashierName: SessionService.currentUserName,
         etimsResult: etimsResult,
+        loyaltyPointsRedeemed: loyaltyPoints,
+        loyaltyPointsEarned: loyaltyPointsEarned,
+        loyaltyPointsBalance: loyaltyPointsBalance,
+        earnedGiftCardReward: earnedGiftCardReward,
+        customerId: customerId,
+        giftCardCode: giftCardCode,
+        giftCardRedeemed: giftCardAmount,
+        giftCardBalance: effectiveGiftCardBalanceAfter,
       );
     }
     return saleId;
@@ -5201,9 +5560,24 @@ class _CartSide extends ConsumerWidget {
     String? dueDate,
     required String cashierName,
     EtimsSubmissionResult? etimsResult,
+    int? loyaltyPointsRedeemed,
+    int? loyaltyPointsEarned,
+    int? loyaltyPointsBalance,
+    LoyaltyGiftCardReward? earnedGiftCardReward,
+    String? customerId,
+    String? giftCardCode,
+    double? giftCardRedeemed,
+    double? giftCardBalance,
   }) {
     final isKopesha = paymentType.toLowerCase() == 'kopesha';
     final hasAmountTendered = amountTendered > 0;
+    final hasLoyaltySummary =
+        (loyaltyPointsRedeemed ?? 0) > 0 ||
+        (loyaltyPointsEarned ?? 0) > 0 ||
+        loyaltyPointsBalance != null;
+    final hasGiftCardSummary =
+        (giftCardRedeemed ?? 0) > 0 || giftCardBalance != null;
+    final hasEarnedGiftCardSummary = earnedGiftCardReward != null;
 
     showDialog(
       context: context,
@@ -5308,10 +5682,85 @@ class _CartSide extends ConsumerWidget {
                 ),
               ),
             ],
+            if (hasLoyaltySummary) ...[
+              SizedBox(height: 8),
+              Text(
+                [
+                  if ((loyaltyPointsRedeemed ?? 0) > 0)
+                    'redeemed $loyaltyPointsRedeemed pts',
+                  if ((loyaltyPointsEarned ?? 0) > 0)
+                    'earned $loyaltyPointsEarned pts',
+                  if (loyaltyPointsBalance != null)
+                    'balance $loyaltyPointsBalance pts',
+                ].join(' - '),
+                style: TextStyle(
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            if (hasGiftCardSummary) ...[
+              SizedBox(height: 8),
+              Text(
+                [
+                  if ((giftCardCode ?? '').trim().isNotEmpty)
+                    'Gift card $giftCardCode',
+                  if ((giftCardRedeemed ?? 0) > 0)
+                    'used ${GiftCardRepository.formatBalance(giftCardRedeemed!)}',
+                  if (giftCardBalance != null)
+                    'balance ${GiftCardRepository.formatBalance(giftCardBalance)}',
+                ].join(' - '),
+                style: TextStyle(
+                  color: AppColors.fuchsia,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            if (hasEarnedGiftCardSummary) ...[
+              SizedBox(height: 8),
+              Text(
+                'Earned gift card ${earnedGiftCardReward.code} - ${GiftCardRepository.formatBalance(earnedGiftCardReward.amount)}',
+                style: TextStyle(
+                  color: AppColors.fuchsia,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                [
+                  '${earnedGiftCardReward.pointsSpent} pts converted',
+                  'balance ${earnedGiftCardReward.pointsBalance} pts',
+                  if ((earnedGiftCardReward.expiresAt ?? '').trim().isNotEmpty)
+                    'expires ${earnedGiftCardReward.expiresAt}',
+                ].join(' - '),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Done')),
+          if (earnedGiftCardReward != null &&
+              customerId != null &&
+              customerId.trim().isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                unawaited(
+                  _showEarnedGiftCardMessage(
+                    context,
+                    customerId: customerId,
+                    reward: earnedGiftCardReward,
+                  ),
+                );
+              },
+              icon: Icon(Icons.send_outlined, size: 18),
+              label: Text(
+                MessagingService.allowApiSend ? 'Send Again' : 'Send Gift Card',
+              ),
+            ),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
@@ -5339,6 +5788,15 @@ class _CartSide extends ConsumerWidget {
                 etimsVerificationUrl: etimsResult?.verificationUrl,
                 etimsQrCode: etimsResult?.qrCode,
                 showTenderedBreakdown: hasAmountTendered,
+                loyaltyPointsRedeemed: loyaltyPointsRedeemed,
+                loyaltyPointsEarned: loyaltyPointsEarned,
+                loyaltyPointsBalance: loyaltyPointsBalance,
+                giftCardCode: giftCardCode,
+                giftCardRedeemed: giftCardRedeemed,
+                giftCardBalance: giftCardBalance,
+                earnedGiftCardCode: earnedGiftCardReward?.code,
+                earnedGiftCardAmount: earnedGiftCardReward?.amount,
+                earnedGiftCardExpiresAt: earnedGiftCardReward?.expiresAt,
               );
             },
             icon: Icon(Icons.receipt_long, size: 18),
@@ -5347,6 +5805,94 @@ class _CartSide extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showEarnedGiftCardMessage(
+    BuildContext context, {
+    required String customerId,
+    required LoyaltyGiftCardReward reward,
+  }) async {
+    final customer = await CustomerRepository.getById(customerId);
+    if (!context.mounted) return;
+    if (customer == null) {
+      _showSnackBar(
+        context,
+        'Customer was not found.',
+        backgroundColor: AppColors.warning,
+      );
+      return;
+    }
+
+    final customerName = customer['name']?.toString() ?? 'Customer';
+    final phone = customer['phone']?.toString() ?? '';
+    final email = customer['email']?.toString() ?? '';
+    if (phone.trim().isEmpty && email.trim().isEmpty) {
+      _showSnackBar(
+        context,
+        'Add a phone or email for $customerName before sending.',
+        backgroundColor: AppColors.warning,
+      );
+      return;
+    }
+
+    await CustomerMessageDialog.show(
+      context,
+      customerName: customerName,
+      phoneNumber: phone,
+      emailAddress: email,
+      initialMessage: MessagingService.giftCardRewardMessage(
+        customerName: customerName,
+        code: reward.code,
+        amount: GiftCardRepository.formatBalance(reward.amount),
+        expiresAt: reward.expiresAt,
+        pointsSpent: reward.pointsSpent,
+      ),
+      metadata: {
+        'source': 'loyalty_gift_card_reward',
+        'giftCardId': reward.giftCardId,
+        'giftCardCode': reward.code,
+        'giftCardAmount': reward.amount,
+        'customerId': customerId,
+      },
+    );
+  }
+
+  Future<void> _sendEarnedGiftCardApiIfAvailable({
+    required String customerId,
+    required LoyaltyGiftCardReward reward,
+  }) async {
+    if (!MessagingService.allowApiSend) {
+      return;
+    }
+    try {
+      final customer = await CustomerRepository.getById(customerId);
+      final customerName = customer?['name']?.toString() ?? 'Customer';
+      final phone = customer?['phone']?.toString() ?? '';
+      if (phone.trim().isEmpty) {
+        return;
+      }
+      await MessagingService.sendApi(
+        channel: CustomerMessageChannel.whatsapp,
+        phoneNumber: phone,
+        message: MessagingService.giftCardRewardMessage(
+          customerName: customerName,
+          code: reward.code,
+          amount: GiftCardRepository.formatBalance(reward.amount),
+          expiresAt: reward.expiresAt,
+          pointsSpent: reward.pointsSpent,
+        ),
+        metadata: {
+          'source': 'loyalty_gift_card_reward_auto',
+          'giftCardId': reward.giftCardId,
+          'giftCardCode': reward.code,
+          'giftCardAmount': reward.amount,
+          'customerId': customerId,
+        },
+      );
+    } catch (_) {
+      // Best-effort notification. The receipt and manual send action still
+      // carry the gift card code.
+    }
   }
 
   Future<_CashCheckoutResult?> _showCashCheckoutDialog(
@@ -7146,7 +7692,10 @@ class _CategoryChip extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.xs,
+            ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppRadius.xl),
               color: isSelected
@@ -7329,10 +7878,10 @@ class _ProductCardState extends State<_ProductCard> {
     return Material(
       color: isOutOfStock
           ? (isDark
-                 ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
-                 : Theme.of(
-                     context,
-                   ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45))
+                ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
+                : Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45))
           : (isDark ? AppColors.darkSurface : AppColors.surface),
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
@@ -7488,6 +8037,49 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
+class _PromotionBreakdown extends StatelessWidget {
+  final List<Map<String, dynamic>> promotions;
+  final bool compact;
+
+  const _PromotionBreakdown({required this.promotions, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    if (promotions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final text = promotions
+        .map((promotion) {
+          final name = promotion['name']?.toString() ?? 'Promotion';
+          final amount = (promotion['amount'] as num?)?.toDouble() ?? 0;
+          return '$name - ${ShopSettings.currency}${amount.toStringAsFixed(2)}';
+        })
+        .join(', ');
+    return Row(
+      children: [
+        Icon(
+          Icons.local_offer_outlined,
+          size: compact ? 13 : 15,
+          color: AppColors.success,
+        ),
+        SizedBox(width: compact ? 4 : 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: compact ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.success,
+              fontSize: compact ? 10 : 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CompactCartAmount extends StatelessWidget {
   final String label;
   final String value;
@@ -7504,7 +8096,10 @@ class _CompactCartAmount extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.sm),

@@ -30,8 +30,9 @@ export function CheckoutModal({
     "pickup"
   );
   const [note, setNote] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"manual" | "mpesa" | "paypal">("manual");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [result, setResult] = useState<{ orderNumber: string } | null>(null);
+  const [result, setResult] = useState<{ orderNumber: string; trackingCode?: string; paymentStatus?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,6 +46,7 @@ export function CheckoutModal({
       deliveryAddress: deliveryAddress.trim() || undefined,
       fulfillmentMethod,
       note: note.trim() || undefined,
+      paymentMethod,
       items: cart.map(({ item, variant, quantity }) => {
         const itemType = item.itemType || item.type || "product";
         return {
@@ -61,6 +63,10 @@ export function CheckoutModal({
     setError(null);
     try {
       const data = await placeOrder(business.id, payload);
+      if (data.checkoutUrl) {
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
       setResult(data);
       clearCart();
     } catch (err) {
@@ -117,6 +123,8 @@ export function CheckoutModal({
                 <p className="mt-4 font-display text-4xl tracking-tight text-accent">
                   #{result.orderNumber}
                 </p>
+                {result.trackingCode && <p className="mt-3 text-[13px] text-muted">Delivery tracking: {result.trackingCode}</p>}
+                {result.paymentStatus && <p className="mt-1 text-[13px] text-muted">Payment: {result.paymentStatus}</p>}
                 <button
                   onClick={onClose}
                   className="mt-8 rounded-md bg-accent px-6 py-3 text-[14px] font-semibold text-background transition hover:opacity-90"
@@ -134,6 +142,14 @@ export function CheckoutModal({
                 className="space-y-5"
               >
                 <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-[12px] font-medium text-muted-strong">Payment</label>
+                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "manual" | "mpesa" | "paypal")} className={inputClass}>
+                      <option value="manual">Pay on confirmation</option>
+                      <option value="mpesa">M-Pesa</option>
+                      <option value="paypal">PayPal</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="mb-1.5 block text-[12px] font-medium text-muted-strong">
                       Full name

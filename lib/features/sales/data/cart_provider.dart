@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -19,6 +21,7 @@ class CartItem {
   final String? variantName;
   final String? variantColorId;
   final String? variantColorName;
+  final List<String> serialNumbers;
   final bool tracksStock;
   int get precision => UnitUtils.allowsDecimal(unit) ? 3 : 0;
   double quantity;
@@ -32,6 +35,9 @@ class CartItem {
     }
     if (variantColorId != null) {
       parts.add(variantColorId!);
+    }
+    if (serialNumbers.isNotEmpty) {
+      parts.add('serial:${serialNumbers.join('|')}');
     }
     return parts.join('_');
   }
@@ -53,15 +59,17 @@ class CartItem {
     this.variantName,
     this.variantColorId,
     this.variantColorName,
+    List<String> serialNumbers = const [],
     this.tracksStock = true,
     this.quantity = 1,
-  });
+  }) : serialNumbers = List.unmodifiable(_normalizeSerials(serialNumbers));
 
   double get total => unitPrice * quantity;
   double get profit => (unitPrice - cost) * quantity;
   double get quantityInStockUnit => quantity * saleToStockFactor;
   bool get usesConversion => unit != stockUnit;
   bool get isService => lineType == 'service';
+  bool get isSerialTracked => serialNumbers.isNotEmpty;
 
   Map<String, dynamic> toSaleItem() => {
     'line_type': lineType,
@@ -79,6 +87,7 @@ class CartItem {
     'variant_id': variantId,
     'variant_color_id': variantColorId,
     'variant_color_name': variantColorName,
+    'serial_numbers': serialNumbers,
   };
 
   Map<String, dynamic> toHeldItem() => {
@@ -100,6 +109,9 @@ class CartItem {
     'variant_name': variantName,
     'variant_color_id': variantColorId,
     'variant_color_name': variantColorName,
+    'serial_numbers_json': serialNumbers.isEmpty
+        ? null
+        : jsonEncode(serialNumbers),
   };
 
   Map<String, dynamic> toQuotationItem() => {
@@ -134,9 +146,43 @@ class CartItem {
       variantName: row['variant_name'] as String?,
       variantColorId: row['variant_color_id'] as String?,
       variantColorName: row['variant_color_name'] as String?,
+      serialNumbers: _readSerialNumbers(row['serial_numbers_json']),
       tracksStock: _asBool(row['track_stock']),
       quantity: _asDouble(row['quantity'], fallback: 1),
     );
+  }
+
+  static List<String> _normalizeSerials(Iterable<String> values) {
+    final normalized = <String>[];
+    for (final value in values) {
+      final clean = value.trim();
+      if (clean.isEmpty) continue;
+      final exists = normalized.any(
+        (existing) => existing.toLowerCase() == clean.toLowerCase(),
+      );
+      if (!exists) {
+        normalized.add(clean);
+      }
+    }
+    return normalized;
+  }
+
+  static List<String> _readSerialNumbers(Object? value) {
+    if (value == null) return const [];
+    if (value is Iterable) {
+      return _normalizeSerials(value.map((item) => item.toString()));
+    }
+    final text = value.toString().trim();
+    if (text.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is Iterable) {
+        return _normalizeSerials(decoded.map((item) => item.toString()));
+      }
+    } catch (_) {
+      // Fall through to line/comma parsing for older held-sale payloads.
+    }
+    return _normalizeSerials(text.split(RegExp(r'[\n,]+')));
   }
 
   static double _asDouble(Object? value, {double fallback = 0}) {
@@ -181,6 +227,7 @@ class CartNotifier extends Notifier<List<CartItem>> {
     Map<String, dynamic> product, {
     Map<String, dynamic>? variant,
     Map<String, dynamic>? variantColor,
+    List<String> serialNumbers = const [],
   }) {
     final unit = UnitUtils.saleUnitForProduct(product);
     final stockUnit = UnitUtils.stockUnitForProduct(product);
@@ -208,19 +255,28 @@ class CartNotifier extends Notifier<List<CartItem>> {
     final variantName = variant?['name'] as String?;
     final variantColorId = variantColor?['id'] as String?;
     final variantColorName = variantColor?['name'] as String?;
+    final normalizedSerials = CartItem._normalizeSerials(serialNumbers);
     final cartKey = [
       product['id'] as String,
       ?variantId,
       ?variantColorId,
+      if (normalizedSerials.isNotEmpty) 'serial:${normalizedSerials.join('|')}',
     ].join('_');
 
     if (tracksStock && (stock <= 0 || availableSaleQuantity <= 0)) {
+      return false;
+    }
+    if (normalizedSerials.isNotEmpty &&
+        availableSaleQuantity + 0.001 < normalizedSerials.length) {
       return false;
     }
 
     final existing = state.where((item) => item.cartKey == cartKey).toList();
     if (existing.isNotEmpty) {
       final item = existing.first;
+      if (item.isSerialTracked) {
+        return false;
+      }
       if (item.tracksStock && item.quantity + 0.001 >= item.maxStock) {
         return false;
       }
@@ -231,9 +287,11 @@ class CartNotifier extends Notifier<List<CartItem>> {
       state = [...state];
       return true;
     } else {
-      final initialQuantity = _roundQuantity(
-        availableSaleQuantity >= step ? step : availableSaleQuantity,
-      );
+      final initialQuantity = normalizedSerials.isNotEmpty
+          ? normalizedSerials.length.toDouble()
+          : _roundQuantity(
+              availableSaleQuantity >= step ? step : availableSaleQuantity,
+            );
       state = [
         ...state,
         CartItem(
@@ -250,6 +308,7 @@ class CartNotifier extends Notifier<List<CartItem>> {
           variantName: variantName,
           variantColorId: variantColorId,
           variantColorName: variantColorName,
+          serialNumbers: normalizedSerials,
           tracksStock: tracksStock,
           quantity: initialQuantity,
         ),
@@ -300,6 +359,7 @@ class CartNotifier extends Notifier<List<CartItem>> {
   bool incrementQuantity(String cartKey) {
     final item = state.firstWhere((i) => i.cartKey == cartKey);
     if (item.isService) return false;
+    if (item.isSerialTracked) return false;
     if (item.tracksStock && item.quantity + 0.001 >= item.maxStock) {
       return false;
     }
@@ -316,6 +376,10 @@ class CartNotifier extends Notifier<List<CartItem>> {
   void decrementQuantity(String cartKey) {
     final item = state.firstWhere((i) => i.cartKey == cartKey);
     if (item.isService) {
+      removeProduct(cartKey);
+      return;
+    }
+    if (item.isSerialTracked) {
       removeProduct(cartKey);
       return;
     }
@@ -336,6 +400,11 @@ class CartNotifier extends Notifier<List<CartItem>> {
       item.quantity = 1;
       state = [...state];
       return quantity == 1;
+    }
+    if (item.isSerialTracked) {
+      item.quantity = item.serialNumbers.length.toDouble();
+      state = [...state];
+      return (quantity - item.quantity).abs() <= 0.001;
     }
     if (quantity <= 0) return false;
     if (item.tracksStock && quantity - item.maxStock > 0.001) return false;
@@ -382,6 +451,9 @@ class CartNotifier extends Notifier<List<CartItem>> {
           variantName: item['variant_name'] as String?,
           variantColorId: item['variant_color_id'] as String?,
           variantColorName: item['variant_color_name'] as String?,
+          serialNumbers: CartItem._readSerialNumbers(
+            item['serial_numbers_json'] ?? item['serial_numbers'],
+          ),
           tracksStock: _asBool(item['track_stock']),
           quantity: _asDouble(item['quantity'], fallback: 1),
         ),
@@ -416,6 +488,9 @@ final cartProvider = NotifierProvider<CartNotifier, List<CartItem>>(
 
 final taxRateProvider = Provider<double>((ref) => ShopSettings.taxRate / 100);
 final discountProvider = StateProvider<double>((ref) => 0.0);
+final appliedPromotionsProvider = StateProvider<List<Map<String, dynamic>>>(
+  (ref) => const [],
+);
 
 final cartSubtotalProvider = Provider<double>((ref) {
   final cart = ref.watch(cartProvider);

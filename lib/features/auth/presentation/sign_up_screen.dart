@@ -620,6 +620,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'phone': (user['phone'] as String?) ?? phone,
           'password': AuthPasswordService.hashPassword(password),
           'role': (user['role'] as String?) ?? 'ADMIN',
+          'custom_role_id': user['custom_role_id'] as String?,
           'feature_access_json': user['feature_access_json'] as String?,
           'allowed_service_ids_json':
               user['allowed_service_ids_json'] as String?,

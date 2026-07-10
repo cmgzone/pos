@@ -6,7 +6,14 @@ import '../../../core/theme/app_colors.dart';
 
 /// A full-screen camera barcode scanner overlay
 class BarcodeScannerScreen extends StatefulWidget {
-  const BarcodeScannerScreen({super.key});
+  final bool allowQr;
+  final String title;
+
+  const BarcodeScannerScreen({
+    super.key,
+    this.allowQr = false,
+    this.title = 'Scan Barcode',
+  });
 
   @override
   State<BarcodeScannerScreen> createState() => _BarcodeScannerScreenState();
@@ -24,7 +31,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       facing: CameraFacing.back,
       torchEnabled: false,
       // Only detect 1D product barcode formats — excludes QR codes, URLs, etc.
-      formats: const [
+      formats: [
         BarcodeFormat.ean13,
         BarcodeFormat.ean8,
         BarcodeFormat.upcA,
@@ -34,6 +41,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         BarcodeFormat.code93,
         BarcodeFormat.itf,
         BarcodeFormat.codabar,
+        if (widget.allowQr) BarcodeFormat.qrCode,
       ],
     );
   }
@@ -87,10 +95,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
           icon: const Icon(Icons.close, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Scan Barcode',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: Text(widget.title, style: TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: ValueListenableBuilder(

@@ -19,14 +19,22 @@ export function getBusinessIdFromPath(): string | undefined {
   return match?.[1];
 }
 
-export function getBootstrap(): { businessId?: string; catalog?: import("./types").Catalog } {
+export function getBootstrap(): {
+  businessId?: string;
+  branchId?: string;
+  catalog?: import("./types").Catalog;
+} {
   if (typeof window === "undefined") return {};
   const bootstrap = window.__STOREFRONT__;
   if (bootstrap?.catalog) {
-    return { businessId: bootstrap.businessId, catalog: bootstrap.catalog };
+    return {
+      businessId: bootstrap.businessId,
+      branchId: bootstrap.branchId,
+      catalog: bootstrap.catalog,
+    };
   }
   if (bootstrap?.businessId) {
-    return { businessId: bootstrap.businessId };
+    return { businessId: bootstrap.businessId, branchId: bootstrap.branchId };
   }
   if (window.__STOREFRONT_CATALOG__) {
     return { catalog: window.__STOREFRONT_CATALOG__ };
@@ -36,6 +44,13 @@ export function getBootstrap(): { businessId?: string; catalog?: import("./types
     return { businessId: fromPath };
   }
   return {};
+}
+
+export function getBranchIdFromQuery(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  const branchId = params.get("branchId")?.trim();
+  return branchId || undefined;
 }
 
 export function clamp(num: number, min: number, max: number): number {

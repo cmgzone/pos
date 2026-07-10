@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -49,6 +50,41 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
 
   String? get _cashierFilterId {
     return _isCashierView ? SessionService.currentUserId : null;
+  }
+
+  Map<String, dynamic> _paymentMetadata(Map<String, dynamic> sale) {
+    final raw = sale['payment_metadata_json'];
+    if (raw is! String || raw.trim().isEmpty) {
+      return const <String, dynamic>{};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Ignore malformed metadata from older/local records.
+    }
+    return const <String, dynamic>{};
+  }
+
+  int? _metadataInt(Map<String, dynamic> metadata, String key) {
+    final value = metadata[key];
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  double? _metadataDouble(Map<String, dynamic> metadata, String key) {
+    final value = metadata[key];
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  String? _metadataString(Map<String, dynamic> metadata, String key) {
+    final value = metadata[key]?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   @override
@@ -973,7 +1009,10 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       ),
                       child: Text(
                         '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                     SizedBox(height: AppSpacing.md),
@@ -1099,7 +1138,10 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                       ),
                       child: Text(
                         '${ShopSettings.currency}${((double.tryParse(quantityController.text.trim()) ?? 0) * (double.tryParse(priceController.text.trim()) ?? 0)).toStringAsFixed(2)}',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()]),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                     SizedBox(height: AppSpacing.md),
@@ -1356,6 +1398,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           final totalAmount = (sale['total_amount'] as num).toDouble();
           final saleTax = (sale['tax'] as num).toDouble();
           final saleDiscount = (sale['discount'] as num).toDouble();
+          final metadata = _paymentMetadata(sale);
           ReceiptService.showReceiptPreview(
             context,
             saleId: sale['id'] as String,
@@ -1381,6 +1424,27 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
             etimsVerificationUrl: sale['etims_verification_url'] as String?,
             etimsQrCode: sale['etims_qr_code'] as String?,
             showTenderedBreakdown: isCash,
+            loyaltyPointsRedeemed: _metadataInt(
+              metadata,
+              'loyaltyPointsRedeemed',
+            ),
+            loyaltyPointsEarned: _metadataInt(metadata, 'loyaltyPointsEarned'),
+            loyaltyPointsBalance: _metadataInt(
+              metadata,
+              'loyaltyPointsBalance',
+            ),
+            giftCardCode: _metadataString(metadata, 'giftCardCode'),
+            giftCardRedeemed: _metadataDouble(metadata, 'giftCardAmount'),
+            giftCardBalance: _metadataDouble(metadata, 'giftCardBalanceAfter'),
+            earnedGiftCardCode: _metadataString(metadata, 'earnedGiftCardCode'),
+            earnedGiftCardAmount: _metadataDouble(
+              metadata,
+              'earnedGiftCardAmount',
+            ),
+            earnedGiftCardExpiresAt: _metadataString(
+              metadata,
+              'earnedGiftCardExpiresAt',
+            ),
           );
         },
       ),
@@ -1466,6 +1530,20 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     final saleId = sale['id'] as String? ?? '';
     final total = (sale['total_amount'] as num? ?? 0).toDouble();
     final amount = '${ShopSettings.currency}${total.toStringAsFixed(2)}';
+    final metadata = _paymentMetadata(sale);
+    final balanceDue = (sale['balance_due'] as num?)?.toDouble() ?? 0;
+    final loyaltyEarned = _metadataInt(metadata, 'loyaltyPointsEarned');
+    final loyaltyBalance = _metadataInt(metadata, 'loyaltyPointsBalance');
+    final giftCardBalance = _metadataDouble(metadata, 'giftCardBalanceAfter');
+    final earnedGiftCardCode = _metadataString(metadata, 'earnedGiftCardCode');
+    final earnedGiftCardAmount = _metadataDouble(
+      metadata,
+      'earnedGiftCardAmount',
+    );
+    final earnedGiftCardExpiresAt = _metadataString(
+      metadata,
+      'earnedGiftCardExpiresAt',
+    );
     if (!mounted) {
       return;
     }
@@ -1480,6 +1558,23 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
             ? 'receipt'
             : saleId.substring(0, saleId.length < 8 ? saleId.length : 8),
         amount: amount,
+        kopeshaBalance: balanceDue > 0
+            ? '${ShopSettings.currency}${balanceDue.toStringAsFixed(2)}'
+            : null,
+        loyaltyPointsEarned: loyaltyEarned != null && loyaltyEarned > 0
+            ? '$loyaltyEarned pts'
+            : null,
+        loyaltyPointsBalance: loyaltyBalance == null
+            ? null
+            : '$loyaltyBalance pts',
+        giftCardBalance: giftCardBalance == null
+            ? null
+            : '${ShopSettings.currency}${giftCardBalance.toStringAsFixed(2)}',
+        earnedGiftCardCode: earnedGiftCardCode,
+        earnedGiftCardAmount: earnedGiftCardAmount == null
+            ? null
+            : '${ShopSettings.currency}${earnedGiftCardAmount.toStringAsFixed(2)}',
+        earnedGiftCardExpiresAt: earnedGiftCardExpiresAt,
       ),
       metadata: {'source': 'receipt', 'saleId': saleId, 'amount': total},
     );
@@ -1491,7 +1586,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Text('Delete Sale?'),
         content: Text(
           'Delete sale #${saleId.substring(0, 8)} from sales history and reports? Use Return instead when you need stock restored.',
@@ -1647,7 +1744,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                         context,
                                       ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
-                                      fontFeatures: const [FontFeature.tabularFigures()],
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
                                     ),
                                   ),
                                   SizedBox(height: AppSpacing.md),
@@ -1694,7 +1793,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                               context,
                                             ).colorScheme.onSurfaceVariant,
                                             fontSize: 12,
-                                            fontFeatures: const [FontFeature.tabularFigures()],
+                                            fontFeatures: const [
+                                              FontFeature.tabularFigures(),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -2036,7 +2137,8 @@ class _ManualSaleResponsiveRow extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) SizedBox(height: AppSpacing.md),
+                if (index != children.length - 1)
+                  SizedBox(height: AppSpacing.md),
               ],
             ],
           );
@@ -2461,7 +2563,10 @@ class _MiniSalesMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -2993,7 +3098,10 @@ class _SaleBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -3067,7 +3175,10 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppRadius.md),
@@ -3125,7 +3236,10 @@ class _FilterChip extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppRadius.sm),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: 6,
+            ),
             child: Text(
               label,
               style: TextStyle(
@@ -3195,7 +3309,9 @@ class _SaleDetailsDialog extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       backgroundColor: scheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+      ),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: isMobile ? size.width - 24 : 620,
@@ -3824,7 +3940,11 @@ class _DetailRow extends StatelessWidget {
               textAlign: TextAlign.end,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w500, color: valueColor, fontFeatures: const [FontFeature.tabularFigures()]),
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: valueColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],

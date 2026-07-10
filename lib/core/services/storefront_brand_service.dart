@@ -11,6 +11,7 @@ import 'sync_settings_service.dart';
 class StorefrontBrandSettings {
   final String businessId;
   final String businessName;
+  final String branchId;
   final String logoUrl;
   final String coverUrl;
   final List<String> coverUrls;
@@ -22,6 +23,7 @@ class StorefrontBrandSettings {
   const StorefrontBrandSettings({
     required this.businessId,
     required this.businessName,
+    this.branchId = 'main_branch',
     required this.logoUrl,
     required this.coverUrl,
     required this.coverUrls,
@@ -31,10 +33,11 @@ class StorefrontBrandSettings {
     required this.updatedAt,
   });
 
-  factory StorefrontBrandSettings.empty() {
+  factory StorefrontBrandSettings.empty({String branchId = 'main_branch'}) {
     return StorefrontBrandSettings(
       businessId: '',
       businessName: ShopSettings.shopName,
+      branchId: branchId,
       logoUrl: '',
       coverUrl: '',
       coverUrls: const [],
@@ -52,6 +55,7 @@ class StorefrontBrandSettings {
     return StorefrontBrandSettings(
       businessId: json['businessId']?.toString() ?? '',
       businessName: json['businessName']?.toString() ?? ShopSettings.shopName,
+      branchId: json['branchId']?.toString() ?? 'main_branch',
       logoUrl: json['logoUrl']?.toString() ?? '',
       coverUrl: coverUrls.isNotEmpty ? coverUrls.first : coverUrl,
       coverUrls: coverUrls,
@@ -66,6 +70,8 @@ class StorefrontBrandSettings {
 
   Map<String, dynamic> toJson() {
     return {
+      'branchId': branchId,
+      'name': businessName.trim(),
       'logoUrl': logoUrl.trim(),
       'coverUrl': coverUrls.isNotEmpty
           ? coverUrls.first.trim()
@@ -116,24 +122,34 @@ class StorefrontBrandService {
   static const _timeout = Duration(seconds: 90);
   static const _maxClientImageBytes = 5 * 1024 * 1024;
 
-  static Future<StorefrontBrandSettings> fetchSettings() async {
+  static Future<StorefrontBrandSettings> fetchSettings({
+    String? branchId,
+  }) async {
     final access = await _businessAccess();
     final client = http.Client();
     try {
+      final query = {
+        'deviceId': access.deviceId,
+        if (branchId != null && branchId.trim().isNotEmpty)
+          'branchId': branchId.trim(),
+      };
       final response = await client
           .get(
-            _buildUri(access.backendUrl, 'catalog/brand', {
-              'deviceId': access.deviceId,
-            }),
+            _buildUri(access.backendUrl, 'catalog/brand', query),
             headers: _authHeaders(access.license),
           )
           .timeout(_timeout);
       final body = _decodeJson(response);
       _throwIfFailed(response, body, 'Could not load storefront settings.');
       final data = body['data'];
-      return data is Map
-          ? StorefrontBrandSettings.fromJson(Map<String, dynamic>.from(data))
-          : StorefrontBrandSettings.empty();
+      if (data is Map) {
+        final settings =
+            StorefrontBrandSettings.fromJson(Map<String, dynamic>.from(data));
+        return settings;
+      }
+      return StorefrontBrandSettings.empty(
+        branchId: branchId ?? 'main_branch',
+      );
     } finally {
       client.close();
     }
@@ -146,11 +162,14 @@ class StorefrontBrandService {
     final access = await _businessAccess();
     final client = http.Client();
     try {
+      final query = {
+        'deviceId': access.deviceId,
+        if (settings.branchId.trim().isNotEmpty)
+          'branchId': settings.branchId.trim(),
+      };
       final response = await client
           .put(
-            _buildUri(access.backendUrl, 'catalog/brand', {
-              'deviceId': access.deviceId,
-            }),
+            _buildUri(access.backendUrl, 'catalog/brand', query),
             headers: {
               ..._authHeaders(access.license),
               HttpHeaders.contentTypeHeader: 'application/json',

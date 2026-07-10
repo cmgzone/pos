@@ -54,6 +54,15 @@ class ReceiptService {
     bool isQuotation = false,
     String? quotationNo,
     String? quotationStatus,
+    int? loyaltyPointsRedeemed,
+    int? loyaltyPointsEarned,
+    int? loyaltyPointsBalance,
+    double? giftCardRedeemed,
+    double? giftCardBalance,
+    String? giftCardCode,
+    String? earnedGiftCardCode,
+    double? earnedGiftCardAmount,
+    String? earnedGiftCardExpiresAt,
   }) async {
     final pdf = pw.Document();
     final dateStr = _formatDocumentDate(documentDate);
@@ -64,6 +73,20 @@ class ReceiptService {
     final isCash =
         !isQuotation &&
         (showTenderedBreakdown || paymentType.toLowerCase() == 'cash');
+    final hasLoyaltySummary =
+        !isQuotation &&
+        ((loyaltyPointsRedeemed ?? 0) > 0 ||
+            (loyaltyPointsEarned ?? 0) > 0 ||
+            loyaltyPointsBalance != null);
+    final hasGiftCardSummary =
+        !isQuotation &&
+        ((giftCardRedeemed ?? 0) > 0 || giftCardBalance != null);
+    final hasEarnedGiftCardSummary =
+        !isQuotation &&
+        (earnedGiftCardCode ?? '').trim().isNotEmpty &&
+        (earnedGiftCardAmount ?? 0) > 0;
+    final hasCustomerBalanceSummary =
+        hasLoyaltySummary || hasGiftCardSummary || hasEarnedGiftCardSummary;
 
     pdf.addPage(
       pw.Page(
@@ -438,6 +461,58 @@ class ReceiptService {
                 ),
               ],
 
+              if (hasCustomerBalanceSummary) ...[
+                pw.SizedBox(height: 8),
+                pw.Container(
+                  width: double.infinity,
+                  height: 0.5,
+                  color: PdfColors.grey400,
+                ),
+                pw.SizedBox(height: 5),
+                pw.Text(
+                  'Customer Balance',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 3),
+                if ((loyaltyPointsRedeemed ?? 0) > 0)
+                  _pdfTotalRow(
+                    'Loyalty Redeemed',
+                    '${loyaltyPointsRedeemed!} pts',
+                  ),
+                if ((loyaltyPointsEarned ?? 0) > 0)
+                  _pdfTotalRow('Loyalty Earned', '+$loyaltyPointsEarned pts'),
+                if (loyaltyPointsBalance != null)
+                  _pdfTotalRow('Loyalty Balance', '$loyaltyPointsBalance pts'),
+                if ((giftCardCode ?? '').trim().isNotEmpty &&
+                    hasGiftCardSummary)
+                  _pdfTotalRow('Gift Card', _pdfSafe(giftCardCode)),
+                if ((giftCardRedeemed ?? 0) > 0)
+                  _pdfTotalRow(
+                    'Gift Card Used',
+                    '-${ShopSettings.currency}${giftCardRedeemed!.toStringAsFixed(2)}',
+                  ),
+                if (giftCardBalance != null)
+                  _pdfTotalRow(
+                    'Gift Card Balance',
+                    '${ShopSettings.currency}${giftCardBalance.toStringAsFixed(2)}',
+                  ),
+                if (hasEarnedGiftCardSummary) ...[
+                  _pdfTotalRow(
+                    'Gift Card Earned',
+                    '${ShopSettings.currency}${earnedGiftCardAmount!.toStringAsFixed(2)}',
+                  ),
+                  _pdfTotalRow('Gift Card Code', _pdfSafe(earnedGiftCardCode)),
+                  if ((earnedGiftCardExpiresAt ?? '').trim().isNotEmpty)
+                    _pdfTotalRow(
+                      'Gift Card Expires',
+                      _pdfSafe(earnedGiftCardExpiresAt),
+                    ),
+                ],
+              ],
+
               if (!isQuotation &&
                   _hasEtimsDetails(
                     etimsStatus: etimsStatus,
@@ -634,6 +709,15 @@ class ReceiptService {
     bool isQuotation = false,
     String? quotationNo,
     String? quotationStatus,
+    int? loyaltyPointsRedeemed,
+    int? loyaltyPointsEarned,
+    int? loyaltyPointsBalance,
+    double? giftCardRedeemed,
+    double? giftCardBalance,
+    String? giftCardCode,
+    String? earnedGiftCardCode,
+    double? earnedGiftCardAmount,
+    String? earnedGiftCardExpiresAt,
   }) async {
     final pdf = await generateReceipt(
       saleId: saleId,
@@ -665,6 +749,15 @@ class ReceiptService {
       isQuotation: isQuotation,
       quotationNo: quotationNo,
       quotationStatus: quotationStatus,
+      loyaltyPointsRedeemed: loyaltyPointsRedeemed,
+      loyaltyPointsEarned: loyaltyPointsEarned,
+      loyaltyPointsBalance: loyaltyPointsBalance,
+      giftCardRedeemed: giftCardRedeemed,
+      giftCardBalance: giftCardBalance,
+      giftCardCode: giftCardCode,
+      earnedGiftCardCode: earnedGiftCardCode,
+      earnedGiftCardAmount: earnedGiftCardAmount,
+      earnedGiftCardExpiresAt: earnedGiftCardExpiresAt,
     );
 
     if (!context.mounted) {

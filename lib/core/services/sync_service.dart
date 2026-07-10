@@ -86,6 +86,7 @@ class SyncService {
     'categories',
     'expense_categories',
     'payment_methods',
+    'custom_roles',
     'users',
     'customers',
     'suppliers',
@@ -98,7 +99,12 @@ class SyncService {
     'purchase_order_items',
     'shifts',
     'stock_batches',
+    'product_serials',
     'stock_transfers',
+    'stocktake_sessions',
+    'stocktake_items',
+    'sms_campaigns',
+    'exchange_rates',
     'customer_invoices',
     'customer_invoice_items',
     'quotations',
@@ -107,6 +113,12 @@ class SyncService {
     'sale_items',
     'cash_movements',
     'credit_payments',
+    'loyalty_rules',
+    'loyalty_ledger',
+    'gift_cards',
+    'gift_card_transactions',
+    'promotions',
+    'promotion_rules',
     'expenses',
     'services',
     'service_fields',
@@ -121,6 +133,7 @@ class SyncService {
     'categories',
     'expense_categories',
     'payment_methods',
+    'custom_roles',
     'users',
     'customers',
     'suppliers',
@@ -139,10 +152,21 @@ class SyncService {
     'quotations',
     'quotation_items',
     'stock_batches',
+    'product_serials',
     'stock_transfers',
+    'stocktake_sessions',
+    'stocktake_items',
+    'sms_campaigns',
+    'exchange_rates',
     'sale_items',
     'cash_movements',
     'credit_payments',
+    'loyalty_rules',
+    'loyalty_ledger',
+    'gift_cards',
+    'gift_card_transactions',
+    'promotions',
+    'promotion_rules',
     'expenses',
     'service_fields',
     'service_orders',
@@ -764,6 +788,8 @@ class SyncService {
             : 'Checking categories...';
       case 'payment_methods':
         return 'Downloading payment methods$countText...';
+      case 'custom_roles':
+        return 'Downloading role templates$countText...';
       case 'users':
         return 'Downloading team access$countText...';
       case 'sales':
@@ -771,6 +797,24 @@ class SyncService {
       case 'stock_batches':
       case 'stock_transfers':
         return 'Downloading stock data$countText...';
+      case 'product_serials':
+        return 'Downloading serial numbers$countText...';
+      case 'stocktake_sessions':
+      case 'stocktake_items':
+        return 'Downloading stocktake data$countText...';
+      case 'sms_campaigns':
+        return 'Downloading SMS campaigns$countText...';
+      case 'exchange_rates':
+        return 'Downloading exchange rates$countText...';
+      case 'gift_cards':
+      case 'gift_card_transactions':
+        return 'Downloading gift cards$countText...';
+      case 'promotions':
+      case 'promotion_rules':
+        return 'Downloading promotions$countText...';
+      case 'loyalty_rules':
+      case 'loyalty_ledger':
+        return 'Downloading loyalty data$countText...';
       default:
         return 'Downloading business data$countText...';
     }

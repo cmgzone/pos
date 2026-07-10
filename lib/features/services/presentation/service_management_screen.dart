@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,10 +7,12 @@ import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
+import '../../customers/presentation/customer_message_dialog.dart';
 import '../../loyalty/data/loyalty_repository.dart';
 import '../../gift_cards/data/gift_card_repository.dart';
 import '../../sales/data/cart_provider.dart';
@@ -118,11 +121,13 @@ class _ServiceManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         title: Text('Services'),
@@ -419,7 +424,10 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
           hintText: 'Search services...',
-          prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          prefixIcon: Icon(
+            Icons.search,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           suffixIcon: _serviceQuery.isEmpty
               ? null
               : IconButton(
@@ -509,7 +517,9 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.16),
@@ -528,7 +538,9 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.secondary.withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                         child: Icon(
@@ -545,10 +557,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                     service['name'] as String? ?? 'Service',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                   SizedBox(height: AppSpacing.xs),
                   Text(
@@ -648,7 +657,9 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
           return Center(
             child: Text(
               'No active services yet. Create some in the Services module.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           );
@@ -720,11 +731,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
             padding: const EdgeInsets.all(AppSpacing.xl),
             child: Row(
               children: [
-                Icon(
-                  Icons.today_outlined,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
+                Icon(Icons.today_outlined, color: AppColors.primary, size: 20),
                 SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
@@ -756,13 +763,17 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                           Icon(
                             Icons.event_available_outlined,
                             size: 48,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                           SizedBox(height: AppSpacing.md),
                           Text(
                             'No orders today',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -770,7 +781,9 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                           Text(
                             'Create orders to see them here',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
@@ -862,10 +875,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
                 Expanded(
                   child: Text(
                     serviceName,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1015,7 +1025,10 @@ class _ServiceDurationBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -1072,7 +1085,9 @@ class _MobileServiceTile extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.14),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Icon(
@@ -1104,7 +1119,9 @@ class _MobileServiceTile extends StatelessWidget {
                         Text(
                           service['category'] as String? ?? 'General',
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
@@ -1183,7 +1200,9 @@ class _CatalogTab extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               child: Row(
                 children: [
@@ -1215,7 +1234,9 @@ class _CatalogTab extends ConsumerWidget {
                         Text(
                           service['category'] as String? ?? 'General',
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         if ((service['description'] as String?)?.isNotEmpty ==
@@ -1226,7 +1247,9 @@ class _CatalogTab extends ConsumerWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
@@ -1312,7 +1335,12 @@ class _OrdersTab extends ConsumerWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.xxl, AppSpacing.xl, AppSpacing.xxl, 0),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xxl,
+            AppSpacing.xl,
+            AppSpacing.xxl,
+            0,
+          ),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Wrap(
@@ -1443,7 +1471,9 @@ class _ServiceOrderTile extends StatelessWidget {
                         (order['customer_name'] as String?)?.isNotEmpty == true
                             ? order['customer_name'] as String
                             : 'Walk-in / no customer name',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -1454,7 +1484,10 @@ class _ServiceOrderTile extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: _statusColor(context, status).withValues(alpha: 0.12),
+                    color: _statusColor(
+                      context,
+                      status,
+                    ).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(AppRadius.xl),
                   ),
                   child: Text(
@@ -1570,7 +1603,11 @@ class _OrderMetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          Icon(
+            icon,
+            size: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           SizedBox(width: 6),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 180),
@@ -1599,8 +1636,13 @@ Future<void> showServiceOrderDetailsDialog(
   await showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xxl,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text('Service Order Details'),
       content: _ResponsiveDialogContent(
         maxWidth: 640,
@@ -1647,10 +1689,7 @@ Future<void> showServiceOrderDetailsDialog(
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: Text('Close'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close')),
       ],
     ),
   );
@@ -1807,7 +1846,9 @@ class _ServiceOrderDetailsContent extends StatelessWidget {
             _InfoPanel(
               child: Text(
                 'No custom inputs were captured for this order.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             )
           else
@@ -1858,15 +1899,14 @@ class _ServiceOrderDetailsHeader extends StatelessWidget {
             children: [
               Text(
                 order['service_name'] as String? ?? 'Service Order',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
               SizedBox(height: 6),
               Text(
                 _serviceOrderCustomerLabel(order),
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -1961,7 +2001,9 @@ Future<void> deleteServiceOrderWithConfirmation(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text('Delete Service Order?'),
       content: Text(
         'Delete "$serviceName" from service orders and reports? This will not delete the service template.',
@@ -2056,8 +2098,9 @@ Future<void> chargeServiceOrder(
   final loyaltyPoints = checkoutResult['loyaltyPoints'] as int?;
   final giftCardId = checkoutResult['giftCardId'] as String?;
   final giftCardCode = checkoutResult['giftCardCode'] as String?;
-  final giftCardAmount =
-      (checkoutResult['giftCardAmount'] as num?)?.toDouble();
+  final giftCardAmount = (checkoutResult['giftCardAmount'] as num?)?.toDouble();
+  final giftCardBalanceAfter = (checkoutResult['giftCardBalanceAfter'] as num?)
+      ?.toDouble();
 
   if (type == 'kopesha') {
     if (customer == null || dueDate == null) {
@@ -2085,6 +2128,7 @@ Future<void> chargeServiceOrder(
       giftCardId: giftCardId,
       giftCardCode: giftCardCode,
       giftCardAmount: giftCardAmount,
+      giftCardBalanceAfter: giftCardBalanceAfter,
     );
     return;
   }
@@ -2135,6 +2179,7 @@ Future<void> chargeServiceOrder(
       giftCardId: giftCardId,
       giftCardCode: giftCardCode,
       giftCardAmount: giftCardAmount,
+      giftCardBalanceAfter: giftCardBalanceAfter,
     );
     return;
   }
@@ -2154,6 +2199,7 @@ Future<void> chargeServiceOrder(
     giftCardId: giftCardId,
     giftCardCode: giftCardCode,
     giftCardAmount: giftCardAmount,
+    giftCardBalanceAfter: giftCardBalanceAfter,
   );
 }
 
@@ -2372,7 +2418,9 @@ Future<_ServiceCashCheckoutResult?> _showServiceCashCheckoutDialog(
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                fontFeatures: const [FontFeature.tabularFigures()],
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                             ),
                           ],
@@ -2445,11 +2493,27 @@ Future<void> _completeServiceOrderPayment(
   String? giftCardId,
   String? giftCardCode,
   double? giftCardAmount,
+  double? giftCardBalanceAfter,
 }) async {
   final orderId = order['id'] as String;
   final serviceId = order['service_id'] as String;
   final serviceName = order['service_name'] as String? ?? 'Service Order';
   final price = (order['price'] as num? ?? 0).toDouble();
+  var effectiveGiftCardBalanceAfter = giftCardBalanceAfter;
+  int? loyaltyPointsEarned;
+  int? loyaltyPointsBalance;
+  LoyaltyGiftCardReward? earnedGiftCardReward;
+  final salePaymentMetadata = <String, dynamic>{
+    if ((loyaltyLedgerId ?? '').isNotEmpty) 'loyaltyLedgerId': loyaltyLedgerId,
+    if ((loyaltyPoints ?? 0) > 0) 'loyaltyPointsRedeemed': loyaltyPoints,
+    if ((giftCardId ?? '').isNotEmpty) 'giftCardId': giftCardId,
+    if ((giftCardCode ?? '').isNotEmpty) 'giftCardCode': giftCardCode,
+    if ((giftCardAmount ?? 0) > 0) 'giftCardAmount': giftCardAmount,
+    ...?switch (effectiveGiftCardBalanceAfter) {
+      final balanceAfter? => {'giftCardBalanceAfter': balanceAfter},
+      null => null,
+    },
+  };
 
   try {
     final saleId = await SaleRepository.createSale(
@@ -2482,6 +2546,7 @@ Future<void> _completeServiceOrderPayment(
       customerId: customerId,
       customerName: customerName,
       dueDate: dueDate,
+      paymentMetadata: salePaymentMetadata.isEmpty ? null : salePaymentMetadata,
     );
 
     await ServiceRepository.attachSaleToOrder(orderId, saleId);
@@ -2505,11 +2570,38 @@ Future<void> _completeServiceOrderPayment(
           saleId: saleId,
           saleTotal: total,
         );
+        earnedGiftCardReward =
+            await LoyaltyRepository.issueGiftCardRewardIfEligible(
+              customerId: customerId,
+              saleId: saleId,
+            );
+        final currentPoints = await LoyaltyRepository.getCustomerPoints(
+          customerId,
+        );
+        if (earned > 0 || (loyaltyPoints ?? 0) > 0 || currentPoints > 0) {
+          loyaltyPointsEarned = earned;
+          loyaltyPointsBalance = currentPoints;
+        }
         if (earned > 0 && context.mounted) {
           _showServicePaymentSnackBar(
             context,
             '$earned loyalty point${earned == 1 ? '' : 's'} earned.',
             backgroundColor: AppColors.success,
+          );
+        }
+        if (earnedGiftCardReward case final reward?) {
+          if (context.mounted) {
+            _showServicePaymentSnackBar(
+              context,
+              'Gift card ${reward.code} earned: ${GiftCardRepository.formatBalance(reward.amount)}',
+              backgroundColor: AppColors.success,
+            );
+          }
+          unawaited(
+            _sendServiceEarnedGiftCardApiIfAvailable(
+              customerId: customerId,
+              reward: reward,
+            ),
           );
         }
       } catch (error) {
@@ -2529,13 +2621,56 @@ Future<void> _completeServiceOrderPayment(
 
     if (giftCardId != null &&
         giftCardId.isNotEmpty &&
-        (giftCardAmount ?? 0) > 0 &&
-        context.mounted) {
-      _showServicePaymentSnackBar(
-        context,
-        'Gift card ${giftCardCode ?? ''} redeemed: ${GiftCardRepository.formatBalance(giftCardAmount!)}',
-        backgroundColor: AppColors.success,
-      );
+        (giftCardAmount ?? 0) > 0) {
+      try {
+        await GiftCardRepository.linkLatestRedemptionToSale(
+          giftCardId: giftCardId,
+          saleId: saleId,
+        );
+        final updatedGiftCard = await GiftCardRepository.getById(giftCardId);
+        effectiveGiftCardBalanceAfter =
+            (updatedGiftCard?['balance'] as num?)?.toDouble() ??
+            effectiveGiftCardBalanceAfter;
+      } catch (_) {
+        // Best-effort: checkout already carries the latest balance snapshot.
+      }
+      if (context.mounted) {
+        final balanceAfter = effectiveGiftCardBalanceAfter;
+        final balanceText = balanceAfter == null
+            ? ''
+            : ' - balance ${GiftCardRepository.formatBalance(balanceAfter)}';
+        _showServicePaymentSnackBar(
+          context,
+          'Gift card ${giftCardCode ?? ''} redeemed: ${GiftCardRepository.formatBalance(giftCardAmount ?? 0)}$balanceText',
+          backgroundColor: AppColors.success,
+        );
+      }
+    }
+
+    final balanceMetadata = <String, dynamic>{
+      ...?switch (loyaltyPointsEarned) {
+        final pointsEarned? => {'loyaltyPointsEarned': pointsEarned},
+        null => null,
+      },
+      ...?switch (loyaltyPointsBalance) {
+        final pointsBalance? => {'loyaltyPointsBalance': pointsBalance},
+        null => null,
+      },
+      ...?earnedGiftCardReward?.toMetadata(),
+      ...?switch (effectiveGiftCardBalanceAfter) {
+        final balanceAfter? => {'giftCardBalanceAfter': balanceAfter},
+        null => null,
+      },
+    };
+    if (balanceMetadata.isNotEmpty) {
+      try {
+        await SaleRepository.mergePaymentMetadata(
+          saleId: saleId,
+          metadata: balanceMetadata,
+        );
+      } catch (_) {
+        // Best-effort: success UI still receives the in-memory balance values.
+      }
     }
 
     if (context.mounted) {
@@ -2552,6 +2687,14 @@ Future<void> _completeServiceOrderPayment(
         changeGiven: changeGiven ?? 0,
         isCashDrawer: isCashDrawer,
         dueDate: dueDate,
+        loyaltyPointsRedeemed: loyaltyPoints,
+        loyaltyPointsEarned: loyaltyPointsEarned,
+        loyaltyPointsBalance: loyaltyPointsBalance,
+        earnedGiftCardReward: earnedGiftCardReward,
+        customerId: customerId,
+        giftCardCode: giftCardCode,
+        giftCardRedeemed: giftCardAmount,
+        giftCardBalance: effectiveGiftCardBalanceAfter,
       );
     }
   } catch (error) {
@@ -2608,13 +2751,30 @@ void _showServicePaymentSuccessDialog(
   double changeGiven = 0,
   bool isCashDrawer = false,
   String? dueDate,
+  int? loyaltyPointsRedeemed,
+  int? loyaltyPointsEarned,
+  int? loyaltyPointsBalance,
+  LoyaltyGiftCardReward? earnedGiftCardReward,
+  String? customerId,
+  String? giftCardCode,
+  double? giftCardRedeemed,
+  double? giftCardBalance,
 }) {
   final isCredit = paymentType.toLowerCase() == 'kopesha';
+  final hasLoyaltySummary =
+      (loyaltyPointsRedeemed ?? 0) > 0 ||
+      (loyaltyPointsEarned ?? 0) > 0 ||
+      loyaltyPointsBalance != null;
+  final hasGiftCardSummary =
+      (giftCardRedeemed ?? 0) > 0 || giftCardBalance != null;
+  final hasEarnedGiftCardSummary = earnedGiftCardReward != null;
 
   showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Row(
         children: const [
           Icon(Icons.check_circle, color: AppColors.success, size: 30),
@@ -2656,6 +2816,62 @@ void _showServicePaymentSuccessDialog(
           ],
           if (customerName != null) Text('Customer: $customerName'),
           if (isCredit && dueDate != null) Text('Due Date: $dueDate'),
+          if (hasLoyaltySummary) ...[
+            SizedBox(height: 8),
+            Text(
+              [
+                if ((loyaltyPointsRedeemed ?? 0) > 0)
+                  'redeemed $loyaltyPointsRedeemed pts',
+                if ((loyaltyPointsEarned ?? 0) > 0)
+                  'earned $loyaltyPointsEarned pts',
+                if (loyaltyPointsBalance != null)
+                  'balance $loyaltyPointsBalance pts',
+              ].join(' - '),
+              style: TextStyle(
+                color: AppColors.success,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (hasGiftCardSummary) ...[
+            SizedBox(height: 8),
+            Text(
+              [
+                if ((giftCardCode ?? '').trim().isNotEmpty)
+                  'Gift card $giftCardCode',
+                if ((giftCardRedeemed ?? 0) > 0)
+                  'used ${GiftCardRepository.formatBalance(giftCardRedeemed!)}',
+                if (giftCardBalance != null)
+                  'balance ${GiftCardRepository.formatBalance(giftCardBalance)}',
+              ].join(' - '),
+              style: TextStyle(
+                color: AppColors.fuchsia,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (hasEarnedGiftCardSummary) ...[
+            SizedBox(height: 8),
+            Text(
+              'Earned gift card ${earnedGiftCardReward.code} - ${GiftCardRepository.formatBalance(earnedGiftCardReward.amount)}',
+              style: TextStyle(
+                color: AppColors.fuchsia,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              [
+                '${earnedGiftCardReward.pointsSpent} pts converted',
+                'balance ${earnedGiftCardReward.pointsBalance} pts',
+                if ((earnedGiftCardReward.expiresAt ?? '').trim().isNotEmpty)
+                  'expires ${earnedGiftCardReward.expiresAt}',
+              ].join(' - '),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ],
           SizedBox(height: 10),
           Text(
             'Sale ID: ${saleId.substring(0, 8)}...',
@@ -2667,13 +2883,115 @@ void _showServicePaymentSuccessDialog(
         ],
       ),
       actions: [
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: Text('Done'),
-        ),
+        if (earnedGiftCardReward != null &&
+            customerId != null &&
+            customerId.trim().isNotEmpty)
+          OutlinedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _showServiceEarnedGiftCardMessage(
+                context,
+                customerId: customerId,
+                reward: earnedGiftCardReward,
+              );
+            },
+            icon: Icon(Icons.send_outlined, size: 18),
+            label: Text(
+              MessagingService.allowApiSend ? 'Send Again' : 'Send Gift Card',
+            ),
+          ),
+        FilledButton(onPressed: () => Navigator.pop(ctx), child: Text('Done')),
       ],
     ),
   );
+}
+
+Future<void> _showServiceEarnedGiftCardMessage(
+  BuildContext context, {
+  required String customerId,
+  required LoyaltyGiftCardReward reward,
+}) async {
+  final customer = await CustomerRepository.getById(customerId);
+  if (!context.mounted) return;
+  if (customer == null) {
+    _showServicePaymentSnackBar(
+      context,
+      'Customer was not found.',
+      backgroundColor: AppColors.warning,
+    );
+    return;
+  }
+
+  final customerName = customer['name']?.toString() ?? 'Customer';
+  final phone = customer['phone']?.toString() ?? '';
+  final email = customer['email']?.toString() ?? '';
+  if (phone.trim().isEmpty && email.trim().isEmpty) {
+    _showServicePaymentSnackBar(
+      context,
+      'Add a phone or email for $customerName before sending.',
+      backgroundColor: AppColors.warning,
+    );
+    return;
+  }
+
+  await CustomerMessageDialog.show(
+    context,
+    customerName: customerName,
+    phoneNumber: phone,
+    emailAddress: email,
+    initialMessage: MessagingService.giftCardRewardMessage(
+      customerName: customerName,
+      code: reward.code,
+      amount: GiftCardRepository.formatBalance(reward.amount),
+      expiresAt: reward.expiresAt,
+      pointsSpent: reward.pointsSpent,
+    ),
+    metadata: {
+      'source': 'loyalty_gift_card_reward',
+      'giftCardId': reward.giftCardId,
+      'giftCardCode': reward.code,
+      'giftCardAmount': reward.amount,
+      'customerId': customerId,
+    },
+  );
+}
+
+Future<void> _sendServiceEarnedGiftCardApiIfAvailable({
+  required String customerId,
+  required LoyaltyGiftCardReward reward,
+}) async {
+  if (!MessagingService.allowApiSend) {
+    return;
+  }
+  try {
+    final customer = await CustomerRepository.getById(customerId);
+    final customerName = customer?['name']?.toString() ?? 'Customer';
+    final phone = customer?['phone']?.toString() ?? '';
+    if (phone.trim().isEmpty) {
+      return;
+    }
+    await MessagingService.sendApi(
+      channel: CustomerMessageChannel.whatsapp,
+      phoneNumber: phone,
+      message: MessagingService.giftCardRewardMessage(
+        customerName: customerName,
+        code: reward.code,
+        amount: GiftCardRepository.formatBalance(reward.amount),
+        expiresAt: reward.expiresAt,
+        pointsSpent: reward.pointsSpent,
+      ),
+      metadata: {
+        'source': 'loyalty_gift_card_reward_auto',
+        'giftCardId': reward.giftCardId,
+        'giftCardCode': reward.code,
+        'giftCardAmount': reward.amount,
+        'customerId': customerId,
+      },
+    );
+  } catch (_) {
+    // Best-effort notification. The receipt and manual send action still carry
+    // the gift card code.
+  }
 }
 
 void _showServicePaymentSnackBar(
@@ -2751,8 +3069,13 @@ Future<void> showServiceEditorDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.xxl,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Text(service == null ? 'Create Service' : 'Edit Service'),
         content: _ResponsiveDialogContent(
           maxWidth: 720,
@@ -3434,7 +3757,8 @@ class _ResponsiveFormRow extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) SizedBox(height: AppSpacing.md),
+                if (index != children.length - 1)
+                  SizedBox(height: AppSpacing.md),
               ],
             ],
           );
@@ -3618,7 +3942,9 @@ class _ScheduleSelectionField extends StatelessWidget {
               ? _fmtDateTime(pickedSchedule!)
               : 'Tap to pick date & time',
           style: TextStyle(
-            color: pickedSchedule != null ? null : Theme.of(context).colorScheme.onSurfaceVariant,
+            color: pickedSchedule != null
+                ? null
+                : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -3804,7 +4130,9 @@ class _EmptyState extends StatelessWidget {
             Icon(
               icon,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
             ),
             SizedBox(height: AppSpacing.lg),
             Text(
@@ -3815,7 +4143,9 @@ class _EmptyState extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -3959,10 +4289,20 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xxl,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text('Select Customer'),
-      contentPadding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+      contentPadding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        0,
+      ),
       content: SizedBox(
         width: math.max(
           240.0,
@@ -3986,7 +4326,9 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                   // Walk-in option
                   ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: Icon(
                         Icons.directions_walk,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -4010,7 +4352,9 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                       child: Text(
                         'No customers found',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     )
                   else
@@ -4546,7 +4890,13 @@ class _ReportValueRow extends StatelessWidget {
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
           SizedBox(width: AppSpacing.md),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()])),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
         ],
       ),
     );
@@ -4590,10 +4940,7 @@ class _TopServicesSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        name,
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
+                      Text(name, style: TextStyle(fontWeight: FontWeight.w600)),
                       Text(
                         '$count orders',
                         style: TextStyle(
@@ -4641,7 +4988,9 @@ class _RecentOrdersSection extends StatelessWidget {
               if (!isLast)
                 Divider(
                   height: 1,
-                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.5),
                   indent: 36,
                 ),
             ],
@@ -4665,7 +5014,10 @@ class _RecentOrderTile extends StatelessWidget {
     final assignedStaff = _cleanText(order['assigned_staff']);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       child: Row(
         children: [
           Container(
@@ -4724,7 +5076,10 @@ class _RecentOrderTile extends StatelessWidget {
               ),
               SizedBox(height: AppSpacing.xs),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: 2,
+                ),
                 decoration: BoxDecoration(
                   color: _statusColor(context, status).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -4804,7 +5159,9 @@ class _PipelineRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           Container(

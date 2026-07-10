@@ -14,7 +14,7 @@ import { Footer } from "./footer";
 import { FloatingCart } from "./floating-cart";
 import { SkeletonGrid } from "./skeleton-grid";
 import { ErrorState } from "./error-state";
-import { getBootstrap } from "@/lib/utils";
+import { getBootstrap, getBranchIdFromQuery } from "@/lib/utils";
 import { fetchCatalog } from "@/lib/api";
 import { FadeIn } from "./motion";
 import type { BusinessBrand } from "@/lib/types";
@@ -64,7 +64,10 @@ function StorefrontInner() {
       );
       return;
     }
-    loadCatalog(bootstrap.businessId);
+    loadCatalog(
+      bootstrap.businessId,
+      bootstrap.branchId || getBranchIdFromQuery(),
+    );
   }, [loadCatalog, setCatalog, setSelectedBranch]);
 
   const handleBranchChange = useCallback(
@@ -160,21 +163,36 @@ function StorefrontInner() {
             <SkeletonGrid />
           ) : filteredItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-center">
-              <p className="font-display text-2xl tracking-tight">
-                No items match your search
-              </p>
-              <p className="mt-2 text-[13px] text-muted">
-                Try a different keyword or clear your filters.
-              </p>
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setCategory("all");
-                }}
-                className="mt-5 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-accent hover:bg-accent hover:text-background"
-              >
-                Clear filters
-              </button>
+              {catalog.products.length === 0 && !isSearching ? (
+                <>
+                  <p className="font-display text-2xl tracking-tight">
+                    No products published for this branch yet
+                  </p>
+                  <p className="mt-2 text-[13px] text-muted">
+                    {selectedBranch?.name
+                      ? `Switch to another branch or publish products for ${selectedBranch.name}.`
+                      : "Publish products to see them in this store."}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-display text-2xl tracking-tight">
+                    No items match your search
+                  </p>
+                  <p className="mt-2 text-[13px] text-muted">
+                    Try a different keyword or clear your filters.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setCategory("all");
+                    }}
+                    className="mt-5 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-accent hover:bg-accent hover:text-background"
+                  >
+                    Clear filters
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <section>

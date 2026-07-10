@@ -27,6 +27,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Map<String, dynamic> _todaySummary = const {};
   Map<String, dynamic> _monthSummary = const {};
   List<Map<String, dynamic>> _lowStockProducts = const [];
+  List<Map<String, dynamic>> _reorderSuggestions = const [];
   List<Map<String, dynamic>> _recentSales = const [];
   String? _topProductName;
   int _pendingOrders = 0;
@@ -43,6 +44,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _todaySummary = initialData.todaySummary;
       _monthSummary = initialData.monthSummary;
       _lowStockProducts = initialData.lowStockProducts;
+      _reorderSuggestions = initialData.reorderSuggestions;
       _recentSales = initialData.recentSales;
       _topProductName = initialData.topProductName;
       _pendingOrders = initialData.pendingOrders;
@@ -57,6 +59,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     Map<String, dynamic> summary = const {};
     Map<String, dynamic> monthSummary = const {};
     List<Map<String, dynamic>> lowStock = const [];
+    List<Map<String, dynamic>> reorderSuggestions = const [];
     List<Map<String, dynamic>> recentSales = const [];
     String? topProductName;
     var pendingOrders = 0;
@@ -71,6 +74,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       lowStock = await ProductRepository.getLowStock();
     } catch (error) {
       debugPrint('[Dashboard] Could not load low stock: $error');
+    }
+    try {
+      reorderSuggestions = await ProductRepository.getReorderSuggestions(
+        limit: 5,
+      );
+    } catch (error) {
+      debugPrint('[Dashboard] Could not load reorder suggestions: $error');
     }
     try {
       recentSales = (await SaleRepository.getAll()).take(5).toList();
@@ -154,6 +164,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _todaySummary = summary;
       _monthSummary = monthSummary;
       _lowStockProducts = lowStock;
+      _reorderSuggestions = reorderSuggestions;
       _recentSales = recentSales;
       _topProductName = topProductName;
       _pendingOrders = pendingOrders;
@@ -553,7 +564,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Semantics(
       button: true,
       label: 'Search app actions',
-        child: InkWell(
+      child: InkWell(
         onTap: _showActionSearch,
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: IgnorePointer(
@@ -602,7 +613,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: Column(
             children: [
               if (hasProductAccess) ...[
-                _buildLowStockCard(),
+                _buildReorderSuggestionsCard(),
                 const SizedBox(height: AppSpacing.xl),
               ],
               TrainingAnchor(
@@ -635,7 +646,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         const SizedBox(height: AppSpacing.xl),
         if (hasProductAccess) ...[
-          _buildLowStockCard(),
+          _buildReorderSuggestionsCard(),
           const SizedBox(height: AppSpacing.xl),
         ],
         TrainingAnchor(
@@ -771,8 +782,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildLowStockCard() {
+  Widget _buildReorderSuggestionsCard() {
     final theme = Theme.of(context);
+    final suggestions = _reorderSuggestions;
     return _Panel(
       backgroundColor: context.warningPanelBackground(),
       borderColor: AppColors.warning.withValues(alpha: 0.22),
@@ -789,7 +801,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: const Icon(
-                  Icons.warning_amber_rounded,
+                  Icons.assignment_returned_rounded,
                   color: AppColors.warning,
                   size: 22,
                 ),
@@ -799,11 +811,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Low stock alert', style: theme.textTheme.titleMedium),
                     Text(
-                      _lowStockProducts.isEmpty
-                          ? 'All products are above their alert level'
-                          : '${_lowStockProducts.length} ${_lowStockProducts.length == 1 ? 'product is' : 'products are'} running low',
+                      'Reorder suggestions',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    Text(
+                      suggestions.isEmpty
+                          ? 'Stock cover looks healthy right now'
+                          : '${suggestions.length} ${suggestions.length == 1 ? 'item needs' : 'items need'} attention',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -812,39 +827,55 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
               IconButton(
-                tooltip: 'Open inventory',
+                tooltip: 'Open stock list',
                 onPressed: () => AppShell.selectIndex(12),
                 icon: const Icon(Icons.arrow_forward_rounded),
               ),
             ],
           ),
-          if (_lowStockProducts.isNotEmpty) ...[
+          if (suggestions.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.lg),
             const Divider(height: 1),
             const SizedBox(height: AppSpacing.sm),
-            ..._lowStockProducts.take(3).map((product) {
-              final stock = product['stock'] as num? ?? 0;
-              final unit = (product['stock_unit'] ?? '').toString();
+            ...suggestions.take(3).map((item) {
+              final unit = (item['stock_unit'] ?? '').toString();
+              final suggestedQty = (item['suggested_qty'] as num? ?? 0)
+                  .toDouble();
+              final cover = (item['days_of_cover'] as num?)?.toDouble();
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        (product['name'] ?? 'Product').toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            (item['item_name'] ?? 'Product').toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cover == null
+                                ? 'Below reorder level'
+                                : '${cover.toStringAsFixed(cover % 1 == 0 ? 0 : 1)} days cover',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ),
                     Text(
-                      '${stock.toStringAsFixed(stock % 1 == 0 ? 0 : 1)}${unit.isEmpty ? '' : ' $unit'} left',
+                      'Order ${_quantityLabel(suggestedQty, unit)}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: AppColors.warning,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
@@ -857,6 +888,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  String _quantityLabel(double value, String unit) {
+    final quantity = value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+    return unit.trim().isEmpty ? quantity : '$quantity $unit';
+  }
+
   Widget _buildRecentActivity() {
     final theme = Theme.of(context);
     return _Panel(
@@ -865,7 +901,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.xl, 18, AppSpacing.md, AppSpacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl,
+              18,
+              AppSpacing.md,
+              AppSpacing.md,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -883,7 +924,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           if (_recentSales.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xs, AppSpacing.xl, AppSpacing.xl),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl,
+                AppSpacing.xs,
+                AppSpacing.xl,
+                AppSpacing.xl,
+              ),
               child: Row(
                 children: [
                   _ActionIcon(icon: Icons.receipt_long_outlined),
@@ -905,10 +951,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               return Column(
                 children: [
                   Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xl,
-                    vertical: 11,
-                  ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xl,
+                      vertical: 11,
+                    ),
                     child: Row(
                       children: [
                         const _ActionIcon(icon: Icons.shopping_bag_outlined),
@@ -958,6 +1004,7 @@ class DashboardData {
   final Map<String, dynamic> todaySummary;
   final Map<String, dynamic> monthSummary;
   final List<Map<String, dynamic>> lowStockProducts;
+  final List<Map<String, dynamic>> reorderSuggestions;
   final List<Map<String, dynamic>> recentSales;
   final String? topProductName;
   final int pendingOrders;
@@ -967,6 +1014,7 @@ class DashboardData {
     this.todaySummary = const {},
     this.monthSummary = const {},
     this.lowStockProducts = const [],
+    this.reorderSuggestions = const [],
     this.recentSales = const [],
     this.topProductName,
     this.pendingOrders = 0,

@@ -3,8 +3,34 @@ import type { Catalog, Order, OrderPayload } from "./types";
 interface ApiJsonResponse {
   ok?: boolean;
   data?: unknown;
+  order?: unknown;
   message?: string;
   error?: string;
+}
+
+export interface CustomerPortalStatement {
+  customer: { id: string; name: string; email?: string | null; balance: number };
+  sales: Array<{
+    id: string;
+    created_at: string;
+    total_amount: number;
+    amount_paid: number;
+    balance_due: number;
+    due_date?: string | null;
+    status?: string | null;
+  }>;
+}
+
+export interface CustomerPortalPayment {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  receiptNumber?: string | null;
+  appliedAmount: number;
+  unappliedAmount: number;
+  createdAt?: string | null;
+  completedAt?: string | null;
 }
 
 function getApiBase(): string {
@@ -47,20 +73,20 @@ export async function fetchCatalog(
 export async function placeOrder(
   businessId: string,
   payload: OrderPayload
-): Promise<{ orderNumber: string }> {
+): Promise<{ orderNumber: string; checkoutUrl?: string }> {
   const res = await fetch(
-    buildUrl(`/public/catalog/${encodeURIComponent(businessId)}/orders`),
+    buildUrl(`/online-orders`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, businessId }),
     }
   );
   const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Failed to place order");
   }
-  return json.data as { orderNumber: string };
+  return (json.order || json.data) as { orderNumber: string; checkoutUrl?: string };
 }
 
 export async function trackOrder(
@@ -89,4 +115,78 @@ export async function trackOrder(
     throw new Error(json?.message || json?.error || "Order not found");
   }
   return json.data as Order;
+}
+
+export async function requestCustomerPortalCode(businessId: string, email: string) {
+  const res = await fetch(buildUrl('/customer-portal/request-code'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ businessId, email }),
+  });
+  const json = await readApiJson(res);
+  if (!res.ok || !json.ok) {
+    throw new Error(json?.message || json?.error || 'Unable to send a verification code.');
+  }
+  return json as ApiJsonResponse & { sent?: boolean; retryAfterSeconds?: number };
+}
+
+export async function signInCustomerPortal(
+  businessId: string,
+  email: string,
+  code: string,
+): Promise<{ token: string; customer: CustomerPortalStatement['customer'] }> {
+  const res = await fetch(buildUrl('/customer-portal/login'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ businessId, email, code }),
+  });
+  const json = await readApiJson(res);
+  if (!res.ok || !json.ok) {
+    throw new Error(json?.message || json?.error || 'Unable to sign in.');
+  }
+  return json as { token: string; customer: CustomerPortalStatement['customer'] };
+}
+
+async function customerPortalRequest(path: string, token: string, init?: RequestInit) {
+  const res = await fetch(buildUrl(path), {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers || {}),
+    },
+  });
+  const json = await readApiJson(res);
+  if (!res.ok || !json.ok) {
+    throw new Error(json?.message || json?.error || 'Customer portal request failed.');
+  }
+  return json;
+}
+
+export async function fetchCustomerPortalStatement(token: string): Promise<CustomerPortalStatement> {
+  const json = await customerPortalRequest('/customer-portal/statement', token);
+  return json as CustomerPortalStatement;
+}
+
+export async function startCustomerPortalMpesaPayment(
+  token: string,
+  amount: number,
+  phoneNumber: string,
+): Promise<CustomerPortalPayment> {
+  const json = await customerPortalRequest('/customer-portal/payments/mpesa', token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount, phoneNumber }),
+  });
+  return (json as { payment: CustomerPortalPayment }).payment;
+}
+
+export async function fetchCustomerPortalPayment(
+  token: string,
+  paymentId: string,
+): Promise<CustomerPortalPayment> {
+  const json = await customerPortalRequest(
+    `/customer-portal/payments/${encodeURIComponent(paymentId)}`,
+    token,
+  );
+  return (json as { payment: CustomerPortalPayment }).payment;
 }

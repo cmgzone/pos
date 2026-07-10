@@ -274,6 +274,30 @@ CREATE TABLE IF NOT EXISTS public_catalog_order_items (
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS delivery_zones (
+  id text PRIMARY KEY, business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch', name text NOT NULL,
+  fee double precision NOT NULL DEFAULT 0, minimum_order double precision NOT NULL DEFAULT 0,
+  is_active integer NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS deliveries (
+  id text PRIMARY KEY, business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch', order_id text NOT NULL REFERENCES public_catalog_orders(id) ON DELETE CASCADE,
+  zone_id text, status text NOT NULL DEFAULT 'pending', tracking_code text NOT NULL,
+  rider_name text, rider_phone text, scheduled_at timestamptz, delivered_at timestamptz,
+  note text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS payment_method text NOT NULL DEFAULT 'manual';
+ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'pending';
+ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS delivery_status text;
+ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS tracking_code text;
+ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS payment_reference text;
+CREATE INDEX IF NOT EXISTS idx_delivery_zones_business_active ON delivery_zones(business_id, branch_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_deliveries_business_status ON deliveries(business_id, branch_id, status, updated_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
   ON public_catalog_orders(business_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_branch
@@ -449,6 +473,26 @@ CREATE TABLE IF NOT EXISTS expense_categories (
   sync_status text NOT NULL DEFAULT 'synced'
 );
 
+CREATE TABLE IF NOT EXISTS custom_roles (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  name text NOT NULL,
+  description text,
+  base_role text NOT NULL DEFAULT 'CASHIER',
+  feature_access_json text,
+  allowed_service_ids_json text,
+  allowed_branch_ids_json text,
+  pos_mode text NOT NULL DEFAULT 'both',
+  service_order_scope text NOT NULL DEFAULT 'all_visible_services',
+  is_active integer NOT NULL DEFAULT 1,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id text PRIMARY KEY,
   business_id text,
@@ -457,6 +501,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone text,
   password text NOT NULL,
   role text NOT NULL DEFAULT 'CASHIER',
+  custom_role_id text,
   feature_access_json text,
   allowed_service_ids_json text,
   pos_mode text NOT NULL DEFAULT 'both',
@@ -481,6 +526,23 @@ CREATE TABLE IF NOT EXISTS customers (
   deleted_at timestamptz,
   sync_status text NOT NULL DEFAULT 'synced'
 );
+
+CREATE TABLE IF NOT EXISTS customer_portal_email_otps (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  customer_id text NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  code_hash text NOT NULL,
+  attempts integer NOT NULL DEFAULT 0,
+  expires_at timestamptz NOT NULL,
+  sent_at timestamptz NOT NULL DEFAULT NOW(),
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_portal_email_otps_lookup
+  ON customer_portal_email_otps (business_id, customer_id, email, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS suppliers (
   id text PRIMARY KEY,
@@ -603,6 +665,27 @@ CREATE TABLE IF NOT EXISTS stock_batches (
   expiry_date date,
   received_at timestamptz NOT NULL,
   finished_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS product_serials (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  product_id text NOT NULL,
+  variant_id text,
+  stock_batch_id text,
+  purchase_id text,
+  sale_id text,
+  sale_item_id text,
+  serial_number text NOT NULL,
+  status text NOT NULL DEFAULT 'available',
+  warranty_expires_at text,
+  note text,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
@@ -841,6 +924,7 @@ UPDATE expenses SET sync_status = 'synced' WHERE sync_status IS DISTINCT FROM 's
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS server_revision bigint;
+ALTER TABLE custom_roles ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS server_revision bigint;
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS business_id text;
@@ -863,6 +947,16 @@ ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS expiry_date date;
 CREATE INDEX IF NOT EXISTS idx_stock_batches_expiry_date ON stock_batches(expiry_date);
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS server_revision bigint;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS variant_id text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS stock_batch_id text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS purchase_id text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS sale_id text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS sale_item_id text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS warranty_expires_at text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS note text;
 ALTER TABLE shifts ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE shifts ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS server_revision bigint;
@@ -884,12 +978,14 @@ ALTER TABLE expenses ADD COLUMN IF NOT EXISTS business_id text;
 
 UPDATE categories SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE expense_categories SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
+UPDATE custom_roles SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE users SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE customers SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE suppliers SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE products SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE purchase_invoices SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE stock_batches SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
+UPDATE product_serials SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE shifts SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE sales SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
 UPDATE sale_items SET server_revision = nextval('sync_revision_seq') WHERE server_revision IS NULL;
@@ -899,12 +995,14 @@ UPDATE expenses SET server_revision = nextval('sync_revision_seq') WHERE server_
 
 ALTER TABLE categories ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE expense_categories ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
+ALTER TABLE custom_roles ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE users ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE customers ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE suppliers ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE products ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE purchase_invoices ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE stock_batches ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
+ALTER TABLE product_serials ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE shifts ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE sales ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
 ALTER TABLE sale_items ALTER COLUMN server_revision SET DEFAULT nextval('sync_revision_seq');
@@ -914,12 +1012,14 @@ ALTER TABLE expenses ALTER COLUMN server_revision SET DEFAULT nextval('sync_revi
 
 ALTER TABLE categories ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE expense_categories ALTER COLUMN server_revision SET NOT NULL;
+ALTER TABLE custom_roles ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE users ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE customers ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE suppliers ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE products ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE purchase_invoices ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE stock_batches ALTER COLUMN server_revision SET NOT NULL;
+ALTER TABLE product_serials ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE shifts ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE sales ALTER COLUMN server_revision SET NOT NULL;
 ALTER TABLE sale_items ALTER COLUMN server_revision SET NOT NULL;
@@ -929,12 +1029,14 @@ ALTER TABLE expenses ALTER COLUMN server_revision SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_categories_server_revision ON categories(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_expense_categories_server_revision ON expense_categories(server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_custom_roles_server_revision ON custom_roles(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_users_server_revision ON users(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_customers_server_revision ON customers(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_suppliers_server_revision ON suppliers(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_products_server_revision ON products(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_purchase_invoices_server_revision ON purchase_invoices(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_stock_batches_server_revision ON stock_batches(server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_product_serials_server_revision ON product_serials(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_shifts_server_revision ON shifts(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_sales_server_revision ON sales(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_server_revision ON sale_items(server_revision, id);
@@ -943,12 +1045,14 @@ CREATE INDEX IF NOT EXISTS idx_credit_payments_server_revision ON credit_payment
 CREATE INDEX IF NOT EXISTS idx_expenses_server_revision ON expenses(server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_categories_business_revision ON categories(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_expense_categories_business_revision ON expense_categories(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_custom_roles_business_revision ON custom_roles(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_users_business_revision ON users(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_customers_business_revision ON customers(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_suppliers_business_revision ON suppliers(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_products_business_revision ON products(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_purchase_invoices_business_revision ON purchase_invoices(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_stock_batches_business_revision ON stock_batches(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_product_serials_business_revision ON product_serials(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_shifts_business_revision ON shifts(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_sales_business_revision ON sales(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_business_revision ON sale_items(business_id, server_revision, id);
@@ -1076,6 +1180,7 @@ ALTER TABLE service_orders ADD COLUMN IF NOT EXISTS bay_number text;
 ALTER TABLE service_fields ADD COLUMN IF NOT EXISTS price_map_json text;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_access_json text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_role_id text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_service_ids_json text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS pos_mode text NOT NULL DEFAULT 'both';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS service_order_scope text NOT NULL DEFAULT 'all_visible_services';
@@ -1253,6 +1358,147 @@ CREATE TABLE IF NOT EXISTS stock_transfers (
   sync_status text NOT NULL DEFAULT 'synced'
 );
 
+CREATE TABLE IF NOT EXISTS stocktake_sessions (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  name text NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  started_by text,
+  completed_by text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  note text,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS stocktake_items (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  session_id text NOT NULL,
+  product_id text NOT NULL,
+  product_name text NOT NULL,
+  expected_qty double precision NOT NULL DEFAULT 0,
+  counted_qty double precision,
+  variance_qty double precision NOT NULL DEFAULT 0,
+  unit text,
+  unit_cost double precision NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'pending',
+  note text,
+  counted_at timestamptz,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS sms_campaigns (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  name text NOT NULL,
+  segment text NOT NULL DEFAULT 'all',
+  message text NOT NULL,
+  recipient_count integer NOT NULL DEFAULT 0,
+  sent_count integer NOT NULL DEFAULT 0,
+  failed_count integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'draft',
+  recipient_snapshot_json text,
+  last_error text,
+  created_by text,
+  sent_at timestamptz,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS exchange_rates (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  base_currency text NOT NULL,
+  quote_currency text NOT NULL,
+  rate double precision NOT NULL DEFAULT 1,
+  is_active integer NOT NULL DEFAULT 1,
+  updated_by text,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS wastage_logs (
+  id text PRIMARY KEY,
+  business_id text,
+  branch_id text,
+  product_id text NOT NULL,
+  product_name text NOT NULL,
+  quantity double precision NOT NULL DEFAULT 0,
+  unit text,
+  unit_cost double precision NOT NULL DEFAULT 0,
+  reason text NOT NULL DEFAULT 'wastage',
+  note text,
+  recorded_by text,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS restaurant_tables (
+  id text PRIMARY KEY, business_id text, branch_id text, name text NOT NULL,
+  area text, seats integer NOT NULL DEFAULT 2, status text NOT NULL DEFAULT 'available',
+  position_x double precision NOT NULL DEFAULT 0, position_y double precision NOT NULL DEFAULT 0,
+  current_order_id text, created_at timestamptz NOT NULL DEFAULT now(),
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS table_orders (
+  id text PRIMARY KEY, business_id text, branch_id text, table_id text NOT NULL,
+  order_no text NOT NULL, status text NOT NULL DEFAULT 'open', guest_count integer NOT NULL DEFAULT 1,
+  notes text, items_json text NOT NULL DEFAULT '[]', subtotal double precision NOT NULL DEFAULT 0,
+  tax double precision NOT NULL DEFAULT 0, discount double precision NOT NULL DEFAULT 0,
+  total double precision NOT NULL DEFAULT 0, split_count integer NOT NULL DEFAULT 1,
+  opened_by text, opened_at timestamptz NOT NULL DEFAULT now(), closed_at timestamptz,
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz, sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS employee_attendance (
+  id text PRIMARY KEY, business_id text, branch_id text, user_id text NOT NULL,
+  user_name text, clock_in_at timestamptz NOT NULL, clock_out_at timestamptz,
+  note text, status text NOT NULL DEFAULT 'open', server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz, sync_status text NOT NULL DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS customer_groups (
+  id text PRIMARY KEY, business_id text, branch_id text, name text NOT NULL,
+  description text, color text, created_by text, server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz, sync_status text NOT NULL DEFAULT 'synced'
+);
+CREATE TABLE IF NOT EXISTS customer_group_members (
+  id text PRIMARY KEY, business_id text, branch_id text, group_id text NOT NULL,
+  customer_id text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz, sync_status text NOT NULL DEFAULT 'synced',
+  UNIQUE(group_id, customer_id)
+);
+
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS branch_id text;
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS from_branch_id text NOT NULL DEFAULT '';
@@ -1274,6 +1520,89 @@ ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS created_at timestamptz NOT 
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS branch_id text;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT 'Stocktake';
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'draft';
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS started_by text;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS completed_by text;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS started_at timestamptz;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS note text;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE stocktake_sessions ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS branch_id text;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS session_id text NOT NULL DEFAULT '';
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS product_id text NOT NULL DEFAULT '';
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS product_name text NOT NULL DEFAULT 'Product';
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS expected_qty double precision NOT NULL DEFAULT 0;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS counted_qty double precision;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS variance_qty double precision NOT NULL DEFAULT 0;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS unit text;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS unit_cost double precision NOT NULL DEFAULT 0;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending';
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS note text;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS counted_at timestamptz;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE stocktake_items ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS branch_id text;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT 'Campaign';
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS segment text NOT NULL DEFAULT 'all';
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS message text NOT NULL DEFAULT '';
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS recipient_count integer NOT NULL DEFAULT 0;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS sent_count integer NOT NULL DEFAULT 0;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS failed_count integer NOT NULL DEFAULT 0;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'draft';
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS recipient_snapshot_json text;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS last_error text;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS created_by text;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS branch_id text;
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS base_currency text NOT NULL DEFAULT 'KSh';
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS quote_currency text NOT NULL DEFAULT '$';
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS rate double precision NOT NULL DEFAULT 1;
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS is_active integer NOT NULL DEFAULT 1;
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS updated_by text;
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS business_id text;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS branch_id text;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS product_id text NOT NULL DEFAULT '';
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS product_name text NOT NULL DEFAULT 'Product';
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS quantity double precision NOT NULL DEFAULT 0;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS unit text;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS unit_cost double precision NOT NULL DEFAULT 0;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS reason text NOT NULL DEFAULT 'wastage';
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS note text;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS recorded_by text;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS recorded_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE wastage_logs ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_branch_ids_json text;
 
@@ -1297,11 +1626,18 @@ ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS server_revision bigint NO
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approval_required integer NOT NULL DEFAULT 0;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS submitted_by text;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approved_by text;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approved_at timestamptz;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approval_note text;
 ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS batch_number text;
+ALTER TABLE product_serials ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE cash_movements ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
 ALTER TABLE credit_payments ADD COLUMN IF NOT EXISTS branch_id text DEFAULT 'main_branch';
@@ -1313,6 +1649,23 @@ CREATE INDEX IF NOT EXISTS idx_branches_business_revision ON branches(business_i
 CREATE INDEX IF NOT EXISTS idx_audit_logs_business_revision ON audit_logs(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_stock_transfers_business_revision ON stock_transfers(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_stock_transfers_branch_status ON stock_transfers(business_id, from_branch_id, to_branch_id, status);
+CREATE INDEX IF NOT EXISTS idx_stocktake_sessions_business_revision ON stocktake_sessions(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_stocktake_sessions_branch_status ON stocktake_sessions(business_id, branch_id, status);
+CREATE INDEX IF NOT EXISTS idx_stocktake_items_business_revision ON stocktake_items(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_stocktake_items_session ON stocktake_items(business_id, session_id, status);
+CREATE INDEX IF NOT EXISTS idx_sms_campaigns_business_revision ON sms_campaigns(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_sms_campaigns_branch_status ON sms_campaigns(business_id, branch_id, status);
+CREATE INDEX IF NOT EXISTS idx_exchange_rates_business_revision ON exchange_rates(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_exchange_rates_active ON exchange_rates(business_id, branch_id, is_active, quote_currency);
+CREATE INDEX IF NOT EXISTS idx_wastage_logs_business_revision ON wastage_logs(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_wastage_logs_branch_recorded ON wastage_logs(business_id, branch_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_branch_status ON restaurant_tables(business_id, branch_id, status);
+CREATE INDEX IF NOT EXISTS idx_table_orders_branch_status ON table_orders(business_id, branch_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_employee_attendance_branch_user ON employee_attendance(business_id, branch_id, user_id, clock_in_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_groups_branch ON customer_groups(business_id, branch_id, name);
+CREATE INDEX IF NOT EXISTS idx_customer_group_members_group ON customer_group_members(business_id, group_id, customer_id);
+ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE table_orders ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 
 CREATE INDEX IF NOT EXISTS idx_categories_branch_id ON categories(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_expense_categories_branch_id ON expense_categories(business_id, branch_id);
@@ -1332,6 +1685,9 @@ CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier_id ON purchase_orders(bu
 CREATE INDEX IF NOT EXISTS idx_purchase_order_items_business_revision ON purchase_order_items(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order_id ON purchase_order_items(business_id, purchase_order_id);
 CREATE INDEX IF NOT EXISTS idx_stock_batches_branch_id ON stock_batches(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_product_serials_branch_id ON product_serials(business_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_product_serials_lookup ON product_serials(business_id, serial_number) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_product_serials_product_status ON product_serials(business_id, product_id, status) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_sales_branch_id ON sales(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_cash_movements_branch_id ON cash_movements(business_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_credit_payments_branch_id ON credit_payments(business_id, branch_id);
@@ -1506,6 +1862,10 @@ CREATE TABLE IF NOT EXISTS loyalty_rules (
   min_redemption_points integer NOT NULL DEFAULT 0,
   points_to_currency_factor double precision NOT NULL DEFAULT 1,
   is_active boolean NOT NULL DEFAULT true,
+  gift_card_reward_enabled boolean NOT NULL DEFAULT false,
+  gift_card_reward_points_threshold integer NOT NULL DEFAULT 0,
+  gift_card_reward_amount double precision NOT NULL DEFAULT 0,
+  gift_card_reward_expiry_days integer NOT NULL DEFAULT 0,
   note text,
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW(),
@@ -1537,6 +1897,11 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_rules_business_revision ON loyalty_rules(
 CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_business_revision ON loyalty_ledger(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_customer ON loyalty_ledger(business_id, customer_id, created_at);
 
+ALTER TABLE loyalty_rules ADD COLUMN IF NOT EXISTS gift_card_reward_enabled boolean NOT NULL DEFAULT false;
+ALTER TABLE loyalty_rules ADD COLUMN IF NOT EXISTS gift_card_reward_points_threshold integer NOT NULL DEFAULT 0;
+ALTER TABLE loyalty_rules ADD COLUMN IF NOT EXISTS gift_card_reward_amount double precision NOT NULL DEFAULT 0;
+ALTER TABLE loyalty_rules ADD COLUMN IF NOT EXISTS gift_card_reward_expiry_days integer NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS gift_cards (
   id text PRIMARY KEY,
   business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
@@ -1560,3 +1925,74 @@ CREATE INDEX IF NOT EXISTS idx_gift_cards_code ON gift_cards(business_id, code);
 CREATE INDEX IF NOT EXISTS idx_gift_cards_updated_at ON gift_cards(updated_at);
 CREATE INDEX IF NOT EXISTS idx_gift_cards_business_revision ON gift_cards(business_id, server_revision, id);
 CREATE INDEX IF NOT EXISTS idx_gift_cards_customer ON gift_cards(business_id, customer_id);
+
+CREATE TABLE IF NOT EXISTS gift_card_transactions (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  gift_card_id text NOT NULL,
+  sale_id text,
+  type text NOT NULL,
+  amount double precision NOT NULL DEFAULT 0,
+  balance_after double precision NOT NULL DEFAULT 0,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+);
+
+CREATE INDEX IF NOT EXISTS idx_gift_card_transactions_card ON gift_card_transactions(business_id, gift_card_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_gift_card_transactions_updated_at ON gift_card_transactions(updated_at);
+CREATE INDEX IF NOT EXISTS idx_gift_card_transactions_business_revision ON gift_card_transactions(business_id, server_revision, id);
+
+CREATE TABLE IF NOT EXISTS promotions (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  name text NOT NULL,
+  description text,
+  promotion_type text NOT NULL,
+  discount_type text NOT NULL DEFAULT 'amount',
+  discount_value double precision NOT NULL DEFAULT 0,
+  priority integer NOT NULL DEFAULT 0,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  days_of_week text,
+  start_time text,
+  end_time text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+);
+
+CREATE TABLE IF NOT EXISTS promotion_rules (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  promotion_id text NOT NULL,
+  rule_type text NOT NULL,
+  product_id text,
+  category_id text,
+  min_quantity double precision NOT NULL DEFAULT 0,
+  free_quantity double precision NOT NULL DEFAULT 0,
+  bundle_quantity double precision NOT NULL DEFAULT 0,
+  min_subtotal double precision NOT NULL DEFAULT 0,
+  rule_json text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
+);
+
+CREATE INDEX IF NOT EXISTS idx_promotions_updated_at ON promotions(updated_at);
+CREATE INDEX IF NOT EXISTS idx_promotions_business_revision ON promotions(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_promotions_active ON promotions(business_id, branch_id, is_active, starts_at, ends_at);
+CREATE INDEX IF NOT EXISTS idx_promotion_rules_updated_at ON promotion_rules(updated_at);
+CREATE INDEX IF NOT EXISTS idx_promotion_rules_business_revision ON promotion_rules(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_promotion_rules_promotion ON promotion_rules(business_id, promotion_id);

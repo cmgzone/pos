@@ -4,6 +4,7 @@ import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/services/license_service.dart';
+import '../../../core/services/session_service.dart';
 import '../../../core/utils/unit_utils.dart';
 
 const _uuid = Uuid();
@@ -31,12 +32,26 @@ class PurchaseRepository {
           WHERE p.supplier_id = s.id
             AND COALESCE(p.branch_id, ?) = ?
         ), 0) as total_spend
+        ,
+        COALESCE((
+          SELECT SUM(p.balance_due)
+          FROM purchase_invoices p
+          WHERE p.supplier_id = s.id
+            AND p.deleted_at IS NULL
+            AND p.balance_due > 0.009
+            AND COALESCE(p.branch_id, ?) = ?
+        ), 0) as outstanding_balance
       FROM suppliers s
       WHERE s.deleted_at IS NULL
         AND COALESCE(s.branch_id, ?) = ?
       ORDER BY s.name ASC
     ''',
-      [..._currentBranchArgs, ..._currentBranchArgs, ..._currentBranchArgs],
+      [
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+      ],
     );
   }
 
@@ -495,6 +510,174 @@ class PurchaseRepository {
     );
   }
 
+  static Future<Map<String, dynamic>> getSupplierStatement(
+    String supplierId,
+  ) async {
+    final cleanSupplierId = supplierId.trim();
+    if (cleanSupplierId.isEmpty) {
+      throw Exception('Supplier is required');
+    }
+    final supplierRows = await DatabaseService.rawQuery(
+      '''
+      SELECT *
+      FROM suppliers
+      WHERE id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      LIMIT 1
+      ''',
+      [cleanSupplierId, ..._currentBranchArgs],
+    );
+    if (supplierRows.isEmpty) {
+      throw Exception('Supplier not found');
+    }
+
+    final ledgerRows = await DatabaseService.rawQuery(
+      '''
+      SELECT
+        'purchase' as entry_type,
+        id,
+        invoice_number as reference,
+        total_amount as debit,
+        0 as credit,
+        balance_due,
+        due_date,
+        status,
+        created_at as entry_at,
+        note
+      FROM purchase_invoices
+      WHERE supplier_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      UNION ALL
+      SELECT
+        'payment' as entry_type,
+        id,
+        reference,
+        0 as debit,
+        amount as credit,
+        0 as balance_due,
+        NULL as due_date,
+        'paid' as status,
+        paid_at as entry_at,
+        note
+      FROM supplier_payments
+      WHERE supplier_id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY entry_at ASC, entry_type ASC
+      ''',
+      [
+        cleanSupplierId,
+        ..._currentBranchArgs,
+        cleanSupplierId,
+        ..._currentBranchArgs,
+      ],
+    );
+
+    var runningBalance = 0.0;
+    final ledger = <Map<String, dynamic>>[];
+    for (final row in ledgerRows) {
+      final debit = (row['debit'] as num? ?? 0).toDouble();
+      final credit = (row['credit'] as num? ?? 0).toDouble();
+      runningBalance += debit - credit;
+      ledger.add({...row, 'running_balance': runningBalance});
+    }
+
+    final agingRows = await DatabaseService.rawQuery(
+      '''
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN due_date IS NULL OR TRIM(due_date) = '' OR date(due_date) >= date('now', 'localtime')
+          THEN balance_due ELSE 0 END), 0) AS current_amount,
+        COALESCE(SUM(CASE
+          WHEN date(due_date) < date('now', 'localtime')
+           AND julianday('now', 'localtime') - julianday(due_date) BETWEEN 1 AND 30
+          THEN balance_due ELSE 0 END), 0) AS d1_30_amount,
+        COALESCE(SUM(CASE
+          WHEN julianday('now', 'localtime') - julianday(due_date) BETWEEN 31 AND 60
+          THEN balance_due ELSE 0 END), 0) AS d31_60_amount,
+        COALESCE(SUM(CASE
+          WHEN julianday('now', 'localtime') - julianday(due_date) BETWEEN 61 AND 90
+          THEN balance_due ELSE 0 END), 0) AS d61_90_amount,
+        COALESCE(SUM(CASE
+          WHEN julianday('now', 'localtime') - julianday(due_date) > 90
+          THEN balance_due ELSE 0 END), 0) AS over90_amount,
+        COALESCE(SUM(balance_due), 0) AS total_outstanding,
+        COUNT(CASE WHEN balance_due > 0.009 THEN 1 END) AS open_invoice_count
+      FROM purchase_invoices
+      WHERE supplier_id = ?
+        AND deleted_at IS NULL
+        AND balance_due > 0.009
+        AND COALESCE(branch_id, ?) = ?
+      ''',
+      [cleanSupplierId, ..._currentBranchArgs],
+    );
+
+    final openInvoices = await DatabaseService.rawQuery(
+      '''
+      SELECT *
+      FROM purchase_invoices
+      WHERE supplier_id = ?
+        AND deleted_at IS NULL
+        AND balance_due > 0.009
+        AND COALESCE(branch_id, ?) = ?
+      ORDER BY
+        CASE WHEN due_date IS NULL OR TRIM(due_date) = '' THEN 1 ELSE 0 END,
+        due_date ASC,
+        created_at ASC
+      ''',
+      [cleanSupplierId, ..._currentBranchArgs],
+    );
+
+    return {
+      'supplier': supplierRows.first,
+      'ledger': ledger,
+      'aging': agingRows.isEmpty ? <String, dynamic>{} : agingRows.first,
+      'open_invoices': openInvoices,
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> getSupplierAging() {
+    return DatabaseService.rawQuery(
+      '''
+      SELECT
+        s.id,
+        s.name,
+        s.phone,
+        s.email,
+        COALESCE(SUM(CASE
+          WHEN p.due_date IS NULL OR TRIM(p.due_date) = '' OR date(p.due_date) >= date('now', 'localtime')
+          THEN p.balance_due ELSE 0 END), 0) AS current_amount,
+        COALESCE(SUM(CASE
+          WHEN date(p.due_date) < date('now', 'localtime')
+           AND julianday('now', 'localtime') - julianday(p.due_date) BETWEEN 1 AND 30
+          THEN p.balance_due ELSE 0 END), 0) AS d1_30_amount,
+        COALESCE(SUM(CASE
+          WHEN julianday('now', 'localtime') - julianday(p.due_date) BETWEEN 31 AND 60
+          THEN p.balance_due ELSE 0 END), 0) AS d31_60_amount,
+        COALESCE(SUM(CASE
+          WHEN julianday('now', 'localtime') - julianday(p.due_date) BETWEEN 61 AND 90
+          THEN p.balance_due ELSE 0 END), 0) AS d61_90_amount,
+        COALESCE(SUM(CASE
+          WHEN julianday('now', 'localtime') - julianday(p.due_date) > 90
+          THEN p.balance_due ELSE 0 END), 0) AS over90_amount,
+        COALESCE(SUM(p.balance_due), 0) AS total_outstanding,
+        COUNT(p.id) AS open_invoice_count
+      FROM suppliers s
+      JOIN purchase_invoices p ON p.supplier_id = s.id
+        AND p.deleted_at IS NULL
+        AND p.balance_due > 0.009
+        AND COALESCE(p.branch_id, ?) = ?
+      WHERE s.deleted_at IS NULL
+        AND COALESCE(s.branch_id, ?) = ?
+      GROUP BY s.id
+      ORDER BY total_outstanding DESC, s.name ASC
+      ''',
+      [..._currentBranchArgs, ..._currentBranchArgs],
+    );
+  }
+
   static Future<List<Map<String, dynamic>>> getPurchaseOrders() {
     return DatabaseService.rawQuery('''
       SELECT *
@@ -675,5 +858,43 @@ class PurchaseRepository {
       'sync_status': 'pending',
     }, orderId);
     return purchaseId;
+  }
+
+  static Future<List<Map<String, dynamic>>>
+  getPendingApprovals() => DatabaseService.rawQuery(
+    'SELECT * FROM purchase_orders WHERE status = \'pending_approval\' AND deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY submitted_at ASC',
+    _currentBranchArgs,
+  );
+  static Future<void> submitPurchaseOrder(
+    String orderId, {
+    double threshold = 50000,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'submit purchase orders');
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.update('purchase_orders', {
+      'approval_required': 1,
+      'status': 'pending_approval',
+      'submitted_by': SessionService.currentUserId,
+      'submitted_at': now,
+      'updated_at': now,
+      'sync_status': 'pending',
+    }, orderId);
+  }
+
+  static Future<void> decidePurchaseOrder(
+    String orderId, {
+    required bool approved,
+    String? note,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'approve purchase orders');
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.update('purchase_orders', {
+      'status': approved ? 'approved' : 'rejected',
+      'approved_by': SessionService.currentUserId,
+      'approved_at': now,
+      'approval_note': note?.trim(),
+      'updated_at': now,
+      'sync_status': 'pending',
+    }, orderId);
   }
 }

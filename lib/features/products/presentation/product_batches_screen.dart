@@ -7,6 +7,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../data/serial_number_repository.dart';
 
 class ProductBatchesScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> product;
@@ -34,7 +35,20 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
       SELECT
         sb.*,
         p.invoice_number,
-        p.supplier_name
+        p.supplier_name,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM product_serials ps
+          WHERE ps.stock_batch_id = sb.id
+            AND ps.deleted_at IS NULL
+        ), 0) AS serial_count,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM product_serials ps
+          WHERE ps.stock_batch_id = sb.id
+            AND ps.status = 'available'
+            AND ps.deleted_at IS NULL
+        ), 0) AS available_serial_count
       FROM stock_batches sb
       LEFT JOIN purchase_invoices p ON p.id = sb.purchase_id
       WHERE sb.product_id = ?
@@ -98,7 +112,9 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
           ExpiryStatus.expired => AppColors.error,
           ExpiryStatus.expiringSoon => AppColors.warning,
           ExpiryStatus.ok => AppColors.success,
-          ExpiryStatus.unknown => Theme.of(context).colorScheme.onSurfaceVariant,
+          ExpiryStatus.unknown => Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant,
         };
         return Container(
           padding: const EdgeInsets.all(16),
@@ -116,12 +132,16 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                 decoration: BoxDecoration(
                   color: isActive
                       ? AppColors.success.withValues(alpha: 0.1)
-                      : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.inventory_2,
-                  color: isActive ? AppColors.success : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: isActive
+                      ? AppColors.success
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               SizedBox(width: 16),
@@ -140,7 +160,9 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                             fontWeight: FontWeight.bold,
                             color: isActive
                                 ? AppColors.primaryLight
-                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         if ((b['expiry_date'] as String?)?.trim().isNotEmpty ==
@@ -237,6 +259,14 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () => _showAddSerialsDialog(b),
+                    icon: Icon(Icons.qr_code_2_outlined, size: 18),
+                    label: Text(
+                      '${(b['available_serial_count'] as num? ?? 0).toInt()}/${(b['serial_count'] as num? ?? 0).toInt()} serials',
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -260,5 +290,169 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
       return isActive ? 'Batch $batchNumber' : 'Finished batch $batchNumber';
     }
     return isActive ? 'Active Batch' : 'Finished Batch';
+  }
+
+  Future<void> _showAddSerialsDialog(Map<String, dynamic> batch) async {
+    final serialsController = TextEditingController();
+    final noteController = TextEditingController();
+    DateTime? warrantyDate;
+    bool saving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text('Add Serials'),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 520,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Paste or scan one serial number per line for ${_batchTitle(batch, true)}.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: serialsController,
+                    minLines: 5,
+                    maxLines: 9,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      labelText: 'Serial numbers',
+                      hintText: 'IMEI001\nIMEI002\nIMEI003',
+                      prefixIcon: Icon(Icons.qr_code_scanner_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.verified_outlined),
+                    title: Text('Warranty expiry'),
+                    subtitle: Text(
+                      warrantyDate == null
+                          ? 'Optional'
+                          : _formatDate(warrantyDate!.toIso8601String()),
+                    ),
+                    trailing: Wrap(
+                      children: [
+                        if (warrantyDate != null)
+                          IconButton(
+                            tooltip: 'Clear warranty date',
+                            onPressed: () =>
+                                setDialogState(() => warrantyDate = null),
+                            icon: Icon(Icons.close),
+                          ),
+                        IconButton(
+                          tooltip: 'Pick warranty date',
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate:
+                                  warrantyDate ??
+                                  DateTime.now().add(const Duration(days: 365)),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setDialogState(() => warrantyDate = picked);
+                            }
+                          },
+                          icon: Icon(Icons.calendar_month_outlined),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    decoration: InputDecoration(
+                      labelText: 'Note',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDialogState(() => saving = true);
+                      try {
+                        final values = serialsController.text
+                            .split(RegExp(r'[\n,;]+'))
+                            .map((value) => value.trim())
+                            .where((value) => value.isNotEmpty)
+                            .toList();
+                        final count = await SerialNumberRepository.createMany(
+                          productId: widget.product['id'] as String,
+                          stockBatchId: batch['id'] as String?,
+                          purchaseId: batch['purchase_id'] as String?,
+                          serialNumbers: values,
+                          warrantyExpiresAt: warrantyDate?.toIso8601String(),
+                          note: noteController.text,
+                        );
+                        if (context.mounted) {
+                          Navigator.pop(ctx, true);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$count serial number(s) added'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        }
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error.toString()),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                        setDialogState(() => saving = false);
+                      }
+                    },
+              child: saving
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text('Save Serials'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    serialsController.dispose();
+    noteController.dispose();
+
+    if (saved == true) {
+      await _loadBatches();
+    }
   }
 }

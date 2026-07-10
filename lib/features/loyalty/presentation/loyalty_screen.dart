@@ -75,7 +75,8 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Loyalty'),
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: const Icon(Icons.menu),
@@ -126,14 +127,18 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
         (rules?['min_redemption_points'] as num?)?.toInt() ?? 0;
     final factor =
         (rules?['points_to_currency_factor'] as num?)?.toDouble() ?? 1;
+    final rewardEnabled =
+        ((rules?['gift_card_reward_enabled'] as num?)?.toInt() ?? 0) != 0;
+    final rewardThreshold =
+        (rules?['gift_card_reward_points_threshold'] as num?)?.toInt() ?? 0;
+    final rewardAmount =
+        (rules?['gift_card_reward_amount'] as num?)?.toDouble() ?? 0;
 
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -153,9 +158,7 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    isActive
-                        ? Icons.loyalty_rounded
-                        : Icons.loyalty_outlined,
+                    isActive ? Icons.loyalty_rounded : Icons.loyalty_outlined,
                     color: isActive ? AppColors.success : null,
                   ),
                 ),
@@ -191,11 +194,15 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
               ),
               _StatRow(
                 label: 'Redemption',
-                value: '${ShopSettings.currency}${factor.toStringAsFixed(2)} per point',
+                value:
+                    '${ShopSettings.currency}${factor.toStringAsFixed(2)} per point',
               ),
+              _StatRow(label: 'Min. to redeem', value: '$minRedemption points'),
               _StatRow(
-                label: 'Min. to redeem',
-                value: '$minRedemption points',
+                label: 'Gift card reward',
+                value: rewardEnabled && rewardThreshold > 0 && rewardAmount > 0
+                    ? '$rewardThreshold pts -> ${ShopSettings.currency}${rewardAmount.toStringAsFixed(2)}'
+                    : 'Off',
               ),
             ],
           ],
@@ -209,9 +216,7 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -225,12 +230,19 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
             const SizedBox(height: 12),
             _HowItWorksStep(
               icon: Icons.point_of_sale_outlined,
-              text: 'Customers earn points automatically when they pay for a sale.',
+              text:
+                  'Customers earn points automatically when they pay for a sale.',
             ),
             const SizedBox(height: 10),
             _HowItWorksStep(
               icon: Icons.redeem_outlined,
               text: 'Points can be redeemed as a discount at checkout.',
+            ),
+            const SizedBox(height: 10),
+            _HowItWorksStep(
+              icon: Icons.card_giftcard_outlined,
+              text:
+                  'Optional gift card rewards can be created automatically when a customer reaches your point target.',
             ),
             const SizedBox(height: 10),
             _HowItWorksStep(
@@ -274,7 +286,9 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
             ),
           )
         else
-          ..._topCustomers.map((customer) => _CustomerPointsTile(customer: customer)),
+          ..._topCustomers.map(
+            (customer) => _CustomerPointsTile(customer: customer),
+          ),
       ],
     );
   }
@@ -296,9 +310,9 @@ class _StatRow extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
           Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -354,7 +368,9 @@ class _CustomerPointsTile extends StatelessWidget {
           ),
         ),
         title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: phone.isEmpty ? null : Text(phone, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: phone.isEmpty
+            ? null
+            : Text(phone, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -422,7 +438,11 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
   late final TextEditingController _divisorController;
   late final TextEditingController _minRedemptionController;
   late final TextEditingController _factorController;
+  late final TextEditingController _rewardThresholdController;
+  late final TextEditingController _rewardAmountController;
+  late final TextEditingController _rewardExpiryDaysController;
   late bool _isActive;
+  late bool _giftCardRewardEnabled;
   bool _saving = false;
 
   @override
@@ -431,12 +451,14 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
     final e = widget.existing;
     _pointsPerCurrencyController = TextEditingController(
       text: e != null
-          ? ((e['points_per_currency'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)
+          ? ((e['points_per_currency'] as num?)?.toDouble() ?? 0)
+                .toStringAsFixed(0)
           : '1',
     );
     _divisorController = TextEditingController(
       text: e != null
-          ? ((e['currency_divisor'] as num?)?.toDouble() ?? 100).toStringAsFixed(0)
+          ? ((e['currency_divisor'] as num?)?.toDouble() ?? 100)
+                .toStringAsFixed(0)
           : '100',
     );
     _minRedemptionController = TextEditingController(
@@ -446,15 +468,43 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
     );
     _factorController = TextEditingController(
       text: e != null
-          ? ((e['points_to_currency_factor'] as num?)?.toDouble() ?? 1).toStringAsFixed(2)
+          ? ((e['points_to_currency_factor'] as num?)?.toDouble() ?? 1)
+                .toStringAsFixed(2)
           : '1.00',
+    );
+    _rewardThresholdController = TextEditingController(
+      text: e != null
+          ? ((e['gift_card_reward_points_threshold'] as num?)?.toInt() ?? 0)
+                .toString()
+          : '1000',
+    );
+    _rewardAmountController = TextEditingController(
+      text: e != null
+          ? ((e['gift_card_reward_amount'] as num?)?.toDouble() ?? 0)
+                .toStringAsFixed(2)
+          : '500.00',
+    );
+    _rewardExpiryDaysController = TextEditingController(
+      text: e != null
+          ? ((e['gift_card_reward_expiry_days'] as num?)?.toInt() ?? 0)
+                .toString()
+          : '0',
     );
     _isActive = e == null
         ? true
         : ((e['is_active'] is int
-                ? e['is_active'] as int
-                : int.tryParse(e['is_active']?.toString() ?? '') ?? 0) !=
-            0);
+                  ? e['is_active'] as int
+                  : int.tryParse(e['is_active']?.toString() ?? '') ?? 0) !=
+              0);
+    _giftCardRewardEnabled = e == null
+        ? false
+        : ((e['gift_card_reward_enabled'] is int
+                  ? e['gift_card_reward_enabled'] as int
+                  : int.tryParse(
+                          e['gift_card_reward_enabled']?.toString() ?? '',
+                        ) ??
+                        0) !=
+              0);
   }
 
   @override
@@ -463,6 +513,9 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
     _divisorController.dispose();
     _minRedemptionController.dispose();
     _factorController.dispose();
+    _rewardThresholdController.dispose();
+    _rewardAmountController.dispose();
+    _rewardExpiryDaysController.dispose();
     super.dispose();
   }
 
@@ -473,6 +526,12 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
     final minRedemption =
         int.tryParse(_minRedemptionController.text.trim()) ?? 0;
     final factor = double.tryParse(_factorController.text.trim()) ?? 1;
+    final rewardThreshold =
+        int.tryParse(_rewardThresholdController.text.trim()) ?? 0;
+    final rewardAmount =
+        double.tryParse(_rewardAmountController.text.trim()) ?? 0;
+    final rewardExpiryDays =
+        int.tryParse(_rewardExpiryDaysController.text.trim()) ?? 0;
 
     if (divisor <= 0) {
       _showError('The spend amount must be greater than zero.');
@@ -480,6 +539,14 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
     }
     if (factor <= 0) {
       _showError('The redemption value must be greater than zero.');
+      return;
+    }
+    if (_giftCardRewardEnabled && (rewardThreshold <= 0 || rewardAmount <= 0)) {
+      _showError('Set both the gift card point target and reward value.');
+      return;
+    }
+    if (rewardExpiryDays < 0) {
+      _showError('Gift card expiry days cannot be negative.');
       return;
     }
 
@@ -491,6 +558,10 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
         minRedemptionPoints: minRedemption,
         pointsToCurrencyFactor: factor,
         isActive: _isActive,
+        giftCardRewardEnabled: _giftCardRewardEnabled,
+        giftCardRewardPointsThreshold: rewardThreshold,
+        giftCardRewardAmount: rewardAmount,
+        giftCardRewardExpiryDays: rewardExpiryDays,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -498,9 +569,7 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _showError(
-        AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed),
-      );
+      _showError(AppErrorMessage.from(e, fallback: AppErrorMessage.saveFailed));
     }
   }
 
@@ -519,7 +588,9 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existing == null ? 'Set Up Loyalty' : 'Loyalty Settings'),
+      title: Text(
+        widget.existing == null ? 'Set Up Loyalty' : 'Loyalty Settings',
+      ),
       content: SizedBox(
         width: 440,
         child: SingleChildScrollView(
@@ -558,19 +629,58 @@ class _LoyaltyRulesDialogState extends State<_LoyaltyRulesDialog> {
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Loyalty program active'),
                 value: _isActive,
-                onChanged: (value) =>
-                    setState(() => _isActive = value),
+                onChanged: (value) => setState(() => _isActive = value),
               ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Auto gift card reward'),
+                subtitle: const Text(
+                  'Convert points into a customer gift card when the target is reached.',
+                ),
+                value: _giftCardRewardEnabled,
+                onChanged: (value) =>
+                    setState(() => _giftCardRewardEnabled = value),
+              ),
+              if (_giftCardRewardEnabled) ...[
+                const SizedBox(height: 8),
+                _NumberField(
+                  controller: _rewardThresholdController,
+                  label: 'Points needed for gift card',
+                  hint: 'e.g. 1000',
+                  icon: Icons.flag_outlined,
+                ),
+                const SizedBox(height: 12),
+                _NumberField(
+                  controller: _rewardAmountController,
+                  label: 'Gift card value (${ShopSettings.currency})',
+                  hint: 'e.g. 500',
+                  icon: Icons.card_giftcard_outlined,
+                ),
+                const SizedBox(height: 12),
+                _NumberField(
+                  controller: _rewardExpiryDaysController,
+                  label: 'Gift card expiry days',
+                  hint: '0 means no expiry',
+                  icon: Icons.event_outlined,
+                ),
+              ],
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 18, color: AppColors.primaryLight),
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: AppColors.primaryLight,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

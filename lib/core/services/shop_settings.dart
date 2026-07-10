@@ -15,6 +15,9 @@ class ShopSettings {
   static const _keyShopEmail = 'shop_email';
   static const _keyTaxRate = 'tax_rate';
   static const _keyCurrency = 'currency';
+  static const _keySecondaryCurrency = 'secondary_currency';
+  static const _keySecondaryCurrencyRate = 'secondary_currency_rate';
+  static const _keyDualCurrencyEnabled = 'dual_currency_enabled';
   static const _keyReceiptFooter = 'receipt_footer';
   static const _keyCarwashBays = 'carwash_bays_count';
   static const _keyCashDrawerEnabled = 'cash_drawer_enabled';
@@ -57,6 +60,12 @@ class ShopSettings {
   static String get shopEmail => _prefs?.getString(_keyShopEmail) ?? '';
   static double get taxRate => _prefs?.getDouble(_keyTaxRate) ?? 8.0;
   static String get currency => _prefs?.getString(_keyCurrency) ?? '\$';
+  static String get secondaryCurrency =>
+      _prefs?.getString(_keySecondaryCurrency) ?? r'$';
+  static double get secondaryCurrencyRate =>
+      _prefs?.getDouble(_keySecondaryCurrencyRate) ?? 0;
+  static bool get dualCurrencyEnabled =>
+      _prefs?.getBool(_keyDualCurrencyEnabled) ?? false;
   static String get receiptFooter =>
       _prefs?.getString(_keyReceiptFooter) ?? 'Thank you for your purchase!';
   static int get carwashBaysCount => _prefs?.getInt(_keyCarwashBays) ?? 4;
@@ -92,6 +101,12 @@ class ShopSettings {
       _prefs!.setDouble(_keyTaxRate, value);
   static Future<void> setCurrency(String value) =>
       _prefs!.setString(_keyCurrency, normalizeCurrency(value));
+  static Future<void> setSecondaryCurrency(String value) =>
+      _prefs!.setString(_keySecondaryCurrency, normalizeCurrency(value));
+  static Future<void> setSecondaryCurrencyRate(double value) =>
+      _prefs!.setDouble(_keySecondaryCurrencyRate, value <= 0 ? 0 : value);
+  static Future<void> setDualCurrencyEnabled(bool value) =>
+      _prefs!.setBool(_keyDualCurrencyEnabled, value);
   static Future<void> setReceiptFooter(String value) =>
       _prefs!.setString(_keyReceiptFooter, value);
   static Future<void> setCarwashBaysCount(int value) =>
@@ -139,6 +154,9 @@ class ShopSettings {
     await _prefs!.remove(_keyShopEmail);
     await _prefs!.remove(_keyTaxRate);
     await _prefs!.remove(_keyCurrency);
+    await _prefs!.remove(_keySecondaryCurrency);
+    await _prefs!.remove(_keySecondaryCurrencyRate);
+    await _prefs!.remove(_keyDualCurrencyEnabled);
     await _prefs!.remove(_keyReceiptFooter);
     await _prefs!.remove(_keyCashDrawerEnabled);
     await _prefs!.remove(_keyCashDrawerPrinterPath);

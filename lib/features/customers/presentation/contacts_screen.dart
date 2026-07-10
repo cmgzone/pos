@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
+import '../../gift_cards/data/gift_card_repository.dart';
 import '../../purchases/data/purchase_repository.dart';
 import '../data/customer_import_service.dart';
 import '../data/customer_repository.dart';
@@ -506,6 +507,30 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
         (contact['balance'] as num?)?.toDouble() ??
         (contact['outstanding_balance'] as num?)?.toDouble() ??
         0;
+    final points = (contact['loyalty_points'] as num?)?.toInt() ?? 0;
+    final isCustomer =
+        contact.containsKey('loyalty_points') ||
+        contact.containsKey('balance') ||
+        contact.containsKey('outstanding_balance');
+    var giftCardBalance = 0.0;
+
+    if (isCustomer) {
+      final customerId = contact['id'] as String?;
+      if (customerId != null && customerId.trim().isNotEmpty) {
+        try {
+          final cards = await GiftCardRepository.getAll(
+            customerId: customerId,
+            activeOnly: true,
+          );
+          giftCardBalance = cards.fold<double>(
+            0,
+            (sum, card) => sum + ((card['balance'] as num?)?.toDouble() ?? 0),
+          );
+        } catch (_) {
+          giftCardBalance = 0;
+        }
+      }
+    }
 
     String message;
     if (balance > 0) {
@@ -517,6 +542,16 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       message = 'Hi $name, thank you for your business with us!';
     }
 
+    final balanceLines = <String>[
+      if (points > 0) 'Loyalty balance: $points pts.',
+      if (giftCardBalance > 0)
+        'Gift card balance: ${GiftCardRepository.formatBalance(giftCardBalance)}.',
+    ];
+    if (balanceLines.isNotEmpty) {
+      message = '$message\n${balanceLines.join('\n')}';
+    }
+
+    if (!mounted) return;
     await CustomerMessageDialog.show(
       context,
       customerName: name,
@@ -764,7 +799,12 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.sm,
+            ),
             child: TextField(
               controller: _searchController,
               onChanged: (_) => _load(),
@@ -831,7 +871,12 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 100),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        100,
+      ),
       itemCount: _customers.length,
       separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -907,7 +952,12 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 100),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        100,
+      ),
       itemCount: _suppliers.length,
       separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -1201,7 +1251,10 @@ class _BalanceBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(AppRadius.sm),

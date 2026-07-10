@@ -66,6 +66,7 @@ class HeldSaleRepository {
           'variant_name': item['variant_name'],
           'variant_color_id': item['variant_color_id'],
           'variant_color_name': item['variant_color_name'],
+          'serial_numbers_json': item['serial_numbers_json'],
           'unit': item['unit'] as String? ?? UnitUtils.defaultUnit,
           'stock_unit':
               item['stock_unit'] as String? ??

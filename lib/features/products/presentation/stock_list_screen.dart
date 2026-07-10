@@ -20,11 +20,13 @@ class StockListScreen extends ConsumerStatefulWidget {
 class _StockListScreenState extends ConsumerState<StockListScreen> {
   final TextEditingController _searchController = TextEditingController();
   late Future<List<Map<String, dynamic>>> _stockFuture;
+  late Future<List<Map<String, dynamic>>> _reorderSuggestionsFuture;
 
   @override
   void initState() {
     super.initState();
     _stockFuture = _loadStock();
+    _reorderSuggestionsFuture = _loadReorderSuggestions();
   }
 
   @override
@@ -37,8 +39,15 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
     return ProductRepository.getStockList(search: _searchController.text);
   }
 
+  Future<List<Map<String, dynamic>>> _loadReorderSuggestions() {
+    return ProductRepository.getReorderSuggestions(limit: 8);
+  }
+
   void _refresh() {
-    setState(() => _stockFuture = _loadStock());
+    setState(() {
+      _stockFuture = _loadStock();
+      _reorderSuggestionsFuture = _loadReorderSuggestions();
+    });
   }
 
   @override
@@ -56,11 +65,13 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         title: Text('Stock List'),
@@ -106,6 +117,17 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
               ),
             ),
             Divider(height: 1),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _reorderSuggestionsFuture,
+              builder: (context, snapshot) {
+                final suggestions = snapshot.data ?? const [];
+                if (suggestions.isEmpty) return const SizedBox.shrink();
+                return _ReorderSuggestionsSection(
+                  suggestions: suggestions,
+                  isMobile: isMobile,
+                );
+              },
+            ),
             Expanded(
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _stockFuture,
@@ -119,7 +141,9 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
                     return Center(
                       child: Text(
                         'No tracked stock found.',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     );
                   }
@@ -136,6 +160,140 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ReorderSuggestionsSection extends StatelessWidget {
+  final List<Map<String, dynamic>> suggestions;
+  final bool isMobile;
+
+  const _ReorderSuggestionsSection({
+    required this.suggestions,
+    required this.isMobile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = suggestions.take(isMobile ? 3 : 5).toList();
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 24,
+        14,
+        isMobile ? 16 : 24,
+        14,
+      ),
+      color: AppColors.warning.withValues(alpha: 0.06),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.assignment_returned_rounded,
+                color: AppColors.warning,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Reorder suggestions',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text(
+                '${suggestions.length} to review',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 82,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: preview.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, index) => _ReorderSuggestionCard(
+                suggestion: preview[index],
+                isMobile: isMobile,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReorderSuggestionCard extends StatelessWidget {
+  final Map<String, dynamic> suggestion;
+  final bool isMobile;
+
+  const _ReorderSuggestionCard({
+    required this.suggestion,
+    required this.isMobile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final stock = (suggestion['stock'] as num? ?? 0).toDouble();
+    final suggestedQty = (suggestion['suggested_qty'] as num? ?? 0).toDouble();
+    final unit = UnitUtils.normalize(suggestion['stock_unit'] as String?);
+    final cover = (suggestion['days_of_cover'] as num?)?.toDouble();
+    final urgency = suggestion['urgency']?.toString() ?? 'soon';
+    final color = switch (urgency) {
+      'out' => AppColors.error,
+      'low' => AppColors.warning,
+      _ => AppColors.primary,
+    };
+    final name = suggestion['item_name']?.toString() ?? 'Product';
+    final coverLabel = cover == null
+        ? 'Below reorder level'
+        : '${cover.toStringAsFixed(cover % 1 == 0 ? 0 : 1)} days cover';
+
+    return Container(
+      width: isMobile ? 230 : 260,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.38)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const Spacer(),
+          Text(
+            'Stock ${UnitUtils.formatWithUnit(stock, unit)} · $coverLabel',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Order ${UnitUtils.formatWithUnit(suggestedQty, unit)}',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -186,7 +344,10 @@ class _StockListCard extends StatelessWidget {
             )
           : Row(
               children: [
-                Expanded(flex: 3, child: _titleBlock(context, status, statusColor)),
+                Expanded(
+                  flex: 3,
+                  child: _titleBlock(context, status, statusColor),
+                ),
                 SizedBox(width: 18),
                 Expanded(
                   flex: 5,
@@ -241,7 +402,10 @@ class _StockListCard extends StatelessWidget {
           ].join('  '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+          ),
         ),
       ],
     );

@@ -11,7 +11,7 @@ import 'session_service.dart';
 
 class DatabaseService {
   static const String _databaseName = 'velora_pos.db';
-  static const int _databaseVersion = 24;
+  static const int _databaseVersion = 35;
   static const String defaultBranchId = 'main_branch';
   static const _uuid = Uuid();
 
@@ -35,17 +35,34 @@ class DatabaseService {
     'purchase_orders',
     'purchase_order_items',
     'stock_batches',
+    'product_serials',
     'stock_transfers',
+    'stocktake_sessions',
+    'stocktake_items',
+    'sms_campaigns',
+    'exchange_rates',
+    'wastage_logs',
+    'restaurant_tables',
+    'table_orders',
+    'employee_attendance',
+    'customer_groups',
+    'customer_group_members',
+    'delivery_zones',
+    'deliveries',
     'credit_payments',
     'expense_categories',
     'expenses',
+    'custom_roles',
     'services',
     'service_orders',
     'audit_logs',
-  'loyalty_rules',
-  'loyalty_ledger',
-  'gift_cards',
-};
+    'loyalty_rules',
+    'loyalty_ledger',
+    'gift_cards',
+    'gift_card_transactions',
+    'promotions',
+    'promotion_rules',
+  };
 
   static Database? _database;
   static String? _databasePath;
@@ -486,6 +503,7 @@ class DatabaseService {
         phone TEXT,
         password TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'CASHIER',
+        custom_role_id TEXT,
         feature_access_json TEXT,
         allowed_service_ids_json TEXT,
         allowed_branch_ids_json TEXT,
@@ -728,6 +746,7 @@ class DatabaseService {
         variant_name TEXT,
         variant_color_id TEXT,
         variant_color_name TEXT,
+        serial_numbers_json TEXT,
         unit TEXT NOT NULL DEFAULT 'pcs',
         stock_unit TEXT NOT NULL DEFAULT 'pcs',
         created_at TEXT NOT NULL,
@@ -811,6 +830,42 @@ class DatabaseService {
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
       )
     ''');
+    await _ensureColumn(
+      database,
+      table: 'purchase_orders',
+      column: 'approval_required',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_orders',
+      column: 'submitted_by',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_orders',
+      column: 'submitted_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_orders',
+      column: 'approved_by',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_orders',
+      column: 'approved_at',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'purchase_orders',
+      column: 'approval_note',
+      definition: 'TEXT',
+    );
 
     await database.execute('''
       CREATE TABLE IF NOT EXISTS purchase_order_items (
@@ -874,6 +929,106 @@ class DatabaseService {
         requested_at TEXT NOT NULL,
         approved_at TEXT,
         received_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS stocktake_sessions (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        started_by TEXT,
+        completed_by TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS stocktake_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        session_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        expected_qty REAL NOT NULL DEFAULT 0,
+        counted_qty REAL,
+        variance_qty REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        note TEXT,
+        counted_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (session_id) REFERENCES stocktake_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS sms_campaigns (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        name TEXT NOT NULL,
+        segment TEXT NOT NULL DEFAULT 'all',
+        message TEXT NOT NULL,
+        recipient_count INTEGER NOT NULL DEFAULT 0,
+        sent_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        recipient_snapshot_json TEXT,
+        last_error TEXT,
+        created_by TEXT,
+        sent_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS exchange_rates (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        base_currency TEXT NOT NULL,
+        quote_currency TEXT NOT NULL,
+        rate REAL NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS wastage_logs (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        reason TEXT NOT NULL DEFAULT 'wastage',
+        note TEXT,
+        recorded_by TEXT,
+        recorded_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -1474,6 +1629,7 @@ class DatabaseService {
     await _ensureCloudAuthSchema(database);
     await _ensureUserLastSeenSchema(database);
     await _ensureUserAccessSchema(database);
+    await _ensureCustomRoleSchema(database);
     await _ensureProductVariantsSchema(database);
     await _ensureProductVariantColorsSchema(database);
     await _ensureBrandColumn(database);
@@ -1481,7 +1637,17 @@ class DatabaseService {
     await _ensurePaymentMethodsSchema(database);
     await _ensureLoyaltySchema(database);
     await _ensureGiftCardSchema(database);
+    await _ensurePromotionSchema(database);
     await _ensureEnterpriseSchema(database);
+    await _ensureProductSerialSchema(database);
+    await _ensureStocktakeSchema(database);
+    await _ensureSmsCampaignSchema(database);
+    await _ensureExchangeRateSchema(database);
+    await _ensureWastageSchema(database);
+    await _ensureRestaurantSchema(database);
+    await _ensureAttendanceSchema(database);
+    await _ensureCustomerGroupSchema(database);
+    await _ensureDeliverySchema(database);
     await _ensureStockTransferSchema(database);
     await _ensurePublicCatalogOrderSchema(database);
     await _ensureAgentMemorySchema(database);
@@ -2013,6 +2179,12 @@ class DatabaseService {
       database,
       table: 'held_sale_items',
       column: 'variant_name',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sale_items',
+      column: 'serial_numbers_json',
       definition: 'TEXT',
     );
   }
@@ -3127,6 +3299,12 @@ class DatabaseService {
     await _ensureColumn(
       database,
       table: 'users',
+      column: 'custom_role_id',
+      definition: 'TEXT',
+    );
+    await _ensureColumn(
+      database,
+      table: 'users',
       column: 'feature_access_json',
       definition: 'TEXT',
     );
@@ -3156,6 +3334,34 @@ class DatabaseService {
     );
   }
 
+  static Future<void> _ensureCustomRoleSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS custom_roles (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        base_role TEXT NOT NULL DEFAULT 'CASHIER',
+        feature_access_json TEXT,
+        allowed_service_ids_json TEXT,
+        allowed_branch_ids_json TEXT,
+        pos_mode TEXT NOT NULL DEFAULT 'both',
+        service_order_scope TEXT NOT NULL DEFAULT 'all_visible_services',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _ensureColumn(
+      database,
+      table: 'users',
+      column: 'custom_role_id',
+      definition: 'TEXT',
+    );
+  }
+
   /// Ensures payment_methods table has is_credit column for credit/kopesha payments.
   static Future<void> _ensureLoyaltySchema(DatabaseExecutor database) async {
     await database.execute('''
@@ -3167,6 +3373,10 @@ class DatabaseService {
         min_redemption_points INTEGER NOT NULL DEFAULT 0,
         points_to_currency_factor REAL NOT NULL DEFAULT 1,
         is_active INTEGER NOT NULL DEFAULT 1,
+        gift_card_reward_enabled INTEGER NOT NULL DEFAULT 0,
+        gift_card_reward_points_threshold INTEGER NOT NULL DEFAULT 0,
+        gift_card_reward_amount REAL NOT NULL DEFAULT 0,
+        gift_card_reward_expiry_days INTEGER NOT NULL DEFAULT 0,
         note TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -3196,6 +3406,30 @@ class DatabaseService {
       column: 'loyalty_points',
       definition: 'INTEGER NOT NULL DEFAULT 0',
     );
+    await _ensureColumn(
+      database,
+      table: 'loyalty_rules',
+      column: 'gift_card_reward_enabled',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'loyalty_rules',
+      column: 'gift_card_reward_points_threshold',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'loyalty_rules',
+      column: 'gift_card_reward_amount',
+      definition: 'REAL NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'loyalty_rules',
+      column: 'gift_card_reward_expiry_days',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
   }
 
   static Future<void> _ensureGiftCardSchema(DatabaseExecutor database) async {
@@ -3214,6 +3448,323 @@ class DatabaseService {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS gift_card_transactions (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        gift_card_id TEXT NOT NULL,
+        sale_id TEXT,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        balance_after REAL NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+  }
+
+  static Future<void> _ensurePromotionSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS promotions (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        promotion_type TEXT NOT NULL,
+        discount_type TEXT NOT NULL DEFAULT 'amount',
+        discount_value REAL NOT NULL DEFAULT 0,
+        priority INTEGER NOT NULL DEFAULT 0,
+        starts_at TEXT,
+        ends_at TEXT,
+        days_of_week TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS promotion_rules (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        promotion_id TEXT NOT NULL,
+        rule_type TEXT NOT NULL,
+        product_id TEXT,
+        category_id TEXT,
+        min_quantity REAL NOT NULL DEFAULT 0,
+        free_quantity REAL NOT NULL DEFAULT 0,
+        bundle_quantity REAL NOT NULL DEFAULT 0,
+        min_subtotal REAL NOT NULL DEFAULT 0,
+        rule_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+  }
+
+  static Future<void> _ensureProductSerialSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS product_serials (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        product_id TEXT NOT NULL,
+        variant_id TEXT,
+        stock_batch_id TEXT,
+        purchase_id TEXT,
+        sale_id TEXT,
+        sale_item_id TEXT,
+        serial_number TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'available',
+        warranty_expires_at TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_serials',
+      indexName: 'idx_product_serials_lookup',
+      columns: ['product_id', 'serial_number'],
+      unique: true,
+      whereClause: 'deleted_at IS NULL',
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'product_serials',
+      indexName: 'idx_product_serials_status',
+      columns: ['status'],
+    );
+  }
+
+  static Future<void> _ensureStocktakeSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS stocktake_sessions (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        started_by TEXT,
+        completed_by TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS stocktake_items (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        session_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        expected_qty REAL NOT NULL DEFAULT 0,
+        counted_qty REAL,
+        variance_qty REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        note TEXT,
+        counted_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stocktake_sessions',
+      indexName: 'idx_stocktake_sessions_branch_status',
+      columns: ['branch_id', 'status', 'updated_at'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stocktake_items',
+      indexName: 'idx_stocktake_items_session',
+      columns: ['session_id', 'status'],
+    );
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'stocktake_items',
+      indexName: 'idx_stocktake_items_product',
+      columns: ['product_id', 'session_id'],
+    );
+  }
+
+  static Future<void> _ensureSmsCampaignSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS sms_campaigns (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        name TEXT NOT NULL,
+        segment TEXT NOT NULL DEFAULT 'all',
+        message TEXT NOT NULL,
+        recipient_count INTEGER NOT NULL DEFAULT 0,
+        sent_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        recipient_snapshot_json TEXT,
+        last_error TEXT,
+        created_by TEXT,
+        sent_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'sms_campaigns',
+      indexName: 'idx_sms_campaigns_branch_status',
+      columns: ['branch_id', 'status', 'updated_at'],
+    );
+  }
+
+  static Future<void> _ensureExchangeRateSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS exchange_rates (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        base_currency TEXT NOT NULL,
+        quote_currency TEXT NOT NULL,
+        rate REAL NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'exchange_rates',
+      indexName: 'idx_exchange_rates_active',
+      columns: ['branch_id', 'is_active', 'quote_currency'],
+    );
+  }
+
+  static Future<void> _ensureWastageSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS wastage_logs (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        unit TEXT,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        reason TEXT NOT NULL DEFAULT 'wastage',
+        note TEXT,
+        recorded_by TEXT,
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await _createIndexIfColumnsExist(
+      database,
+      table: 'wastage_logs',
+      indexName: 'idx_wastage_logs_branch_recorded',
+      columns: ['branch_id', 'recorded_at'],
+    );
+  }
+
+  static Future<void> _ensureRestaurantSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS restaurant_tables (
+        id TEXT PRIMARY KEY, branch_id TEXT, name TEXT NOT NULL, area TEXT,
+        seats INTEGER NOT NULL DEFAULT 2, status TEXT NOT NULL DEFAULT 'available',
+        position_x REAL NOT NULL DEFAULT 0, position_y REAL NOT NULL DEFAULT 0,
+        current_order_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        deleted_at TEXT, sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS table_orders (
+        id TEXT PRIMARY KEY, branch_id TEXT, table_id TEXT NOT NULL, order_no TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open', guest_count INTEGER NOT NULL DEFAULT 1,
+        notes TEXT, items_json TEXT NOT NULL DEFAULT '[]', subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0, total REAL NOT NULL DEFAULT 0,
+        split_count INTEGER NOT NULL DEFAULT 1, opened_by TEXT, opened_at TEXT NOT NULL,
+        closed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+  }
+
+  static Future<void> _ensureAttendanceSchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS employee_attendance (
+        id TEXT PRIMARY KEY, branch_id TEXT, user_id TEXT NOT NULL, user_name TEXT,
+        clock_in_at TEXT NOT NULL, clock_out_at TEXT, note TEXT,
+        status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        deleted_at TEXT, sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+  }
+
+  static Future<void> _ensureCustomerGroupSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS customer_groups (
+        id TEXT PRIMARY KEY, branch_id TEXT, name TEXT NOT NULL, description TEXT,
+        color TEXT, created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        deleted_at TEXT, sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS customer_group_members (
+        id TEXT PRIMARY KEY, branch_id TEXT, group_id TEXT NOT NULL, customer_id TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending', UNIQUE(group_id, customer_id)
+      )
+    ''');
+  }
+
+  static Future<void> _ensureDeliverySchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS delivery_zones (
+        id TEXT PRIMARY KEY, branch_id TEXT, name TEXT NOT NULL, fee REAL NOT NULL DEFAULT 0,
+        minimum_order REAL NOT NULL DEFAULT 0, is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS deliveries (
+        id TEXT PRIMARY KEY, branch_id TEXT, order_id TEXT NOT NULL, zone_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending', tracking_code TEXT NOT NULL,
+        rider_name TEXT, rider_phone TEXT, scheduled_at TEXT, delivered_at TEXT,
+        note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
         sync_status TEXT NOT NULL DEFAULT 'pending'
       )
     ''');

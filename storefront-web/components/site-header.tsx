@@ -60,6 +60,14 @@ export function SiteHeader({ business, onTrackOrder }: SiteHeaderProps) {
             <Search className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Track order</span>
           </button>
+          {business?.id && (
+            <a
+              href={`/portal?businessId=${encodeURIComponent(business.id)}`}
+              className="hidden rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground md:inline-flex"
+            >
+              My account
+            </a>
+          )}
           <button
             onClick={() => setIsCartOpen(true)}
             className="relative inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-[13px] font-semibold text-background transition hover:opacity-90"

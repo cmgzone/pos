@@ -12,6 +12,7 @@ import '../../../widgets/compact_header_actions.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../products/data/product_repository.dart';
 import '../data/purchase_repository.dart';
+import 'supplier_statement_screen.dart';
 
 class PurchaseManagementScreen extends ConsumerStatefulWidget {
   const PurchaseManagementScreen({super.key});
@@ -365,7 +366,9 @@ class _PurchaseManagementScreenState
                                   vertical: 14,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Text(
@@ -399,7 +402,9 @@ class _PurchaseManagementScreenState
                                     vertical: 14,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(14),
                                   ),
                                   child: Text(
@@ -460,9 +465,13 @@ class _PurchaseManagementScreenState
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                         ),
                         child: Column(
                           children: [
@@ -623,7 +632,9 @@ class _PurchaseManagementScreenState
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
                               ),
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
@@ -648,7 +659,9 @@ class _PurchaseManagementScreenState
                                         ),
                                         icon: Icon(
                                           Icons.close,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     IconButton(
@@ -896,15 +909,15 @@ class _PurchaseManagementScreenState
                             Text(
                               UnitUtils.formatWithUnit(quantity, unit),
                               style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                             SizedBox(width: 20),
                             Text(
                               '${ShopSettings.currency}${(quantity * unitCost).toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ],
                         ),
@@ -999,10 +1012,7 @@ class _PurchaseManagementScreenState
               icon: Icon(Icons.add_card_outlined),
               label: Text('Record Payment'),
             ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Close'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close')),
         ],
       ),
     );
@@ -1018,14 +1028,13 @@ class _PurchaseManagementScreenState
             width: 90,
             child: Text(
               label,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
+            child: Text(value, style: TextStyle(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -1052,11 +1061,13 @@ class _PurchaseManagementScreenState
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 50,
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         title: Text(
@@ -1069,10 +1080,7 @@ class _PurchaseManagementScreenState
             id: 'purchases.tabs',
             child: TabBar(
               controller: _tabController,
-              labelStyle: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
+              labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
               tabs: const [
                 Tab(height: 40, text: 'Purchases'),
                 Tab(height: 40, text: 'Suppliers'),
@@ -1222,7 +1230,9 @@ class _PurchaseManagementScreenState
                       Text(
                         purchase['supplier_name'] as String? ??
                             'Unknown supplier',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       SizedBox(height: 4),
                       Text(
@@ -1299,6 +1309,8 @@ class _PurchaseManagementScreenState
       separatorBuilder: (_, _) => SizedBox(height: 10),
       itemBuilder: (context, index) {
         final supplier = _suppliers[index];
+        final outstanding = (supplier['outstanding_balance'] as num? ?? 0)
+            .toDouble();
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1320,23 +1332,48 @@ class _PurchaseManagementScreenState
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${ShopSettings.currency}${((supplier['total_spend'] as num? ?? 0).toDouble()).toStringAsFixed(2)} spent',
-                      style: TextStyle(
-                        color: AppColors.success,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${ShopSettings.currency}${((supplier['total_spend'] as num? ?? 0).toDouble()).toStringAsFixed(2)} spent',
+                          style: TextStyle(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
+                      if (outstanding > 0.009)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${ShopSettings.currency}${outstanding.toStringAsFixed(2)} payable',
+                            style: TextStyle(
+                              color: AppColors.warning,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ),
@@ -1344,12 +1381,16 @@ class _PurchaseManagementScreenState
               if ((supplier['phone'] as String?)?.trim().isNotEmpty == true)
                 Text(
                   supplier['phone'] as String,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               if ((supplier['email'] as String?)?.trim().isNotEmpty == true)
                 Text(
                   supplier['email'] as String,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               if ((supplier['address'] as String?)?.trim().isNotEmpty == true)
                 Padding(
@@ -1375,9 +1416,9 @@ class _PurchaseManagementScreenState
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: () => _showSupplierLedger(supplier),
+                    onPressed: () => _openSupplierStatement(supplier),
                     icon: Icon(Icons.account_balance_wallet_outlined),
-                    label: Text('Ledger'),
+                    label: Text('Statement'),
                   ),
                 ],
               ),
@@ -1388,72 +1429,10 @@ class _PurchaseManagementScreenState
     );
   }
 
-  Future<void> _showSupplierLedger(Map<String, dynamic> supplier) async {
-    final supplierId = supplier['id'] as String? ?? '';
-    final entries = await PurchaseRepository.getSupplierLedger(supplierId);
-    if (!mounted) {
-      return;
-    }
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${supplier['name'] ?? 'Supplier'} Ledger'),
-        content: SizedBox(
-          width: 560,
-          child: entries.isEmpty
-              ? Text('No ledger entries yet.')
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: entries.length,
-                  separatorBuilder: (_, _) => Divider(),
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    final type = entry['entry_type'] as String? ?? '';
-                    final debit = (entry['debit'] as num? ?? 0).toDouble();
-                    final credit = (entry['credit'] as num? ?? 0).toDouble();
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        type == 'payment'
-                            ? Icons.payments_outlined
-                            : Icons.receipt_long_outlined,
-                        color: type == 'payment'
-                            ? AppColors.success
-                            : AppColors.primaryLight,
-                      ),
-                      title: Text(
-                        type == 'payment' ? 'Supplier payment' : 'Purchase',
-                      ),
-                      subtitle: Text(
-                        [
-                              entry['reference']?.toString(),
-                              _friendlyDate(entry['entry_at'] as String?),
-                              entry['status']?.toString(),
-                            ]
-                            .where((item) => item?.trim().isNotEmpty == true)
-                            .join(' - '),
-                      ),
-                      trailing: Text(
-                        type == 'payment'
-                            ? '-${ShopSettings.currency}${credit.toStringAsFixed(2)}'
-                            : '${ShopSettings.currency}${debit.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: type == 'payment'
-                              ? AppColors.success
-                              : AppColors.warning,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Close'),
-          ),
-        ],
+  void _openSupplierStatement(Map<String, dynamic> supplier) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SupplierStatementScreen(supplier: supplier),
       ),
     );
   }
@@ -1486,9 +1465,7 @@ class _PurchaseManagementScreenState
                 SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: method,
-                  decoration: InputDecoration(
-                    labelText: 'Payment method',
-                  ),
+                  decoration: InputDecoration(labelText: 'Payment method'),
                   items: const [
                     DropdownMenuItem(value: 'cash', child: Text('Cash')),
                     DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
@@ -1643,10 +1620,7 @@ class _PurchaseStatCard extends StatelessWidget {
               SizedBox(height: 2),
               Text(
                 value,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ],
           ),
@@ -1678,7 +1652,9 @@ class _EmptyState extends StatelessWidget {
             Icon(
               icon,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
             ),
             SizedBox(height: 16),
             Text(
@@ -1689,7 +1665,9 @@ class _EmptyState extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

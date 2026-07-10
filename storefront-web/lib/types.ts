@@ -85,6 +85,7 @@ export interface CustomerInfo {
 
 export interface OrderPayload {
   branchId: string;
+  paymentMethod?: "manual" | "mpesa" | "paypal" | "stripe";
   customerName: string;
   phone: string;
   deliveryAddress?: string;
@@ -109,6 +110,10 @@ export interface Order {
   deliveryAddress?: string;
   fulfillmentMethod?: string;
   note?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  deliveryStatus?: string;
+  trackingCode?: string;
   createdAt: string;
   items: {
     productName: string;
@@ -120,6 +125,7 @@ export interface Order {
 
 export interface StorefrontBootstrap {
   businessId?: string;
+  branchId?: string;
   business?: Business;
   catalog?: Catalog;
 }

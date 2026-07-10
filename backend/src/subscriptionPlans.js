@@ -24,6 +24,17 @@ const FEATURE_KEYS = Object.freeze({
   proactivePiki: 'proactive_piki',
   loyalty: 'loyalty',
   giftCards: 'gift_cards',
+  promotions: 'promotions',
+  customRoles: 'custom_roles',
+  serialTracking: 'serial_tracking',
+  stocktake: 'stocktake',
+  smsCampaigns: 'sms_campaigns',
+  multiCurrency: 'multi_currency',
+  wastage: 'wastage',
+  restaurantMode: 'restaurant_mode',
+  attendance: 'attendance',
+  customerSegments: 'customer_segments',
+  delivery: 'delivery',
 });
 
 const SELLING_MODES = Object.freeze({
@@ -70,6 +81,17 @@ const GROWTH_FEATURES = [
   FEATURE_KEYS.profitLoss,
   FEATURE_KEYS.loyalty,
   FEATURE_KEYS.giftCards,
+  FEATURE_KEYS.promotions,
+  FEATURE_KEYS.customRoles,
+  FEATURE_KEYS.serialTracking,
+  FEATURE_KEYS.stocktake,
+  FEATURE_KEYS.smsCampaigns,
+  FEATURE_KEYS.multiCurrency,
+  FEATURE_KEYS.wastage,
+  FEATURE_KEYS.restaurantMode,
+  FEATURE_KEYS.attendance,
+  FEATURE_KEYS.customerSegments,
+  FEATURE_KEYS.delivery,
 ];
 
 const ALL_FEATURES = [

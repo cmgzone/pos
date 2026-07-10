@@ -291,6 +291,17 @@ class UserAccessProfile {
   static const featureProactivePiki = 'proactive_piki';
   static const featureLoyalty = 'loyalty';
   static const featureGiftCards = 'gift_cards';
+  static const featurePromotions = 'promotions';
+  static const featureCustomRoles = 'custom_roles';
+  static const featureSerialTracking = 'serial_tracking';
+  static const featureStocktake = 'stocktake';
+  static const featureSmsCampaigns = 'sms_campaigns';
+  static const featureMultiCurrency = 'multi_currency';
+  static const featureWastage = 'wastage';
+  static const featureRestaurantMode = 'restaurant_mode';
+  static const featureAttendance = 'attendance';
+  static const featureCustomerSegments = 'customer_segments';
+  static const featureDelivery = 'delivery';
 
   static const posModeBoth = 'both';
   static const posModeProducts = 'products';
@@ -319,6 +330,17 @@ class UserAccessProfile {
     featureProactivePiki,
     featureLoyalty,
     featureGiftCards,
+    featurePromotions,
+    featureCustomRoles,
+    featureSerialTracking,
+    featureStocktake,
+    featureSmsCampaigns,
+    featureMultiCurrency,
+    featureWastage,
+    featureRestaurantMode,
+    featureAttendance,
+    featureCustomerSegments,
+    featureDelivery,
   ];
 
   static const configurableFeatures = [
@@ -334,6 +356,16 @@ class UserAccessProfile {
     featureShifts,
     featureServices,
     featureAgent,
+    featurePromotions,
+    featureSerialTracking,
+    featureStocktake,
+    featureSmsCampaigns,
+    featureMultiCurrency,
+    featureWastage,
+    featureRestaurantMode,
+    featureAttendance,
+    featureCustomerSegments,
+    featureDelivery,
   ];
 
   static const _featureToNavigationIndex = <String, int>{
@@ -356,6 +388,21 @@ class UserAccessProfile {
     featureTransfers: 15,
     featureLoyalty: 21,
     featureGiftCards: 22,
+    featurePromotions: 23,
+    featureCustomRoles: 24,
+    featureSerialTracking: 25,
+    featureStocktake: 26,
+    featureSmsCampaigns: 27,
+    featureMultiCurrency: 9,
+    featureWastage: 28,
+    featureRestaurantMode: 29,
+    featureAttendance: 30,
+    featureCustomerSegments: 31,
+    featureDelivery: 33,
+  };
+
+  static const _additionalNavigationFeatures = <int, String>{
+    34: featureReports,
   };
 
   static List<String> defaultFeatureAccessForRole(String? role) {
@@ -463,6 +510,8 @@ class UserAccessProfile {
   }
 
   static String? featureForNavigationIndex(int index) {
+    final additional = _additionalNavigationFeatures[index];
+    if (additional != null) return additional;
     for (final entry in _featureToNavigationIndex.entries) {
       if (entry.value == index) {
         return entry.key;
@@ -524,6 +573,28 @@ class UserAccessProfile {
         return 'Loyalty';
       case featureGiftCards:
         return 'Gift Cards';
+      case featurePromotions:
+        return 'Promotions';
+      case featureCustomRoles:
+        return 'Custom Roles';
+      case featureSerialTracking:
+        return 'Serial Tracking';
+      case featureStocktake:
+        return 'Stocktake';
+      case featureSmsCampaigns:
+        return 'SMS Campaigns';
+      case featureMultiCurrency:
+        return 'Multi-Currency';
+      case featureWastage:
+        return 'Wastage';
+      case featureRestaurantMode:
+        return 'Restaurant';
+      case featureAttendance:
+        return 'Attendance';
+      case featureCustomerSegments:
+        return 'Customer Segments';
+      case featureDelivery:
+        return 'Delivery';
       default:
         return featureKey;
     }

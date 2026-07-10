@@ -551,5 +551,6 @@ module.exports = {
   ensureEmailOtpSchema,
   requestEmailOtp,
   resetPasswordWithVerifiedOtp,
+  sendOtpEmail,
   verifyEmailOtp,
 };

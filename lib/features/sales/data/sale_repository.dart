@@ -21,6 +21,40 @@ class SaleRepository {
     return double.parse(value.toStringAsFixed(2));
   }
 
+  static List<String> _serialNumbersFromItem(Map<String, dynamic> item) {
+    final value = item['serial_numbers'] ?? item['serial_numbers_json'];
+    if (value == null) {
+      return const [];
+    }
+    Iterable<dynamic> rawValues;
+    if (value is Iterable) {
+      rawValues = value;
+    } else {
+      final text = value.toString().trim();
+      if (text.isEmpty) {
+        return const [];
+      }
+      try {
+        final decoded = jsonDecode(text);
+        rawValues = decoded is Iterable
+            ? decoded
+            : text.split(RegExp(r'[\n,]+'));
+      } catch (_) {
+        rawValues = text.split(RegExp(r'[\n,]+'));
+      }
+    }
+
+    final serials = <String>[];
+    for (final raw in rawValues) {
+      final clean = raw.toString().trim();
+      if (clean.isEmpty) continue;
+      if (!serials.any((item) => item.toLowerCase() == clean.toLowerCase())) {
+        serials.add(clean);
+      }
+    }
+    return serials;
+  }
+
   static String _effectiveBranchId(String? branchId) {
     final cleanBranchId = branchId?.trim() ?? '';
     return cleanBranchId.isEmpty
@@ -111,6 +145,38 @@ class SaleRepository {
         .toList();
 
     await DatabaseService.db.transaction((txn) async {
+      Future<void> markSerialsSold(
+        List<String> serials, {
+        required String saleItemId,
+      }) async {
+        if (serials.isEmpty) {
+          return;
+        }
+        final placeholders = List.filled(serials.length, '?').join(',');
+        await txn.rawUpdate(
+          '''
+          UPDATE product_serials
+          SET status = 'sold',
+              sale_id = ?,
+              sale_item_id = ?,
+              updated_at = ?,
+              sync_status = 'pending'
+          WHERE LOWER(serial_number) IN ($placeholders)
+            AND status = 'available'
+            AND deleted_at IS NULL
+            AND COALESCE(branch_id, ?) = ?
+          ''',
+          [
+            effectiveSaleId,
+            saleItemId,
+            now,
+            ...serials.map((serial) => serial.toLowerCase()),
+            DatabaseService.defaultBranchId,
+            DatabaseService.currentBranchId,
+          ],
+        );
+      }
+
       // Fetch products, variants, and stock batches in bulk (N+1 query fix)
       final productIds = productItems
           .map((item) => item['product_id'] as String)
@@ -218,6 +284,50 @@ class SaleRepository {
         if (product == null) throw Exception('Product not found');
         final tracksStock = UnitUtils.tracksStock(product);
         tracksStockByProduct[pid] = tracksStock;
+        final serialNumbers = _serialNumbersFromItem(item);
+        if (serialNumbers.isNotEmpty) {
+          if ((qty - serialNumbers.length).abs() > 0.001) {
+            throw Exception('Serial-tracked items need one serial per unit.');
+          }
+          final placeholders = List.filled(serialNumbers.length, '?').join(',');
+          final serialRows = await txn.rawQuery(
+            '''
+            SELECT serial_number, product_id, variant_id, status
+            FROM product_serials
+            WHERE LOWER(serial_number) IN ($placeholders)
+              AND deleted_at IS NULL
+              AND COALESCE(branch_id, ?) = ?
+            ''',
+            [
+              ...serialNumbers.map((serial) => serial.toLowerCase()),
+              DatabaseService.defaultBranchId,
+              DatabaseService.currentBranchId,
+            ],
+          );
+          final serialsByNumber = {
+            for (final row in serialRows)
+              (row['serial_number'] as String).toLowerCase(): row,
+          };
+          for (final serial in serialNumbers) {
+            final row = serialsByNumber[serial.toLowerCase()];
+            if (row == null || row['status'] != 'available') {
+              throw Exception('Serial number "$serial" is not available.');
+            }
+            if (row['product_id'] != pid) {
+              throw Exception(
+                'Serial number "$serial" belongs to another product.',
+              );
+            }
+            final serialVariantId = row['variant_id']?.toString().trim() ?? '';
+            final saleVariantId = variantId?.trim() ?? '';
+            if (serialVariantId.isNotEmpty &&
+                serialVariantId != saleVariantId) {
+              throw Exception(
+                'Serial number "$serial" belongs to another variant.',
+              );
+            }
+          }
+        }
 
         if (!tracksStock) {
           continue;
@@ -321,8 +431,9 @@ class SaleRepository {
         if (variantId != null) {
           // ── Variant path: direct deduction, no FIFO ──────────────────────────
           final unitCost = (item['unit_cost'] as num? ?? 0).toDouble();
+          final saleItemId = _uuid.v4();
           await txn.insert(_itemsTable, {
-            'id': _uuid.v4(),
+            'id': saleItemId,
             'quantity': qty,
             'unit_price': item['unit_price'],
             'unit_cost': unitCost,
@@ -338,6 +449,10 @@ class SaleRepository {
             'updated_at': now,
             'sync_status': 'pending',
           });
+          await markSerialsSold(
+            _serialNumbersFromItem(item),
+            saleItemId: saleItemId,
+          );
           if (!tracksStock) {
             continue;
           }
@@ -360,8 +475,9 @@ class SaleRepository {
 
         // ── Non-variant: FIFO batch deduction ────────────────────────────────
         if (!tracksStock) {
+          final saleItemId = _uuid.v4();
           await txn.insert(_itemsTable, {
-            'id': _uuid.v4(),
+            'id': saleItemId,
             'quantity': qty,
             'unit_price': item['unit_price'],
             'unit_cost': (item['unit_cost'] as num? ?? 0).toDouble(),
@@ -372,6 +488,10 @@ class SaleRepository {
             'updated_at': now,
             'sync_status': 'pending',
           });
+          await markSerialsSold(
+            _serialNumbersFromItem(item),
+            saleItemId: saleItemId,
+          );
           continue;
         }
 
@@ -412,8 +532,9 @@ class SaleRepository {
         }
 
         final avgUnitCost = qty > 0 ? (totalCostAccumulated / qty) : 0.0;
+        final saleItemId = _uuid.v4();
         await txn.insert(_itemsTable, {
-          'id': _uuid.v4(),
+          'id': saleItemId,
           'quantity': qty,
           'unit_price': item['unit_price'],
           'unit_cost': avgUnitCost,
@@ -424,6 +545,10 @@ class SaleRepository {
           'updated_at': now,
           'sync_status': 'pending',
         });
+        await markSerialsSold(
+          _serialNumbersFromItem(item),
+          saleItemId: saleItemId,
+        );
         await txn.rawUpdate(
           'UPDATE products SET stock = stock - ? WHERE id = ?',
           [stockQty, pid],
@@ -501,6 +626,39 @@ class SaleRepository {
 
     await DatabaseService.update(_salesTable, {
       'payment_metadata_json': jsonEncode(metadata),
+    }, saleId);
+  }
+
+  static Future<void> mergePaymentMetadata({
+    required String saleId,
+    required Map<String, dynamic> metadata,
+  }) async {
+    if (metadata.isEmpty) {
+      return;
+    }
+
+    final rows = await DatabaseService.rawQuery(
+      'SELECT payment_metadata_json FROM $_salesTable WHERE id = ?',
+      [saleId],
+    );
+    if (rows.isEmpty) return;
+
+    final merged = <String, dynamic>{};
+    final rawMetadata = rows.first['payment_metadata_json'];
+    if (rawMetadata is String && rawMetadata.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawMetadata);
+        if (decoded is Map) {
+          merged.addAll(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {
+        merged['previousPaymentMetadataText'] = rawMetadata;
+      }
+    }
+
+    merged.addAll(metadata);
+    await DatabaseService.update(_salesTable, {
+      'payment_metadata_json': jsonEncode(merged),
     }, saleId);
   }
 
