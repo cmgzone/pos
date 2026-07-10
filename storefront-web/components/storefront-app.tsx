@@ -70,7 +70,6 @@ function StorefrontInner() {
     loadCatalog(
       bootstrap.businessId,
       bootstrap.branchId || getBranchIdFromQuery(),
-      bootstrap.catalog?.storefront?.type,
     );
   }, [loadCatalog, setCatalog, setSelectedBranch]);
 
