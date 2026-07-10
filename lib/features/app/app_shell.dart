@@ -62,7 +62,7 @@ class AppShell extends ConsumerStatefulWidget {
 
   const AppShell({super.key, this.initialIndex = defaultInitialIndex});
 
-  static const int defaultInitialIndex = 5;
+  static const int defaultInitialIndex = 35;
   static final GlobalKey<ScaffoldState> scaffoldKey =
       GlobalKey<ScaffoldState>();
   static final GlobalKey<AppShellState> shellKey = GlobalKey<AppShellState>();
@@ -81,15 +81,18 @@ class AppShell extends ConsumerStatefulWidget {
 
 class AppShellState extends ConsumerState<AppShell> {
   late int _selectedIndex;
-  final Map<int, Widget> _screenCache = <int, Widget>{};
+  final List<int> _navigationHistory = <int>[];
   String _trainingPromptUserId = '';
   bool _subscriptionPromptShown = false;
   bool _setupPromptShown = false;
+  // Retained for the legacy adaptive shell kept below the module-launcher
+  // branch; the active navigation experience never renders that rail.
   bool _desktopRailCollapsed = false;
   Set<String> _seenNotificationIds = const <String>{};
   Set<String> _deviceNotifiedIds = const <String>{};
   bool _deviceNotificationBusy = false;
   bool _appUpdatePromptScheduled = false;
+  bool _moduleHeroPrecached = false;
   AppVersionInfo? _appVersionInfo;
 
   final _destinations = const [
@@ -418,6 +421,10 @@ class AppShellState extends ConsumerState<AppShell> {
   bool get _isServiceOnlyAccount =>
       !SessionService.canUseProductPos && SessionService.canUseServicePos;
 
+  // The module launcher replaces persistent side navigation. Keeping this as
+  // a getter leaves room for an embedded/kiosk shell to override later.
+  bool get _usesModuleLauncherNavigation => true;
+
   List<int> get _allowedIndices {
     final indices = [...SessionService.currentNavigationIndices];
     if (RolePermissions.canManageOperationalSettings(
@@ -453,6 +460,7 @@ class AppShellState extends ConsumerState<AppShell> {
         (role == RolePermissions.admin || role == RolePermissions.manager)) {
       indices.add(34);
     }
+    indices.add(35);
     final allowed = indices
         .where(
           (index) =>
@@ -490,8 +498,7 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   int _initialIndexForCurrentAccount(int index) {
-    if (_isServiceOnlyAccount &&
-        (index == AppShell.defaultInitialIndex || index == _posIndex)) {
+    if (_isServiceOnlyAccount && index == _posIndex) {
       return _servicesIndex;
     }
     return _normalizeNavigationIndex(index);
@@ -547,19 +554,63 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_moduleHeroPrecached) return;
+    _moduleHeroPrecached = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        precacheImage(
+          const AssetImage('assets/images/module_launcher_hero.png'),
+          context,
+        );
+      }
+    });
+  }
+
+  @override
   void didUpdateWidget(covariant AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialIndex != widget.initialIndex) {
       _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
+      _navigationHistory.clear();
     }
   }
 
   void _selectIndex(int index) {
     final target = _normalizeNavigationIndex(index);
-    if (!_allowedIndices.contains(target) || _selectedIndex == target) {
+    final current = _currentIndex;
+    if (!_allowedIndices.contains(target) || current == target) {
       return;
     }
+    _navigationHistory.add(current);
+    if (_navigationHistory.length > 24) {
+      _navigationHistory.removeAt(0);
+    }
     setState(() => _selectedIndex = target);
+  }
+
+  bool _goBack() {
+    final allowed = _allowedIndices.toSet();
+    while (_navigationHistory.isNotEmpty) {
+      final previous = _navigationHistory.removeLast();
+      if (previous != _currentIndex && allowed.contains(previous)) {
+        setState(() => _selectedIndex = previous);
+        return true;
+      }
+    }
+    if (_currentIndex != 35 && allowed.contains(35)) {
+      setState(() => _selectedIndex = 35);
+      return true;
+    }
+    return false;
+  }
+
+  bool get _hasBackDestination {
+    final allowed = _allowedIndices.toSet();
+    return _navigationHistory.any(
+      (index) => index != _currentIndex && allowed.contains(index),
+    );
   }
 
   void _showNotificationsSheet() {
@@ -1571,6 +1622,44 @@ class AppShellState extends ConsumerState<AppShell> {
       pikiInsights: pikiInsights,
     );
     _queueDeviceNotifications(notifications);
+    final moduleCurrentIndex = _currentIndex;
+    if (_usesModuleLauncherNavigation) {
+      final theme = Theme.of(context);
+      return PopScope<Object?>(
+        canPop: moduleCurrentIndex == 35 && !_hasBackDestination,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _goBack();
+        },
+        child: Scaffold(
+          key: AppShell.scaffoldKey,
+          backgroundColor: theme.scaffoldBackgroundColor,
+          body: _buildScreenStack(moduleCurrentIndex),
+          floatingActionButton: moduleCurrentIndex == 35
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'module-back',
+                      tooltip: _hasBackDestination
+                          ? 'Back to previous module'
+                          : 'Back to modules',
+                      onPressed: _goBack,
+                      child: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(height: 12),
+                    FloatingActionButton.extended(
+                      heroTag: 'module-launcher',
+                      onPressed: () => _selectIndex(35),
+                      icon: const Icon(Icons.grid_view_rounded),
+                      label: const Text('Modules'),
+                    ),
+                  ],
+                ),
+        ),
+      );
+    }
     final windowWidth = MediaQuery.of(context).size.width;
     final isWide = windowWidth > 800;
     final canExtendRail = windowWidth >= 1040;
@@ -1953,26 +2042,27 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   Widget _buildScreenStack(int currentIndex) {
-    final allowed = _allowedIndices.toSet();
-    _screenCache.removeWhere((index, _) => !allowed.contains(index));
-    _screenCache.putIfAbsent(currentIndex, () => _buildScreen(currentIndex));
-
-    final cachedIndices = _screenCache.keys.toList(growable: false)..sort();
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        for (final index in cachedIndices)
-          Offstage(
-            offstage: index != currentIndex,
-            child: TickerMode(
-              enabled: index == currentIndex,
-              child: KeyedSubtree(
-                key: ValueKey('shell-screen-$index'),
-                child: _screenCache[index]!,
-              ),
-            ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      reverseDuration: const Duration(milliseconds: 110),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.012, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
           ),
-      ],
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey('shell-screen-$currentIndex'),
+        child: _buildScreen(currentIndex),
+      ),
     );
   }
 
@@ -2048,6 +2138,11 @@ class AppShellState extends ConsumerState<AppShell> {
         return const DeliveryScreen();
       case 34:
         return const AdvancedBiScreen();
+      case 35:
+        return _ModuleLauncherScreen(
+          destinations: _allowedDestinations,
+          onSelect: _selectIndex,
+        );
       default:
         return const PosScreen();
     }
@@ -2221,6 +2316,386 @@ class _NavDestination {
     required this.section,
     required this.item,
   });
+}
+
+class _ModuleLauncherScreen extends StatefulWidget {
+  final List<_NavDestination> destinations;
+  final ValueChanged<int> onSelect;
+
+  const _ModuleLauncherScreen({
+    required this.destinations,
+    required this.onSelect,
+  });
+
+  @override
+  State<_ModuleLauncherScreen> createState() => _ModuleLauncherScreenState();
+}
+
+class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _entranceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
+  }
+
+  Widget _fadeSlide({
+    required double begin,
+    required double end,
+    required double offsetY,
+    required Widget child,
+  }) {
+    final animation = CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(begin, end, curve: Curves.easeOutCubic),
+    );
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: Offset(0, offsetY),
+          end: Offset.zero,
+        ).animate(animation),
+        child: child,
+      ),
+    );
+  }
+
+  String _sectionTitle(_NavSection section) {
+    switch (section) {
+      case _NavSection.main:
+        return 'Shop operations';
+      case _NavSection.inventory:
+        return 'Stock & services';
+      case _NavSection.reports:
+        return 'Reports & growth';
+      case _NavSection.system:
+        return 'Administration';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final grouped = <_NavSection, List<_NavDestination>>{};
+    for (final destination in widget.destinations) {
+      grouped.putIfAbsent(destination.section, () => []).add(destination);
+    }
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              sliver: SliverToBoxAdapter(
+                child: _fadeSlide(
+                  begin: 0,
+                  end: 0.28,
+                  offsetY: -0.08,
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          width: 42,
+                          height: 42,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                            width: 42,
+                            height: 42,
+                            color: theme.colorScheme.primary,
+                            child: const Icon(
+                              Icons.point_of_sale_rounded,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ShopSettings.shopName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              '${SessionService.currentUserName} · ${RolePermissions.label(SessionService.currentUserRole)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Settings',
+                        onPressed: () => widget.onSelect(9),
+                        icon: const Icon(Icons.settings_outlined),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              sliver: SliverToBoxAdapter(
+                child: _AnimatedModuleHero(controller: _entranceController),
+              ),
+            ),
+            for (final section in _NavSection.values) ...[
+              if ((grouped[section] ?? const []).isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  sliver: SliverToBoxAdapter(
+                    child: Text(
+                      _sectionTitle(section),
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.7,
+                      ),
+                    ),
+                  ),
+                ),
+              if ((grouped[section] ?? const []).isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                  sliver: SliverGrid(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final destination = grouped[section]![index];
+                      final overallIndex = widget.destinations.indexOf(
+                        destination,
+                      );
+                      final start = (0.34 + overallIndex * 0.027)
+                          .clamp(0.34, 0.78)
+                          .toDouble();
+                      return _fadeSlide(
+                        begin: start,
+                        end: (start + 0.22).clamp(0.56, 1).toDouble(),
+                        offsetY: 0.10,
+                        child: _ModuleTile(
+                          destination: destination,
+                          onTap: () => widget.onSelect(destination.index),
+                        ),
+                      );
+                    }, childCount: grouped[section]!.length),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 190,
+                          mainAxisExtent: 148,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                        ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedModuleHero extends StatelessWidget {
+  final AnimationController controller;
+
+  const _AnimatedModuleHero({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final animation = CurvedAnimation(
+      parent: controller,
+      curve: const Interval(0.08, 0.54, curve: Curves.easeOutCubic),
+    );
+    return FadeTransition(
+      opacity: animation,
+      child: AnimatedBuilder(
+        animation: animation,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: SizedBox(
+            height: 218,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  'assets/images/module_launcher_hero.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.centerRight,
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0xFF0C1125).withValues(alpha: 0.98),
+                        const Color(0xFF10132D).withValues(alpha: 0.83),
+                        const Color(0xFF10132D).withValues(alpha: 0.08),
+                      ],
+                      stops: const [0, 0.48, 1],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Your workspace',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      const Text(
+                        'Everything you need\nfor today’s trade.',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          height: 1.12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Choose a module to get started.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        builder: (context, child) => Transform.translate(
+          offset: Offset(0, 14 * (1 - animation.value)),
+          child: Transform.scale(
+            scale: 0.975 + (0.025 * animation.value),
+            alignment: Alignment.center,
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModuleTile extends StatefulWidget {
+  final _NavDestination destination;
+  final VoidCallback onTap;
+
+  const _ModuleTile({required this.destination, required this.onTap});
+
+  @override
+  State<_ModuleTile> createState() => _ModuleTileState();
+}
+
+class _ModuleTileState extends State<_ModuleTile> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
+      scale: _pressed ? 0.975 : 1,
+      child: Material(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: InkWell(
+          onTap: widget.onTap,
+          onHighlightChanged: (pressed) => setState(() => _pressed = pressed),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(
+                color: _pressed
+                    ? accent.withValues(alpha: 0.72)
+                    : theme.colorScheme.outline.withValues(alpha: 0.6),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.11),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    widget.destination.item.selectedIcon,
+                    color: accent,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  widget.destination.item.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Open module',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DrawerItem extends StatelessWidget {

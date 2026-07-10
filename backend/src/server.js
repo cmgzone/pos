@@ -71,6 +71,7 @@ const {
   refreshBusinessInsights,
   startPikiProactiveWorker,
 } = require('./pikiProactive');
+const { createPikiCloudModule } = require('./pikiCloud');
 const {
   createAiJobsModule,
 } = require('./aiJobs');
@@ -197,6 +198,7 @@ const aiJobs = createAiJobsModule({
   withTransaction,
   normalizeOptionalText,
 });
+const pikiCloud = createPikiCloudModule({ query, config });
 
 app.disable('x-powered-by');
 app.use(applySecurityHeaders);
@@ -9607,6 +9609,33 @@ app.post('/api/ai/proactive-run', async (req, res, next) => {
   }
 });
 
+app.get('/api/ai/cloud-settings', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.proactivePiki);
+    requireManagerOrAdmin(businessContext);
+    const settings = await pikiCloud.getSettings(businessContext.businessId);
+    res.json({ ok: true, settings });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/ai/cloud-settings', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensurePlanFeatureAllowed(businessContext, FEATURE_KEYS.proactivePiki);
+    requireManagerOrAdmin(businessContext);
+    const settings = await pikiCloud.saveSettings(
+      businessContext.businessId,
+      req.body || {},
+    );
+    res.json({ ok: true, settings });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/ai/learning', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -10096,6 +10125,7 @@ Promise.all([
   ensureStorefrontBrandSchema(),
   ensureProductStorefrontSchema(),
   ensureQuotationsSchema(),
+  pikiCloud.ensureSchema(),
   aiJobs.ensureSchema(),
 ])
   .then(async () => {
@@ -10105,6 +10135,8 @@ Promise.all([
       withTransaction,
       intervalMs: Number(process.env.PIKI_PROACTIVE_INTERVAL_MS || 15 * 60 * 1000),
       initialDelayMs: Number(process.env.PIKI_PROACTIVE_INITIAL_DELAY_MS || 10 * 1000),
+      onBusinessRefreshed: ({ businessId }) =>
+        pikiCloud.dispatchBusinessAlerts({ businessId }),
     });
   })
   .catch((error) => {

@@ -242,6 +242,15 @@ class PikiMessagesNotifier extends StateNotifier<List<PikiMessage>> {
     final mode = _ref.read(pikiModeProvider);
     final brain = _ref.read(pikiBrainProvider);
 
+    if (brain.isPendingWriteActionCancel(trimmed)) {
+      brain.discardPendingWriteAction(trimmed);
+      return;
+    }
+    if (brain.isPendingWriteActionConfirm(trimmed)) {
+      await brain.confirmPendingWriteAction(trimmed);
+      return;
+    }
+
     if (brain.isPurchaseDraftCancel(trimmed)) {
       brain.discardPendingPurchaseDraft(trimmed);
       return;

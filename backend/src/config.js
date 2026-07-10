@@ -131,6 +131,11 @@ const config = {
     process.env.OTP_FROM_EMAIL?.trim() ||
     process.env.EMAIL_OTP_FROM?.trim() ||
     'Piki POS <otp@notify.pikipos.com>',
+  pikiCloudFromEmail:
+    process.env.PIKI_CLOUD_FROM_EMAIL?.trim() ||
+    process.env.OTP_FROM_EMAIL?.trim() ||
+    process.env.EMAIL_OTP_FROM?.trim() ||
+    'Piki POS <alerts@notify.pikipos.com>',
   emailOtpRequired: parseBooleanEnv(process.env.EMAIL_OTP_REQUIRED, true),
   emailOtpTtlMinutes: positiveNumberEnv(process.env.EMAIL_OTP_TTL_MINUTES, 10),
   emailOtpCooldownSeconds: positiveNumberEnv(

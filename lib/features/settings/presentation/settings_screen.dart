@@ -35,6 +35,7 @@ import 'package:pos_app/features/settings/presentation/payment_methods_section.d
 import 'package:pos_app/features/settings/presentation/communication_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/custom_roles_section.dart';
 import 'package:pos_app/features/settings/presentation/multi_currency_section.dart';
+import 'package:pos_app/features/settings/presentation/piki_cloud_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/storefront_brand_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
 
@@ -2359,6 +2360,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSyncCard(syncState),
+        if (_canManageOperationalSettings &&
+            SessionService.canAccessFeature(
+              UserAccessProfile.featureProactivePiki,
+            )) ...[
+          SizedBox(height: 16),
+          PikiCloudSettingsSection(),
+        ],
         SizedBox(height: 16),
         _buildSaveSettingsButton(),
       ],

@@ -13,6 +13,7 @@ import '../../products/data/product_repository.dart';
 import '../../products/data/product_variant_repository.dart';
 import '../../purchases/data/purchase_repository.dart';
 import '../../reports/data/expense_repository.dart';
+import '../../reports/data/bi_repository.dart';
 import '../../reports/data/report_repository.dart';
 import '../../sales/data/sale_repository.dart';
 import '../../services/data/service_repository.dart';
@@ -41,6 +42,22 @@ enum PikiSkill {
   dailyWhatsappReport,
   catalogOrders,
   voiceCashier,
+  loyaltyOverview,
+  giftCardOverview,
+  promotionOverview,
+  rolesOverview,
+  serialOverview,
+  stocktakeOverview,
+  campaignOverview,
+  currencyOverview,
+  wastageOverview,
+  restaurantOverview,
+  attendanceOverview,
+  customerGroupsOverview,
+  purchaseApprovalsOverview,
+  deliveryOverview,
+  businessIntelligence,
+  customerPortalOverview,
 }
 
 class PikiRequestAnalysis {
@@ -139,6 +156,22 @@ class PikiAgentService {
   static const toolCheckout = 'checkout';
   static const toolHoldSale = 'hold_sale';
   static const toolTeachAlias = 'teach_alias';
+  static const toolLoyaltyOverview = 'loyalty_overview';
+  static const toolGiftCardOverview = 'gift_card_overview';
+  static const toolPromotionOverview = 'promotion_overview';
+  static const toolRolesOverview = 'roles_overview';
+  static const toolSerialOverview = 'serial_overview';
+  static const toolStocktakeOverview = 'stocktake_overview';
+  static const toolCampaignOverview = 'campaign_overview';
+  static const toolCurrencyOverview = 'currency_overview';
+  static const toolWastageOverview = 'wastage_overview';
+  static const toolRestaurantOverview = 'restaurant_overview';
+  static const toolAttendanceOverview = 'attendance_overview';
+  static const toolCustomerGroupsOverview = 'customer_groups_overview';
+  static const toolPurchaseApprovalsOverview = 'purchase_approvals_overview';
+  static const toolDeliveryOverview = 'delivery_overview';
+  static const toolBusinessIntelligence = 'business_intelligence';
+  static const toolCustomerPortalOverview = 'customer_portal_overview';
 
   // Each skill has a list of keyword-group patterns (ALL keywords in a group
   // must appear for a match).
@@ -269,6 +302,84 @@ class PikiAgentService {
       ['hands', 'free'],
       ['voice', 'sell'],
     ],
+    PikiSkill.loyaltyOverview: [
+      ['loyalty'],
+      ['reward', 'point'],
+      ['customer', 'point'],
+    ],
+    PikiSkill.giftCardOverview: [
+      ['gift', 'card'],
+      ['voucher'],
+    ],
+    PikiSkill.promotionOverview: [
+      ['promotion'],
+      ['promo'],
+      ['discount', 'campaign'],
+    ],
+    PikiSkill.rolesOverview: [
+      ['role', 'permission'],
+      ['staff', 'permission'],
+      ['custom', 'role'],
+    ],
+    PikiSkill.serialOverview: [
+      ['serial'],
+      ['warranty'],
+    ],
+    PikiSkill.stocktakeOverview: [
+      ['stocktake'],
+      ['cycle', 'count'],
+      ['physical', 'count'],
+    ],
+    PikiSkill.campaignOverview: [
+      ['sms', 'campaign'],
+      ['marketing', 'campaign'],
+    ],
+    PikiSkill.currencyOverview: [
+      ['exchange', 'rate'],
+      ['multi', 'currency'],
+      ['secondary', 'currency'],
+    ],
+    PikiSkill.wastageOverview: [
+      ['wastage'],
+      ['spoilage'],
+      ['waste', 'stock'],
+    ],
+    PikiSkill.restaurantOverview: [
+      ['restaurant'],
+      ['table', 'status'],
+      ['kitchen', 'display'],
+    ],
+    PikiSkill.attendanceOverview: [
+      ['attendance'],
+      ['clocked', 'in'],
+      ['clock', 'out'],
+    ],
+    PikiSkill.customerGroupsOverview: [
+      ['customer', 'group'],
+      ['customer', 'segment'],
+    ],
+    PikiSkill.purchaseApprovalsOverview: [
+      ['purchase', 'approval'],
+      ['pending', 'approval'],
+    ],
+    PikiSkill.deliveryOverview: [
+      ['delivery'],
+      ['rider'],
+      ['tracking', 'order'],
+    ],
+    PikiSkill.businessIntelligence: [
+      ['business', 'intelligence'],
+      ['bi', 'dashboard'],
+      ['customer', 'lifetime', 'value'],
+      ['cohort'],
+      ['turnover'],
+      ['sales', 'forecast'],
+    ],
+    PikiSkill.customerPortalOverview: [
+      ['customer', 'portal'],
+      ['self', 'service'],
+      ['portal', 'payment'],
+    ],
   };
 
   static final _toolToSkill = <String, PikiSkill>{
@@ -291,6 +402,22 @@ class PikiAgentService {
     toolDailyWhatsappReport: PikiSkill.dailyWhatsappReport,
     toolCatalogOrders: PikiSkill.catalogOrders,
     toolVoiceCashierHelp: PikiSkill.voiceCashier,
+    toolLoyaltyOverview: PikiSkill.loyaltyOverview,
+    toolGiftCardOverview: PikiSkill.giftCardOverview,
+    toolPromotionOverview: PikiSkill.promotionOverview,
+    toolRolesOverview: PikiSkill.rolesOverview,
+    toolSerialOverview: PikiSkill.serialOverview,
+    toolStocktakeOverview: PikiSkill.stocktakeOverview,
+    toolCampaignOverview: PikiSkill.campaignOverview,
+    toolCurrencyOverview: PikiSkill.currencyOverview,
+    toolWastageOverview: PikiSkill.wastageOverview,
+    toolRestaurantOverview: PikiSkill.restaurantOverview,
+    toolAttendanceOverview: PikiSkill.attendanceOverview,
+    toolCustomerGroupsOverview: PikiSkill.customerGroupsOverview,
+    toolPurchaseApprovalsOverview: PikiSkill.purchaseApprovalsOverview,
+    toolDeliveryOverview: PikiSkill.deliveryOverview,
+    toolBusinessIntelligence: PikiSkill.businessIntelligence,
+    toolCustomerPortalOverview: PikiSkill.customerPortalOverview,
   };
 
   static final _toolLabels = <String, String>{
@@ -382,6 +509,38 @@ class PikiAgentService {
         'Draft an owner-ready daily WhatsApp report from sales, products, stock, and alerts. Returns formatted report text.',
     toolCatalogOrders:
         'Read customer orders submitted through the public catalog link. Returns orders[] with id, customer_name, items, total, status, created_at.',
+    toolLoyaltyOverview:
+        'Read loyalty rules and leading customer point balances. No rewards are issued or redeemed.',
+    toolGiftCardOverview:
+        'Read active gift cards, remaining balances, and expiry risk. Does not issue, top up, redeem, or deactivate cards.',
+    toolPromotionOverview:
+        'Read active promotions and discount configuration. Does not create, edit, enable, or disable promotions.',
+    toolRolesOverview:
+        'Read custom role names, base roles, and active status. Does not change permissions or users.',
+    toolSerialOverview:
+        'Read serial availability, sold counts, and warranties nearing expiry. Does not assign or sell serials.',
+    toolStocktakeOverview:
+        'Read current stocktake sessions and unresolved item variances. Does not count, complete, or cancel sessions.',
+    toolCampaignOverview:
+        'Read SMS campaign drafts and sending outcomes. Does not create or send messages.',
+    toolCurrencyOverview:
+        'Read the active base/quote exchange rate. Does not change currency or exchange settings.',
+    toolWastageOverview:
+        'Read recent wastage logs and estimated cost. Does not record wastage or change stock.',
+    toolRestaurantOverview:
+        'Read restaurant table occupancy and open kitchen orders. Does not open, alter, or settle orders.',
+    toolAttendanceOverview:
+        'Read clocked-in employees and recent attendance. Does not clock staff in or out.',
+    toolCustomerGroupsOverview:
+        'Read customer groups and member counts. Does not create groups or edit membership.',
+    toolPurchaseApprovalsOverview:
+        'Read purchase orders awaiting approval. Does not submit, approve, reject, or receive orders.',
+    toolDeliveryOverview:
+        'Read delivery zones and delivery statuses. Does not assign riders or update delivery status.',
+    toolBusinessIntelligence:
+        'Read the advanced BI dashboard: customer value, sales forecast, cohort retention, and employee turnover. No data is changed.',
+    toolCustomerPortalOverview:
+        'Read how many customers are eligible for the email-verified portal and their outstanding balances. Does not access customer credentials or initiate payments.',
     toolImageOrderDraft:
         'Analyze a product or order photo and draft item lines from the image.',
     toolVoiceCashierHelp:
@@ -454,6 +613,22 @@ class PikiAgentService {
     toolDailyWhatsappReport: 'daysRange(int)',
     toolCatalogOrders:
         'filter/status(string: pending|accepted|completed|cancelled|all), limit(int)',
+    toolLoyaltyOverview: 'limit(int)',
+    toolGiftCardOverview: 'limit(int)',
+    toolPromotionOverview: 'limit(int)',
+    toolRolesOverview: 'limit(int)',
+    toolSerialOverview: 'limit(int)',
+    toolStocktakeOverview: 'limit(int)',
+    toolCampaignOverview: 'limit(int)',
+    toolCurrencyOverview: 'none',
+    toolWastageOverview: 'daysRange(int), limit(int)',
+    toolRestaurantOverview: 'limit(int)',
+    toolAttendanceOverview: 'limit(int)',
+    toolCustomerGroupsOverview: 'limit(int)',
+    toolPurchaseApprovalsOverview: 'limit(int)',
+    toolDeliveryOverview: 'limit(int)',
+    toolBusinessIntelligence: 'none',
+    toolCustomerPortalOverview: 'limit(int)',
     toolImageOrderDraft:
         'image_source/image_url/url/path(string, required), note(string)',
     toolVoiceCashierHelp: 'none',
@@ -511,6 +686,58 @@ class PikiAgentService {
   }
 
   static bool isKnownTool(String tool) => _toolLabels.containsKey(tool);
+
+  static final Set<String> _writeTools = <String>{
+    toolPurchaseDraft,
+    toolCreateProduct,
+    toolDraftProduct,
+    toolEnhanceProductImage,
+    toolCreateService,
+    toolEditProduct,
+    toolDeleteProduct,
+    toolAddVariant,
+    toolRecordProductSale,
+    toolRecordServiceSale,
+    toolCreateCategory,
+    toolCreateExpenseCategory,
+    toolCreateCustomer,
+    toolCreateSupplier,
+    toolReconcileStock,
+    toolAddServiceField,
+    toolAddToCart,
+    toolRemoveFromCart,
+    toolSetCartQuantity,
+    toolRepeatLast,
+    toolClearCart,
+    toolCheckout,
+    toolHoldSale,
+    toolTeachAlias,
+  };
+
+  static bool requiresConfirmation(String tool) => _writeTools.contains(tool);
+
+  static Map<String, dynamic> buildWriteConfirmationPreview(
+    String tool, {
+    required Map<String, dynamic> args,
+  }) {
+    final detail = args.entries
+        .where(
+          (entry) => entry.value != null && '${entry.value}'.trim().isNotEmpty,
+        )
+        .take(6)
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .join(', ');
+    return {
+      'tool': tool,
+      'success': true,
+      'requires_confirmation': true,
+      'preview_args': args,
+      'summary':
+          '${_toolLabels[tool] ?? tool} is ready to apply'
+          '${detail.isEmpty ? '' : ' ($detail)'}.'
+          ' Reply “confirm” to continue or “cancel” to leave your data unchanged.',
+    };
+  }
 
   static PikiRequestAnalysis analyzeRequest(String input) {
     final normalized = input
@@ -702,6 +929,22 @@ class PikiAgentService {
     PikiSkill.dailyWhatsappReport => 'WhatsApp Report',
     PikiSkill.catalogOrders => 'Catalog Orders',
     PikiSkill.voiceCashier => 'Voice Cashier',
+    PikiSkill.loyaltyOverview => 'Loyalty Overview',
+    PikiSkill.giftCardOverview => 'Gift Card Overview',
+    PikiSkill.promotionOverview => 'Promotion Overview',
+    PikiSkill.rolesOverview => 'Roles Overview',
+    PikiSkill.serialOverview => 'Serial & Warranty Overview',
+    PikiSkill.stocktakeOverview => 'Stocktake Overview',
+    PikiSkill.campaignOverview => 'Campaign Overview',
+    PikiSkill.currencyOverview => 'Currency Overview',
+    PikiSkill.wastageOverview => 'Wastage Overview',
+    PikiSkill.restaurantOverview => 'Restaurant Overview',
+    PikiSkill.attendanceOverview => 'Attendance Overview',
+    PikiSkill.customerGroupsOverview => 'Customer Groups Overview',
+    PikiSkill.purchaseApprovalsOverview => 'Purchase Approvals',
+    PikiSkill.deliveryOverview => 'Delivery Overview',
+    PikiSkill.businessIntelligence => 'Business Intelligence',
+    PikiSkill.customerPortalOverview => 'Customer Portal Overview',
   };
 
   static String skillDescription(PikiSkill skill) => switch (skill) {
@@ -726,6 +969,25 @@ class PikiAgentService {
     PikiSkill.dailyWhatsappReport => 'Drafting an owner-ready daily update',
     PikiSkill.catalogOrders => 'Reviewing customer orders from catalog links',
     PikiSkill.voiceCashier => 'Showing supported hands-free sell commands',
+    PikiSkill.loyaltyOverview => 'Reviewing loyalty rewards and point balances',
+    PikiSkill.giftCardOverview =>
+      'Reviewing active gift card value and expiries',
+    PikiSkill.promotionOverview => 'Reviewing promotion activity and value',
+    PikiSkill.rolesOverview => 'Reviewing roles and access coverage',
+    PikiSkill.serialOverview => 'Reviewing serial statuses and warranty dates',
+    PikiSkill.stocktakeOverview => 'Reviewing stocktake progress and variances',
+    PikiSkill.campaignOverview => 'Reviewing SMS campaign outcomes',
+    PikiSkill.currencyOverview => 'Reviewing the active exchange rate',
+    PikiSkill.wastageOverview => 'Reviewing wastage quantities and cost',
+    PikiSkill.restaurantOverview => 'Reviewing table and kitchen workload',
+    PikiSkill.attendanceOverview => 'Reviewing active staff attendance',
+    PikiSkill.customerGroupsOverview => 'Reviewing customer segments',
+    PikiSkill.purchaseApprovalsOverview => 'Reviewing orders awaiting approval',
+    PikiSkill.deliveryOverview => 'Reviewing active deliveries',
+    PikiSkill.businessIntelligence =>
+      'Reviewing forecast and retention metrics',
+    PikiSkill.customerPortalOverview =>
+      'Reviewing self-service portal coverage',
   };
 
   static IconData skillIcon(PikiSkill skill) => switch (skill) {
@@ -748,6 +1010,22 @@ class PikiAgentService {
     PikiSkill.dailyWhatsappReport => Icons.chat_rounded,
     PikiSkill.catalogOrders => Icons.assignment_rounded,
     PikiSkill.voiceCashier => Icons.record_voice_over_rounded,
+    PikiSkill.loyaltyOverview => Icons.loyalty_rounded,
+    PikiSkill.giftCardOverview => Icons.card_giftcard_rounded,
+    PikiSkill.promotionOverview => Icons.local_offer_rounded,
+    PikiSkill.rolesOverview => Icons.admin_panel_settings_rounded,
+    PikiSkill.serialOverview => Icons.qr_code_2_rounded,
+    PikiSkill.stocktakeOverview => Icons.playlist_add_check_rounded,
+    PikiSkill.campaignOverview => Icons.sms_rounded,
+    PikiSkill.currencyOverview => Icons.currency_exchange_rounded,
+    PikiSkill.wastageOverview => Icons.delete_sweep_rounded,
+    PikiSkill.restaurantOverview => Icons.restaurant_rounded,
+    PikiSkill.attendanceOverview => Icons.timer_rounded,
+    PikiSkill.customerGroupsOverview => Icons.groups_rounded,
+    PikiSkill.purchaseApprovalsOverview => Icons.approval_rounded,
+    PikiSkill.deliveryOverview => Icons.local_shipping_rounded,
+    PikiSkill.businessIntelligence => Icons.query_stats_rounded,
+    PikiSkill.customerPortalOverview => Icons.account_circle_rounded,
   };
 
   /// Build PikiStep list for Plan mode.
@@ -1100,6 +1378,325 @@ Example: ["detergent", "soap", "laundry"]
               ? 'No recent purchases recorded'
               : '${rows.length} recent stock-in records',
         };
+
+      case PikiSkill.loyaltyOverview:
+      case PikiSkill.giftCardOverview:
+      case PikiSkill.promotionOverview:
+      case PikiSkill.rolesOverview:
+      case PikiSkill.serialOverview:
+      case PikiSkill.stocktakeOverview:
+      case PikiSkill.campaignOverview:
+      case PikiSkill.currencyOverview:
+      case PikiSkill.wastageOverview:
+      case PikiSkill.restaurantOverview:
+      case PikiSkill.attendanceOverview:
+      case PikiSkill.customerGroupsOverview:
+      case PikiSkill.purchaseApprovalsOverview:
+      case PikiSkill.deliveryOverview:
+      case PikiSkill.businessIntelligence:
+      case PikiSkill.customerPortalOverview:
+        return _buildModuleOverview(
+          skill,
+          daysRange: request?.daysRange ?? 30,
+          limit: request?.resultLimit ?? 10,
+        );
+    }
+  }
+
+  static Future<Map<String, dynamic>> _buildModuleOverview(
+    PikiSkill skill, {
+    required int daysRange,
+    required int limit,
+  }) async {
+    final safeLimit = limit.clamp(1, 50).toInt();
+    final branchArgs = <dynamic>[
+      DatabaseService.defaultBranchId,
+      DatabaseService.currentBranchId,
+    ];
+    final currency = ShopSettings.currency;
+
+    switch (skill) {
+      case PikiSkill.loyaltyOverview:
+        final rules = await DatabaseService.rawQuery(
+          'SELECT * FROM loyalty_rules WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY updated_at DESC LIMIT 1',
+          branchArgs,
+        );
+        final customers = await DatabaseService.rawQuery(
+          'SELECT name, loyalty_points FROM customers WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? AND COALESCE(loyalty_points, 0) > 0 ORDER BY loyalty_points DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'loyalty_overview',
+          'rules': rules.isEmpty ? null : rules.first,
+          'items': customers,
+          'count': customers.length,
+          'summary': rules.isEmpty
+              ? 'Loyalty rewards are not configured for this branch.'
+              : '${customers.length} customer${customers.length == 1 ? '' : 's'} currently have loyalty points.',
+        };
+
+      case PikiSkill.giftCardOverview:
+        final cards = await DatabaseService.rawQuery(
+          'SELECT code, balance, currency, expires_at FROM gift_cards WHERE deleted_at IS NULL AND is_active = 1 AND COALESCE(branch_id, ?) = ? ORDER BY balance DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        final total = cards.fold<double>(
+          0,
+          (sum, row) => sum + ((row['balance'] as num?)?.toDouble() ?? 0),
+        );
+        return {
+          'type': 'gift_card_overview',
+          'items': cards,
+          'count': cards.length,
+          'total_balance': total,
+          'summary': cards.isEmpty
+              ? 'There are no active gift cards.'
+              : '${cards.length} active gift cards hold $currency${total.toStringAsFixed(2)}.',
+        };
+
+      case PikiSkill.promotionOverview:
+        final promotions = await DatabaseService.rawQuery(
+          'SELECT name, promotion_type, discount_type, discount_value, ends_at FROM promotions WHERE deleted_at IS NULL AND is_active = 1 AND COALESCE(branch_id, ?) = ? ORDER BY priority DESC, updated_at DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'promotion_overview',
+          'items': promotions,
+          'count': promotions.length,
+          'summary': promotions.isEmpty
+              ? 'No active promotions are running.'
+              : '${promotions.length} active promotion${promotions.length == 1 ? '' : 's'} found.',
+        };
+
+      case PikiSkill.rolesOverview:
+        final roles = await DatabaseService.rawQuery(
+          'SELECT name, base_role, is_active, description FROM custom_roles WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY name LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'roles_overview',
+          'items': roles,
+          'count': roles.length,
+          'summary': roles.isEmpty
+              ? 'No custom roles are configured.'
+              : '${roles.length} custom role${roles.length == 1 ? '' : 's'} configured.',
+        };
+
+      case PikiSkill.serialOverview:
+        final statuses = await DatabaseService.rawQuery(
+          'SELECT status, COUNT(*) AS count FROM product_serials WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? GROUP BY status ORDER BY count DESC',
+          branchArgs,
+        );
+        final warranty = await DatabaseService.rawQuery(
+          "SELECT serial_number, warranty_expires_at FROM product_serials WHERE deleted_at IS NULL AND warranty_expires_at IS NOT NULL AND date(warranty_expires_at) <= date('now', '+60 days') AND COALESCE(branch_id, ?) = ? ORDER BY warranty_expires_at ASC LIMIT $safeLimit",
+          branchArgs,
+        );
+        return {
+          'type': 'serial_overview',
+          'items': statuses,
+          'warranty_watch': warranty,
+          'count': statuses.fold<int>(
+            0,
+            (sum, row) => sum + ((row['count'] as num?)?.toInt() ?? 0),
+          ),
+          'summary': warranty.isEmpty
+              ? 'Serial stock is healthy with no warranties expiring in 60 days.'
+              : '${warranty.length} serial warranty${warranty.length == 1 ? '' : 'ies'} need attention within 60 days.',
+        };
+
+      case PikiSkill.stocktakeOverview:
+        final sessions = await DatabaseService.rawQuery(
+          'SELECT name, status, started_at, completed_at FROM stocktake_sessions WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY updated_at DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        final variances = await DatabaseService.rawQuery(
+          'SELECT product_name, variance_qty, unit FROM stocktake_items WHERE deleted_at IS NULL AND status != \'matched\' AND COALESCE(variance_qty, 0) != 0 AND COALESCE(branch_id, ?) = ? ORDER BY ABS(variance_qty) DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'stocktake_overview',
+          'items': sessions,
+          'variances': variances,
+          'count': sessions.length,
+          'summary': sessions.isEmpty
+              ? 'No stocktake sessions have been created.'
+              : '${sessions.length} stocktake session${sessions.length == 1 ? '' : 's'} and ${variances.length} unresolved variances found.',
+        };
+
+      case PikiSkill.campaignOverview:
+        final campaigns = await DatabaseService.rawQuery(
+          'SELECT name, segment, status, recipient_count, sent_count, failed_count, sent_at FROM sms_campaigns WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY updated_at DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'campaign_overview',
+          'items': campaigns,
+          'count': campaigns.length,
+          'summary': campaigns.isEmpty
+              ? 'No SMS campaigns have been created.'
+              : '${campaigns.length} SMS campaign${campaigns.length == 1 ? '' : 's'} available for review.',
+        };
+
+      case PikiSkill.currencyOverview:
+        final rates = await DatabaseService.rawQuery(
+          'SELECT base_currency, quote_currency, rate, updated_at FROM exchange_rates WHERE deleted_at IS NULL AND is_active = 1 AND COALESCE(branch_id, ?) = ? ORDER BY updated_at DESC LIMIT 1',
+          branchArgs,
+        );
+        final rate = rates.isEmpty ? null : rates.first;
+        return {
+          'type': 'currency_overview',
+          'items': rates,
+          'count': rates.length,
+          'summary': rate == null
+              ? 'No secondary currency exchange rate is active.'
+              : '${rate['base_currency']} → ${rate['quote_currency']} is active at ${rate['rate']}.',
+        };
+
+      case PikiSkill.wastageOverview:
+        final logs = await DatabaseService.rawQuery(
+          "SELECT product_name, quantity, unit, unit_cost, reason, recorded_at FROM wastage_logs WHERE deleted_at IS NULL AND recorded_at >= datetime('now', ?) AND COALESCE(branch_id, ?) = ? ORDER BY recorded_at DESC LIMIT $safeLimit",
+          ['-${daysRange.clamp(1, 365)} days', ...branchArgs],
+        );
+        final cost = logs.fold<double>(
+          0,
+          (sum, row) =>
+              sum +
+              ((row['quantity'] as num?)?.toDouble() ?? 0) *
+                  ((row['unit_cost'] as num?)?.toDouble() ?? 0),
+        );
+        return {
+          'type': 'wastage_overview',
+          'items': logs,
+          'count': logs.length,
+          'estimated_cost': cost,
+          'summary': logs.isEmpty
+              ? 'No wastage has been recorded in the selected period.'
+              : '${logs.length} wastage record${logs.length == 1 ? '' : 's'} total about $currency${cost.toStringAsFixed(2)}.',
+        };
+
+      case PikiSkill.restaurantOverview:
+        final tables = await DatabaseService.rawQuery(
+          'SELECT name, area, seats, status FROM restaurant_tables WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY area, name LIMIT $safeLimit',
+          branchArgs,
+        );
+        final orders = await DatabaseService.rawQuery(
+          'SELECT order_no, status, guest_count, total, opened_at FROM table_orders WHERE deleted_at IS NULL AND status != \'closed\' AND COALESCE(branch_id, ?) = ? ORDER BY opened_at ASC LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'restaurant_overview',
+          'items': tables,
+          'open_orders': orders,
+          'count': tables.length,
+          'summary':
+              '${tables.length} table${tables.length == 1 ? '' : 's'} configured with ${orders.length} open order${orders.length == 1 ? '' : 's'}.',
+        };
+
+      case PikiSkill.attendanceOverview:
+        final attendance = await DatabaseService.rawQuery(
+          'SELECT user_name, status, clock_in_at, clock_out_at FROM employee_attendance WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY clock_in_at DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        final active = attendance
+            .where((row) => row['status'] == 'open')
+            .length;
+        return {
+          'type': 'attendance_overview',
+          'items': attendance,
+          'count': attendance.length,
+          'active_count': active,
+          'summary':
+              '$active employee${active == 1 ? '' : 's'} currently clocked in.',
+        };
+
+      case PikiSkill.customerGroupsOverview:
+        final groups = await DatabaseService.rawQuery(
+          'SELECT g.name, g.description, COUNT(m.id) AS member_count FROM customer_groups g LEFT JOIN customer_group_members m ON m.group_id = g.id AND m.deleted_at IS NULL WHERE g.deleted_at IS NULL AND COALESCE(g.branch_id, ?) = ? GROUP BY g.id ORDER BY member_count DESC, g.name LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'customer_groups_overview',
+          'items': groups,
+          'count': groups.length,
+          'summary': groups.isEmpty
+              ? 'No customer groups are configured.'
+              : '${groups.length} customer segment${groups.length == 1 ? '' : 's'} available.',
+        };
+
+      case PikiSkill.purchaseApprovalsOverview:
+        final orders = await DatabaseService.rawQuery(
+          'SELECT order_number, supplier_name, total_amount, submitted_at FROM purchase_orders WHERE deleted_at IS NULL AND status = \'pending_approval\' AND COALESCE(branch_id, ?) = ? ORDER BY submitted_at ASC LIMIT $safeLimit',
+          branchArgs,
+        );
+        final total = orders.fold<double>(
+          0,
+          (sum, row) => sum + ((row['total_amount'] as num?)?.toDouble() ?? 0),
+        );
+        return {
+          'type': 'purchase_approvals_overview',
+          'items': orders,
+          'count': orders.length,
+          'total_amount': total,
+          'summary': orders.isEmpty
+              ? 'There are no purchase orders awaiting approval.'
+              : '${orders.length} purchase order${orders.length == 1 ? '' : 's'} await approval, worth $currency${total.toStringAsFixed(2)}.',
+        };
+
+      case PikiSkill.deliveryOverview:
+        final deliveries = await DatabaseService.rawQuery(
+          'SELECT tracking_code, status, rider_name, scheduled_at, delivered_at FROM deliveries WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ? ORDER BY updated_at DESC LIMIT $safeLimit',
+          branchArgs,
+        );
+        return {
+          'type': 'delivery_overview',
+          'items': deliveries,
+          'count': deliveries.length,
+          'summary': deliveries.isEmpty
+              ? 'There are no deliveries to track.'
+              : '${deliveries.length} delivery record${deliveries.length == 1 ? '' : 's'} available for review.',
+        };
+
+      case PikiSkill.businessIntelligence:
+        final dashboard = await BiRepository.loadDashboard();
+        if (dashboard == null) {
+          return {
+            'type': 'business_intelligence',
+            'items': const <Map<String, dynamic>>[],
+            'count': 0,
+            'summary':
+                'Business intelligence needs an online manager session to load cloud analytics.',
+          };
+        }
+        return {
+          'type': 'business_intelligence',
+          'items': const <Map<String, dynamic>>[],
+          'clv': dashboard.clv['summary'],
+          'forecast': dashboard.forecast['summary'],
+          'cohorts': dashboard.cohorts['cohorts'],
+          'turnover': dashboard.turnover['summary'],
+          'count': 1,
+          'summary':
+              'Loaded customer value, sales forecast, cohort retention, and employee turnover insights.',
+        };
+
+      case PikiSkill.customerPortalOverview:
+        final coverage = await DatabaseService.rawQuery(
+          'SELECT COUNT(*) AS customer_count, COUNT(CASE WHEN COALESCE(email, \'\') != \'\' THEN 1 END) AS email_ready_count, COALESCE(SUM(CASE WHEN COALESCE(email, \'\') != \'\' THEN balance ELSE 0 END), 0) AS email_ready_balance FROM customers WHERE deleted_at IS NULL AND COALESCE(branch_id, ?) = ?',
+          branchArgs,
+        );
+        final values = coverage.isEmpty ? <String, dynamic>{} : coverage.first;
+        final ready = (values['email_ready_count'] as num?)?.toInt() ?? 0;
+        final total = (values['customer_count'] as num?)?.toInt() ?? 0;
+        return {
+          'type': 'customer_portal_overview',
+          'items': coverage,
+          'count': ready,
+          'summary':
+              '$ready of $total customers have an email and can use the self-service portal.',
+        };
+
+      default:
+        throw StateError('Unsupported module overview: $skill');
     }
   }
 
@@ -1129,7 +1726,12 @@ Example: ["detergent", "soap", "laundry"]
     String tool, {
     Map<String, dynamic>? args,
     Map<String, dynamic>? memory,
+    bool confirmed = false,
   }) async {
+    final safeArgs = args ?? const <String, dynamic>{};
+    if (requiresConfirmation(tool) && !confirmed) {
+      return buildWriteConfirmationPreview(tool, args: safeArgs);
+    }
     final mappedSkill = _toolToSkill[tool];
     if (mappedSkill != null) {
       final request = PikiRequestAnalysis(
@@ -1163,47 +1765,47 @@ Example: ["detergent", "soap", "laundry"]
     switch (tool) {
       case toolPurchaseDraft:
         return _createPurchaseDraft(
-          args: args ?? const <String, dynamic>{},
+          args: safeArgs,
           memory: memory ?? const <String, dynamic>{},
         );
       case toolCreateProduct:
-        return _createProduct(args ?? const <String, dynamic>{});
+        return _createProduct(safeArgs);
       case toolDraftProduct:
-        return _draftProduct(args ?? const <String, dynamic>{});
+        return _draftProduct(safeArgs);
       case toolEnhanceProductImage:
-        return _enhanceProductImage(args ?? const <String, dynamic>{});
+        return _enhanceProductImage(safeArgs);
       case toolImageOrderDraft:
         return _imageOrderDraft(args ?? const <String, dynamic>{});
       case toolCreateService:
-        return _createService(args ?? const <String, dynamic>{});
+        return _createService(safeArgs);
       case toolEditProduct:
-        return _editProduct(args ?? const <String, dynamic>{});
+        return _editProduct(safeArgs);
       case toolDeleteProduct:
-        return _deleteProduct(args ?? const <String, dynamic>{});
+        return _deleteProduct(safeArgs);
       case toolAddVariant:
-        return _addVariant(args ?? const <String, dynamic>{});
+        return _addVariant(safeArgs);
       case toolRecordProductSale:
-        return _recordProductSale(args ?? const <String, dynamic>{});
+        return _recordProductSale(safeArgs);
       case toolRecordServiceSale:
-        return _recordServiceSale(args ?? const <String, dynamic>{});
+        return _recordServiceSale(safeArgs);
       case toolCreateCategory:
-        return _createCategory(args ?? const <String, dynamic>{});
+        return _createCategory(safeArgs);
       case toolCreateExpenseCategory:
-        return _createExpenseCategory(args ?? const <String, dynamic>{});
+        return _createExpenseCategory(safeArgs);
       case toolCreateCustomer:
-        return _createCustomer(args ?? const <String, dynamic>{});
+        return _createCustomer(safeArgs);
       case toolCreateSupplier:
-        return _createSupplier(args ?? const <String, dynamic>{});
+        return _createSupplier(safeArgs);
       case toolReconcileStock:
-        return _reconcileStock(args ?? const <String, dynamic>{});
+        return _reconcileStock(safeArgs);
       case toolAddServiceField:
-        return _addServiceField(args ?? const <String, dynamic>{});
+        return _addServiceField(safeArgs);
       case toolCustomerSearch:
-        return _searchCustomers(args ?? const <String, dynamic>{});
+        return _searchCustomers(safeArgs);
       case toolSupplierSearch:
-        return _searchSuppliers(args ?? const <String, dynamic>{});
+        return _searchSuppliers(safeArgs);
       case toolWebSearch:
-        return _webSearch(args ?? const <String, dynamic>{});
+        return _webSearch(safeArgs);
       default:
         throw Exception('Unknown agent tool: $tool');
     }

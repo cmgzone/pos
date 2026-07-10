@@ -235,6 +235,7 @@ function startPikiProactiveWorker({
   withTransaction,
   intervalMs = 15 * 60 * 1000,
   initialDelayMs = 10 * 1000,
+  onBusinessRefreshed = null,
 } = {}) {
   if (!query || !withTransaction || workerHandle) {
     return { stop: stopPikiProactiveWorker };
@@ -248,9 +249,19 @@ function startPikiProactiveWorker({
         'SELECT id FROM businesses ORDER BY created_at ASC',
       );
       for (const business of businesses.rows) {
-        await withTransaction((client) =>
-          refreshBusinessInsights(client, business.id),
-        );
+        try {
+          await withTransaction((client) =>
+            refreshBusinessInsights(client, business.id),
+          );
+          if (typeof onBusinessRefreshed === 'function') {
+            await onBusinessRefreshed({ businessId: business.id });
+          }
+        } catch (error) {
+          console.error(
+            `Piki proactive refresh failed for ${business.id}:`,
+            error.message,
+          );
+        }
       }
     } catch (error) {
       console.error('Piki proactive worker failed:', error.message);

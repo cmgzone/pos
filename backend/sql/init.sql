@@ -451,6 +451,40 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_piki_proactive_dedupe
 CREATE INDEX IF NOT EXISTS idx_piki_proactive_active
   ON piki_proactive_insights(business_id, status, generated_at DESC);
 
+CREATE TABLE IF NOT EXISTS piki_cloud_settings (
+  business_id text PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+  enabled boolean NOT NULL DEFAULT false,
+  notification_email text,
+  minimum_severity text NOT NULL DEFAULT 'high',
+  cooldown_minutes integer NOT NULL DEFAULT 360,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  CONSTRAINT piki_cloud_settings_severity
+    CHECK (minimum_severity IN ('info', 'medium', 'high')),
+  CONSTRAINT piki_cloud_settings_cooldown
+    CHECK (cooldown_minutes >= 15 AND cooldown_minutes <= 10080)
+);
+
+CREATE TABLE IF NOT EXISTS piki_cloud_deliveries (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  insight_id text,
+  dedupe_key text NOT NULL,
+  channel text NOT NULL DEFAULT 'email',
+  recipient text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  sent_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_piki_cloud_delivery_dedupe
+  ON piki_cloud_deliveries(
+    business_id, dedupe_key, channel, recipient, sent_at DESC
+  );
+CREATE INDEX IF NOT EXISTS idx_piki_cloud_delivery_business
+  ON piki_cloud_deliveries(business_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS categories (
   id text PRIMARY KEY,
   business_id text,

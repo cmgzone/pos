@@ -56,6 +56,8 @@ PAYPAL_CLIENT_SECRET=your-paypal-client-secret
 FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret-key
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
+RESEND_API_KEY=re_xxxxxxxxx # required only for opt-in Piki Cloud email alerts
+PIKI_CLOUD_FROM_EMAIL="Piki POS <alerts@your-domain.example>"
 ```
 
 In production, `PLATFORM_ALLOWED_ORIGINS` is required for browser CORS. Native
@@ -153,6 +155,8 @@ This now creates the core sync tables and the platform AI tables used by:
 - `GET /api/ai/config`
 - `POST /api/ai/chat`
 - `POST /api/ai/web-search`
+- `GET /api/ai/cloud-settings`
+- `PUT /api/ai/cloud-settings`
 
 5. Verify the connection
 
@@ -209,6 +213,15 @@ Use `SOCKET_URL` too if you later add real-time features on a separate origin.
 - `POST /api/payments/mpesa/claim-c2b`
 
 Legacy timestamp sync is also still supported through `since=<ISO timestamp>`.
+
+## Piki Cloud
+
+The backend refreshes proactive Piki insights every 15 minutes by default, so
+monitoring continues while the Windows or mobile app is closed. Managers can
+enable opt-in alert emails from **Settings → Cloud Sync → Piki Cloud**. Alerts
+are based on synced cloud data, are severity-filtered, and are throttled by the
+configured cooldown; Piki Cloud never modifies business data. Configure
+`RESEND_API_KEY` and `PIKI_CLOUD_FROM_EMAIL` before enabling delivery.
 
 ## Conflict Rule
 

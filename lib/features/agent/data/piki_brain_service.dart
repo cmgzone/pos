@@ -31,6 +31,7 @@ class PikiBrainService {
   final Map<String, Map<String, dynamic>> _lastToolResults =
       <String, Map<String, dynamic>>{};
   Map<String, dynamic>? _pendingPurchaseDraft;
+  Map<String, dynamic>? _pendingWriteAction;
   final Map<String, String> _posAliases = <String, String>{};
   String? _lastSellQuery;
   String? _lastCartKey;
@@ -66,19 +67,22 @@ class PikiBrainService {
       _ref.read(pikiInsightProvider.notifier).state = const PikiInsightData(
         text: 'Analyzing...',
       );
-      PikiAgentService.generateInsight(first).then((insight) {
-        _ref.read(pikiInsightProvider.notifier).state = insight;
-      }, onError: (Object error, StackTrace stackTrace) {
-        developer.log(
-          'Piki insight generation failed',
-          error: error,
-          stackTrace: stackTrace,
-          name: 'PikiBrainService',
-        );
-        _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
-          text: 'Insight unavailable: $error',
-        );
-      });
+      PikiAgentService.generateInsight(first).then(
+        (insight) {
+          _ref.read(pikiInsightProvider.notifier).state = insight;
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          developer.log(
+            'Piki insight generation failed',
+            error: error,
+            stackTrace: stackTrace,
+            name: 'PikiBrainService',
+          );
+          _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+            text: 'Insight unavailable: $error',
+          );
+        },
+      );
     }
   }
 
@@ -125,6 +129,13 @@ class PikiBrainService {
       lines.add(
         'Pending purchase draft: $count item(s)'
         '${supplier == null || supplier.isEmpty ? '' : ' with preferred supplier $supplier'}.',
+      );
+    }
+    if (_pendingWriteAction != null) {
+      final tool = _pendingWriteAction?['tool'] as String? ?? 'write action';
+      lines.add(
+        'Pending confirmation: ${tool.replaceAll('_', ' ')}. '
+        'This action has not changed data yet.',
       );
     }
     if (_memoryTurns.isNotEmpty) {
@@ -688,19 +699,22 @@ class PikiBrainService {
         _ref.read(pikiInsightProvider.notifier).state = const PikiInsightData(
           text: 'Analyzing...',
         );
-        PikiAgentService.generateInsight(result).then((insight) {
-          _ref.read(pikiInsightProvider.notifier).state = insight;
-        }, onError: (Object error, StackTrace stackTrace) {
-          developer.log(
-            'Piki insight generation failed',
-            error: error,
-            stackTrace: stackTrace,
-            name: 'PikiBrainService',
-          );
-          _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
-            text: 'Insight unavailable: $error',
-          );
-        });
+        PikiAgentService.generateInsight(result).then(
+          (insight) {
+            _ref.read(pikiInsightProvider.notifier).state = insight;
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            developer.log(
+              'Piki insight generation failed',
+              error: error,
+              stackTrace: stackTrace,
+              name: 'PikiBrainService',
+            );
+            _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+              text: 'Insight unavailable: $error',
+            );
+          },
+        );
       } catch (e) {
         _messagesNotifier.addMessage(
           PikiMessage(
@@ -923,6 +937,7 @@ class PikiBrainService {
 
         final loopResults = <Map<String, dynamic>>[];
         var stopAfterToolError = false;
+        var awaitingWriteConfirmation = false;
         for (int i = 0; i < toolCalls.length; i++) {
           final updatedSteps = _cloneSteps(workingMsg.steps!);
           for (int j = 0; j < i; j++) {
@@ -963,13 +978,22 @@ class PikiBrainService {
           Map<String, dynamic> result;
           totalToolCalls++;
           try {
-            result = await (isCartTool
-                ? _executeCartTool(toolName, args)
-                : PikiAgentService.executeAgentTool(
-                    toolName,
-                    args: args,
-                    memory: _lastToolResults,
-                  ));
+            if (PikiAgentService.requiresConfirmation(toolName)) {
+              result = _stageWriteAction(
+                tool: toolName,
+                args: args,
+                isCartTool: isCartTool,
+              );
+              awaitingWriteConfirmation = true;
+            } else {
+              result = await (isCartTool
+                  ? _executeCartTool(toolName, args)
+                  : PikiAgentService.executeAgentTool(
+                      toolName,
+                      args: args,
+                      memory: _lastToolResults,
+                    ));
+            }
           } catch (e) {
             stopAfterToolError = true;
             stopReason = 'tool_error';
@@ -1015,7 +1039,7 @@ class PikiBrainService {
             loop: loopCount,
           );
           await Future<void>.delayed(const Duration(milliseconds: 250));
-          if (stopAfterToolError) {
+          if (stopAfterToolError || awaitingWriteConfirmation) {
             break;
           }
         }
@@ -1037,6 +1061,23 @@ class PikiBrainService {
           finalAnswer = _bestEffortAnswerFromResults(
             results: allResults,
             stopReason: 'a local tool failed',
+          );
+          break;
+        }
+
+        if (awaitingWriteConfirmation) {
+          final result = loopResults.last;
+          finalAnswer =
+              result['summary'] as String? ??
+              'Confirmation is required before I can make that change.';
+          stopReason = 'needs_confirmation';
+          needsUserInput = true;
+          _addWorkNote(
+            workNotes,
+            stage: 'blocked',
+            title: 'Confirmation required',
+            detail: finalAnswer,
+            loop: loopCount,
           );
           break;
         }
@@ -1196,19 +1237,22 @@ Analyze these results. If you have fully answered the original request, return m
         _ref.read(pikiInsightProvider.notifier).state = const PikiInsightData(
           text: 'Analyzing...',
         );
-        PikiAgentService.generateInsight(allResults.first).then((insight) {
-          _ref.read(pikiInsightProvider.notifier).state = insight;
-        }, onError: (Object error, StackTrace stackTrace) {
-          developer.log(
-            'Piki insight generation failed',
-            error: error,
-            stackTrace: stackTrace,
-            name: 'PikiBrainService',
-          );
-          _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
-            text: 'Insight unavailable: $error',
-          );
-        });
+        PikiAgentService.generateInsight(allResults.first).then(
+          (insight) {
+            _ref.read(pikiInsightProvider.notifier).state = insight;
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            developer.log(
+              'Piki insight generation failed',
+              error: error,
+              stackTrace: stackTrace,
+              name: 'PikiBrainService',
+            );
+            _ref.read(pikiInsightProvider.notifier).state = PikiInsightData(
+              text: 'Insight unavailable: $error',
+            );
+          },
+        );
       }
       _resetStatusAfterDelay(statusNotifier);
       return true;
@@ -1248,6 +1292,155 @@ Analyze these results. If you have fully answered the original request, return m
       statusNotifier.state = AgentStatus.idle;
       return true;
     }
+  }
+
+  bool _isConfirmation(String text) {
+    final lower = text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    return const {
+          'confirm',
+          'yes',
+          'yes please',
+          'proceed',
+          'apply',
+          'do it',
+          'continue',
+          'approve',
+        }.contains(lower) ||
+        lower.startsWith('confirm ') ||
+        lower.startsWith('approve ');
+  }
+
+  bool _isCancellation(String text) {
+    final lower = text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    return const {
+          'cancel',
+          'no',
+          'no thanks',
+          'stop',
+          'do not',
+          "don't",
+          'discard',
+        }.contains(lower) ||
+        lower.startsWith('cancel ') ||
+        lower.startsWith('discard ');
+  }
+
+  bool isPendingWriteActionConfirm(String text) =>
+      _pendingWriteAction != null && _isConfirmation(text);
+
+  bool isPendingWriteActionCancel(String text) =>
+      _pendingWriteAction != null && _isCancellation(text);
+
+  Map<String, dynamic> _stageWriteAction({
+    required String tool,
+    required Map<String, dynamic> args,
+    required bool isCartTool,
+  }) {
+    _pendingWriteAction = {
+      'tool': tool,
+      'args': Map<String, dynamic>.from(args),
+      'is_cart_tool': isCartTool,
+    };
+    return PikiAgentService.buildWriteConfirmationPreview(tool, args: args);
+  }
+
+  void discardPendingWriteAction(String userInput) {
+    _pendingWriteAction = null;
+    const reply = 'Cancelled. I did not change anything.';
+    _messagesNotifier.addMessage(
+      PikiMessage(
+        content: reply,
+        sender: PikiSender.agent,
+        messageType: PikiMessageType.taskComplete,
+      ),
+    );
+    rememberInteraction(
+      userInput: userInput,
+      reply: reply,
+      tools: const ['write_action_cancel'],
+    );
+  }
+
+  Future<void> confirmPendingWriteAction(String userInput) async {
+    final action = _pendingWriteAction;
+    if (action == null) return;
+
+    _pendingWriteAction = null;
+    final tool = action['tool'] as String?;
+    final args =
+        (action['args'] as Map?)?.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ) ??
+        const <String, dynamic>{};
+    final isCartTool = action['is_cart_tool'] == true;
+    if (tool == null || tool.isEmpty) {
+      const reply = 'The pending action was invalid, so nothing was changed.';
+      _messagesNotifier.addMessage(
+        PikiMessage(
+          content: reply,
+          sender: PikiSender.agent,
+          messageType: PikiMessageType.error,
+        ),
+      );
+      rememberInteraction(userInput: userInput, reply: reply);
+      return;
+    }
+
+    final statusNotifier = _ref.read(pikiStatusProvider.notifier);
+    statusNotifier.state = AgentStatus.working;
+    try {
+      final result = isCartTool
+          ? await _executeCartTool(tool, args)
+          : await PikiAgentService.executeAgentTool(
+              tool,
+              args: args,
+              memory: _lastToolResults,
+              confirmed: true,
+            );
+      final success = result['success'] != false && result['error'] == null;
+      final reply =
+          result['summary'] as String? ??
+          (success
+              ? 'The action was completed.'
+              : 'The action could not be completed.');
+      _messagesNotifier.addMessage(
+        PikiMessage(
+          content: reply,
+          sender: PikiSender.agent,
+          messageType: success
+              ? PikiMessageType.taskComplete
+              : PikiMessageType.error,
+          attachedData: {
+            'type': success ? 'write_action' : 'error',
+            'tool_results': [result],
+          },
+        ),
+      );
+      rememberInteraction(
+        userInput: userInput,
+        reply: reply,
+        tools: [tool],
+        results: [result],
+      );
+      if (result['action'] == 'checkout' || result['action'] == 'pos') {
+        _ref.read(pikiNavigateProvider.notifier).state = PikiNavTarget.pos;
+      }
+    } catch (e) {
+      final reply = AppErrorMessage.withContext(
+        e,
+        prefix: 'Could not apply the confirmed action.',
+        fallback: AppErrorMessage.saveFailed,
+      );
+      _messagesNotifier.addMessage(
+        PikiMessage(
+          content: reply,
+          sender: PikiSender.agent,
+          messageType: PikiMessageType.error,
+        ),
+      );
+      rememberInteraction(userInput: userInput, reply: reply, tools: [tool]);
+    }
+    _resetStatusAfterDelay(statusNotifier);
   }
 
   bool isPurchaseDraftConfirm(String text) {
