@@ -204,6 +204,7 @@ async function findBusinessCatalogStorefrontBySubdomain(target, subdomain) {
       businessId: storefront.businessId,
       storefrontType: storefront.storefrontType,
       storefrontId: storefront.storefrontId,
+      title: storefront.title,
     };
   }
 
@@ -219,7 +220,7 @@ async function findBusinessCatalogStorefrontBySubdomain(target, subdomain) {
   );
   const businessId = normalizeText(result.rows[0]?.id);
   if (businessId) {
-    return { businessId, storefrontType: null };
+    return { businessId, storefrontType: null, storefrontId: null, title: null };
   }
 
   const parsed = parseCatalogStorefrontSubdomain(normalized);
@@ -237,7 +238,12 @@ async function findBusinessCatalogStorefrontBySubdomain(target, subdomain) {
   );
   const storefrontBusinessId = normalizeText(storefrontResult.rows[0]?.id);
   return storefrontBusinessId
-    ? { businessId: storefrontBusinessId, storefrontType: parsed.storefrontType }
+    ? {
+        businessId: storefrontBusinessId,
+        storefrontType: parsed.storefrontType,
+        storefrontId: null,
+        title: null,
+      }
     : null;
 }
 

@@ -145,7 +145,10 @@ test('catalog subdomain lookup ignores deleted businesses', async () => {
   const target = {
     query: async (sql, params = []) => {
       calls.push({ sql, params });
-      if (/ALTER TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
+      if (/ALTER TABLE|CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
+        return { rows: [] };
+      }
+      if (/FROM storefronts/i.test(sql)) {
         return { rows: [] };
       }
       if (/SELECT id/i.test(sql)) {
@@ -167,7 +170,22 @@ test('catalog subdomain lookup ignores deleted businesses', async () => {
 test('catalog storefront subdomain resolves its business and module', async () => {
   const target = {
     query: async (sql, params = []) => {
-      if (/ALTER TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
+      if (/ALTER TABLE|CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(sql)) {
+        return { rows: [] };
+      }
+      if (/FROM storefronts/i.test(sql) && params[0] === 'my-shop-services') {
+        return {
+          rows: [
+            {
+              id: 'sf-1',
+              business_id: 'business-1',
+              type: 'services',
+              title: 'Services',
+            },
+          ],
+        };
+      }
+      if (/FROM storefronts/i.test(sql)) {
         return { rows: [] };
       }
       if (/SELECT id/i.test(sql) && params[0] === 'my-shop-services') {
@@ -188,5 +206,7 @@ test('catalog storefront subdomain resolves its business and module', async () =
   assert.deepEqual(storefront, {
     businessId: 'business-1',
     storefrontType: 'services',
+    storefrontId: 'sf-1',
+    title: 'Services',
   });
 });
