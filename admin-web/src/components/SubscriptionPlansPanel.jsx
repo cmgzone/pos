@@ -52,8 +52,16 @@ const GATEWAY_FIELDS = {
     ],
   },
   flutterwave: {
-    public: [['baseUrl', 'Flutterwave API Base URL']],
-    secret: [['secretKey', 'Secret Key']],
+    public: [
+      ['baseUrl', 'Flutterwave API Base URL'],
+      ['environment', 'Environment (production/sandbox)'],
+    ],
+    secret: [
+      ['publicKey', 'Public Key'],
+      ['secretKey', 'Secret Key'],
+      ['encryptionKey', 'Encryption Key'],
+      ['webhookHash', 'Webhook Secret Hash'],
+    ],
   },
 }
 

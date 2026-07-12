@@ -12,6 +12,7 @@ import '../../core/services/branch_service.dart';
 import '../../core/services/sync_controller.dart';
 import '../../core/services/sync_settings_service.dart';
 import '../../core/services/license_service.dart';
+import '../../core/services/platform_notification_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../agent/data/piki_models.dart';
 import '../agent/data/piki_proactive_service.dart';
@@ -94,6 +95,8 @@ class AppShellState extends ConsumerState<AppShell> {
   bool _appUpdatePromptScheduled = false;
   bool _moduleHeroPrecached = false;
   AppVersionInfo? _appVersionInfo;
+  List<PlatformNotification> _platformNotifications =
+      const <PlatformNotification>[];
 
   final _destinations = const [
     _NavDestination(
@@ -664,6 +667,7 @@ class AppShellState extends ConsumerState<AppShell> {
       _loadSeenNotifications();
       _loadDeviceNotificationIds();
       _loadAppVersionNotice();
+      _loadPlatformNotifications();
       _showStartupPrompts();
     });
   }
@@ -737,7 +741,9 @@ class AppShellState extends ConsumerState<AppShell> {
     return 'Module';
   }
 
-  void _showNotificationsSheet() {
+  Future<void> _showNotificationsSheet() async {
+    await _loadPlatformNotifications();
+    if (!mounted) return;
     final syncState = ref.read(syncControllerProvider);
     final List<PikiProactiveInsight> pikiInsights =
         _canLoadPikiNotifications(syncState)
@@ -766,6 +772,24 @@ class AppShellState extends ConsumerState<AppShell> {
     final notifications = <_AppNotification>[];
     final license = syncState.licenseSnapshot;
     final appVersion = _appVersionInfo;
+
+    for (final notification in _platformNotifications) {
+      notifications.add(
+        _AppNotification(
+          id: 'platform_${notification.id}',
+          icon: _platformNotificationIcon(notification.severity),
+          color: _platformNotificationColor(notification.severity),
+          title: notification.title,
+          message: notification.message,
+          severity: notification.severity == 'critical'
+              ? _AppNotificationSeverity.critical
+              : notification.severity == 'warning'
+              ? _AppNotificationSeverity.warning
+              : _AppNotificationSeverity.info,
+          deviceNotify: notification.severity == 'critical',
+        ),
+      );
+    }
 
     if (appVersion?.hasUpdate == true) {
       notifications.add(
@@ -914,6 +938,38 @@ class AppShellState extends ConsumerState<AppShell> {
       );
     }
     return notifications;
+  }
+
+  Future<void> _loadPlatformNotifications() async {
+    final items = await PlatformNotificationService.fetchNotifications();
+    if (!mounted) return;
+    setState(() => _platformNotifications = items);
+  }
+
+  Color _platformNotificationColor(String severity) {
+    switch (severity) {
+      case 'critical':
+        return AppColors.error;
+      case 'warning':
+        return AppColors.warning;
+      case 'success':
+        return AppColors.success;
+      default:
+        return AppColors.primaryLight;
+    }
+  }
+
+  IconData _platformNotificationIcon(String severity) {
+    switch (severity) {
+      case 'critical':
+        return Icons.priority_high_rounded;
+      case 'warning':
+        return Icons.warning_amber_rounded;
+      case 'success':
+        return Icons.check_circle_outline_rounded;
+      default:
+        return Icons.campaign_outlined;
+    }
   }
 
   Color _pikiSeverityColor(String severity) {

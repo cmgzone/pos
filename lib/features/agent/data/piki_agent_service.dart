@@ -1736,7 +1736,10 @@ Example: ["detergent", "soap", "laundry"]
     String tool, {
     Map<String, dynamic>? args,
     Map<String, dynamic>? memory,
-    bool confirmed = false,
+    // Conversation callers stage write tools before invoking the executor.
+    // Keep direct service calls executable so diagnostics, tests, and other
+    // trusted callers receive the actual tool result instead of a UI preview.
+    bool confirmed = true,
   }) async {
     final safeArgs = args ?? const <String, dynamic>{};
     if (requiresConfirmation(tool) && !confirmed) {
@@ -3467,9 +3470,10 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
     final businessName =
         _stringArg(args, ['business_name', 'name', 'store_name']) ??
         existing.businessName;
-    final tagline = _stringArg(args, ['tagline', 'headline']) ??
-        existing.tagline;
-    final description = _stringArg(args, ['description', 'intro', 'copy']) ??
+    final tagline =
+        _stringArg(args, ['tagline', 'headline']) ?? existing.tagline;
+    final description =
+        _stringArg(args, ['description', 'intro', 'copy']) ??
         existing.description;
     final primaryColor = _storefrontThemeColor(args, existing.primaryColor);
     final saved = await StorefrontBrandService.saveSettings(
@@ -3499,7 +3503,9 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
         (link) => link.type == storefrontType,
       );
       if (!isAvailable) {
-        throw Exception('${storefrontType.label} is not included in this plan.');
+        throw Exception(
+          '${storefrontType.label} is not included in this plan.',
+        );
       }
       url = storefrontType == links.primaryStorefrontType
           ? links.mainUrl
@@ -3511,20 +3517,20 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
 
     final capabilities = switch (storefrontType) {
       CatalogStorefrontType.retail => const [
-          'product catalogue',
-          'variants and cart',
-          'online order tracking',
-        ],
+        'product catalogue',
+        'variants and cart',
+        'online order tracking',
+      ],
       CatalogStorefrontType.services => const [
-          'service catalogue',
-          'booking requests',
-          'online booking tracking',
-        ],
+        'service catalogue',
+        'booking requests',
+        'online booking tracking',
+      ],
       CatalogStorefrontType.restaurant => const [
-          'restaurant menu',
-          'customer orders',
-          'kitchen-ready order flow',
-        ],
+        'restaurant menu',
+        'customer orders',
+        'kitchen-ready order flow',
+      ],
     };
     return _enrichToolResult(toolBuildStorefront, {
       'type': toolBuildStorefront,
@@ -3548,7 +3554,9 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       _stringArg(args, ['storefront_type', 'module', 'website_type', 'type']),
     );
     if (type == null) {
-      throw Exception('Choose retail, services, or restaurant for the website.');
+      throw Exception(
+        'Choose retail, services, or restaurant for the website.',
+      );
     }
     return type;
   }
@@ -3563,7 +3571,8 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
         : requested == null
         ? null
         : '#${requested.trim()}';
-    if (normalized != null && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(normalized)) {
+    if (normalized != null &&
+        RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(normalized)) {
       return normalized.toLowerCase();
     }
     switch (_stringArg(args, ['theme'])?.toLowerCase()) {

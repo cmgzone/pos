@@ -4734,10 +4734,23 @@ app.get('/api/platform/dashboard', requirePlatformAdmin, async (req, res, next) 
           AND expires_at >= NOW()
       `);
       const usrRes = await client.query('SELECT COUNT(*) FROM users WHERE deleted_at IS NULL');
+      const deviceRes = await client.query('SELECT COUNT(*) FROM devices');
+      const trialRes = await client.query(`
+        SELECT COUNT(*) FROM subscriptions
+        WHERE plan = 'trial' AND status IN ('active', 'grace')
+      `);
+      const expiringRes = await client.query(`
+        SELECT COUNT(*) FROM subscriptions
+        WHERE status IN ('active', 'grace')
+          AND expires_at BETWEEN NOW() AND NOW() + INTERVAL '7 days'
+      `);
       return {
         totalBusinesses: parseInt(bizRes.rows[0].count, 10),
         activeSubscriptions: parseInt(subRes.rows[0].count, 10),
         totalUsers: parseInt(usrRes.rows[0].count, 10),
+        totalDevices: parseInt(deviceRes.rows[0].count, 10),
+        trialSubscriptions: parseInt(trialRes.rows[0].count, 10),
+        expiringSubscriptions: parseInt(expiringRes.rows[0].count, 10),
       };
     });
     res.json({ ok: true, data: result });
@@ -4753,6 +4766,11 @@ app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next)
     const result = await query(`
       SELECT b.id, b.name, b.owner_name, b.owner_email, b.public_subdomain,
              b.country_code, b.currency, b.selling_mode, b.created_at,
+             owner.phone AS owner_phone,
+             (SELECT COUNT(*)::int FROM branches br
+              WHERE br.business_id = b.id AND br.deleted_at IS NULL) AS branch_count,
+             (SELECT COUNT(*)::int FROM devices d WHERE d.business_id = b.id) AS device_count,
+             (SELECT MAX(d.last_seen_at) FROM devices d WHERE d.business_id = b.id) AS last_seen_at,
              s.plan,
              CASE
                WHEN s.status NOT IN ('active', 'grace') THEN s.status
@@ -4763,6 +4781,15 @@ app.get('/api/platform/businesses', requirePlatformAdmin, async (req, res, next)
              s.expires_at, s.grace_until
       FROM businesses b
       LEFT JOIN subscriptions s ON s.business_id = b.id
+      LEFT JOIN LATERAL (
+        SELECT u.phone
+        FROM users u
+        WHERE u.business_id = b.id
+          AND u.deleted_at IS NULL
+          AND UPPER(u.role) = 'ADMIN'
+        ORDER BY u.created_at ASC
+        LIMIT 1
+      ) owner ON true
       WHERE b.deleted_at IS NULL
       ORDER BY b.created_at DESC
     `);
@@ -4776,7 +4803,8 @@ app.get('/api/platform/users', requirePlatformAdmin, async (req, res, next) => {
   try {
     await initializeCatalogSubdomainSchema(query);
     const result = await query(`
-      SELECT u.id, u.name, u.email, u.role, u.created_at, u.last_seen_at, b.name as business_name
+      SELECT u.id, u.business_id, u.name, u.email, u.phone, u.role,
+             u.created_at, u.last_seen_at, b.name as business_name
       FROM users u
       LEFT JOIN businesses b ON b.id = u.business_id AND b.deleted_at IS NULL
       WHERE u.deleted_at IS NULL
@@ -9633,6 +9661,168 @@ app.post('/api/ai/proactive-run', async (req, res, next) => {
   }
 });
 
+app.post('/api/subscription/flutterwave/webhook', async (req, res, next) => {
+  try {
+    const gateway = await loadPaymentGateway('flutterwave');
+    const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+    if (!flutterwaveConfig.webhookHash) {
+      throw createHttpError(503, 'Flutterwave webhook verification is not configured');
+    }
+    const providedHash = normalizeOptionalText(req.headers['verif-hash']);
+    if (!safeEquals(providedHash, flutterwaveConfig.webhookHash)) {
+      throw createHttpError(401, 'Invalid Flutterwave webhook signature');
+    }
+    const event = req.body || {};
+    const data = event.data || {};
+    const transactionId = normalizeOptionalText(data.id);
+    const transactionReference = normalizeOptionalText(data.tx_ref);
+    if (
+      String(event.event || '').toLowerCase() === 'charge.completed' &&
+      String(data.status || '').toLowerCase() === 'successful' &&
+      transactionId &&
+      transactionReference
+    ) {
+      const paymentResult = await query(
+        `SELECT id FROM subscription_payments
+         WHERE provider = 'flutterwave' AND provider_reference = $1
+         LIMIT 1`,
+        [transactionReference],
+      );
+      const paymentId = paymentResult.rows[0]?.id;
+      if (paymentId) {
+        await processFlutterwaveReturn({
+          paymentId,
+          transactionId,
+          transactionReference,
+        });
+      }
+    }
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/platform/notifications', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    await ensurePlatformNotificationSchema();
+    const result = await query(`
+      SELECT n.*, b.name AS target_business_name
+      FROM platform_notifications n
+      LEFT JOIN businesses b ON b.id = n.target_business_id
+      ORDER BY n.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ ok: true, data: result.rows.map(normalizePlatformNotification) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/platform/notifications', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    await ensurePlatformNotificationSchema();
+    const title = normalizeOptionalText(req.body?.title);
+    const message = normalizeOptionalText(req.body?.message);
+    const severity = normalizePlatformNotificationSeverity(req.body?.severity);
+    const audience = normalizePlatformNotificationAudience(req.body?.audience);
+    const targetBusinessId = audience === 'business'
+      ? normalizeOptionalText(req.body?.businessId ?? req.body?.targetBusinessId)
+      : null;
+    const targetPlan = audience === 'plan'
+      ? normalizeOptionalText(req.body?.plan ?? req.body?.targetPlan)?.toLowerCase()
+      : null;
+    const targetCountry = audience === 'country'
+      ? normalizeCountryCode(req.body?.countryCode ?? req.body?.targetCountry)
+      : null;
+    const expiresAt = parseOptionalDate(req.body?.expiresAt);
+
+    if (!title || title.length > 120) {
+      throw createHttpError(400, 'Notification title is required and must be 120 characters or fewer.');
+    }
+    if (!message || message.length > 1000) {
+      throw createHttpError(400, 'Notification message is required and must be 1000 characters or fewer.');
+    }
+    if (audience === 'business' && !targetBusinessId) {
+      throw createHttpError(400, 'Choose a business for this notification.');
+    }
+    if (audience === 'plan' && !targetPlan) {
+      throw createHttpError(400, 'Choose a subscription plan for this notification.');
+    }
+    if (audience === 'country' && !targetCountry) {
+      throw createHttpError(400, 'Choose a country for this notification.');
+    }
+    if (expiresAt && expiresAt <= new Date()) {
+      throw createHttpError(400, 'Notification expiry must be in the future.');
+    }
+
+    const result = await query(`
+      INSERT INTO platform_notifications (
+        id, title, message, severity, audience, target_business_id,
+        target_plan, target_country, expires_at, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      RETURNING *
+    `, [
+      crypto.randomUUID(), title, message, severity, audience,
+      targetBusinessId, targetPlan, targetCountry,
+      expiresAt?.toISOString() || null,
+    ]);
+    res.status(201).json({
+      ok: true,
+      data: normalizePlatformNotification(result.rows[0]),
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.delete('/api/platform/notifications/:notificationId', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    await ensurePlatformNotificationSchema();
+    const notificationId = normalizeOptionalText(req.params.notificationId);
+    const result = await query(
+      'DELETE FROM platform_notifications WHERE id = $1 RETURNING id',
+      [notificationId],
+    );
+    if (!result.rows.length) {
+      throw createHttpError(404, 'Notification not found');
+    }
+    res.json({ ok: true, data: { id: notificationId } });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/notifications', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req, {
+      allowReadOnlyExpired: true,
+    });
+    await ensurePlatformNotificationSchema();
+    const result = await query(`
+      SELECT n.*
+      FROM platform_notifications n
+      WHERE n.is_active = true
+        AND (n.expires_at IS NULL OR n.expires_at > NOW())
+        AND (
+          n.audience = 'all'
+          OR (n.audience = 'business' AND n.target_business_id = $1)
+          OR (n.audience = 'plan' AND n.target_plan = $2)
+          OR (n.audience = 'country' AND n.target_country = $3)
+        )
+      ORDER BY n.created_at DESC
+      LIMIT 50
+    `, [
+      businessContext.businessId,
+      String(businessContext.plan || '').toLowerCase(),
+      normalizeCountryCode(businessContext.countryCode),
+    ]);
+    res.json({ ok: true, data: result.rows.map(normalizePlatformNotification) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/api/ai/cloud-settings', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -10237,6 +10427,7 @@ Promise.all([
   ensureStorefrontBrandSchema(),
   ensureProductStorefrontSchema(),
   ensureQuotationsSchema(),
+  ensurePlatformNotificationSchema(),
   pikiCloud.ensureSchema(),
   aiJobs.ensureSchema(),
 ])
@@ -12531,6 +12722,59 @@ function hasPlanFeature(businessContext, feature) {
   return Array.isArray(features) && features.includes(feature);
 }
 
+async function ensurePlatformNotificationSchema(target = query) {
+  await target(`
+    CREATE TABLE IF NOT EXISTS platform_notifications (
+      id text PRIMARY KEY,
+      title text NOT NULL,
+      message text NOT NULL,
+      severity text NOT NULL DEFAULT 'info',
+      audience text NOT NULL DEFAULT 'all',
+      target_business_id text REFERENCES businesses(id) ON DELETE CASCADE,
+      target_plan text,
+      target_country text,
+      is_active boolean NOT NULL DEFAULT true,
+      expires_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await target(`
+    CREATE INDEX IF NOT EXISTS idx_platform_notifications_delivery
+    ON platform_notifications(is_active, audience, created_at DESC)
+  `);
+}
+
+function normalizePlatformNotificationSeverity(value) {
+  const severity = String(value || '').trim().toLowerCase();
+  return ['info', 'success', 'warning', 'critical'].includes(severity)
+    ? severity
+    : 'info';
+}
+
+function normalizePlatformNotificationAudience(value) {
+  const audience = String(value || '').trim().toLowerCase();
+  return ['all', 'business', 'plan', 'country'].includes(audience)
+    ? audience
+    : 'all';
+}
+
+function normalizePlatformNotification(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    message: row.message,
+    severity: normalizePlatformNotificationSeverity(row.severity),
+    audience: normalizePlatformNotificationAudience(row.audience),
+    targetBusinessId: row.target_business_id || null,
+    targetBusinessName: row.target_business_name || null,
+    targetPlan: row.target_plan || null,
+    targetCountry: row.target_country || null,
+    isActive: row.is_active !== false,
+    expiresAt: toIsoString(row.expires_at),
+    createdAt: toIsoString(row.created_at),
+  };
+}
+
 function normalizeStorefrontType(value, { fallback = 'retail' } = {}) {
   const normalized = normalizeOptionalText(value)?.toLowerCase();
   switch (normalized) {
@@ -12865,7 +13109,10 @@ function resolveFlutterwaveGatewayConfig(gateway) {
   const secretConfig = gateway?.secretConfig || {};
   return {
     baseUrl: String(publicConfig.baseUrl || config.flutterwaveBaseUrl).replace(/\/+$/, ''),
+    publicKey: secretConfig.publicKey || '',
     secretKey: secretConfig.secretKey || config.flutterwaveSecretKey,
+    encryptionKey: secretConfig.encryptionKey || '',
+    webhookHash: secretConfig.webhookHash || '',
   };
 }
 

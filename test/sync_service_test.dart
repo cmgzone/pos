@@ -28,6 +28,39 @@ void main() {
     );
   });
 
+  test('pull order includes every cloud-backed operational module', () {
+    final order = SyncService.pullTableOrderForTesting;
+    expect(
+      order,
+      containsAll(<String>[
+        'wastage_logs',
+        'restaurant_tables',
+        'table_orders',
+        'employee_attendance',
+        'customer_groups',
+        'customer_group_members',
+        'delivery_zones',
+        'deliveries',
+      ]),
+    );
+    expect(
+      order.indexOf('customer_groups'),
+      lessThan(order.indexOf('customer_group_members')),
+    );
+    expect(
+      order.indexOf('customers'),
+      lessThan(order.indexOf('customer_group_members')),
+    );
+    expect(
+      order.indexOf('restaurant_tables'),
+      lessThan(order.indexOf('table_orders')),
+    );
+    expect(
+      order.indexOf('delivery_zones'),
+      lessThan(order.indexOf('deliveries')),
+    );
+  });
+
   test(
     'cashier sync ignores local default branch placeholder errors',
     () async {
