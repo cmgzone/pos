@@ -147,7 +147,7 @@ const {
   extractCatalogSubdomain,
   findBusinessCatalogStorefrontBySubdomain,
   initializeCatalogSubdomainSchema,
-  isCatalogStorefrontOrigin,
+  normalizeCatalogSubdomain,
 } = require('./catalogSubdomains');
 const { normalizePublicCatalogBranches } = require('./catalogBranches');
 
@@ -556,20 +556,8 @@ app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
     const result = await withTransaction(async (client) => {
       await ensureCatalogSubdomainSchema(client);
 
-      // Check for existing user with same email across all businesses
-      const existingUser = await client.query(
-        `SELECT id, business_id FROM users
-         WHERE LOWER(TRIM(email)) = LOWER(TRIM($1)) AND deleted_at IS NULL
-         LIMIT 1`,
-        [ownerEmail],
-      );
-      if (existingUser.rows.length > 0) {
-        throw createHttpError(
-          409,
-          'An account with that email already exists. Please sign in instead.',
-        );
-      }
-
+      // One email may own several businesses; each signup creates (or
+      // reactivates) a separate business with its own subdomain + storefronts.
       await consumeEmailOtpVerification({
         email: ownerEmail,
         purpose: 'signup',
@@ -802,17 +790,33 @@ app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
       if (!matchingUsers.length) {
         throw createHttpError(401, 'Invalid email or password');
       }
-      const matchingBusinessIds = new Set(
-        matchingUsers.map((candidate) => candidate.business_id),
-      );
-      if (matchingBusinessIds.size > 1) {
-        throw createHttpError(
-          409,
-          'This staff email is used in more than one business. Ask an admin to give each staff account a unique email address before signing in.',
+      const matchingBusinessIds = [
+        ...new Set(matchingUsers.map((candidate) => candidate.business_id)),
+      ];
+      const requestedBusinessId = normalizeOptionalText(req.body?.businessId);
+      if (matchingBusinessIds.length > 1 && !requestedBusinessId) {
+        const bizResult = await client.query(
+          `SELECT id, name, public_subdomain
+           FROM businesses
+           WHERE id = ANY($1) AND deleted_at IS NULL`,
+          [matchingBusinessIds],
         );
+        return {
+          needsBusinessSelection: true,
+          businesses: bizResult.rows.map((row) => ({
+            id: normalizeText(row.id),
+            name: row.name,
+            subdomain: normalizeCatalogSubdomain(row.public_subdomain),
+          })),
+        };
       }
-
-      const user = matchingUsers[0];
+      const selectedBusinessId =
+        requestedBusinessId && matchingBusinessIds.includes(requestedBusinessId)
+          ? requestedBusinessId
+          : matchingBusinessIds[0];
+      const user =
+        matchingUsers.find((c) => c.business_id === selectedBusinessId) ||
+        matchingUsers[0];
 
       const businessId = user.business_id;
       const now = new Date();
