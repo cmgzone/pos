@@ -32,6 +32,35 @@ ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_primary_color text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_tagline text;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS catalog_description text;
 
+CREATE TABLE IF NOT EXISTS storefronts (
+  id text PRIMARY KEY,
+  business_id text NOT NULL,
+  type text NOT NULL,
+  subdomain text,
+  title text,
+  tagline text,
+  description text,
+  logo_url text,
+  cover_url text,
+  primary_color text,
+  is_primary boolean NOT NULL DEFAULT false,
+  status text NOT NULL DEFAULT 'active',
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_storefronts_subdomain_unique
+  ON storefronts (LOWER(subdomain))
+  WHERE subdomain IS NOT NULL AND deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_storefronts_business_type_unique
+  ON storefronts (business_id, type)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_storefronts_business
+  ON storefronts (business_id);
+
 DO $$
 BEGIN
   IF EXISTS (

@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 const RESERVED_SUBDOMAINS = new Set([
   'admin',
   'api',
@@ -117,6 +119,10 @@ async function ensureBusinessCatalogSubdomain(
 
   const existing = normalizeCatalogSubdomain(business.public_subdomain);
   if (existing) {
+    await ensureBusinessStorefronts(target, {
+      businessId: cleanBusinessId,
+      businessSubdomain: existing,
+    });
     return existing;
   }
 
@@ -169,6 +175,13 @@ async function ensureBusinessCatalogSubdomain(
   throw new Error('Could not assign a unique catalog subdomain');
 }
 
+async function ensureBusinessStorefrontsWithSubdomain(
+  target,
+  { businessId, businessSubdomain },
+) {
+  return ensureBusinessStorefronts(target, { businessId, businessSubdomain });
+}
+
 async function findBusinessIdByCatalogSubdomain(target, subdomain) {
   const storefront = await findBusinessCatalogStorefrontBySubdomain(
     target,
@@ -181,6 +194,17 @@ async function findBusinessCatalogStorefrontBySubdomain(target, subdomain) {
   const normalized = normalizeCatalogSubdomain(subdomain);
   if (!normalized) {
     return null;
+  }
+
+  // Independent storefront records take priority so each module keeps its own
+  // unique website even when a legacy business subdomain also resolves.
+  const storefront = await findStorefrontBySubdomain(target, normalized);
+  if (storefront) {
+    return {
+      businessId: storefront.businessId,
+      storefrontType: storefront.storefrontType,
+      storefrontId: storefront.storefrontId,
+    };
   }
 
   await ensureCatalogSubdomainSchema(target);
@@ -215,6 +239,208 @@ async function findBusinessCatalogStorefrontBySubdomain(target, subdomain) {
   return storefrontBusinessId
     ? { businessId: storefrontBusinessId, storefrontType: parsed.storefrontType }
     : null;
+}
+
+async function ensureStorefrontSchema(target) {
+  if (!target) {
+    throw new Error('A database query target is required');
+  }
+  await runQuery(
+    target,
+    `CREATE TABLE IF NOT EXISTS storefronts (
+      id text PRIMARY KEY,
+      business_id text NOT NULL,
+      type text NOT NULL,
+      subdomain text,
+      title text,
+      tagline text,
+      description text,
+      logo_url text,
+      cover_url text,
+      primary_color text,
+      is_primary boolean NOT NULL DEFAULT false,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL,
+      deleted_at timestamptz
+    )`,
+  );
+  await runQuery(
+    target,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_storefronts_subdomain_unique
+     ON storefronts (LOWER(subdomain))
+     WHERE subdomain IS NOT NULL AND deleted_at IS NULL`,
+  );
+  await runQuery(
+    target,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_storefronts_business_type_unique
+     ON storefronts (business_id, type)
+     WHERE deleted_at IS NULL`,
+  );
+  await runQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_storefronts_business
+     ON storefronts (business_id)`,
+  );
+}
+
+// A subdomain is globally reserved when it is used by any business OR any
+// storefront, so module websites can never collide with a business website.
+async function isSubdomainTaken(target, subdomain) {
+  const normalized = normalizeCatalogSubdomain(subdomain);
+  if (!normalized || RESERVED_SUBDOMAINS.has(normalized)) {
+    return true;
+  }
+  await ensureCatalogSubdomainSchema(target);
+  await ensureStorefrontSchema(target);
+  const business = await runQuery(
+    target,
+    `SELECT 1 FROM businesses
+     WHERE LOWER(public_subdomain) = LOWER($1)
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [normalized],
+  );
+  if (business.rows.length) {
+    return true;
+  }
+  const storefront = await runQuery(
+    target,
+    `SELECT 1 FROM storefronts
+     WHERE LOWER(subdomain) = LOWER($1)
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [normalized],
+  );
+  return storefront.rows.length > 0;
+}
+
+// Creates (or skips if present) one independent storefront record per module
+// type for a business. Each storefront gets a globally unique subdomain.
+async function ensureBusinessStorefronts(
+  target,
+  { businessId, businessSubdomain, types },
+) {
+  const cleanBusinessId = normalizeText(businessId);
+  const base = normalizeCatalogSubdomain(businessSubdomain);
+  if (!cleanBusinessId || !base) {
+    return [];
+  }
+  await ensureStorefrontSchema(target);
+  const typeList =
+    types && types.length
+      ? types.filter(Boolean)
+      : ['retail', 'services', 'restaurant'];
+  const now = new Date().toISOString();
+  const created = [];
+
+  for (const type of typeList) {
+    const normalizedType = normalizeCatalogStorefrontType(type);
+    if (!normalizedType) continue;
+
+    const existing = await runQuery(
+      target,
+      `SELECT id, subdomain, type
+       FROM storefronts
+       WHERE business_id = $1 AND type = $2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [cleanBusinessId, normalizedType],
+    );
+    if (existing.rows[0]) {
+      created.push({
+        storefrontId: existing.rows[0].id,
+        businessId: cleanBusinessId,
+        storefrontType: normalizedType,
+        subdomain: normalizeCatalogSubdomain(existing.rows[0].subdomain),
+      });
+      continue;
+    }
+
+    const desired = buildCatalogStorefrontSubdomain(base, normalizedType);
+    let subdomain = desired;
+    for (let attempt = 0; attempt <= 12; attempt += 1) {
+      const candidate =
+        attempt === 0 ? desired : fitDnsLabel(`${desired}-${attempt}`);
+      if (!(await isSubdomainTaken(target, candidate))) {
+        subdomain = candidate;
+        break;
+      }
+    }
+
+    const id = crypto.randomUUID();
+    await runQuery(
+      target,
+      `INSERT INTO storefronts
+        (id, business_id, type, subdomain, is_primary, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6, $6)`,
+      [id, cleanBusinessId, normalizedType, subdomain, normalizedType === 'retail', now, now],
+    );
+    created.push({
+      storefrontId: id,
+      businessId: cleanBusinessId,
+      storefrontType: normalizedType,
+      subdomain,
+    });
+  }
+  return created;
+}
+
+async function findStorefrontBySubdomain(target, subdomain) {
+  const normalized = normalizeCatalogSubdomain(subdomain);
+  if (!normalized) {
+    return null;
+  }
+  await ensureStorefrontSchema(target);
+  const result = await runQuery(
+    target,
+    `SELECT id, business_id, type, title
+     FROM storefronts
+     WHERE LOWER(subdomain) = LOWER($1)
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [normalized],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+  return {
+    storefrontId: normalizeText(row.id),
+    businessId: normalizeText(row.business_id),
+    storefrontType: normalizeCatalogStorefrontType(row.type),
+    title: row.title,
+  };
+}
+
+async function listBusinessStorefronts(target, businessId) {
+  const cleanBusinessId = normalizeText(businessId);
+  if (!cleanBusinessId) {
+    return [];
+  }
+  await ensureStorefrontSchema(target);
+  const result = await runQuery(
+    target,
+    `SELECT id, business_id, type, subdomain, title, tagline, description,
+            logo_url, cover_url, primary_color, is_primary, status
+     FROM storefronts
+     WHERE business_id = $1 AND deleted_at IS NULL
+     ORDER BY type ASC`,
+    [cleanBusinessId],
+  );
+  return result.rows.map((row) => ({
+    id: normalizeText(row.id),
+    businessId: cleanBusinessId,
+    type: normalizeCatalogStorefrontType(row.type),
+    subdomain: normalizeCatalogSubdomain(row.subdomain),
+    title: row.title,
+    tagline: row.tagline,
+    description: row.description,
+    logoUrl: row.logo_url,
+    coverUrl: row.cover_url,
+    primaryColor: row.primary_color,
+    isPrimary: Boolean(row.is_primary),
+    status: row.status,
+  }));
 }
 
 function normalizeCatalogStorefrontType(value) {
@@ -403,12 +629,17 @@ module.exports = {
   buildCatalogSubdomainCandidates,
   catalogSubdomainBase,
   ensureBusinessCatalogSubdomain,
+  ensureBusinessStorefronts,
   ensureCatalogSubdomainSchema,
+  ensureStorefrontSchema,
   extractCatalogSubdomain,
   findBusinessCatalogStorefrontBySubdomain,
   findBusinessIdByCatalogSubdomain,
+  findStorefrontBySubdomain,
   initializeCatalogSubdomainSchema,
   isCatalogStorefrontOrigin,
+  isSubdomainTaken,
+  listBusinessStorefronts,
   normalizeCatalogStorefrontType,
   normalizeCatalogSubdomain,
   parseCatalogStorefrontSubdomain,
