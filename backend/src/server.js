@@ -11969,6 +11969,10 @@ async function ensureProductStorefrontSchema(target = query) {
     target,
     'ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured integer NOT NULL DEFAULT 0',
   );
+  await runDbQuery(
+    target,
+    'ALTER TABLE products ADD COLUMN IF NOT EXISTS is_restaurant_menu integer NOT NULL DEFAULT 0',
+  );
 }
 
 async function ensureQuotationsSchema(target = query) {

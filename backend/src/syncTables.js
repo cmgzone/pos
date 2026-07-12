@@ -235,6 +235,7 @@ const syncTables = [
       'image_urls_json',
       'show_online',
       'is_featured',
+      'is_restaurant_menu',
       'category_id',
       'track_stock',
       'has_variants',

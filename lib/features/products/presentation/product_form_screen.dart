@@ -73,6 +73,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   bool _hasVariants = false;
   bool _showOnline = true;
   bool _isFeatured = false;
+  bool _isRestaurantMenu = false;
   int _currentStep = 0;
 
   bool get _isEditing => widget.product != null;
@@ -126,6 +127,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _imageUrlController = TextEditingController();
     _showOnline = _readBoolish(p?['show_online'], fallback: true);
     _isFeatured = _readBoolish(p?['is_featured'], fallback: false);
+    _isRestaurantMenu = _readBoolish(p?['is_restaurant_menu'], fallback: false);
   }
 
   @override
@@ -287,6 +289,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             : null,
         'show_online': _showOnline ? 1 : 0,
         'is_featured': _isFeatured ? 1 : 0,
+        'is_restaurant_menu': _isRestaurantMenu ? 1 : 0,
         'track_stock': _trackStock ? 1 : 0,
         'has_variants': _hasVariants ? 1 : 0,
       };
@@ -322,6 +325,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           imageUrlsJson: payload['image_urls_json'] as String?,
           showOnline: _showOnline,
           isFeatured: _isFeatured,
+          restaurantMenu: _isRestaurantMenu,
           initialExpiryDate: ExpiryUtils.toStorageString(_initialExpiryDate),
           trackStock: _trackStock,
           hasVariants: _hasVariants,
@@ -1541,6 +1545,22 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           ? null
                           : (value) => setState(() => _isFeatured = value),
                     ),
+                    Divider(height: 1),
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      value: _isRestaurantMenu,
+                      title: Text('Show in restaurant menu'),
+                      subtitle: Text(
+                        'Make this item available to the Restaurant module as a menu item.',
+                      ),
+                      onChanged: _isLoading
+                          ? null
+                          : (value) =>
+                              setState(() => _isRestaurantMenu = value),
+                    ),
                   ],
                 ),
               ),
@@ -2051,6 +2071,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             ),
             _buildReviewRow('Show Online', _showOnline ? 'Yes' : 'No'),
             _buildReviewRow('Featured', _isFeatured ? 'Yes' : 'No'),
+            _buildReviewRow(
+              'Restaurant menu',
+              _isRestaurantMenu ? 'Yes' : 'No',
+            ),
             _buildReviewRow(
               'SKU',
               _skuController.text.isNotEmpty ? _skuController.text : '-',

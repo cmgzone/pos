@@ -722,6 +722,7 @@ class DatabaseService {
         item_count INTEGER NOT NULL DEFAULT 0,
         user_id TEXT,
         cashier_name TEXT,
+        source TEXT NOT NULL DEFAULT 'pos',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -3718,6 +3719,18 @@ class DatabaseService {
         sync_status TEXT NOT NULL DEFAULT 'pending'
       )
     ''');
+    await _ensureColumn(
+      database,
+      table: 'products',
+      column: 'is_restaurant_menu',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumn(
+      database,
+      table: 'held_sales',
+      column: 'source',
+      definition: "TEXT NOT NULL DEFAULT 'pos'",
+    );
   }
 
   static Future<void> _ensureAttendanceSchema(DatabaseExecutor database) async {

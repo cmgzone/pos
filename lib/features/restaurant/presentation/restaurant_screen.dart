@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../app/app_shell.dart';
 import '../../products/data/product_repository.dart';
+import '../../sales/presentation/pos_screen.dart';
 import '../data/restaurant_repository.dart';
 
 class RestaurantScreen extends StatefulWidget {
@@ -86,8 +87,17 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
       }
       final products = await ProductRepository.getAll(
         typeFilter: ProductTypeFilter.simpleOnly,
+        restaurantMenuOnly: true,
       );
-      if (!mounted || products.isEmpty) return;
+      if (!mounted) return;
+      if (products.isEmpty) {
+        _message(
+          'No restaurant menu items yet. Enable "Show in restaurant menu" '
+          'on products you want to sell here.',
+          error: true,
+        );
+        return;
+      }
       final product = await showModalBottomSheet<Map<String, dynamic>>(
         context: context,
         builder: (context) => ListView(
@@ -174,7 +184,7 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: 2,
+    length: 3,
     child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -193,12 +203,53 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
           tabs: [
             Tab(icon: Icon(Icons.table_restaurant_outlined), text: 'Floor'),
             Tab(icon: Icon(Icons.soup_kitchen_outlined), text: 'Kitchen'),
+            Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Bills'),
           ],
         ),
       ),
-      body: TabBarView(children: [_floor(), _kitchen()]),
+      body: TabBarView(children: [_floor(), _kitchen(), _bills()]),
     ),
   );
+
+  Widget _bills() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: RestaurantRepository.getBills(),
+    builder: (context, snapshot) {
+      final bills = snapshot.data ?? [];
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (bills.isEmpty) {
+        return const Center(child: Text('No bills sent to POS yet.'));
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: bills.length,
+        separatorBuilder: (context, index) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final bill = bills[index];
+          return ListTile(
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: Text(bill['name'] as String? ?? 'Bill'),
+            subtitle: Text(
+              '${bill['cashier_name'] ?? ''} · ${bill['total']}',
+            ),
+            trailing: FilledButton.tonal(
+              onPressed: () => _takeBillToPos(bill['id'] as String),
+              child: const Text('Take to POS'),
+            ),
+          );
+        },
+      );
+    },
+  );
+
+  Future<void> _takeBillToPos(String holdId) async {
+    final navigator = Navigator.of(context);
+    await navigator.push(
+      MaterialPageRoute(builder: (_) => PosScreen(initialHoldId: holdId)),
+    );
+    _refresh();
+  }
 
   Widget _floor() => FutureBuilder<List<Map<String, dynamic>>>(
     future: _tables,

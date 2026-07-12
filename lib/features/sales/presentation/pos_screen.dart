@@ -102,7 +102,56 @@ final quotationCustomerSearchProvider =
 final _quotationCustomerQueryProvider = StateProvider<String>((ref) => '');
 
 class PosScreen extends ConsumerWidget {
-  const PosScreen({super.key});
+  const PosScreen({super.key, this.initialHoldId});
+
+  final String? initialHoldId;
+  static String? _pendingInitialHoldId;
+
+  Future<void> _resumeInitialHold(
+    BuildContext context,
+    WidgetRef ref,
+    String holdId,
+  ) async {
+    final heldSale = await HeldSaleRepository.takeHold(holdId);
+    ref.invalidate(heldSalesProvider);
+    if (!context.mounted) return;
+    if (heldSale == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That held sale could not be found anymore.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    final items = List<Map<String, dynamic>>.from(
+      heldSale['items'] as List<dynamic>? ?? const <Map<String, dynamic>>[],
+    );
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That held sale has no available items to restore.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    ref.read(cartProvider.notifier).clear();
+    ref.read(cartProvider.notifier).restoreHeldItems(items);
+    ref.read(discountProvider.notifier).state =
+        _initialHoldDouble(heldSale['discount']);
+    ref.read(appliedPromotionsProvider.notifier).state = const [];
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${heldSale['name'] ?? 'Held sale'} restored to the cart.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  double _initialHoldDouble(Object? value) =>
+      value is num ? value.toDouble() : (double.tryParse(value?.toString() ?? '') ?? 0.0);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -115,6 +164,19 @@ class PosScreen extends ConsumerWidget {
     final canOpenShifts = SessionService.canAccessFeature(
       UserAccessProfile.featureShifts,
     );
+
+    if (initialHoldId != null) {
+      _pendingInitialHoldId = initialHoldId;
+    }
+    if (_pendingInitialHoldId != null) {
+      final holdId = _pendingInitialHoldId!;
+      _pendingInitialHoldId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          _resumeInitialHold(context, ref, holdId);
+        }
+      });
+    }
 
     ref.listen(pikiNavigateProvider, (_, next) {
       if (next != PikiNavTarget.pos || isWide) return;

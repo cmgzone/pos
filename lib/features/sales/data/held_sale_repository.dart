@@ -24,6 +24,7 @@ class HeldSaleRepository {
     required String userId,
     required String cashierName,
     required List<Map<String, dynamic>> items,
+    String source = 'pos',
   }) async {
     final holdId = _uuid.v4();
     final now = DateTime.now().toIso8601String();
@@ -40,6 +41,7 @@ class HeldSaleRepository {
         'item_count': items.length,
         'user_id': userId,
         'cashier_name': cashierName,
+        'source': source,
         'created_at': now,
         'updated_at': now,
       });
@@ -86,7 +88,14 @@ class HeldSaleRepository {
     return holdId;
   }
 
-  static Future<List<Map<String, dynamic>>> getAll() async {
+  static Future<List<Map<String, dynamic>>> getAll({String? source}) async {
+    final args = <dynamic>[..._currentBranchArgs];
+    final sourceClause = source == null
+        ? " AND (source = 'pos' OR source IS NULL)"
+        : ' AND source = ?';
+    if (source != null) {
+      args.add(source);
+    }
     final rows = await DatabaseService.rawQuery('''
       SELECT
         id,
@@ -98,15 +107,21 @@ class HeldSaleRepository {
         item_count,
         user_id,
         cashier_name,
+        source,
         created_at,
         updated_at
       FROM $_heldSalesTable
       WHERE COALESCE(branch_id, ?) = ?
+        $sourceClause
       ORDER BY updated_at DESC, created_at DESC
-    ''', _currentBranchArgs);
+    ''', args);
 
     return rows.map(_normalizeHoldSummary).toList();
   }
+
+  /// Held sales created from the restaurant module (bills sent to POS).
+  static Future<List<Map<String, dynamic>>> getRestaurantBills() =>
+      getAll(source: 'restaurant');
 
   static Future<Map<String, dynamic>?> takeHold(String holdId) async {
     final heldSale = await DatabaseService.db
@@ -387,6 +402,7 @@ class HeldSaleRepository {
       'item_count': _asInt(row['item_count']),
       'user_id': row['user_id'] as String?,
       'cashier_name': row['cashier_name'] as String?,
+      'source': row['source'] as String? ?? 'pos',
       'created_at': row['created_at'] as String? ?? '',
       'updated_at': row['updated_at'] as String? ?? '',
     };

@@ -224,6 +224,7 @@ class RestaurantRepository {
           userId: SessionService.currentUserId,
           cashierName: SessionService.currentUserName,
           items: billItems,
+          source: 'restaurant',
         ),
       );
     }
@@ -249,6 +250,10 @@ class RestaurantRepository {
     });
     return holdIds;
   }
+
+  /// Restaurant bills that were sent to POS, isolated from the retail holds list.
+  static Future<List<Map<String, dynamic>>> getBills() =>
+      HeldSaleRepository.getRestaurantBills();
 
   static Future<void> _saveItems(
     Map<String, dynamic> order,

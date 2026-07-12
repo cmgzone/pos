@@ -613,6 +613,7 @@ CREATE TABLE IF NOT EXISTS products (
   image_urls_json text,
   show_online integer NOT NULL DEFAULT 1,
   is_featured integer NOT NULL DEFAULT 0,
+  is_restaurant_menu integer NOT NULL DEFAULT 0,
   category_id text,
   track_stock integer NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL,
@@ -975,6 +976,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls_json text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS show_online integer NOT NULL DEFAULT 1;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured integer NOT NULL DEFAULT 0;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_restaurant_menu integer NOT NULL DEFAULT 0;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS server_revision bigint;
 ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS server_revision bigint;
@@ -1281,6 +1283,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls_json text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS show_online integer NOT NULL DEFAULT 1;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured integer NOT NULL DEFAULT 0;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_restaurant_menu integer NOT NULL DEFAULT 0;
 
 -- Ensure track_stock column exists on products
 ALTER TABLE products ADD COLUMN IF NOT EXISTS track_stock integer NOT NULL DEFAULT 1;

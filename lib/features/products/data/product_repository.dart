@@ -42,12 +42,15 @@ class ProductRepository {
   static Future<List<Map<String, dynamic>>> getAll({
     String? categoryId,
     ProductTypeFilter typeFilter = ProductTypeFilter.all,
+    bool restaurantMenuOnly = false,
   }) async {
     final args = <dynamic>[..._currentBranchArgs];
     final categoryClause = categoryId != null ? ' AND p.category_id = ?' : '';
     if (categoryId != null) {
       args.add(categoryId);
     }
+    final menuClause =
+        restaurantMenuOnly ? ' AND p.is_restaurant_menu = 1' : '';
 
     return DatabaseService.rawQuery('''
       SELECT
@@ -63,6 +66,7 @@ class ProductRepository {
       WHERE p.deleted_at IS NULL
         AND COALESCE(p.branch_id, ?) = ?
         $categoryClause
+        $menuClause
         ${_typeFilterClause('p', typeFilter)}
       ORDER BY p.name ASC
       ''', args);
@@ -478,6 +482,7 @@ class ProductRepository {
     String? imageUrlsJson,
     bool showOnline = true,
     bool isFeatured = false,
+    bool restaurantMenu = false,
     String? categoryId,
     String? initialExpiryDate,
     String? initialBatchNumber,
@@ -520,11 +525,12 @@ class ProductRepository {
       'brand': brand,
       'description': description,
       'image_urls_json': imageUrlsJson,
-      'show_online': showOnline ? 1 : 0,
-      'is_featured': isFeatured ? 1 : 0,
-      'category_id': categoryId,
-      'track_stock': trackStock ? 1 : 0,
-      'has_variants': hasVariants ? 1 : 0,
+       'show_online': showOnline ? 1 : 0,
+       'is_featured': isFeatured ? 1 : 0,
+       'is_restaurant_menu': restaurantMenu ? 1 : 0,
+       'category_id': categoryId,
+       'track_stock': trackStock ? 1 : 0,
+       'has_variants': hasVariants ? 1 : 0,
       'created_at': now,
       'updated_at': now,
       'sync_status': 'pending',
