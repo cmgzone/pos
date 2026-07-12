@@ -108,6 +108,30 @@ class EmailOtpVerificationResponse {
 
 enum CloudAuthFailureKind { network, unauthorized, conflict, server }
 
+/// Thrown when a login email maps to more than one business and the caller
+/// did not yet specify which business to open.
+class CloudBusinessSelectionException implements Exception {
+  final List<Map<String, dynamic>> businesses;
+  final String loginSessionToken;
+
+  const CloudBusinessSelectionException({
+    required this.businesses,
+    this.loginSessionToken = '',
+  });
+
+  String? getName(String businessId) {
+    for (final business in businesses) {
+      if ((business['id']?.toString() ?? '') == businessId) {
+        final name = business['name'];
+        if (name == null) return businessId;
+        final text = name.toString().trim();
+        return text.isEmpty ? null : text;
+      }
+    }
+    return null;
+  }
+}
+
 class CloudAuthException implements Exception {
   final String message;
   final CloudAuthFailureKind kind;
@@ -433,6 +457,7 @@ class CloudAuthService {
     required String email,
     required String password,
     required String deviceId,
+    String? businessId,
   }) async {
     final normalizedUrl = backendUrl.trim();
     if (normalizedUrl.isEmpty) {
@@ -441,16 +466,21 @@ class CloudAuthService {
 
     final client = http.Client();
     try {
+      final requestBody = <String, dynamic>{
+        'email': email.trim().toLowerCase(),
+        'password': password,
+        'deviceId': deviceId,
+        'deviceName': _deviceName,
+      };
+      if (businessId != null && businessId.trim().isNotEmpty) {
+        requestBody['businessId'] = businessId.trim();
+      }
+
       final response = await client
           .post(
             Uri.parse('$normalizedUrl/auth/login'),
             headers: const {HttpHeaders.contentTypeHeader: 'application/json'},
-            body: jsonEncode({
-              'email': email.trim().toLowerCase(),
-              'password': password,
-              'deviceId': deviceId,
-              'deviceName': _deviceName,
-            }),
+            body: jsonEncode(requestBody),
           )
           .timeout(_timeout);
 
@@ -479,6 +509,22 @@ class CloudAuthService {
         throw CloudAuthException(
           _readText(body['error']) ?? 'Unexpected login response.',
           CloudAuthFailureKind.server,
+        );
+      }
+
+      // An email that owns several businesses must pick which one to open
+      // before we hand back a session.
+      if (body['needsBusinessSelection'] == true) {
+        final rawBusinesses = body['businesses'];
+        final businesses = rawBusinesses is List
+            ? rawBusinesses
+                .whereType<Map<dynamic, dynamic>>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+            : <Map<String, dynamic>>[];
+        throw CloudBusinessSelectionException(
+          businesses: businesses,
+          loginSessionToken: _readText(body['loginSessionToken']) ?? '',
         );
       }
 

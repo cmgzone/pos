@@ -38,6 +38,8 @@ class _LoginScreenState extends State<LoginScreen> {
   String _loginBusinessName = '';
   CloudAuthResponse? _cloudAuthResponse;
   String _cloudPasswordForLocalLogin = '';
+  String _selectedBusinessId = '';
+  List<Map<String, dynamic>> _pendingBusinesses = [];
 
   Future<void> _login() async {
     setState(() {
@@ -50,6 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _loginBusinessName = '';
       _cloudAuthResponse = null;
       _cloudPasswordForLocalLogin = '';
+      _selectedBusinessId = '';
+      _pendingBusinesses = [];
     });
 
     try {
@@ -73,8 +77,17 @@ class _LoginScreenState extends State<LoginScreen> {
             backendUrl: backendUrl,
             email: email,
             password: password,
+            businessId: _selectedBusinessId,
           );
           _cloudLoginSucceeded = true;
+        } on CloudBusinessSelectionException catch (error) {
+          if (!mounted) return;
+          await SyncSettingsService.setMyBusinesses(error.businesses);
+          setState(() {
+            _isLoading = false;
+            _pendingBusinesses = error.businesses;
+          });
+          return;
         } on CloudAuthException catch (error) {
           if (error.kind != CloudAuthFailureKind.network) {
             rethrow;
@@ -233,6 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required String backendUrl,
     required String email,
     required String password,
+    String businessId = '',
   }) async {
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
 
@@ -241,6 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
       email: email,
       password: password,
       deviceId: deviceId,
+      businessId: businessId,
     );
 
     _cloudAuthResponse = response;
@@ -383,6 +398,112 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Widget _buildBusinessPickerCard() {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 440),
+      padding: const EdgeInsets.all(40),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: colors.outline),
+        boxShadow: [...context.appPanelShadow],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(
+            Icons.business_outlined,
+            size: 48,
+            color: AppColors.primary,
+          ),
+          SizedBox(height: 24),
+          Text(
+            'Choose a business',
+            style: theme.textTheme.headlineMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'This account has access to more than one business. Select which '
+            'one to open.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          SizedBox(height: 28),
+          ..._pendingBusinesses.map((business) {
+            final name = _readBusinessText(business['name']) ??
+                business['id']?.toString() ??
+                'Business';
+            final subdomain =
+                _readBusinessText(business['publicSubdomain']) ?? '';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                ),
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        setState(() {
+                          _selectedBusinessId =
+                              business['id']?.toString() ?? '';
+                          _pendingBusinesses = [];
+                        });
+                        _login();
+                      },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (subdomain.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '$subdomain.pos.app',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          SizedBox(height: 8),
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () {
+                    setState(() {
+                      _pendingBusinesses = [];
+                      _selectedBusinessId = '';
+                    });
+                  },
+            child: const Text('Use a different account'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _readBusinessText(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
   }
 
   @override
@@ -628,9 +749,11 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
+    final effectiveCard =
+        _pendingBusinesses.isNotEmpty ? _buildBusinessPickerCard() : formCard;
     final desktopForm = SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Center(child: formCard),
+      child: Center(child: effectiveCard),
     );
     final mobileForm = SafeArea(
       child: LayoutBuilder(
@@ -645,7 +768,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
-              child: Center(child: formCard),
+              child: Center(child: effectiveCard),
             ),
           );
         },

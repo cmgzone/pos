@@ -9,8 +9,12 @@ import '../../core/services/external_app_launcher.dart';
 import '../../core/services/session_service.dart';
 import '../../core/services/shop_settings.dart';
 import '../../core/services/branch_service.dart';
+import '../../core/utils/error_messages.dart';
 import '../../core/services/sync_controller.dart';
 import '../../core/services/sync_settings_service.dart';
+import '../../core/services/sync_service.dart';
+import '../../core/services/cloud_auth_service.dart';
+import '../../core/services/local_business_reset_service.dart';
 import '../../core/services/license_service.dart';
 import '../../core/services/platform_notification_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -2186,6 +2190,18 @@ class AppShellState extends ConsumerState<AppShell> {
                           ),
                         ];
                       })(),
+                    if (_switchableBusinesses.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        child: ListTile(
+                          leading: const Icon(Icons.swap_horiz),
+                          title: const Text('Switch business'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _openSwitchBusinessDialog(context);
+                          },
+                        ),
+                      ),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -2207,6 +2223,183 @@ class AppShellState extends ConsumerState<AppShell> {
         ),
       ),
     );
+  }
+
+  List<Map<String, dynamic>> get _switchableBusinesses {
+    final currentBusinessId = SyncSettingsService.localBusinessId;
+    return SyncSettingsService.myBusinesses
+        .where((business) =>
+            (business['id']?.toString() ?? '') != currentBusinessId)
+        .toList();
+  }
+
+  Future<void> _openSwitchBusinessDialog(BuildContext context) async {
+    final businesses = _switchableBusinesses;
+    if (businesses.isEmpty) return;
+
+    final passwordController = TextEditingController();
+    String? selectedId = businesses.first['id']?.toString();
+    var isSwitching = false;
+    String? dialogError;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Switch business'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ...businesses.map((business) {
+                      final id = business['id']?.toString() ?? '';
+                      final name = business['name']?.toString() ?? id;
+                      return RadioListTile<String>(
+                        value: id,
+                        groupValue: selectedId,
+                        title: Text(name),
+                        onChanged: isSwitching
+                            ? null
+                            : (value) =>
+                                setDialogState(() => selectedId = value),
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Cloud password',
+                        hintText: 'Re-enter your password to switch',
+                      ),
+                    ),
+                    if (dialogError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          dialogError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSwitching
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSwitching
+                      ? null
+                      : () async {
+                          final password = passwordController.text;
+                          if (password.isEmpty) {
+                            setDialogState(
+                              () => dialogError = 'Enter your password.',
+                            );
+                            return;
+                          }
+                          final target = businesses.firstWhere(
+                            (b) => b['id']?.toString() == selectedId,
+                            orElse: () => businesses.first,
+                          );
+                          setDialogState(() {
+                            isSwitching = true;
+                            dialogError = null;
+                          });
+                          try {
+                            await _performSwitch(
+                              businessId: target['id']?.toString() ?? '',
+                              password: password,
+                            );
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+                          } catch (error) {
+                            setDialogState(() {
+                              isSwitching = false;
+                              dialogError = AppErrorMessage.from(
+                                error,
+                                fallback: 'Could not switch business.',
+                              );
+                            });
+                          }
+                        },
+                  child: isSwitching
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Switch'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _performSwitch({
+    required String businessId,
+    required String password,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud backend is not configured on this device.');
+    }
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final email = SessionService.currentUserEmail;
+
+    final response = await CloudAuthService.loginOnline(
+      backendUrl: backendUrl,
+      email: email,
+      password: password,
+      deviceId: deviceId,
+      businessId: businessId,
+    );
+
+    await LocalBusinessResetService.clearForBusinessSwitch();
+    await CloudAuthService.persistCloudResponse(response);
+
+    if (!mounted) return;
+    _showSwitchProgress();
+    try {
+      await SyncService.syncNow(
+        forceFullPull: true,
+        onProgress: (_) {},
+      );
+      await SyncSettingsService.setLocalBusinessId(businessId);
+    } finally {
+      if (mounted) _hideSwitchProgress();
+    }
+
+    if (mounted) {
+      setState(() {});
+      ref.invalidate(syncControllerProvider);
+    }
+  }
+
+  void _showSwitchProgress() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Switching business and syncing...')),
+    );
+  }
+
+  void _hideSwitchProgress() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
   }
 
   Widget _buildScreenStack(int currentIndex) {

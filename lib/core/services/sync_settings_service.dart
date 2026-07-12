@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +14,7 @@ class SyncSettingsService {
   static const _keyBackendUrl = 'sync_backend_url';
   static const _keyAutoSync = 'sync_auto_enabled';
   static const _keySyncScope = 'sync_scope_key';
+  static const _keyMyBusinesses = 'sync_my_businesses';
   static const _deprecatedBackendUrls = {
     'https://pos-e0hs.onrender.com',
     'https://pos-e0hs.onrender.com/api',
@@ -37,6 +40,37 @@ class SyncSettingsService {
 
   static String get savedBackendUrl =>
       _normalizeUrl(_prefs?.getString(_keyBackendUrl) ?? '');
+
+  /// Persisted list of businesses this account can switch between. Only set
+  /// for accounts that own more than one business.
+  static List<Map<String, dynamic>> get myBusinesses {
+    final raw = _prefs?.getString(_keyMyBusinesses);
+    if (raw == null || raw.isEmpty) {
+      return const [];
+    }
+    try {
+      final decoded = (jsonDecode(raw) as List?)?.whereType<Map>().toList();
+      return decoded
+              ?.map((e) => Map<String, dynamic>.from(e))
+              .toList() ??
+          const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> setMyBusinesses(List<Map<String, dynamic>> businesses) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    if (businesses.isEmpty) {
+      await prefs.remove(_keyMyBusinesses);
+      return;
+    }
+    await prefs.setString(
+      _keyMyBusinesses,
+      jsonEncode(businesses),
+    );
+  }
 
   static String get suggestedBackendUrl => AppConstants.apiBaseUrl;
 
