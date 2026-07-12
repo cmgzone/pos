@@ -72,7 +72,7 @@ void main() {
     );
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 100));
-      if (find.text('Quick actions').evaluate().isNotEmpty) break;
+      if (find.text('QUICK ACTIONS').evaluate().isNotEmpty) break;
     }
   }
 
@@ -84,7 +84,7 @@ void main() {
     );
 
     expect(find.textContaining('Charles'), findsOneWidget);
-    expect(find.text('Quick actions'), findsOneWidget);
+    expect(find.text('QUICK ACTIONS'), findsOneWidget);
     expect(find.text('Sell'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
