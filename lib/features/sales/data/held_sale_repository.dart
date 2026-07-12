@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/audit_log_service.dart';
@@ -25,12 +26,15 @@ class HeldSaleRepository {
     required String cashierName,
     required List<Map<String, dynamic>> items,
     String source = 'pos',
+    String? sourceRef,
+    String? id,
+    Transaction? txn,
   }) async {
-    final holdId = _uuid.v4();
+    final holdId = id ?? _uuid.v4();
     final now = DateTime.now().toIso8601String();
 
-    await DatabaseService.db.transaction((txn) async {
-      await txn.insert(_heldSalesTable, {
+    Future<void> exec(Transaction t) async {
+      await t.insert(_heldSalesTable, {
         'id': holdId,
         'branch_id': DatabaseService.currentBranchId,
         'name': name,
@@ -42,12 +46,13 @@ class HeldSaleRepository {
         'user_id': userId,
         'cashier_name': cashierName,
         'source': source,
+        'source_ref': sourceRef,
         'created_at': now,
         'updated_at': now,
       });
 
       for (final item in items) {
-        await txn.insert(_heldSaleItemsTable, {
+        await t.insert(_heldSaleItemsTable, {
           'id': _uuid.v4(),
           'held_sale_id': holdId,
           'product_id': item['product_id'],
@@ -78,7 +83,13 @@ class HeldSaleRepository {
           'updated_at': now,
         });
       }
-    });
+    }
+
+    if (txn != null) {
+      await exec(txn);
+    } else {
+      await DatabaseService.db.transaction(exec);
+    }
 
     await AuditLogService.log(
       action: 'hold',
@@ -86,6 +97,24 @@ class HeldSaleRepository {
       entityId: holdId,
     );
     return holdId;
+  }
+
+  /// Ids of restaurant bills already sent to POS for a given table order.
+  /// Used to make [sendToPos] idempotent so repeated taps never duplicate bills.
+  static Future<List<String>> existingRestaurantHoldIds(String sourceRef) async {
+    if (sourceRef.isEmpty) return const [];
+    final rows = await DatabaseService.rawQuery(
+      '''
+      SELECT id FROM $_heldSalesTable
+      WHERE source = ? AND source_ref = ?
+      ORDER BY created_at ASC, id ASC
+      ''',
+      ['restaurant', sourceRef],
+    );
+    return rows
+        .map((row) => (row['id'] as String? ?? '').trim())
+        .where((id) => id.isNotEmpty)
+        .toList();
   }
 
   static Future<List<Map<String, dynamic>>> getAll({String? source}) async {
@@ -143,17 +172,9 @@ class HeldSaleRepository {
             orderBy: 'created_at ASC, id ASC',
           );
 
-          await txn.delete(
-            _heldSaleItemsTable,
-            where: 'held_sale_id = ?',
-            whereArgs: [holdId],
-          );
-          await txn.delete(
-            _heldSalesTable,
-            where: 'id = ?',
-            whereArgs: [holdId],
-          );
-
+          // Read only. The hold is consumed (deleted) by the caller only after
+          // the items have been restored to the cart, so a refresh or UI
+          // failure can never destroy the bill.
           return {
             ...Map<String, dynamic>.from(holdRows.first),
             'items': itemRows

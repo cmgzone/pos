@@ -189,6 +189,7 @@ class RestaurantRepository {
   }) async {
     await _ensureWriteAccess('send table bills to POS');
     final orderId = table['order_id'] as String? ?? '';
+    final tableId = table['id'] as String? ?? '';
     final items = List<Map<String, dynamic>>.from(
       table['items'] as List<dynamic>? ?? const [],
     );
@@ -196,26 +197,49 @@ class RestaurantRepository {
       throw Exception('Add at least one item before checkout.');
     }
     final parts = splitCount.clamp(1, 20);
+
+    // Idempotency: a bill that was already sent to POS is returned as-is so
+    // repeated taps (or retries after a transient error) never duplicate bills.
+    final existing = await HeldSaleRepository.existingRestaurantHoldIds(orderId);
+    if (existing.isNotEmpty) return existing;
+
     final holdIds = <String>[];
-    for (var part = 0; part < parts; part++) {
-      final billItems = items
-          .map(
-            (item) => {
-              ...item,
-              'quantity': ((item['quantity'] as num?)?.toDouble() ?? 0) / parts,
-            },
-          )
-          .where((item) => (item['quantity'] as num) > 0.001)
-          .toList();
-      final total = billItems.fold<double>(
-        0,
-        (sum, item) =>
-            sum +
-            (item['quantity'] as num).toDouble() *
-                ((item['unit_price'] as num?)?.toDouble() ?? 0),
+    final now = DateTime.now().toIso8601String();
+
+    await DatabaseService.db.transaction((txn) async {
+      // Re-check inside the transaction so concurrent double-sends can't both
+      // create bills for the same order.
+      final orderRows = await txn.query(
+        ordersTable,
+        columns: const ['status'],
+        where: 'id = ? AND deleted_at IS NULL',
+        whereArgs: [orderId],
+        limit: 1,
       );
-      holdIds.add(
-        await HeldSaleRepository.createHold(
+      if (orderRows.isEmpty) throw Exception('Table order not found.');
+      if ((orderRows.first['status'] as String? ?? '') == 'checkout') {
+        return; // another caller already sent this order to POS
+      }
+
+      for (var part = 0; part < parts; part++) {
+        final billItems = items
+            .map(
+              (item) => {
+                ...item,
+                'quantity':
+                    ((item['quantity'] as num?)?.toDouble() ?? 0) / parts,
+              },
+            )
+            .where((item) => (item['quantity'] as num) > 0.001)
+            .toList();
+        final total = billItems.fold<double>(
+          0,
+          (sum, item) =>
+              sum +
+              (item['quantity'] as num).toDouble() *
+                  ((item['unit_price'] as num?)?.toDouble() ?? 0),
+        );
+        final holdId = await HeldSaleRepository.createHold(
           name: '${table['name']} · Bill ${part + 1}/$parts',
           subtotal: total,
           tax: 0,
@@ -225,11 +249,12 @@ class RestaurantRepository {
           cashierName: SessionService.currentUserName,
           items: billItems,
           source: 'restaurant',
-        ),
-      );
-    }
-    final now = DateTime.now().toIso8601String();
-    await DatabaseService.db.transaction((txn) async {
+          sourceRef: orderId,
+          txn: txn,
+        );
+        holdIds.add(holdId);
+      }
+
       await txn.update(
         ordersTable,
         {
@@ -245,9 +270,17 @@ class RestaurantRepository {
         tablesTable,
         {'status': 'checkout', 'updated_at': now, 'sync_status': 'pending'},
         where: 'id = ?',
-        whereArgs: [table['id']],
+        whereArgs: [tableId],
       );
     });
+
+    // If the in-transaction guard bailed out (another caller won the race),
+    // return the bills that caller created.
+    if (holdIds.isEmpty) {
+      final fallback =
+          await HeldSaleRepository.existingRestaurantHoldIds(orderId);
+      if (fallback.isNotEmpty) return fallback;
+    }
     return holdIds;
   }
 

@@ -3731,6 +3731,12 @@ class DatabaseService {
       column: 'source',
       definition: "TEXT NOT NULL DEFAULT 'pos'",
     );
+    await _ensureColumn(
+      database,
+      table: 'held_sales',
+      column: 'source_ref',
+      definition: 'TEXT',
+    );
   }
 
   static Future<void> _ensureAttendanceSchema(DatabaseExecutor database) async {

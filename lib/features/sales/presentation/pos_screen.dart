@@ -101,20 +101,38 @@ final quotationCustomerSearchProvider =
 
 final _quotationCustomerQueryProvider = StateProvider<String>((ref) => '');
 
-class PosScreen extends ConsumerWidget {
+class PosScreen extends ConsumerStatefulWidget {
   const PosScreen({super.key, this.initialHoldId});
 
   final String? initialHoldId;
-  static String? _pendingInitialHoldId;
 
-  Future<void> _resumeInitialHold(
-    BuildContext context,
-    WidgetRef ref,
-    String holdId,
-  ) async {
+  @override
+  ConsumerState<PosScreen> createState() => _PosScreenState();
+}
+
+class _PosScreenState extends ConsumerState<PosScreen> {
+  bool _initialHoldProcessed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final holdId = widget.initialHoldId;
+    if (holdId != null && holdId.isNotEmpty) {
+      // Process the requested held sale exactly once, after the first frame so
+      // we can safely surface feedback through the scaffold messenger.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_initialHoldProcessed) {
+          _initialHoldProcessed = true;
+          _resumeInitialHold(holdId);
+        }
+      });
+    }
+  }
+
+  Future<void> _resumeInitialHold(String holdId) async {
     final heldSale = await HeldSaleRepository.takeHold(holdId);
     ref.invalidate(heldSalesProvider);
-    if (!context.mounted) return;
+    if (!mounted) return;
     if (heldSale == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -141,7 +159,15 @@ class PosScreen extends ConsumerWidget {
     ref.read(discountProvider.notifier).state =
         _initialHoldDouble(heldSale['discount']);
     ref.read(appliedPromotionsProvider.notifier).state = const [];
-    if (!context.mounted) return;
+    // Consume the hold only after the cart has been successfully restored.
+    try {
+      await HeldSaleRepository.deleteHold(holdId);
+    } catch (_) {
+      // Best-effort: the cart is already restored, so even if the delete
+      // fails the bill is not lost and can be consumed again later.
+    }
+    ref.invalidate(heldSalesProvider);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${heldSale['name'] ?? 'Held sale'} restored to the cart.'),
@@ -154,7 +180,7 @@ class PosScreen extends ConsumerWidget {
       value is num ? value.toDouble() : (double.tryParse(value?.toString() ?? '') ?? 0.0);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width <= 800;
     final isWide = MediaQuery.of(context).size.width > 900;
     final cashierName = SessionService.currentUserName;
@@ -164,19 +190,6 @@ class PosScreen extends ConsumerWidget {
     final canOpenShifts = SessionService.canAccessFeature(
       UserAccessProfile.featureShifts,
     );
-
-    if (initialHoldId != null) {
-      _pendingInitialHoldId = initialHoldId;
-    }
-    if (_pendingInitialHoldId != null) {
-      final holdId = _pendingInitialHoldId!;
-      _pendingInitialHoldId = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          _resumeInitialHold(context, ref, holdId);
-        }
-      });
-    }
 
     ref.listen(pikiNavigateProvider, (_, next) {
       if (next != PikiNavTarget.pos || isWide) return;
@@ -4551,7 +4564,16 @@ class _CartSide extends ConsumerWidget {
       ref.read(discountProvider.notifier).state = _asDouble(
         heldSale['discount'],
       );
+      // Consume the hold only after the cart has been restored.
+      try {
+        await HeldSaleRepository.deleteHold(holdId);
+      } catch (_) {
+        // Best-effort: the cart is already restored, so a failed delete does
+        // not lose the bill.
+      }
+      ref.invalidate(heldSalesProvider);
 
+      if (!context.mounted) return;
       final message = adjustments.isEmpty
           ? '$holdName restored to the cart.'
           : '$holdName restored with ${adjustments.length} adjustment(s). ${adjustments.first}';
