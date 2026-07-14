@@ -5,6 +5,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
@@ -1304,14 +1305,9 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return StitchCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-      ),
+      radius: AppRadius.lg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

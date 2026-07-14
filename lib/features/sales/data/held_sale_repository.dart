@@ -95,13 +95,16 @@ class HeldSaleRepository {
       action: 'hold',
       entityTable: _heldSalesTable,
       entityId: holdId,
+      executor: txn,
     );
     return holdId;
   }
 
-  /// Ids of restaurant bills already sent to POS for a given table order.
-  /// Used to make [sendToPos] idempotent so repeated taps never duplicate bills.
-  static Future<List<String>> existingRestaurantHoldIds(String sourceRef) async {
+  /// Ids of restaurant bills already prepared for a given table order.
+  /// Used to make bill preparation idempotent so repeated taps never duplicate bills.
+  static Future<List<String>> existingRestaurantHoldIds(
+    String sourceRef,
+  ) async {
     if (sourceRef.isEmpty) return const [];
     final rows = await DatabaseService.rawQuery(
       '''
@@ -137,6 +140,7 @@ class HeldSaleRepository {
         user_id,
         cashier_name,
         source,
+        source_ref,
         created_at,
         updated_at
       FROM $_heldSalesTable
@@ -148,7 +152,7 @@ class HeldSaleRepository {
     return rows.map(_normalizeHoldSummary).toList();
   }
 
-  /// Held sales created from the restaurant module (bills sent to POS).
+  /// Bills created by the restaurant module and waiting for payment.
   static Future<List<Map<String, dynamic>>> getRestaurantBills() =>
       getAll(source: 'restaurant');
 
@@ -373,6 +377,22 @@ class HeldSaleRepository {
         continue;
       }
 
+      // Services and restaurant dishes commonly do not track inventory.
+      // They must survive hold/bill restoration even when their stock is zero.
+      if (!UnitUtils.tracksStock(product)) {
+        refreshedItems.add({
+          ...item,
+          'product_name': baseName,
+          'variant_name': (variant?['name'] as String?) ?? variantName,
+          'variant_color_id': color?['id'] as String? ?? variantColorId,
+          'variant_color_name': (color?['name'] as String?) ?? variantColorName,
+          'cost': _asDouble((variant ?? product)['cost']) * factor,
+          'max_stock': 999999.0,
+          'stock_on_hand': 999999.0,
+        });
+        continue;
+      }
+
       final stockSource = color ?? variant ?? product;
       final currentStockOnHand = _asDouble(stockSource['stock']);
       final maxStock = factor <= 0
@@ -424,6 +444,7 @@ class HeldSaleRepository {
       'user_id': row['user_id'] as String?,
       'cashier_name': row['cashier_name'] as String?,
       'source': row['source'] as String? ?? 'pos',
+      'source_ref': row['source_ref'] as String?,
       'created_at': row['created_at'] as String? ?? '',
       'updated_at': row['updated_at'] as String? ?? '',
     };

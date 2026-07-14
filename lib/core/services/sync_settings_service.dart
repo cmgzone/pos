@@ -50,26 +50,23 @@ class SyncSettingsService {
     }
     try {
       final decoded = (jsonDecode(raw) as List?)?.whereType<Map>().toList();
-      return decoded
-              ?.map((e) => Map<String, dynamic>.from(e))
-              .toList() ??
+      return decoded?.map((e) => Map<String, dynamic>.from(e)).toList() ??
           const [];
     } catch (_) {
       return const [];
     }
   }
 
-  static Future<void> setMyBusinesses(List<Map<String, dynamic>> businesses) async {
+  static Future<void> setMyBusinesses(
+    List<Map<String, dynamic>> businesses,
+  ) async {
     final prefs = _prefs;
     if (prefs == null) return;
     if (businesses.isEmpty) {
       await prefs.remove(_keyMyBusinesses);
       return;
     }
-    await prefs.setString(
-      _keyMyBusinesses,
-      jsonEncode(businesses),
-    );
+    await prefs.setString(_keyMyBusinesses, jsonEncode(businesses));
   }
 
   static String get suggestedBackendUrl => AppConstants.apiBaseUrl;
@@ -201,6 +198,34 @@ class SyncSettingsService {
 
     final created = _uuid.v4();
     await _prefs!.setString(AppConstants.keySyncDeviceId, created);
+    return created;
+  }
+
+  /// Creates a candidate identity without changing the active account's
+  /// persisted device binding. Registration commits it only after the server
+  /// has accepted the new account and the old local snapshot is safe to leave.
+  static String generateFreshDeviceId() => _uuid.v4();
+
+  static Future<void> setDeviceId(String? value) async {
+    await init();
+    final normalized = value?.trim() ?? '';
+    if (normalized.isEmpty) {
+      await _prefs!.remove(AppConstants.keySyncDeviceId);
+      return;
+    }
+    await _prefs!.setString(AppConstants.keySyncDeviceId, normalized);
+  }
+
+  /// Generates a brand-new device identity and persists it, discarding any
+  /// previously stored device id.
+  ///
+  /// Use this when registering a new account on a device that already belongs
+  /// to another account: each account must be bound to its own device id, and
+  /// reusing the install-wide id would reassign the device from the existing
+  /// business to the new one on the backend.
+  static Future<String> regenerateDeviceId() async {
+    final created = generateFreshDeviceId();
+    await setDeviceId(created);
     return created;
   }
 

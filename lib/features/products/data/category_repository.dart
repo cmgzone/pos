@@ -23,6 +23,27 @@ class CategoryRepository {
     );
   }
 
+  static Future<List<Map<String, dynamic>>> getForRetailPos() async {
+    return DatabaseService.rawQuery(
+      '''
+      SELECT c.*
+      FROM $_table c
+      WHERE c.deleted_at IS NULL
+        AND COALESCE(c.branch_id, ?) = ?
+        AND EXISTS (
+          SELECT 1
+          FROM products p
+          WHERE p.category_id = c.id
+            AND p.deleted_at IS NULL
+            AND COALESCE(p.branch_id, ?) = ?
+            AND COALESCE(p.is_restaurant_menu, 0) = 0
+        )
+      ORDER BY c.name ASC
+      ''',
+      [..._currentBranchArgs, ..._currentBranchArgs],
+    );
+  }
+
   /// Get a single category by ID
   static Future<Map<String, dynamic>?> getById(String id) async {
     final rows = await DatabaseService.queryAll(

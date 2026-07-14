@@ -18,6 +18,7 @@ import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/empty_state_widget.dart';
+import '../../../widgets/skeleton.dart';
 import '../../agent/data/piki_models.dart';
 import '../../loyalty/data/loyalty_repository.dart';
 import '../../gift_cards/data/gift_card_repository.dart';
@@ -102,9 +103,14 @@ final quotationCustomerSearchProvider =
 final _quotationCustomerQueryProvider = StateProvider<String>((ref) => '');
 
 class PosScreen extends ConsumerStatefulWidget {
-  const PosScreen({super.key, this.initialHoldId});
+  const PosScreen({
+    super.key,
+    this.initialHoldId,
+    this.embeddedInAppShell = false,
+  });
 
   final String? initialHoldId;
+  final bool embeddedInAppShell;
 
   @override
   ConsumerState<PosScreen> createState() => _PosScreenState();
@@ -156,8 +162,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     }
     ref.read(cartProvider.notifier).clear();
     ref.read(cartProvider.notifier).restoreHeldItems(items);
-    ref.read(discountProvider.notifier).state =
-        _initialHoldDouble(heldSale['discount']);
+    ref.read(discountProvider.notifier).state = _initialHoldDouble(
+      heldSale['discount'],
+    );
     ref.read(appliedPromotionsProvider.notifier).state = const [];
     // Consume the hold only after the cart has been successfully restored.
     try {
@@ -170,14 +177,17 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${heldSale['name'] ?? 'Held sale'} restored to the cart.'),
+        content: Text(
+          '${heldSale['name'] ?? 'Held sale'} restored to the cart.',
+        ),
         backgroundColor: AppColors.success,
       ),
     );
   }
 
-  double _initialHoldDouble(Object? value) =>
-      value is num ? value.toDouble() : (double.tryParse(value?.toString() ?? '') ?? 0.0);
+  double _initialHoldDouble(Object? value) => value is num
+      ? value.toDouble()
+      : (double.tryParse(value?.toString() ?? '') ?? 0.0);
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +218,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        leading: isMobile
+        leading: !widget.embeddedInAppShell && isMobile
             ? IconButton(
                 icon: Icon(Icons.menu),
                 onPressed: () =>
@@ -218,21 +228,24 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         automaticallyImplyLeading: false,
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkAccent
-                    : AppColors.primary,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
+            if (!widget.embeddedInAppShell) ...[
+              Container(
+                key: const ValueKey('pos-header-module-badge'),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? AppColors.darkAccent
+                      : AppColors.primary,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Icon(
+                  Icons.point_of_sale_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
-              child: Icon(
-                Icons.point_of_sale_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-            SizedBox(width: AppSpacing.sm),
+              SizedBox(width: AppSpacing.sm),
+            ],
             Flexible(
               child: Text(
                 ShopSettings.shopName,
@@ -261,42 +274,58 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           SizedBox(width: AppSpacing.lg),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final quotationsEnabled = ShopSettings.quotationsEnabled;
-          final posMode = ref.watch(posModeProvider);
-          // Responsive: side-by-side on wide screens, full-width + bottom bar on narrow
-          final content = constraints.maxWidth > 900
-              ? Row(
-                  children: [
-                    Expanded(flex: 7, child: _ProductSide()),
-                    Container(
-                      width: 1,
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                    SizedBox(
-                      width: 360,
-                      child: TrainingAnchor(
-                        id: 'pos.cart',
-                        child: posMode == PosMode.quotation
-                            ? _QuotationCartSide()
-                            : _CartSide(),
-                      ),
-                    ),
-                  ],
-                )
-              : _ProductSide(); // Narrow/medium: full screen products + bottom action bar
+      body: Column(
+        children: [
+          if (syncState.isConfigured && !syncState.isOnline)
+            StatusBanner.offline(
+              onRetry: syncState.isSyncing
+                  ? null
+                  : () {
+                      unawaited(
+                        ref.read(syncControllerProvider.notifier).syncNow(),
+                      );
+                    },
+            ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final quotationsEnabled = ShopSettings.quotationsEnabled;
+                final posMode = ref.watch(posModeProvider);
+                // Responsive: side-by-side on wide screens, full-width + bottom bar on narrow
+                final content = constraints.maxWidth > 900
+                    ? Row(
+                        children: [
+                          Expanded(flex: 7, child: _ProductSide()),
+                          Container(
+                            width: 1,
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                          SizedBox(
+                            width: 360,
+                            child: TrainingAnchor(
+                              id: 'pos.cart',
+                              child: posMode == PosMode.quotation
+                                  ? _QuotationCartSide()
+                                  : _CartSide(),
+                            ),
+                          ),
+                        ],
+                      )
+                    : _ProductSide(); // Narrow/medium: full screen products + bottom action bar
 
-          if (!quotationsEnabled) {
-            return content;
-          }
-          return Column(
-            children: [
-              _PosModeTabBar(),
-              Expanded(child: content),
-            ],
-          );
-        },
+                if (!quotationsEnabled) {
+                  return content;
+                }
+                return Column(
+                  children: [
+                    _PosModeTabBar(),
+                    Expanded(child: content),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: !isWide
           ? TrainingAnchor(
@@ -1339,6 +1368,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
     );
     if (result == true) {
       ref.invalidate(filteredProductsProvider);
+      ref.invalidate(posCategoriesProvider);
       ref.invalidate(productsProvider(null));
       _clearSearch(refocus: Platform.isWindows);
     } else if ((initialSearch ?? '').trim().isNotEmpty) {
@@ -1852,7 +1882,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
       return _ServiceOnlyPosShortcut(onTap: _openServicesPage);
     }
 
-    final categoriesAsync = ref.watch(categoriesProvider);
+    final categoriesAsync = ref.watch(posCategoriesProvider);
     final productsAsync = ref.watch(filteredProductsProvider);
     final selectedCategory = ref.watch(selectedCategoryProvider);
     final searchQuery = ref.watch(productSearchProvider);
@@ -2092,10 +2122,26 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         }
                         return EmptyStateWidget(
                           icon: Icons.inventory_2_outlined,
-                          title: 'No products found',
+                          title: selectedCategory == null
+                              ? 'No products to sell'
+                              : 'Nothing in this category',
                           subtitle: selectedCategory == null
-                              ? 'Add products to start selling from this POS.'
-                              : 'Try a different category or clear your filters.',
+                              ? 'Add products, or search by name, SKU, or barcode to start a sale.'
+                              : 'Try another category or clear filters to see all products.',
+                          actionLabel:
+                              SessionService.canAccessFeature(
+                                UserAccessProfile.featureProducts,
+                              )
+                              ? 'Add product'
+                              : null,
+                          actionIcon: Icons.add_rounded,
+                          onAction:
+                              SessionService.canAccessFeature(
+                                UserAccessProfile.featureProducts,
+                              )
+                              ? () => _openProductForm()
+                              : null,
+                          compact: true,
                         );
                       }
                       if (viewMode == PosProductViewMode.compact) {
@@ -2141,35 +2187,21 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         },
                       );
                     },
-                    loading: () => GridView.builder(
+                    loading: () => SkeletonProductGrid(
+                      crossAxisCount: gridColumns,
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: gridColumns,
-                        mainAxisExtent: 144,
-                        crossAxisSpacing: AppSpacing.sm,
-                        mainAxisSpacing: AppSpacing.sm,
-                      ),
-                      itemCount: 8,
-                      itemBuilder: (_, _) => Container(
-                        decoration: BoxDecoration(
-                          color:
-                              (Theme.of(context).brightness == Brightness.dark
-                                      ? AppColors.darkSurfaceHighlight
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.surfaceContainerHighest)
-                                  .withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                        ),
-                      ),
                     ),
-                    error: (e, _) => Center(
-                      child: Text(
-                        AppErrorMessage.from(
-                          e,
-                          fallback: AppErrorMessage.loadFailed,
-                        ),
+                    error: (e, _) => EmptyStateWidget(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Could not load products',
+                      subtitle: AppErrorMessage.from(
+                        e,
+                        fallback: AppErrorMessage.loadFailed,
                       ),
+                      actionLabel: 'Retry',
+                      actionIcon: Icons.refresh_rounded,
+                      onAction: () => ref.invalidate(filteredProductsProvider),
+                      compact: true,
                     ),
                   ),
                 ),
@@ -3862,7 +3894,7 @@ class _CartSide extends ConsumerWidget {
                 ),
                 SizedBox(height: AppSpacing.xs),
                 Text(
-                  'Tap products to add them to your sale.',
+                  'Scan a barcode or search products, then tap to add them.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: isDark

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { splitSqlStatements } = require('../src/sqlStatements');
+const { syncTables } = require('../src/syncTables');
 
 test('splitSqlStatements keeps semicolons inside string literals', () => {
   const sql = `
@@ -74,4 +75,60 @@ test('database initialization includes conflict-safe POS effect tables', () => {
   );
   assert.match(sql, /ADD COLUMN IF NOT EXISTS whatsapp_waba_id text/i);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS whatsapp_access_token text/i);
+});
+
+test('every cursor-synced table declares its complete sync schema', () => {
+  const sql = fs.readFileSync(
+    path.resolve(__dirname, '..', 'sql', 'init.sql'),
+    'utf8',
+  );
+  const expectedColumns = new Map(
+    syncTables.map(({ name, columns }) => [
+      name,
+      new Set([...columns, 'business_id', 'server_revision']),
+    ]),
+  );
+  const declaredColumns = new Map(
+    syncTables.map(({ name }) => [name, new Set()]),
+  );
+
+  for (const rawStatement of splitSqlStatements(sql)) {
+    const statement = rawStatement
+      .replace(/--[^\r\n]*/g, ' ')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .trim();
+    const createMatch = statement.match(
+      /^CREATE TABLE IF NOT EXISTS\s+([a-z_][a-z0-9_]*)\s*\(([\s\S]*)\)$/i,
+    );
+
+    if (createMatch && declaredColumns.has(createMatch[1])) {
+      const columns = declaredColumns.get(createMatch[1]);
+      for (const column of expectedColumns.get(createMatch[1])) {
+        const declaration = new RegExp(`(?:^|,)\\s*${column}\\s+[a-z]`, 'i');
+        if (declaration.test(createMatch[2])) {
+          columns.add(column);
+        }
+      }
+    }
+
+    const alterMatch = statement.match(
+      /^ALTER TABLE\s+([a-z_][a-z0-9_]*)\s+ADD COLUMN IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/i,
+    );
+    if (alterMatch && declaredColumns.has(alterMatch[1])) {
+      declaredColumns.get(alterMatch[1]).add(alterMatch[2]);
+    }
+  }
+
+  const missing = [];
+  for (const { name } of syncTables) {
+    const columns = declaredColumns.get(name);
+    const absent = [...expectedColumns.get(name)].filter(
+      (column) => !columns.has(column),
+    );
+    if (absent.length > 0) {
+      missing.push({ table: name, columns: absent });
+    }
+  }
+
+  assert.deepEqual(missing, []);
 });

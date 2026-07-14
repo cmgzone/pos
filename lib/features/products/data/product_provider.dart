@@ -10,6 +10,12 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
   return CategoryRepository.getAll();
 });
 
+final posCategoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  return CategoryRepository.getForRetailPos();
+});
+
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final posProductTypeFilterProvider = StateProvider<ProductTypeFilter>(
   (ref) => ProductTypeFilter.all,
@@ -48,6 +54,7 @@ final filteredProductsProvider = FutureProvider<List<Map<String, dynamic>>>((
   return ProductRepository.getAll(
     categoryId: categoryId,
     typeFilter: typeFilter,
+    excludeRestaurantMenu: true,
   );
 });
 

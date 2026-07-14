@@ -5,6 +5,13 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const DEFAULT_LICENSE_SIGNING_SECRET =
   'velora-pos-dev-license-secret-change-me';
+// Dev Ed25519 keypair (raw 32-byte seed / public key, base64). Server-side
+// only — the matching public key is embedded in the app for verification, the
+// private key must be overridden in production and never ships in the APK.
+const DEFAULT_LICENSE_SIGNING_PRIVATE_KEY =
+  'hQO+bm/zi/2a/C+43BNRWL7jg5HPLO3syXtYTnDC1gE=';
+const DEFAULT_LICENSE_SIGNING_PUBLIC_KEY =
+  'ANELBBdGdvDqdj23GqZQi9eZMYZ0kUASLQHs3t7i/+k=';
 const DEFAULT_PLATFORM_ADMIN_PASSWORD = 'superadmin123';
 const DEFAULT_PLATFORM_JWT_SECRET = 'velora-platform-jwt-super-secret-dev';
 const DEFAULT_EMAIL_OTP_SECRET = 'piki-pos-email-otp-dev-secret';
@@ -64,6 +71,12 @@ const config = {
   licenseSigningSecret:
     process.env.LICENSE_SIGNING_SECRET?.trim() ||
     DEFAULT_LICENSE_SIGNING_SECRET,
+  licenseSigningPrivateKey:
+    process.env.LICENSE_SIGNING_PRIVATE_KEY?.trim() ||
+    DEFAULT_LICENSE_SIGNING_PRIVATE_KEY,
+  licenseSigningPublicKey:
+    process.env.LICENSE_SIGNING_PUBLIC_KEY?.trim() ||
+    DEFAULT_LICENSE_SIGNING_PUBLIC_KEY,
   platformAdminEmail: process.env.PLATFORM_ADMIN_EMAIL?.trim() || 'superadmin@velora.pos',
   platformAdminPassword:
     process.env.PLATFORM_ADMIN_PASSWORD || DEFAULT_PLATFORM_ADMIN_PASSWORD,
@@ -136,7 +149,7 @@ const config = {
     process.env.OTP_FROM_EMAIL?.trim() ||
     process.env.EMAIL_OTP_FROM?.trim() ||
     'Piki POS <alerts@notify.pikipos.com>',
-  emailOtpRequired: parseBooleanEnv(process.env.EMAIL_OTP_REQUIRED, true),
+  emailOtpRequired: false,
   emailOtpTtlMinutes: positiveNumberEnv(process.env.EMAIL_OTP_TTL_MINUTES, 10),
   emailOtpCooldownSeconds: positiveNumberEnv(
     process.env.EMAIL_OTP_COOLDOWN_SECONDS,

@@ -196,4 +196,54 @@ void main() {
       await DatabaseService.overrideDatabasePathForTesting(null);
     },
   );
+
+  test(
+    'missing database snapshot marker triggers update recovery pull',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+
+      await DatabaseService.overrideDatabasePathForTesting(':memory:');
+      await DatabaseService.initialize();
+
+      expect(
+        await SyncService.localSnapshotNeedsRecoveryForTesting(
+          cursor: '845',
+          businessId: 'business-a',
+        ),
+        isTrue,
+      );
+      expect(
+        await SyncService.localSnapshotNeedsRecoveryForTesting(
+          cursor: '0',
+          businessId: 'business-a',
+        ),
+        isFalse,
+      );
+
+      await SyncService.writeLocalSnapshotMarkerForTesting(
+        businessId: 'business-a',
+        cursor: '845',
+        scopeKey: 'admin',
+      );
+
+      expect(
+        await SyncService.localSnapshotNeedsRecoveryForTesting(
+          cursor: '845',
+          businessId: 'business-a',
+        ),
+        isFalse,
+      );
+      expect(
+        await SyncService.localSnapshotNeedsRecoveryForTesting(
+          cursor: '845',
+          businessId: 'business-b',
+        ),
+        isTrue,
+      );
+
+      await DatabaseService.overrideDatabasePathForTesting(null);
+    },
+  );
 }

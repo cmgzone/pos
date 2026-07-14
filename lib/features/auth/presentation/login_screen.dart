@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/cloud_auth_service.dart';
-import '../../../core/services/database_service.dart';
 import '../../../core/services/license_service.dart';
 import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/session_service.dart';
@@ -12,10 +11,13 @@ import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/piki_mark.dart';
 import '../../app/app_shell.dart';
+import '../../products/data/product_repository.dart';
 import '../data/auth_exception.dart';
 import '../data/auth_service.dart';
 import '../data/auth_password_service.dart';
+import '../data/user_repository.dart';
 import 'sign_up_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,7 +43,8 @@ class _LoginScreenState extends State<LoginScreen> {
   String _selectedBusinessId = '';
   List<Map<String, dynamic>> _pendingBusinesses = [];
 
-  Future<void> _login() async {
+  Future<void> _login({String businessId = ''}) async {
+    final requestedBusinessId = businessId.trim();
     setState(() {
       _isLoading = true;
       _error = null;
@@ -52,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _loginBusinessName = '';
       _cloudAuthResponse = null;
       _cloudPasswordForLocalLogin = '';
-      _selectedBusinessId = '';
+      _selectedBusinessId = requestedBusinessId;
       _pendingBusinesses = [];
     });
 
@@ -69,15 +72,40 @@ class _LoginScreenState extends State<LoginScreen> {
       final backendUrl = SyncSettingsService.backendUrl;
       Map<String, dynamic>? signedInUser;
       var allowLocalFallback = backendUrl.isEmpty;
+      BusinessSwitchBlockedException? switchBlock;
 
       if (backendUrl.isNotEmpty) {
+        try {
+          _updateLoadingStatus(
+            'Securing current business changes...',
+            progress: 0.03,
+          );
+          await LocalBusinessResetService.prepareForBusinessSwitch(
+            onProgress: (progress) {
+              _updateLoadingStatus(
+                progress.message,
+                progress: progress.value == null
+                    ? null
+                    : 0.03 + (progress.value! * 0.04),
+              );
+            },
+          );
+        } on BusinessSwitchBlockedException catch (error) {
+          // The typed credentials may still belong to this local business. In
+          // that case offline/local login is safe and must remain available.
+          switchBlock = error;
+          allowLocalFallback = true;
+        }
+      }
+
+      if (backendUrl.isNotEmpty && switchBlock == null) {
         try {
           _updateLoadingStatus('Verifying with cloud...', progress: 0.08);
           signedInUser = await _tryOnlineLogin(
             backendUrl: backendUrl,
             email: email,
             password: password,
-            businessId: _selectedBusinessId,
+            businessId: requestedBusinessId,
           );
           _cloudLoginSucceeded = true;
         } on CloudBusinessSelectionException catch (error) {
@@ -102,11 +130,49 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!allowLocalFallback) {
           throw Exception('Cloud sign in is required for this account.');
         }
-        signedInUser = await _tryLocalLogin(
-          email: email,
-          password: password,
-          requireCloudVerified: backendUrl.isNotEmpty,
-        );
+        try {
+          signedInUser = await _tryLocalLogin(
+            email: email,
+            password: password,
+            requireCloudVerified: backendUrl.isNotEmpty,
+          );
+        } catch (_) {
+          if (switchBlock != null) {
+            throw switchBlock;
+          }
+          rethrow;
+        }
+      }
+
+      // Older builds could replace the stored device ID during a failed
+      // signup, or let cloud login move the binding before the local switch
+      // guard ran. If the typed credentials match this local business, repair
+      // that exact binding online without wiping its pending SQLite rows.
+      if (switchBlock != null && backendUrl.isNotEmpty) {
+        final localUser = signedInUser;
+        final currentBusinessId = SyncSettingsService.localBusinessId.trim();
+        if (currentBusinessId.isNotEmpty) {
+          try {
+            _updateLoadingStatus(
+              'Repairing this device connection...',
+              progress: 0.08,
+            );
+            signedInUser = await _tryOnlineLogin(
+              backendUrl: backendUrl,
+              email: email,
+              password: password,
+              businessId: currentBusinessId,
+            );
+            _cloudLoginSucceeded = true;
+            switchBlock = null;
+          } on CloudAuthException {
+            signedInUser = localUser;
+            _resetCloudAttempt();
+          } on CloudBusinessSelectionException {
+            signedInUser = localUser;
+            _resetCloudAttempt();
+          }
+        }
       }
       var authenticatedUser = signedInUser;
 
@@ -135,10 +201,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final cloudResponse = _cloudAuthResponse;
         if (cloudResponse != null) {
           await CloudAuthService.persistCloudResponse(cloudResponse);
-          authenticatedUser = await _upsertCloudUser(
+          authenticatedUser = await UserRepository.upsertCloudAuthenticatedUser(
             cloudUser: cloudResponse.user,
-            email: email,
-            passwordForLocalLogin: _cloudPasswordForLocalLogin,
+            fallbackEmail: email,
+            passwordHash: _cloudPasswordForLocalLogin,
           );
         }
 
@@ -228,17 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<bool> _hasNoLocalProducts() async {
-    final rows = await DatabaseService.rawQuery(
-      'SELECT COUNT(*) AS count FROM products WHERE deleted_at IS NULL',
-    );
-    if (rows.isEmpty) {
-      return true;
-    }
-    final count = rows.first['count'];
-    if (count is int) {
-      return count == 0;
-    }
-    return int.tryParse(count?.toString() ?? '0') == 0;
+    return !(await ProductRepository.hasRetailProducts());
   }
 
   /// Attempt to authenticate against the cloud backend.
@@ -258,11 +314,20 @@ class _LoginScreenState extends State<LoginScreen> {
       businessId: businessId,
     );
 
+    final incomingBusinessId = ((response.business['id'] as String?) ?? '')
+        .trim();
+    final requestedBusinessId = businessId.trim();
+    if (requestedBusinessId.isNotEmpty &&
+        incomingBusinessId != requestedBusinessId) {
+      throw const CloudAuthException(
+        'The cloud account did not match the selected local business.',
+        CloudAuthFailureKind.unauthorized,
+      );
+    }
+
     _cloudAuthResponse = response;
     _cloudPasswordForLocalLogin = AuthPasswordService.hashPassword(password);
 
-    final incomingBusinessId = ((response.business['id'] as String?) ?? '')
-        .trim();
     if (incomingBusinessId.isNotEmpty) {
       _loginBusinessId = incomingBusinessId;
     }
@@ -273,6 +338,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     return response.user;
+  }
+
+  void _resetCloudAttempt() {
+    _cloudLoginSucceeded = false;
+    _loginBusinessId = '';
+    _loginBusinessName = '';
+    _cloudAuthResponse = null;
+    _cloudPasswordForLocalLogin = '';
   }
 
   /// Attempt to authenticate against the local SQLite database.
@@ -312,77 +385,6 @@ class _LoginScreenState extends State<LoginScreen> {
     return user;
   }
 
-  Future<Map<String, dynamic>> _upsertCloudUser({
-    required Map<String, dynamic> cloudUser,
-    required String email,
-    required String passwordForLocalLogin,
-  }) async {
-    final userId = (cloudUser['id'] as String?) ?? '';
-    final now = DateTime.now().toIso8601String();
-
-    if (userId.isEmpty) {
-      return cloudUser;
-    }
-
-    final existingLocal = await DatabaseService.rawQuery(
-      'SELECT id FROM users WHERE id = ? LIMIT 1',
-      [userId],
-    );
-
-    if (existingLocal.isEmpty) {
-      await DatabaseService.db.insert('users', {
-        'id': userId,
-        'name': (cloudUser['name'] as String?) ?? '',
-        'email': (cloudUser['email'] as String?) ?? email,
-        'phone': (cloudUser['phone'] as String?) ?? '',
-        'password': passwordForLocalLogin,
-        'role': (cloudUser['role'] as String?) ?? 'CASHIER',
-        'custom_role_id': cloudUser['custom_role_id'] as String?,
-        'feature_access_json': cloudUser['feature_access_json'] as String?,
-        'allowed_service_ids_json':
-            cloudUser['allowed_service_ids_json'] as String?,
-        'allowed_branch_ids_json':
-            cloudUser['allowed_branch_ids_json'] as String?,
-        'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
-        'service_order_scope':
-            (cloudUser['service_order_scope'] as String?) ??
-            'all_visible_services',
-        'created_at': (cloudUser['created_at'] as String?) ?? now,
-        'updated_at': (cloudUser['updated_at'] as String?) ?? now,
-        'cloud_verified_at': now,
-        'sync_status': 'synced',
-      });
-    } else {
-      await DatabaseService.db.update(
-        'users',
-        {
-          'name': (cloudUser['name'] as String?) ?? '',
-          'email': (cloudUser['email'] as String?) ?? email,
-          'phone': (cloudUser['phone'] as String?) ?? '',
-          'password': passwordForLocalLogin,
-          'role': (cloudUser['role'] as String?) ?? 'CASHIER',
-          'custom_role_id': cloudUser['custom_role_id'] as String?,
-          'feature_access_json': cloudUser['feature_access_json'] as String?,
-          'allowed_service_ids_json':
-              cloudUser['allowed_service_ids_json'] as String?,
-          'allowed_branch_ids_json':
-              cloudUser['allowed_branch_ids_json'] as String?,
-          'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
-          'service_order_scope':
-              (cloudUser['service_order_scope'] as String?) ??
-              'all_visible_services',
-          'updated_at': now,
-          'cloud_verified_at': now,
-          'sync_status': 'synced',
-        },
-        where: 'id = ?',
-        whereArgs: [userId],
-      );
-    }
-
-    return await DatabaseService.queryById('users', userId) ?? cloudUser;
-  }
-
   Future<void> _persistCurrentBusinessContext(String businessId) async {
     if (businessId.isNotEmpty) {
       await SyncSettingsService.setLocalBusinessId(businessId);
@@ -416,16 +418,13 @@ class _LoginScreenState extends State<LoginScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.business_outlined,
-            size: 48,
-            color: AppColors.primary,
-          ),
+          Icon(Icons.business_outlined, size: 48, color: AppColors.primary),
           SizedBox(height: 24),
           Text(
             'Choose a business',
-            style: theme.textTheme.headlineMedium
-                ?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
           SizedBox(height: 8),
           Text(
@@ -435,7 +434,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           SizedBox(height: 28),
           ..._pendingBusinesses.map((business) {
-            final name = _readBusinessText(business['name']) ??
+            final name =
+                _readBusinessText(business['name']) ??
                 business['id']?.toString() ??
                 'Business';
             final subdomain =
@@ -458,7 +458,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               business['id']?.toString() ?? '';
                           _pendingBusinesses = [];
                         });
-                        _login();
+                        _login(businessId: _selectedBusinessId);
                       },
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,6 +511,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final formCard = Container(
+      width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 440),
       padding: const EdgeInsets.all(40),
       decoration: BoxDecoration(
@@ -531,46 +532,20 @@ class _LoginScreenState extends State<LoginScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Logo
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Image.asset(
-              'assets/images/logo.png',
-              width: 72,
-              height: 72,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primary,
-                        Theme.of(context).colorScheme.secondary,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Icon(
-                    Icons.point_of_sale_rounded,
-                    size: 36,
-                    color: Colors.white,
-                  ),
-                );
-              },
-            ),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: PikiMark(size: 72, showShadow: true),
           ),
           SizedBox(height: 28),
           Text(
-            'Welcome Back',
+            'Welcome back',
             style: Theme.of(
               context,
             ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           SizedBox(height: 8),
           Text(
-            'Sign in to Piki POS',
+            'Your counter is right where you left it.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           SizedBox(height: 36),
@@ -749,8 +724,9 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
-    final effectiveCard =
-        _pendingBusinesses.isNotEmpty ? _buildBusinessPickerCard() : formCard;
+    final effectiveCard = _pendingBusinesses.isNotEmpty
+        ? _buildBusinessPickerCard()
+        : formCard;
     final desktopForm = SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Center(child: effectiveCard),
@@ -781,21 +757,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (constraints.maxWidth > 800) {
             return Row(
               children: [
-                Expanded(
-                  flex: 5,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage('assets/images/pos_users.png'),
-                        fit: BoxFit.cover,
-                        colorFilter: ColorFilter.mode(
-                          Colors.black26,
-                          BlendMode.darken,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(flex: 5, child: const _LoginStoryPanel()),
                 Expanded(flex: 4, child: desktopForm),
               ],
             );
@@ -803,17 +765,190 @@ class _LoginScreenState extends State<LoginScreen> {
             return Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(
-                  'assets/images/pos_users.png',
-                  fit: BoxFit.cover,
-                  color: Colors.black54,
-                  colorBlendMode: BlendMode.darken,
+                ColoredBox(color: theme.scaffoldBackgroundColor),
+                Positioned(
+                  right: -86,
+                  top: -92,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.07),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: -70,
+                  bottom: -84,
+                  child: Container(
+                    width: 190,
+                    height: 190,
+                    decoration: BoxDecoration(
+                      color: colors.secondary.withValues(alpha: 0.06),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
                 mobileForm,
               ],
             );
           }
         },
+      ),
+    );
+  }
+}
+
+class _LoginStoryPanel extends StatelessWidget {
+  const _LoginStoryPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.ink,
+      child: Stack(
+        children: [
+          Positioned(
+            right: -120,
+            top: -90,
+            child: Container(
+              width: 360,
+              height: 360,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.brandCoral.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 72,
+            top: 126,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: const BoxDecoration(
+                color: AppColors.signal,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.all(48),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - 96)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          PikiMark(size: 58),
+                          SizedBox(width: 14),
+                          Text(
+                            'Piki',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: constraints.maxHeight > 700 ? 140 : 72),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'THE BUSINESS, IN RHYTHM',
+                              style: TextStyle(
+                                color: AppColors.darkAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.15,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'A clear counter\nchanges the whole day.',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 42,
+                                height: 1.04,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              'Piki keeps sales, stock, and the story behind them moving together.',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.68),
+                                fontSize: 16,
+                                height: 1.55,
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            const Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                _StoryChip(label: 'Fast at the counter'),
+                                _StoryChip(label: 'Works offline'),
+                                _StoryChip(label: 'Ready for every shift'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StoryChip extends StatelessWidget {
+  final String label;
+
+  const _StoryChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_rounded, color: AppColors.signal, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

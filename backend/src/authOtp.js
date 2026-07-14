@@ -289,14 +289,17 @@ async function consumeEmailOtpVerification({
   now = new Date(),
   target = query,
 } = {}) {
-  if (!config.emailOtpRequired) {
+  const cleanToken = String(verificationToken || '').trim();
+  // Optional OTP mode may allow a request with no token, but a token that was
+  // supplied must still be validated and consumed exactly once. Otherwise a
+  // successfully verified signup token can be replayed on account retries.
+  if (!config.emailOtpRequired && !cleanToken) {
     return { ok: true, skipped: true };
   }
 
   await ensureEmailOtpSchema(target);
   const cleanEmail = normalizeEmail(email);
   const cleanPurpose = normalizePurpose(purpose);
-  const cleanToken = String(verificationToken || '').trim();
   if (!cleanToken) {
     throw createOtpError(403, 'Verify your email before creating account.');
   }

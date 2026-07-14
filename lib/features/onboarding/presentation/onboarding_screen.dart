@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
+import '../../../widgets/piki_mark.dart';
 
 /// Key used to persist whether the user has completed onboarding.
 const _kOnboardingCompleteKey = 'onboarding_complete';
@@ -41,35 +41,31 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   static const _pages = <_OnboardingPageData>[
     _OnboardingPageData(
       icon: Icons.point_of_sale_rounded,
-      iconGradient: [Color(0xFFFF2A5F), Color(0xFFFF7E67)],
-      title: 'Smart Point of Sale',
+      title: 'A faster counter, without the noise',
       subtitle:
-          'Ring up sales instantly with barcode scanning, multi-payment support, and a blazing-fast checkout experience.',
-      accent: Color(0xFFFF2A5F),
+          'Scan, take payment, and move the queue along. Piki keeps the important controls close and the rest out of your way.',
+      accent: AppColors.primary,
     ),
     _OnboardingPageData(
-      icon: Icons.auto_awesome_rounded,
-      iconGradient: [Color(0xFF00FFC2), Color(0xFF00B4D8)],
-      title: 'Meet Piki — Your AI Agent',
+      icon: Icons.forum_rounded,
+      title: 'Ask the shop, get a useful answer',
       subtitle:
-          'Ask Piki anything: sales trends, low stock alerts, or let it handle transactions hands-free with voice commands.',
-      accent: Color(0xFF00FFC2),
+          'Piki can surface sales trends, flag low stock, and help with everyday work in plain language.',
+      accent: AppColors.secondary,
     ),
     _OnboardingPageData(
       icon: Icons.inventory_2_rounded,
-      iconGradient: [Color(0xFFFF9F0A), Color(0xFFFFD60A)],
-      title: 'Effortless Inventory',
+      title: 'Stock you can trust at a glance',
       subtitle:
-          'Track stock across branches in real-time, get expiry alerts, manage variants, and automate reorder points.',
-      accent: Color(0xFFFF9F0A),
+          'Track branches, variants, expiry dates, and reorder points without turning inventory into a second job.',
+      accent: AppColors.warning,
     ),
     _OnboardingPageData(
       icon: Icons.analytics_rounded,
-      iconGradient: [Color(0xFF7B61FF), Color(0xFFCF9FFF)],
-      title: 'Insights That Drive Growth',
+      title: 'Know what happened, and what to do next',
       subtitle:
-          'Profit & loss reports, top-selling products, debtor tracking, and shift analytics — all at your fingertips.',
-      accent: Color(0xFF7B61FF),
+          'Follow profit, popular products, customer balances, and every shift from one clear business story.',
+      accent: AppColors.metricMonth,
     ),
   ];
 
@@ -141,7 +137,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: TextButton(
                   onPressed: _isFinishing ? null : _finish,
                   style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    foregroundColor: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
@@ -157,8 +155,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               child: PageView.builder(
                 controller: _pageController,
                 itemCount: _pages.length,
-                onPageChanged: (index) =>
-                    setState(() => _currentPage = index),
+                onPageChanged: (index) => setState(() => _currentPage = index),
                 itemBuilder: (context, index) {
                   final page = _pages[index];
                   return _OnboardingPage(
@@ -205,7 +202,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                textStyle: GoogleFonts.inter(
+                                textStyle: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.5,
@@ -224,17 +221,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               key: const ValueKey('next'),
                               onPressed: _isFinishing ? null : _onNext,
                               style: FilledButton.styleFrom(
-                                backgroundColor:
-                                    _pages[_currentPage].accent,
+                                backgroundColor: _pages[_currentPage].accent,
                                 foregroundColor:
                                     _pages[_currentPage].accent ==
-                                            const Color(0xFF00FFC2)
-                                        ? context.appBackground
-                                        : Colors.white,
+                                        const Color(0xFF00FFC2)
+                                    ? context.appBackground
+                                    : Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                textStyle: GoogleFonts.inter(
+                                textStyle: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.5,
@@ -265,14 +261,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
 class _OnboardingPageData {
   final IconData icon;
-  final List<Color> iconGradient;
   final String title;
   final String subtitle;
   final Color accent;
 
   const _OnboardingPageData({
     required this.icon,
-    required this.iconGradient,
     required this.title,
     required this.subtitle,
     required this.accent,
@@ -296,106 +290,110 @@ class _OnboardingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 400),
       opacity: isActive ? 1.0 : 0.0,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Logo
-            AnimatedBuilder(
-              animation: pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: isActive ? pulseAnimation.value : 0.85,
-                  child: child,
-                );
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(32),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: isWide ? 120 : 100,
-                  height: isWide ? 120 : 100,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: isWide ? 120 : 100,
-                      height: isWide ? 120 : 100,
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isWide ? 64 : 22,
+            vertical: 16,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: (constraints.maxHeight - 32)
+                  .clamp(0.0, double.infinity)
+                  .toDouble(),
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 540),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedBuilder(
+                      animation: pulseAnimation,
+                      builder: (context, child) => Transform.scale(
+                        scale: isActive
+                            ? 0.96 + (pulseAnimation.value * 0.04)
+                            : 0.96,
+                        child: child,
+                      ),
+                      child: PikiMark(size: isWide ? 88 : 74, showShadow: true),
+                    ),
+                    SizedBox(height: isWide ? 28 : 20),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(isWide ? 32 : 24),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: data.iconGradient),
-                        borderRadius: BorderRadius.circular(32),
+                        color: theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.xl),
+                        border: Border.all(
+                          color: theme.colorScheme.outline.withValues(
+                            alpha: 0.8,
+                          ),
+                        ),
+                        boxShadow: context.appPanelShadow,
                       ),
-                      child: Icon(
-                        data.icon,
-                        size: 48,
-                        color: Colors.white,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: data.accent.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.md,
+                                  ),
+                                ),
+                                child: Icon(
+                                  data.icon,
+                                  size: 23,
+                                  color: data.accent,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Text(
+                                  'BUILT FOR THE COUNTER',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: data.accent,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.9,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            data.title,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              height: 1.12,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            data.subtitle,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              height: 1.55,
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 40),
-
-            // Feature icon in a glowing circle
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: data.iconGradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: data.accent.withValues(alpha: 0.35),
-                    blurRadius: 32,
-                    spreadRadius: 4,
-                  ),
-                ],
-              ),
-              child: Icon(
-                data.icon,
-                size: 36,
-                color: data.accent == const Color(0xFF00FFC2)
-                    ? context.appBackground
-                    : Colors.white,
-              ),
-            ),
-            const SizedBox(height: 40),
-
-            // Title
-            Text(
-              data.title,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.outfit(
-                fontSize: isWide ? 32 : 26,
-                fontWeight: FontWeight.w800,
-                color: Theme.of(context).colorScheme.onSurface,
-                height: 1.2,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Subtitle
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Text(
-                data.subtitle,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: isWide ? 16 : 14,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  height: 1.6,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -422,12 +420,7 @@ class _DotIndicator extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         color: isActive ? color : context.appSurfaceHighlight,
         boxShadow: isActive
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.5),
-                  blurRadius: 8,
-                ),
-              ]
+            ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 8)]
             : null,
       ),
     );

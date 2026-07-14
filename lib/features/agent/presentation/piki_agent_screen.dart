@@ -968,7 +968,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
                 child: Image.asset(
-                  'assets/images/logo.png',
+                  'assets/images/piki_mark_v2.png',
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Center(
                     child: Icon(

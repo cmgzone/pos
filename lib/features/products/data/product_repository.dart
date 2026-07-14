@@ -43,14 +43,18 @@ class ProductRepository {
     String? categoryId,
     ProductTypeFilter typeFilter = ProductTypeFilter.all,
     bool restaurantMenuOnly = false,
+    bool excludeRestaurantMenu = false,
   }) async {
     final args = <dynamic>[..._currentBranchArgs];
     final categoryClause = categoryId != null ? ' AND p.category_id = ?' : '';
     if (categoryId != null) {
       args.add(categoryId);
     }
-    final menuClause =
-        restaurantMenuOnly ? ' AND p.is_restaurant_menu = 1' : '';
+    final menuClause = restaurantMenuOnly
+        ? ' AND COALESCE(p.is_restaurant_menu, 0) = 1'
+        : excludeRestaurantMenu
+        ? ' AND COALESCE(p.is_restaurant_menu, 0) = 0'
+        : '';
 
     return DatabaseService.rawQuery('''
       SELECT
@@ -70,6 +74,18 @@ class ProductRepository {
         ${_typeFilterClause('p', typeFilter)}
       ORDER BY p.name ASC
       ''', args);
+  }
+
+  static Future<bool> hasRetailProducts() async {
+    final rows = await DatabaseService.rawQuery('''
+      SELECT 1
+      FROM $_table p
+      WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(p.is_restaurant_menu, 0) = 0
+      LIMIT 1
+      ''', _currentBranchArgs);
+    return rows.isNotEmpty;
   }
 
   /// Search products and surface matching variant summaries for management.
@@ -161,7 +177,11 @@ class ProductRepository {
   }) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
-      return getAll(categoryId: categoryId, typeFilter: typeFilter);
+      return getAll(
+        categoryId: categoryId,
+        typeFilter: typeFilter,
+        excludeRestaurantMenu: true,
+      );
     }
 
     final like = '%$trimmed%';
@@ -216,6 +236,7 @@ class ProductRepository {
         FROM $_table p
         WHERE p.deleted_at IS NULL
           AND COALESCE(p.branch_id, ?) = ?
+          AND COALESCE(p.is_restaurant_menu, 0) = 0
           $productCategoryClause
           ${_typeFilterClause('p', typeFilter)}
           AND (p.name LIKE ? OR p.barcode LIKE ? OR p.sku LIKE ?)
@@ -245,6 +266,7 @@ class ProductRepository {
          AND pv.deleted_at IS NULL
         WHERE p.deleted_at IS NULL
           AND COALESCE(p.branch_id, ?) = ?
+          AND COALESCE(p.is_restaurant_menu, 0) = 0
           $variantCategoryClause
           ${_typeFilterClause('p', typeFilter)}
           AND (pv.name LIKE ? OR pv.barcode LIKE ? OR pv.sku LIKE ?)
@@ -279,6 +301,7 @@ class ProductRepository {
           AND ps.status = 'available'
           AND COALESCE(ps.branch_id, ?) = ?
           AND COALESCE(p.branch_id, ?) = ?
+          AND COALESCE(p.is_restaurant_menu, 0) = 0
           $serialCategoryClause
           ${_typeFilterClause('p', typeFilter)}
           AND ps.serial_number LIKE ?
@@ -362,6 +385,7 @@ class ProductRepository {
         AND COALESCE(ps.branch_id, ?) = ?
         AND p.deleted_at IS NULL
         AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(p.is_restaurant_menu, 0) = 0
 
       UNION ALL
 
@@ -402,6 +426,7 @@ class ProductRepository {
         AND COALESCE(pv.branch_id, ?) = ?
         AND p.deleted_at IS NULL
         AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(p.is_restaurant_menu, 0) = 0
 
       UNION ALL
 
@@ -439,6 +464,7 @@ class ProductRepository {
       WHERE p.barcode = ?
         AND p.deleted_at IS NULL
         AND COALESCE(p.branch_id, ?) = ?
+        AND COALESCE(p.is_restaurant_menu, 0) = 0
       ) results
       ORDER BY CASE result_type
         WHEN 'serial' THEN 0
@@ -525,12 +551,12 @@ class ProductRepository {
       'brand': brand,
       'description': description,
       'image_urls_json': imageUrlsJson,
-       'show_online': showOnline ? 1 : 0,
-       'is_featured': isFeatured ? 1 : 0,
-       'is_restaurant_menu': restaurantMenu ? 1 : 0,
-       'category_id': categoryId,
-       'track_stock': trackStock ? 1 : 0,
-       'has_variants': hasVariants ? 1 : 0,
+      'show_online': showOnline ? 1 : 0,
+      'is_featured': isFeatured ? 1 : 0,
+      'is_restaurant_menu': restaurantMenu ? 1 : 0,
+      'category_id': categoryId,
+      'track_stock': trackStock ? 1 : 0,
+      'has_variants': hasVariants ? 1 : 0,
       'created_at': now,
       'updated_at': now,
       'sync_status': 'pending',
@@ -556,6 +582,10 @@ class ProductRepository {
     }
 
     await batch.commit(noResult: true);
+    // Product creation is a multi-row batch (product plus optional opening
+    // stock batch), so it bypasses DatabaseService.insert's change signal.
+    // Notify once after the batch commits so auto-sync starts immediately.
+    DatabaseService.notifyLocalChange();
     await AuditLogService.log(
       action: 'create',
       entityTable: _table,
@@ -598,7 +628,8 @@ class ProductRepository {
     final safeLimit = limit.clamp(1, 50);
     final salesWindow = '-$safeLookbackDays days';
 
-    final candidates = await DatabaseService.rawQuery('''
+    final candidates = await DatabaseService.rawQuery(
+      '''
       WITH sales_base AS (
         SELECT
           si.product_id,
@@ -688,15 +719,17 @@ class ProductRepository {
               AND COALESCE(c.branch_id, ?) = ?
           )
         )
-    ''', [
-      salesWindow,
-      ..._currentBranchArgs,
-      ..._currentBranchArgs,
-      ..._currentBranchArgs,
-      ..._currentBranchArgs,
-      ..._currentBranchArgs,
-      ..._currentBranchArgs,
-    ]);
+    ''',
+      [
+        salesWindow,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+        ..._currentBranchArgs,
+      ],
+    );
 
     final receiptRows = await DatabaseService.rawQuery('''
       SELECT product_id, received_at
@@ -725,7 +758,8 @@ class ProductRepository {
       final triggerWindowDays = leadTimeDays + 2;
       final needsReorder =
           stock <= lowStock ||
-          (dailyVelocity > 0 && (daysOfCover ?? double.infinity) <= triggerWindowDays);
+          (dailyVelocity > 0 &&
+              (daysOfCover ?? double.infinity) <= triggerWindowDays);
       if (!needsReorder) {
         continue;
       }
@@ -786,7 +820,9 @@ class ProductRepository {
     final receiptDates = <String, List<DateTime>>{};
     for (final row in receiptRows) {
       final productId = row['product_id']?.toString();
-      final receivedAt = DateTime.tryParse(row['received_at']?.toString() ?? '');
+      final receivedAt = DateTime.tryParse(
+        row['received_at']?.toString() ?? '',
+      );
       if (productId == null || productId.isEmpty || receivedAt == null) {
         continue;
       }

@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
+import 'package:ed25519_edwards/ed25519_edwards.dart' as edwards;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_app/core/constants/app_constants.dart';
 import 'package:pos_app/core/services/license_service.dart';
@@ -19,6 +20,24 @@ void main() {
 
   setUp(() async {
     await prefs.clear();
+  });
+
+  test('verifies an Ed25519 license signed by the backend (Node interop)', () {
+    // payloadBase64 + signature produced by backend crypto.sign(null, utf8, ed25519PrivateKey).
+    const payloadBase64 = 'eyJidXNpbmVzc19pZCI6ImIxIn0';
+    const signature =
+        'XKgsgXEDruApexoHCq4StZSm6WJNfFb7JT-JuPGsS-p8LF7YpP-RY3WMz4cq9oE7aW9m4lhkSZaPLYnNiweLAA';
+    expect(
+      LicenseService.verifyEd25519Signature(payloadBase64, signature),
+      isTrue,
+    );
+    expect(
+      LicenseService.verifyEd25519Signature(
+        '${payloadBase64}tampered',
+        signature,
+      ),
+      isFalse,
+    );
   });
 
   test('returns local-only snapshot when no binding is stored', () {
@@ -177,21 +196,9 @@ Future<void> _storeLicense(
   final payloadBase64 = base64Url
       .encode(utf8.encode(jsonEncode(payload)))
       .replaceAll('=', '');
-  final signature =
-      signatureOverride ??
-      base64Url
-          .encode(
-            Hmac(
-              sha256,
-              utf8.encode(AppConstants.licenseSigningSecret),
-            ).convert(utf8.encode(payloadBase64)).bytes,
-          )
-          .replaceAll('=', '');
+  final signature = signatureOverride ?? _signEd25519(payloadBase64);
 
-  await prefs.setString(
-    'license_business_id',
-    payload['business_id'] as String,
-  );
+  await prefs.setString('license_business_id', payload['business_id'] as String);
   await prefs.setString(
     'license_business_name',
     payload['business_name'] as String,
@@ -200,8 +207,22 @@ Future<void> _storeLicense(
   await prefs.setString('license_plan', payload['plan'] as String);
   await prefs.setString('license_payload_base64', payloadBase64);
   await prefs.setString('license_signature', signature);
+  await prefs.setString('license_alg', 'ed25519');
   await prefs.setString(
     'license_last_verified_at',
     (lastVerifiedAt ?? DateTime.now().toUtc()).toIso8601String(),
   );
+}
+
+String _signEd25519(String payloadBase64) {
+  const privateKeyRaw =
+      'hQO+bm/zi/2a/C+43BNRWL7jg5HPLO3syXtYTnDC1gE=';
+  final privateKey = edwards.newKeyFromSeed(
+    Uint8List.fromList(base64.decode(privateKeyRaw)),
+  );
+  final signature = edwards.sign(
+    privateKey,
+    Uint8List.fromList(utf8.encode(payloadBase64)),
+  );
+  return base64Url.encode(signature).replaceAll('=', '');
 }

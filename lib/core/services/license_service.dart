@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
+import 'package:ed25519_edwards/ed25519_edwards.dart' as edwards;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -254,6 +255,7 @@ class LicenseService {
   static const _keyPlan = 'license_plan';
   static const _keyPayloadBase64 = 'license_payload_base64';
   static const _keySignature = 'license_signature';
+  static const _keyAlg = 'license_alg';
   static const _keyLastVerifiedAt = 'license_last_verified_at';
 
   static Future<void> init() async {
@@ -275,6 +277,7 @@ class LicenseService {
     final plan = _readTrimmed(prefs.getString(_keyPlan));
     final payloadBase64 = _readTrimmed(prefs.getString(_keyPayloadBase64));
     final signature = _readTrimmed(prefs.getString(_keySignature));
+    final alg = _readTrimmed(prefs.getString(_keyAlg));
     final lastVerifiedAt = _parseDate(
       _readTrimmed(prefs.getString(_keyLastVerifiedAt)),
     );
@@ -315,7 +318,7 @@ class LicenseService {
     }
 
     final now = DateTime.now().toUtc();
-    final hasValidSignature = _matchesSignature(payloadBase64, signature);
+    final hasValidSignature = _matchesSignature(payloadBase64, signature, alg);
     final wasRecentlyVerifiedOnline = _wasRecentlyVerifiedOnline(
       lastVerifiedAt: lastVerifiedAt,
       now: now,
@@ -661,6 +664,7 @@ class LicenseService {
     final plan = _readTrimmed(subscription['plan']?.toString());
     final payloadBase64 = _readTrimmed(license['payloadBase64']?.toString());
     final signature = _readTrimmed(license['signature']?.toString());
+    final alg = _readTrimmed(license['alg']?.toString());
     final lastVerifiedAt = _readTrimmed(
       subscription['lastVerifiedAt']?.toString(),
     );
@@ -686,6 +690,9 @@ class LicenseService {
     }
     await _prefs!.setString(_keyPayloadBase64, payloadBase64);
     await _prefs!.setString(_keySignature, signature);
+    if (alg != null) {
+      await _prefs!.setString(_keyAlg, alg);
+    }
     if (lastVerifiedAt != null) {
       await _prefs!.setString(_keyLastVerifiedAt, lastVerifiedAt);
     }
@@ -823,9 +830,33 @@ class LicenseService {
     throw Exception(message);
   }
 
-  static bool _matchesSignature(String payloadBase64, String signature) {
-    final expected = _signatureFor(payloadBase64);
-    return expected == signature;
+  static bool _matchesSignature(
+    String payloadBase64,
+    String signature,
+    String? alg,
+  ) {
+    if (alg != 'ed25519') {
+      // Only Ed25519 licenses are trusted. The asymmetric public key is
+      // embedded in the app, so the signing secret never ships in the APK.
+      return false;
+    }
+    return verifyEd25519Signature(payloadBase64, signature);
+  }
+
+  static bool verifyEd25519Signature(String payloadBase64, String signature) {
+    try {
+      final publicKeyBytes = base64.decode(
+        AppConstants.licenseSigningPublicKeyRaw,
+      );
+      final signatureBytes = _decodeBase64Url(signature);
+      return edwards.verify(
+        edwards.PublicKey(publicKeyBytes),
+        Uint8List.fromList(utf8.encode(payloadBase64)),
+        Uint8List.fromList(signatureBytes),
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   static bool _wasRecentlyVerifiedOnline({
@@ -839,14 +870,6 @@ class LicenseService {
       return false;
     }
     return now.difference(lastVerifiedAt) <= _serverVerifiedLicenseTrustWindow;
-  }
-
-  static String _signatureFor(String payloadBase64) {
-    final digest = Hmac(
-      sha256,
-      utf8.encode(AppConstants.licenseSigningSecret),
-    ).convert(utf8.encode(payloadBase64));
-    return _encodeBase64Url(digest.bytes);
   }
 
   static Uri _buildUri(String backendUrl, String path) {
@@ -863,10 +886,6 @@ class LicenseService {
   static String? _readTrimmed(String? value) {
     final normalized = value?.trim() ?? '';
     return normalized.isEmpty ? null : normalized;
-  }
-
-  static String _encodeBase64Url(List<int> bytes) {
-    return base64Url.encode(bytes).replaceAll('=', '');
   }
 
   static List<int> _decodeBase64Url(String value) {

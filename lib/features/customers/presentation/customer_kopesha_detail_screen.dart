@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../data/customer_repository.dart';
 import '../../sales/presentation/receipt_service.dart';
 import 'customer_message_dialog.dart';
@@ -407,13 +408,9 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StitchCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-      ),
+      radius: AppRadius.lg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_app/core/services/pos_payment_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../data/payment_method_provider.dart';
 import '../data/payment_method_repository.dart';
 
@@ -34,6 +35,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   final _mpesaPasskeyController = TextEditingController();
 
   bool _mpesaActive = false;
+  bool _mpesaSendSms = false;
   bool _loadingMpesa = true;
   bool _savingMpesa = false;
   bool _configuringMpesa = false;
@@ -88,6 +90,8 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       if (!mounted) return;
       setState(() {
         _mpesaActive = settings.isActive;
+        final sendSmsRaw = publicConfig['sendSms'];
+        _mpesaSendSms = sendSmsRaw == true || sendSmsRaw == 'true';
         _mpesaDisplayNameController.text = settings.displayName;
         _mpesaShortcodeController.text =
             publicConfig['shortcode']?.toString() ?? '';
@@ -152,6 +156,7 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
         shortcode: _mpesaShortcodeController.text,
         transactionType: _mpesaTransactionType,
         accountReference: _mpesaAccountReferenceController.text,
+        sendSms: _mpesaSendSms,
         consumerKey: _mpesaConsumerKeyController.text,
         consumerSecret: _mpesaConsumerSecretController.text,
         passkey: _mpesaPasskeyController.text,
@@ -159,12 +164,6 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
       if (!mounted) return;
       setState(() {
         _mpesaActive = settings.isActive;
-        _mpesaConsumerKeyController.text =
-            settings.secretConfig['consumerKey']?.toString() ?? '';
-        _mpesaConsumerSecretController.text =
-            settings.secretConfig['consumerSecret']?.toString() ?? '';
-        _mpesaPasskeyController.text =
-            settings.secretConfig['passkey']?.toString() ?? '';
         _mpesaMessage = 'M-Pesa collection saved';
       });
     } catch (error) {
@@ -644,17 +643,12 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   Widget _buildGatewayCard(_Gateway gateway) {
     final isMpesa = gateway.id == 'mpesa';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardBackground(),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: gateway.active
-              ? _accentColor().withValues(alpha: 0.5)
-              : _cardBorder(),
-        ),
-      ),
+    return StitchCard(
       padding: const EdgeInsets.all(14),
+      radius: 12,
+      borderColor: gateway.active
+          ? _accentColor().withValues(alpha: 0.5)
+          : _cardBorder(),
       child: Row(
         children: [
           Container(
@@ -972,10 +966,10 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
               'Send receipt via SMS after payment',
               style: TextStyle(fontSize: 12, color: _textSecondary()),
             ),
-            value: _mpesaActive,
+            value: _mpesaSendSms,
             onChanged: _savingMpesa
                 ? null
-                : (value) => setState(() => _mpesaActive = value),
+                : (value) => setState(() => _mpesaSendSms = value),
             activeTrackColor: _accentColor(),
           ),
         ],
@@ -1175,34 +1169,19 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
   }
 
   Widget _buildSectionCard({String? title, required Widget child}) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: _cardBackground(),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _cardBorder()),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (title != null) ...[
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: _textSecondary(),
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 14),
-            ],
-            child,
-          ],
-        ),
-      ),
+    final card = StitchCard(
+      padding: const EdgeInsets.all(16),
+      radius: 12,
+      child: child,
+    );
+    if (title == null) return card;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StitchSectionHeader(eyebrow: title),
+        const SizedBox(height: 12),
+        card,
+      ],
     );
   }
 

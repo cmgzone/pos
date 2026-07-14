@@ -1,37 +1,45 @@
 import 'package:flutter/material.dart';
 
+/// Piki's visual language is deliberately warm and tactile: paper-like
+/// backgrounds, ink surfaces, coral for momentum, and teal for confirmation.
+/// The palette avoids the purple/blue gradients common to generic SaaS apps.
 class AppColors {
-  static const Color background = Color(0xFFF7F8FA);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceHighlight = Color(0xFFF1F3F6);
-  static const Color premiumPanel = Color(0xFFFFFFFF);
-  static const Color premiumPanelSoft = Color(0xFFFAFAFC);
-  static const Color premiumStroke = Color(0xFFE5E7EC);
+  static const Color background = Color(0xFFF6F4F0);
+  static const Color surface = Color(0xFFFFFEFC);
+  static const Color surfaceHighlight = Color(0xFFEFECE6);
+  static const Color premiumPanel = Color(0xFFFFFEFC);
+  static const Color premiumPanelSoft = Color(0xFFFAF8F4);
+  static const Color premiumStroke = Color(0xFFE2DED6);
 
-  static const Color primary = Color(0xFFD72668);
-  static const Color primaryLight = Color(0xFFFF5A8A);
-  static const Color fuchsia = Color(0xFF8B4FD6);
-  static const Color secondary = Color(0xFF566174);
+  /// Accessible action coral. [brandCoral] is reserved for larger decorative
+  /// moments where white text contrast is not required.
+  static const Color primary = Color(0xFFC74343);
+  static const Color primaryLight = Color(0xFFF26A5E);
+  static const Color brandCoral = Color(0xFFFF5C52);
+  static const Color apricot = Color(0xFFFFB86B);
+  static const Color fuchsia = Color(0xFF9B4F62);
+  static const Color secondary = Color(0xFF087D73);
+  static const Color signal = Color(0xFF18A999);
 
-  static const Color textPrimary = Color(0xFF20242D);
-  static const Color textSecondary = Color(0xFF6E7582);
+  static const Color ink = Color(0xFF0B1020);
+  static const Color textPrimary = Color(0xFF171A22);
+  static const Color textSecondary = Color(0xFF6B6F78);
 
-  static const Color error = Color(0xFFB85450);
-  static const Color success = Color(0xFF447A61);
-  static const Color warning = Color(0xFFA66A24);
+  static const Color error = Color(0xFFB63C3C);
+  static const Color success = Color(0xFF27745A);
+  static const Color warning = Color(0xFF9A641F);
+  static const Color border = Color(0xFFE2DED6);
 
-  static const Color border = Color(0xFFE5E7EC);
-
-  // ── Dark mode POS palette (premium glassmorphism) ───────────────────────
-  static const Color darkBackground = Color(0xFF0B1220);
-  static const Color darkSurface = Color(0xFF161B22);
-  static const Color darkSurfaceHighlight = Color(0xFF1F2937);
-  static const Color darkBorder = Color(0xFF334155);
-  static const Color darkTextPrimary = Color(0xFFF8FAFC);
-  static const Color darkTextSecondary = Color(0xFF94A3B8);
-  static const Color darkTextMuted = Color(0xFF64748B);
-  static const Color darkAccent = Color(0xFFEC4899);
-  static const Color darkAccentSoft = Color(0xFFF472B6);
+  // Dark mode uses ink rather than pure black so long shifts remain calm.
+  static const Color darkBackground = Color(0xFF090E19);
+  static const Color darkSurface = Color(0xFF111827);
+  static const Color darkSurfaceHighlight = Color(0xFF1A2333);
+  static const Color darkBorder = Color(0xFF2A3446);
+  static const Color darkTextPrimary = Color(0xFFF8F5EF);
+  static const Color darkTextSecondary = Color(0xFFA9B2C1);
+  static const Color darkTextMuted = Color(0xFF768196);
+  static const Color darkAccent = Color(0xFFFF766E);
+  static const Color darkAccentSoft = Color(0xFFFF9A8F);
 
   static LinearGradient get premiumGradient => const LinearGradient(
     begin: Alignment.topCenter,
@@ -42,29 +50,24 @@ class AppColors {
   static LinearGradient get brandGradient => const LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [primary, primaryLight],
+    colors: [brandCoral, apricot],
   );
 
   static List<BoxShadow> premiumShadow([double alpha = 0.08]) => [
     BoxShadow(
-      color: const Color(0xFF20242D).withValues(alpha: alpha),
-      blurRadius: 24,
-      offset: const Offset(0, 10),
+      color: ink.withValues(alpha: alpha),
+      blurRadius: 28,
+      offset: const Offset(0, 12),
     ),
   ];
 
-  // ── Named metric colors (used by dashboard KPIs) ────────────────────────
-  // Brand pink (metricSales) and semantic success/warning (metricProfit/
-  // metricStock) reuse the constants above. These four are the unique
-  // metric hues that previously lived as magic hex in dashboard_screen.dart.
-  static const Color metricMonth  = Color(0xFF536DFE);
-  static const Color metricTop    = Color(0xFF9C6ADE);
-  static const Color metricOrders = Color(0xFF00A6A6);
-  static const Color metricStaff  = Color(0xFFEC6B3C);
+  static const Color metricMonth = Color(0xFF4C659A);
+  static const Color metricTop = Color(0xFF8C5968);
+  static const Color metricOrders = secondary;
+  static const Color metricStaff = Color(0xFFB76134);
 }
 
-/// 4pt spacing scale. Prefer these over raw SizedBox(height: N) so the
-/// whole app breathes from one rhythm.
+/// A compact 4pt-based spacing rhythm shared by phone and desktop layouts.
 class AppSpacing {
   const AppSpacing._();
   static const double xs = 4;
@@ -76,13 +79,12 @@ class AppSpacing {
   static const double section = 32;
 }
 
-/// Tiered radius scale. Tiles (md) deliberately sit below panels (lg) so
-/// list items no longer look identical to container cards.
+/// Small controls stay crisp while larger panels receive a softer silhouette.
 class AppRadius {
   const AppRadius._();
-  static const double xs = 6;   // chips, badges
-  static const double sm = 10;  // buttons, inputs
-  static const double md = 14;  // tiles, list items
-  static const double lg = 18;  // panels, true cards
-  static const double xl = 22;  // sheets, dialogs
+  static const double xs = 7;
+  static const double sm = 11;
+  static const double md = 15;
+  static const double lg = 20;
+  static const double xl = 26;
 }

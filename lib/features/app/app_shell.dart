@@ -59,13 +59,22 @@ import '../settings/presentation/custom_roles_screen.dart';
 import '../settings/presentation/settings_screen.dart';
 import '../settings/presentation/subscription_plans_section.dart';
 import '../shifts/presentation/shift_management_screen.dart';
+import '../auth/data/auth_password_service.dart';
+import '../auth/data/user_repository.dart';
 import 'dashboard_screen.dart';
 import '../../widgets/beautiful_icon.dart';
+import '../../widgets/piki_mark.dart';
+import '../../widgets/stitch_kit.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   final int initialIndex;
+  final bool runStartupTasks;
 
-  const AppShell({super.key, this.initialIndex = defaultInitialIndex});
+  const AppShell({
+    super.key,
+    this.initialIndex = defaultInitialIndex,
+    this.runStartupTasks = true,
+  });
 
   static const int defaultInitialIndex = 35;
   static final GlobalKey<ScaffoldState> scaffoldKey =
@@ -97,7 +106,6 @@ class AppShellState extends ConsumerState<AppShell> {
   Set<String> _deviceNotifiedIds = const <String>{};
   bool _deviceNotificationBusy = false;
   bool _appUpdatePromptScheduled = false;
-  bool _moduleHeroPrecached = false;
   AppVersionInfo? _appVersionInfo;
   List<PlatformNotification> _platformNotifications =
       const <PlatformNotification>[];
@@ -570,6 +578,8 @@ class AppShellState extends ConsumerState<AppShell> {
       required List<int> indexes,
       required List<int> coreIndexes,
       required bool enabled,
+      int? directDestinationIndex,
+      String? readinessLabel,
     }) {
       final destinations = entriesFor(indexes);
       if (enabled && destinations.isNotEmpty) {
@@ -582,6 +592,8 @@ class AppShellState extends ConsumerState<AppShell> {
             accent: accent,
             destinations: destinations,
             coreDestinationIndexes: coreIndexes,
+            directDestinationIndex: directDestinationIndex,
+            readinessLabel: readinessLabel,
           ),
         );
       }
@@ -613,8 +625,10 @@ class AppShellState extends ConsumerState<AppShell> {
       subtitle: 'Tables, kitchen flow, orders, and delivery.',
       icon: Icons.restaurant_rounded,
       accent: const Color(0xFFE1762F),
-      indexes: indexesForBusiness(const [29, 0, 17, 33, 18, 4, 10]),
-      coreIndexes: const [29, 0, 17, 33, 18, 4, 10],
+      indexes: const [29],
+      coreIndexes: const [29],
+      directDestinationIndex: 29,
+      readinessLabel: 'Floor, kitchen & bills ready',
       enabled: SessionService.canAccessFeature(
         UserAccessProfile.featureRestaurantMode,
       ),
@@ -667,28 +681,15 @@ class AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadSeenNotifications();
-      _loadDeviceNotificationIds();
-      _loadAppVersionNotice();
-      _loadPlatformNotifications();
-      _showStartupPrompts();
-    });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_moduleHeroPrecached) return;
-    _moduleHeroPrecached = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        precacheImage(
-          const AssetImage('assets/images/module_launcher_hero.png'),
-          context,
-        );
-      }
-    });
+    if (widget.runStartupTasks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadSeenNotifications();
+        _loadDeviceNotificationIds();
+        _loadAppVersionNotice();
+        _loadPlatformNotifications();
+        _showStartupPrompts();
+      });
+    }
   }
 
   @override
@@ -1820,7 +1821,7 @@ class AppShellState extends ConsumerState<AppShell> {
           appBar: moduleCurrentIndex == 35
               ? null
               : PreferredSize(
-                  preferredSize: const Size.fromHeight(48),
+                  preferredSize: const Size.fromHeight(62),
                   child: _ModuleNavigationBar(
                     moduleLabel: _moduleLabelForIndex(moduleCurrentIndex),
                     hasBackDestination: _hasBackDestination,
@@ -1898,7 +1899,7 @@ class AppShellState extends ConsumerState<AppShell> {
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(15),
                                   child: Image.asset(
-                                    'assets/images/logo.png',
+                                    PikiMark.assetPath,
                                     width: 48,
                                     height: 48,
                                     fit: BoxFit.cover,
@@ -2076,7 +2077,7 @@ class AppShellState extends ConsumerState<AppShell> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Image.asset(
-                      'assets/images/logo.png',
+                      PikiMark.assetPath,
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
@@ -2228,8 +2229,9 @@ class AppShellState extends ConsumerState<AppShell> {
   List<Map<String, dynamic>> get _switchableBusinesses {
     final currentBusinessId = SyncSettingsService.localBusinessId;
     return SyncSettingsService.myBusinesses
-        .where((business) =>
-            (business['id']?.toString() ?? '') != currentBusinessId)
+        .where(
+          (business) => (business['id']?.toString() ?? '') != currentBusinessId,
+        )
         .toList();
   }
 
@@ -2254,19 +2256,23 @@ class AppShellState extends ConsumerState<AppShell> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    ...businesses.map((business) {
-                      final id = business['id']?.toString() ?? '';
-                      final name = business['name']?.toString() ?? id;
-                      return RadioListTile<String>(
-                        value: id,
-                        groupValue: selectedId,
-                        title: Text(name),
-                        onChanged: isSwitching
-                            ? null
-                            : (value) =>
-                                setDialogState(() => selectedId = value),
-                      );
-                    }),
+                    RadioGroup<String>(
+                      groupValue: selectedId,
+                      onChanged: (value) {
+                        if (isSwitching || value == null) return;
+                        setDialogState(() => selectedId = value);
+                      },
+                      child: Column(
+                        children: businesses.map((business) {
+                          final id = business['id']?.toString() ?? '';
+                          final name = business['name']?.toString() ?? id;
+                          return RadioListTile<String>(
+                            value: id,
+                            title: Text(name),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: passwordController,
@@ -2358,6 +2364,7 @@ class AppShellState extends ConsumerState<AppShell> {
     if (backendUrl.isEmpty) {
       throw Exception('Cloud backend is not configured on this device.');
     }
+    await LocalBusinessResetService.prepareForBusinessSwitch();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
     final email = SessionService.currentUserEmail;
 
@@ -2371,14 +2378,17 @@ class AppShellState extends ConsumerState<AppShell> {
 
     await LocalBusinessResetService.clearForBusinessSwitch();
     await CloudAuthService.persistCloudResponse(response);
+    final localUser = await UserRepository.upsertCloudAuthenticatedUser(
+      cloudUser: response.user,
+      fallbackEmail: email,
+      passwordHash: AuthPasswordService.hashPassword(password),
+    );
+    await SessionService.signIn(localUser);
 
     if (!mounted) return;
     _showSwitchProgress();
     try {
-      await SyncService.syncNow(
-        forceFullPull: true,
-        onProgress: (_) {},
-      );
+      await SyncService.syncNow(forceFullPull: true, onProgress: (_) {});
       await SyncSettingsService.setLocalBusinessId(businessId);
     } finally {
       if (mounted) _hideSwitchProgress();
@@ -2430,7 +2440,7 @@ class AppShellState extends ConsumerState<AppShell> {
   Widget _buildScreen(int index) {
     switch (index) {
       case 0:
-        return const PosScreen();
+        return const PosScreen(embeddedInAppShell: true);
       case 1:
         return const ProductListScreen();
       case 2:
@@ -2488,7 +2498,7 @@ class AppShellState extends ConsumerState<AppShell> {
       case 28:
         return const WastageScreen();
       case 29:
-        return const RestaurantScreen();
+        return const RestaurantScreen(embeddedInAppShell: true);
       case 30:
         return const AttendanceScreen();
       case 31:
@@ -2505,7 +2515,7 @@ class AppShellState extends ConsumerState<AppShell> {
           onSelect: _selectIndex,
         );
       default:
-        return const PosScreen();
+        return const PosScreen(embeddedInAppShell: true);
     }
   }
 
@@ -2685,51 +2695,70 @@ class _ModuleNavigationBar extends StatelessWidget {
       color: theme.colorScheme.surface,
       child: SafeArea(
         bottom: false,
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Container(
+            height: 62,
+            padding: EdgeInsets.symmetric(
+              horizontal: constraints.maxWidth < 500 ? 6 : 14,
             ),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: hasBackDestination
-                    ? 'Back to previous module'
-                    : 'Back to modules',
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_rounded, size: 20),
-              ),
-              const SizedBox(width: 2),
-              TextButton.icon(
-                onPressed: onModules,
-                icon: const Icon(Icons.grid_view_rounded, size: 18),
-                label: const Text('Modules'),
-                style: TextButton.styleFrom(
-                  foregroundColor: theme.colorScheme.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w800),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.7),
                 ),
               ),
-              const SizedBox(width: 10),
-              Container(
-                width: 1,
-                height: 20,
-                color: theme.colorScheme.outlineVariant,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  moduleLabel,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: hasBackDestination
+                      ? 'Back to previous module'
+                      : 'Back to modules',
+                  onPressed: onBack,
+                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                ),
+                const SizedBox(width: 4),
+                const PikiMark(size: 34),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        moduleLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (constraints.maxWidth >= 410)
+                        Text(
+                          'Piki workspace',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 10.5,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                if (constraints.maxWidth >= 430)
+                  OutlinedButton.icon(
+                    onPressed: onModules,
+                    icon: const Icon(Icons.grid_view_rounded, size: 17),
+                    label: const Text('All modules'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2759,6 +2788,8 @@ class _BusinessModule {
   final Color accent;
   final List<_NavDestination> destinations;
   final List<int> coreDestinationIndexes;
+  final int? directDestinationIndex;
+  final String? readinessLabel;
 
   const _BusinessModule({
     required this.id,
@@ -2768,6 +2799,8 @@ class _BusinessModule {
     required this.accent,
     required this.destinations,
     required this.coreDestinationIndexes,
+    this.directDestinationIndex,
+    this.readinessLabel,
   });
 }
 
@@ -2857,6 +2890,11 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
   }
 
   void _openBusinessModule(_BusinessModule module) {
+    final directDestinationIndex = module.directDestinationIndex;
+    if (directDestinationIndex != null) {
+      widget.onSelect(directDestinationIndex);
+      return;
+    }
     setState(() => _activeModuleId = module.id);
     _entranceController.forward(from: 0);
   }
@@ -2866,82 +2904,83 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
     _entranceController.forward(from: 0);
   }
 
+  double _pageInset(double width) {
+    if (width < 600) return 16;
+    if (width < 1248) return 24;
+    return (width - 1200) / 2;
+  }
+
   Widget _buildBusinessModuleRoot(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              sliver: SliverToBoxAdapter(
-                child: _ModuleLauncherRootHeader(
-                  onOpenSettings: () => widget.onSelect(9),
-                ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final inset = _pageInset(constraints.maxWidth);
+            return CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              sliver: SliverToBoxAdapter(
-                child: _AnimatedModuleHero(controller: _entranceController),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              sliver: SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'BUSINESS MODULES',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.7,
-                      ),
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(inset, 18, inset, 10),
+                  sliver: SliverToBoxAdapter(
+                    child: _ModuleLauncherRootHeader(
+                      onOpenSettings: () => widget.onSelect(9),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Your plan and business type decide what is available.',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-              sliver: SliverGrid(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final module = widget.businessModules[index];
-                  final start = (0.34 + index * 0.045)
-                      .clamp(0.34, 0.78)
-                      .toDouble();
-                  return _fadeSlide(
-                    begin: start,
-                    end: (start + 0.22).clamp(0.56, 1).toDouble(),
-                    offsetY: 0.10,
-                    child: _BusinessModuleTile(
-                      module: module,
-                      onTap: () => _openBusinessModule(module),
-                    ),
-                  );
-                }, childCount: widget.businessModules.length),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 220,
-                  mainAxisExtent: 166,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(inset, 14, inset, 34),
+                  sliver: SliverToBoxAdapter(
+                    child: _AnimatedModuleHero(controller: _entranceController),
+                  ),
                 ),
-              ),
-            ),
-          ],
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(inset, 0, inset, 14),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        StitchSectionHeader(
+                          eyebrow: 'Choose your workspace',
+                          title: 'Start where today\'s work is happening.',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(inset, 0, inset, 32),
+                  sliver: SliverGrid(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final module = widget.businessModules[index];
+                      final start = (0.34 + index * 0.045)
+                          .clamp(0.34, 0.78)
+                          .toDouble();
+                      return _fadeSlide(
+                        begin: start,
+                        end: (start + 0.22).clamp(0.56, 1).toDouble(),
+                        offsetY: 0.10,
+                        child: _BusinessModuleTile(
+                          module: module,
+                          onTap: () => _openBusinessModule(module),
+                        ),
+                      );
+                    }, childCount: widget.businessModules.length),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 390,
+                          mainAxisExtent: 184,
+                          mainAxisSpacing: 14,
+                          crossAxisSpacing: 14,
+                        ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -2984,145 +3023,136 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              sliver: SliverToBoxAdapter(
-                child: _fadeSlide(
-                  begin: 0,
-                  end: 0.28,
-                  offsetY: -0.08,
-                  child: Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Back to business modules',
-                        onPressed: _returnToBusinessModules,
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      const SizedBox(width: 4),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(13),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          width: 42,
-                          height: 42,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(
-                            width: 42,
-                            height: 42,
-                            color: theme.colorScheme.primary,
-                            child: const Icon(
-                              Icons.point_of_sale_rounded,
-                              color: Colors.white,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final inset = _pageInset(constraints.maxWidth);
+            return CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(inset, 18, inset, 10),
+                  sliver: SliverToBoxAdapter(
+                    child: _fadeSlide(
+                      begin: 0,
+                      end: 0.28,
+                      offsetY: -0.08,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Back to business modules',
+                            onPressed: _returnToBusinessModules,
+                            icon: const Icon(Icons.arrow_back_rounded),
+                          ),
+                          const SizedBox(width: 4),
+                          const PikiMark(size: 42),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  activeModule.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  activeModule.subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                          IconButton(
+                            tooltip: 'Settings',
+                            onPressed: () => widget.onSelect(9),
+                            icon: const Icon(Icons.settings_outlined),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(inset, 14, inset, 34),
+                  sliver: SliverToBoxAdapter(
+                    child: _AnimatedModuleHero(controller: _entranceController),
+                  ),
+                ),
+                for (final group in featureGroups) ...[
+                  if (group.destinations.isNotEmpty)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(inset, 0, inset, 14),
+                      sliver: SliverToBoxAdapter(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              activeModule.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 18,
+                              group.title,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w800,
+                                letterSpacing: 0.7,
                               ),
                             ),
-                            const SizedBox(height: 1),
+                            const SizedBox(height: 4),
                             Text(
-                              activeModule.subtitle,
+                              group.subtitle,
                               style: TextStyle(
-                                fontSize: 12,
                                 color: theme.colorScheme.onSurfaceVariant,
+                                fontSize: 12,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Settings',
-                        onPressed: () => widget.onSelect(9),
-                        icon: const Icon(Icons.settings_outlined),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              sliver: SliverToBoxAdapter(
-                child: _AnimatedModuleHero(controller: _entranceController),
-              ),
-            ),
-            for (final group in featureGroups) ...[
-              if (group.destinations.isNotEmpty)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                  sliver: SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          group.title,
-                          style: TextStyle(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.7,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          group.subtitle,
-                          style: TextStyle(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
-                ),
-              if (group.destinations.isNotEmpty)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final destination = group.destinations[index];
-                      final overallIndex = activeModule.destinations.indexOf(
-                        destination,
-                      );
-                      final start = (0.34 + overallIndex * 0.027)
-                          .clamp(0.34, 0.78)
-                          .toDouble();
-                      return _fadeSlide(
-                        begin: start,
-                        end: (start + 0.22).clamp(0.56, 1).toDouble(),
-                        offsetY: 0.10,
-                        child: _ModuleTile(
-                          destination: destination,
-                          onTap: () => widget.onSelect(destination.index),
-                        ),
-                      );
-                    }, childCount: group.destinations.length),
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 190,
-                          mainAxisExtent: 148,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                        ),
-                  ),
-                ),
-            ],
-          ],
+                  if (group.destinations.isNotEmpty)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(inset, 0, inset, 30),
+                      sliver: SliverGrid(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final destination = group.destinations[index];
+                          final overallIndex = activeModule.destinations
+                              .indexOf(destination);
+                          final start = (0.34 + overallIndex * 0.027)
+                              .clamp(0.34, 0.78)
+                              .toDouble();
+                          return _fadeSlide(
+                            begin: start,
+                            end: (start + 0.22).clamp(0.56, 1).toDouble(),
+                            offsetY: 0.10,
+                            child: _ModuleTile(
+                              destination: destination,
+                              onTap: () => widget.onSelect(destination.index),
+                            ),
+                          );
+                        }, childCount: group.destinations.length),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 220,
+                              mainAxisExtent: 152,
+                              mainAxisSpacing: 14,
+                              crossAxisSpacing: 14,
+                            ),
+                      ),
+                    ),
+                ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -3139,25 +3169,8 @@ class _ModuleLauncherRootHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(13),
-          child: Image.asset(
-            'assets/images/logo.png',
-            width: 42,
-            height: 42,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(
-              width: 42,
-              height: 42,
-              color: theme.colorScheme.primary,
-              child: const Icon(
-                Icons.point_of_sale_rounded,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
+        const PikiMark(size: 46),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3167,13 +3180,16 @@ class _ModuleLauncherRootHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 19,
                   fontWeight: FontWeight.w800,
+                  letterSpacing: -0.35,
                 ),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
                 '${SessionService.currentUserName} · ${RolePermissions.label(SessionService.currentUserRole)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
                   color: theme.colorScheme.onSurfaceVariant,
@@ -3185,7 +3201,7 @@ class _ModuleLauncherRootHeader extends StatelessWidget {
         IconButton(
           tooltip: 'Settings',
           onPressed: onOpenSettings,
-          icon: const Icon(Icons.settings_outlined),
+          icon: const Icon(Icons.tune_rounded),
         ),
       ],
     );
@@ -3204,75 +3220,120 @@ class _BusinessModuleTile extends StatefulWidget {
 
 class _BusinessModuleTileState extends State<_BusinessModuleTile> {
   bool _pressed = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final module = widget.module;
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 120),
-      curve: Curves.easeOutCubic,
-      scale: _pressed ? 0.975 : 1,
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        child: InkWell(
-          onTap: widget.onTap,
-          onHighlightChanged: (pressed) => setState(() => _pressed = pressed),
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(
-                color: _pressed
-                    ? module.accent.withValues(alpha: 0.76)
-                    : theme.colorScheme.outline.withValues(alpha: 0.6),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        scale: _pressed ? 0.985 : (_hovered ? 1.012 : 1),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            onHighlightChanged: (pressed) => setState(() => _pressed = pressed),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              decoration: BoxDecoration(
+                color: _hovered
+                    ? module.accent.withValues(alpha: 0.045)
+                    : theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(
+                  color: _pressed || _hovered
+                      ? module.accent.withValues(alpha: 0.62)
+                      : theme.colorScheme.outline.withValues(alpha: 0.72),
+                ),
+                boxShadow: _hovered && theme.brightness == Brightness.light
+                    ? [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF0B1020,
+                          ).withValues(alpha: 0.09),
+                          blurRadius: 28,
+                          offset: const Offset(0, 12),
+                        ),
+                      ]
+                    : const [],
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: module.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: module.accent.withValues(alpha: 0.13),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                        child: Icon(
+                          module.icon,
+                          color: module.accent,
+                          size: 22,
+                        ),
                       ),
-                      child: Icon(module.icon, color: module.accent),
+                      const Spacer(),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: _hovered
+                              ? module.accent
+                              : module.accent.withValues(alpha: 0.11),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.arrow_outward_rounded,
+                          color: _hovered ? Colors.white : module.accent,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    module.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.25,
                     ),
-                    const Spacer(),
-                    Icon(
-                      Icons.arrow_forward_rounded,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    module.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    module.readinessLabel ??
+                        '${module.destinations.length} tools ready',
+                    style: TextStyle(
                       color: module.accent,
-                      size: 18,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.25,
                     ),
-                  ],
-                ),
-                const Spacer(),
-                Text(
-                  module.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${module.destinations.length} features available',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -3296,71 +3357,150 @@ class _AnimatedModuleHero extends StatelessWidget {
       opacity: animation,
       child: AnimatedBuilder(
         animation: animation,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: SizedBox(
-            height: 218,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.asset(
-                  'assets/images/module_launcher_hero.png',
-                  fit: BoxFit.cover,
-                  alignment: Alignment.centerRight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 620;
+            final height = compact ? 250.0 : 280.0;
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+              child: Container(
+                height: height,
+                decoration: BoxDecoration(
+                  color: AppColors.ink,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        const Color(0xFF0C1125).withValues(alpha: 0.98),
-                        const Color(0xFF10132D).withValues(alpha: 0.83),
-                        const Color(0xFF10132D).withValues(alpha: 0.08),
-                      ],
-                      stops: const [0, 0.48, 1],
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned(
+                      right: compact ? -58 : 34,
+                      top: compact ? -20 : 22,
+                      child: Opacity(
+                        opacity: compact ? 0.28 : 0.92,
+                        child: PikiMark(
+                          size: compact ? 250 : 236,
+                          radius: compact ? 58 : 54,
+                        ),
+                      ),
                     ),
-                  ),
+                    Positioned(
+                      right: compact ? 18 : 300,
+                      bottom: compact ? 18 : 30,
+                      child: Container(
+                        width: 13,
+                        height: 13,
+                        decoration: const BoxDecoration(
+                          color: AppColors.signal,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            AppColors.ink,
+                            AppColors.ink.withValues(
+                              alpha: compact ? 0.92 : 0.88,
+                            ),
+                            AppColors.ink.withValues(
+                              alpha: compact ? 0.38 : 0.08,
+                            ),
+                          ],
+                          stops: const [0, 0.58, 1],
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.all(compact ? 22 : 34),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: compact ? 360 : 570,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 7,
+                                      height: 7,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: AppColors.signal,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 7),
+                                    Text(
+                                      'READY FOR TRADE',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.9,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: compact ? 16 : 20),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Run the shop.\nKnow the story.',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: compact ? 30 : 38,
+                                    height: 1.03,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: compact ? -1.0 : -1.5,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: compact ? 12 : 14),
+                              Text(
+                                'Sell, restock, and follow the money from one calm workspace.',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                  fontSize: compact ? 13 : 14,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Your workspace',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      const Text(
-                        'Everything you need\nfor today’s trade.',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 25,
-                          height: 1.12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Choose a module to get started.',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
         builder: (context, child) => Transform.translate(
           offset: Offset(0, 14 * (1 - animation.value)),

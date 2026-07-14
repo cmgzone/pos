@@ -141,12 +141,24 @@ class PosPaymentService {
     required String shortcode,
     required String transactionType,
     required String accountReference,
+    required bool sendSms,
     required String consumerKey,
     required String consumerSecret,
     required String passkey,
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final secretConfig = <String, dynamic>{};
+    void includeSecret(String key, String value) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty && !trimmed.startsWith('********')) {
+        secretConfig[key] = trimmed;
+      }
+    }
+
+    includeSecret('consumerKey', consumerKey);
+    includeSecret('consumerSecret', consumerSecret);
+    includeSecret('passkey', passkey);
     final response = await _dio.put<Map<String, dynamic>>(
       _url('business/payment-gateways/mpesa'),
       data: {
@@ -161,12 +173,9 @@ class PosPaymentService {
               ? 'CustomerPayBillOnline'
               : transactionType.trim(),
           'accountReference': accountReference.trim(),
+          'sendSms': sendSms,
         },
-        'secretConfig': {
-          'consumerKey': consumerKey.trim(),
-          'consumerSecret': consumerSecret.trim(),
-          'passkey': passkey.trim(),
-        },
+        'secretConfig': secretConfig,
       },
       options: Options(headers: headers),
     );

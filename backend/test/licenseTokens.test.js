@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const {
   issueLicense,
   resolveSubscriptionState,
-  signPayload,
+  verifyLicenseToken,
 } = require('../src/licenseTokens');
 
-test('issueLicense signs a stable base64 payload', () => {
+test('issueLicense signs a stable base64 payload with Ed25519', () => {
   const license = issueLicense({
     businessId: 'biz-1',
     businessName: 'Velora Demo',
@@ -33,7 +33,48 @@ test('issueLicense signs a stable base64 payload', () => {
   assert.equal(license.payload.selling_mode, 'combo');
   assert.deepEqual(license.payload.entitlements.features, ['pos', 'agent']);
   assert.equal(license.payload.entitlements.maxBranches, 1);
-  assert.equal(license.signature, signPayload(license.payloadBase64));
+  assert.equal(license.alg, 'ed25519');
+  assert.ok(license.signature && license.signature.length > 0);
+
+  const verified = verifyLicenseToken({
+    payloadBase64: license.payloadBase64,
+    signature: license.signature,
+    alg: license.alg,
+  });
+  assert.equal(verified, true);
+});
+
+test('verifyLicenseToken rejects a tampered payload', () => {
+  const license = issueLicense({
+    businessId: 'biz-1',
+    businessName: 'Velora Demo',
+    deviceId: 'device-1',
+    subscription: {
+      plan: 'trial',
+      status: 'active',
+      expires_at: '2026-05-01T00:00:00.000Z',
+      grace_until: '2026-05-05T00:00:00.000Z',
+    },
+    issuedAt: new Date('2026-04-18T12:00:00.000Z'),
+  });
+
+  const tampered = license.payloadBase64 + 'tampered';
+  assert.equal(
+    verifyLicenseToken({
+      payloadBase64: tampered,
+      signature: license.signature,
+      alg: license.alg,
+    }),
+    false,
+  );
+  assert.equal(
+    verifyLicenseToken({
+      payloadBase64: license.payloadBase64,
+      signature: license.signature,
+      alg: 'hmac',
+    }),
+    false,
+  );
 });
 
 test('resolveSubscriptionState enters grace after expires_at', () => {

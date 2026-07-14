@@ -6,7 +6,7 @@ import 'app_colors.dart';
 class AppTheme {
   static OutlineInputBorder _inputBorder(Color color, {double width = 1}) {
     return OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppRadius.sm),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       borderSide: BorderSide(color: color, width: width),
     );
   }
@@ -37,12 +37,12 @@ class AppTheme {
     const scheme = ColorScheme.light(
       primary: AppColors.primary,
       onPrimary: Colors.white,
-      primaryContainer: Color(0xFFFFE5EE),
-      onPrimaryContainer: Color(0xFF50142B),
+      primaryContainer: Color(0xFFFBE6E2),
+      onPrimaryContainer: Color(0xFF5B1E1C),
       secondary: AppColors.secondary,
       onSecondary: Colors.white,
-      secondaryContainer: Color(0xFFEDF0F4),
-      onSecondaryContainer: Color(0xFF303846),
+      secondaryContainer: Color(0xFFDDF1ED),
+      onSecondaryContainer: Color(0xFF0B433D),
       surface: AppColors.surface,
       onSurface: AppColors.textPrimary,
       surfaceContainerHighest: AppColors.surfaceHighlight,
@@ -64,30 +64,30 @@ class AppTheme {
 
   static ThemeData get darkTheme {
     const scheme = ColorScheme.dark(
-      primary: Color(0xFFEC4899),
-      onPrimary: Color(0xFF351022),
-      primaryContainer: Color(0xFF3A1728),
-      onPrimaryContainer: Color(0xFFFFD9E6),
-      secondary: Color(0xFFF472B6),
-      onSecondary: Color(0xFF252C37),
-      secondaryContainer: Color(0xFF1F2937),
-      onSecondaryContainer: Color(0xFFE4E8EF),
-      surface: Color(0xFF161B22),
-      onSurface: Color(0xFFF8FAFC),
-      surfaceContainerHighest: Color(0xFF1F2937),
-      onSurfaceVariant: Color(0xFF94A3B8),
-      error: Color(0xFFE49A96),
-      outline: Color(0xFF334155),
+      primary: AppColors.darkAccent,
+      onPrimary: Color(0xFF321110),
+      primaryContainer: Color(0xFF4A211F),
+      onPrimaryContainer: Color(0xFFFFD9D3),
+      secondary: Color(0xFF62D8C9),
+      onSecondary: Color(0xFF062E2A),
+      secondaryContainer: Color(0xFF123D39),
+      onSecondaryContainer: Color(0xFFC6F7F0),
+      surface: AppColors.darkSurface,
+      onSurface: AppColors.darkTextPrimary,
+      surfaceContainerHighest: AppColors.darkSurfaceHighlight,
+      onSurfaceVariant: AppColors.darkTextSecondary,
+      error: Color(0xFFFFA39D),
+      outline: AppColors.darkBorder,
     );
     return _buildTheme(
       brightness: Brightness.dark,
       scheme: scheme,
-      background: const Color(0xFF0B1220),
-      surface: const Color(0xFF161B22),
-      elevatedSurface: const Color(0xFF1F2937),
-      border: const Color(0xFF334155),
-      text: const Color(0xFFF8FAFC),
-      muted: const Color(0xFF94A3B8),
+      background: AppColors.darkBackground,
+      surface: AppColors.darkSurface,
+      elevatedSurface: AppColors.darkSurfaceHighlight,
+      border: AppColors.darkBorder,
+      text: AppColors.darkTextPrimary,
+      muted: AppColors.darkTextSecondary,
     );
   }
 
@@ -101,7 +101,7 @@ class AppTheme {
     required Color text,
     required Color muted,
   }) {
-    final textTheme = GoogleFonts.interTextTheme(
+    final textTheme = GoogleFonts.hankenGroteskTextTheme(
       brightness == Brightness.light
           ? ThemeData.light(useMaterial3: true).textTheme
           : ThemeData.dark(useMaterial3: true).textTheme,
@@ -119,41 +119,43 @@ class AppTheme {
       canvasColor: background,
       primaryColor: scheme.primary,
       iconTheme: IconThemeData(color: muted, size: 23),
+      visualDensity: VisualDensity.standard,
       textTheme: textTheme.copyWith(
         displayLarge: textTheme.displayLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -1.2,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -1.5,
           fontFeatures: tabularFigures,
         ),
         displayMedium: textTheme.displayMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.8,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -1.1,
           fontFeatures: tabularFigures,
         ),
         displaySmall: textTheme.displaySmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.4,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.7,
           fontFeatures: tabularFigures,
         ),
         headlineMedium: textTheme.headlineMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.65,
           fontFeatures: tabularFigures,
         ),
         headlineSmall: textTheme.headlineSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.3,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.45,
           fontFeatures: tabularFigures,
         ),
         titleLarge: textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.25,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.35,
         ),
         titleMedium: textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w600,
         ),
-        bodyMedium: textTheme.bodyMedium?.copyWith(color: muted),
-        bodySmall: textTheme.bodySmall?.copyWith(color: muted),
+        bodyLarge: textTheme.bodyLarge?.copyWith(height: 1.45),
+        bodyMedium: textTheme.bodyMedium?.copyWith(color: muted, height: 1.45),
+        bodySmall: textTheme.bodySmall?.copyWith(color: muted, height: 1.35),
         labelLarge: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
         labelSmall: textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
@@ -169,20 +171,21 @@ class AppTheme {
         centerTitle: false,
         iconTheme: IconThemeData(color: text),
         actionsIconTheme: IconThemeData(color: muted),
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: GoogleFonts.hankenGrotesk(
           color: text,
           fontSize: 20,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.25,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.35,
         ),
       ),
       cardTheme: CardThemeData(
         color: surface,
         surfaceTintColor: Colors.transparent,
-        elevation: 0,
+        elevation: 1,
+        shadowColor: const Color(0x140B1020),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: border),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          side: BorderSide(color: border.withValues(alpha: 0.86)),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -190,19 +193,21 @@ class AppTheme {
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.horizontal(right: Radius.circular(AppRadius.xl)),
+          borderRadius: BorderRadius.horizontal(
+            right: Radius.circular(AppRadius.xl),
+          ),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         shape: _rounded(AppRadius.xl),
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: GoogleFonts.hankenGrotesk(
           color: text,
           fontSize: 21,
           fontWeight: FontWeight.w700,
         ),
-        contentTextStyle: GoogleFonts.inter(color: muted, height: 1.45),
+        contentTextStyle: GoogleFonts.hankenGrotesk(color: muted, height: 1.45),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: surface,
@@ -211,7 +216,9 @@ class AppTheme {
         showDragHandle: true,
         dragHandleColor: border,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.xl),
+          ),
         ),
       ),
       textSelectionTheme: TextSelectionThemeData(
@@ -221,12 +228,12 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
+        fillColor: brightness == Brightness.light ? surface : elevatedSurface,
         hoverColor: elevatedSurface,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 16,
+          vertical: 15,
         ),
         border: _inputBorder(border),
         enabledBorder: _inputBorder(border),
@@ -234,17 +241,17 @@ class AppTheme {
         errorBorder: _inputBorder(scheme.error),
         focusedErrorBorder: _inputBorder(scheme.error, width: 1.4),
         disabledBorder: _inputBorder(border.withValues(alpha: 0.55)),
-        labelStyle: GoogleFonts.inter(
+        labelStyle: GoogleFonts.hankenGrotesk(
           color: muted,
           fontWeight: FontWeight.w500,
         ),
-        floatingLabelStyle: GoogleFonts.inter(
+        floatingLabelStyle: GoogleFonts.hankenGrotesk(
           color: scheme.primary,
           fontWeight: FontWeight.w600,
         ),
-        hintStyle: GoogleFonts.inter(color: muted, fontWeight: FontWeight.w400),
-        helperStyle: GoogleFonts.inter(color: muted, fontSize: 12),
-        errorStyle: GoogleFonts.inter(
+        hintStyle: GoogleFonts.hankenGrotesk(color: muted, fontWeight: FontWeight.w400),
+        helperStyle: GoogleFonts.hankenGrotesk(color: muted, fontSize: 12),
+        errorStyle: GoogleFonts.hankenGrotesk(
           color: scheme.error,
           fontWeight: FontWeight.w600,
           fontSize: 12,
@@ -257,9 +264,10 @@ class AppTheme {
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
           elevation: 0,
+          minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape: _rounded(AppRadius.sm),
-          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+          shape: _rounded(AppRadius.md),
+          textStyle: GoogleFonts.hankenGrotesk(fontWeight: FontWeight.w700),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -268,18 +276,20 @@ class AppTheme {
           foregroundColor: scheme.onPrimary,
           disabledBackgroundColor: elevatedSurface,
           disabledForegroundColor: muted,
+          minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape: _rounded(AppRadius.sm),
-          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+          shape: _rounded(AppRadius.md),
+          textStyle: GoogleFonts.hankenGrotesk(fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: text,
           side: BorderSide(color: border),
+          minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-          shape: _rounded(AppRadius.sm),
-          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          shape: _rounded(AppRadius.md),
+          textStyle: GoogleFonts.hankenGrotesk(fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -287,7 +297,7 @@ class AppTheme {
           foregroundColor: scheme.primary,
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
           shape: _rounded(AppRadius.xs),
-          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.hankenGrotesk(fontWeight: FontWeight.w700),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
@@ -295,7 +305,7 @@ class AppTheme {
           foregroundColor: muted,
           hoverColor: elevatedSurface,
           highlightColor: scheme.primary.withValues(alpha: 0.09),
-          shape: _rounded(AppRadius.sm),
+          shape: _rounded(AppRadius.md),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
@@ -303,19 +313,19 @@ class AppTheme {
         indicatorColor: scheme.primaryContainer,
         selectedIconTheme: IconThemeData(color: scheme.primary),
         unselectedIconTheme: IconThemeData(color: muted),
-        selectedLabelTextStyle: GoogleFonts.inter(
+        selectedLabelTextStyle: GoogleFonts.hankenGrotesk(
           color: scheme.primary,
           fontWeight: FontWeight.w700,
           fontSize: 12,
         ),
-        unselectedLabelTextStyle: GoogleFonts.inter(
+        unselectedLabelTextStyle: GoogleFonts.hankenGrotesk(
           color: muted,
           fontWeight: FontWeight.w500,
           fontSize: 12,
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 56,
+        height: 68,
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         indicatorColor: scheme.primaryContainer,
@@ -325,15 +335,15 @@ class AppTheme {
           selected: IconThemeData(color: scheme.primary),
         ),
         labelTextStyle: _state(
-          normal: GoogleFonts.inter(
+          normal: GoogleFonts.hankenGrotesk(
             color: muted,
             fontWeight: FontWeight.w500,
-            fontSize: 10.5,
+            fontSize: 11,
           ),
-          selected: GoogleFonts.inter(
+          selected: GoogleFonts.hankenGrotesk(
             color: scheme.primary,
             fontWeight: FontWeight.w700,
-            fontSize: 10.5,
+            fontSize: 11,
           ),
         ),
       ),
@@ -342,17 +352,17 @@ class AppTheme {
         indicatorColor: scheme.primary,
         labelColor: scheme.primary,
         unselectedLabelColor: muted,
-        labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
-        unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500),
+        labelStyle: GoogleFonts.hankenGrotesk(fontWeight: FontWeight.w700),
+        unselectedLabelStyle: GoogleFonts.hankenGrotesk(fontWeight: FontWeight.w500),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: elevatedSurface,
         selectedColor: scheme.primaryContainer,
         disabledColor: elevatedSurface,
         side: BorderSide(color: border),
-        shape: _rounded(AppRadius.xs),
-        labelStyle: GoogleFonts.inter(color: text, fontWeight: FontWeight.w600),
-        secondaryLabelStyle: GoogleFonts.inter(
+        shape: _rounded(AppRadius.sm),
+        labelStyle: GoogleFonts.hankenGrotesk(color: text, fontWeight: FontWeight.w600),
+        secondaryLabelStyle: GoogleFonts.hankenGrotesk(
           color: scheme.primary,
           fontWeight: FontWeight.w700,
         ),
@@ -361,19 +371,19 @@ class AppTheme {
       listTileTheme: ListTileThemeData(
         iconColor: muted,
         textColor: text,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: GoogleFonts.hankenGrotesk(
           color: text,
           fontWeight: FontWeight.w600,
         ),
-        subtitleTextStyle: GoogleFonts.inter(color: muted, fontSize: 13),
-        shape: _rounded(AppRadius.sm),
+        subtitleTextStyle: GoogleFonts.hankenGrotesk(color: muted, fontSize: 13),
+        shape: _rounded(AppRadius.md),
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: surface,
         surfaceTintColor: Colors.transparent,
         elevation: 6,
-        shape: _rounded(AppRadius.md),
-        textStyle: GoogleFonts.inter(color: text),
+        shape: _rounded(AppRadius.lg),
+        textStyle: GoogleFonts.hankenGrotesk(color: text),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: _state(
@@ -412,7 +422,7 @@ class AppTheme {
         backgroundColor: brightness == Brightness.light
             ? AppColors.textPrimary
             : const Color(0xFFF1F2F5),
-        contentTextStyle: GoogleFonts.inter(
+        contentTextStyle: GoogleFonts.hankenGrotesk(
           color: brightness == Brightness.light
               ? Colors.white
               : const Color(0xFF181B22),
@@ -429,7 +439,7 @@ class AppTheme {
               : const Color(0xFFF1F2F5),
           borderRadius: BorderRadius.circular(AppRadius.xs),
         ),
-        textStyle: GoogleFonts.inter(
+        textStyle: GoogleFonts.hankenGrotesk(
           color: brightness == Brightness.light
               ? Colors.white
               : const Color(0xFF181B22),

@@ -12,6 +12,7 @@ import '../../../core/services/product_image_upload_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -2357,22 +2358,9 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: AppColors.primaryLight),
-        SizedBox(width: 10),
-        Flexible(
-          child: Text(
-            title,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ],
+    return StitchSectionHeader(
+      title: title,
+      leading: Icon(icon, size: 20, color: AppColors.primaryLight),
     );
   }
 }
@@ -2384,14 +2372,9 @@ class _FormCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return StitchCard(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-      ),
+      radius: 16,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,

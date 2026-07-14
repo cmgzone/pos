@@ -2,6 +2,31 @@ const crypto = require('crypto');
 
 const { config } = require('./config');
 
+// Ed25519 keys are stored as raw 32-byte seed / public key (base64). The
+// private key signs licenses; the public key (shipped in the app) verifies
+// them. The raw keys are wrapped in the standard DER prefixes below so Node's
+// crypto can build KeyObjects from them.
+const ED25519_PRIVATE_PREFIX = Buffer.from(
+  '302e020100300506032b657004220420',
+  'hex',
+);
+const ED25519_PUBLIC_PREFIX = Buffer.from(
+  '302a300506032b6570032100',
+  'hex',
+);
+
+function _ed25519PrivateKey() {
+  const raw = Buffer.from(config.licenseSigningPrivateKey, 'base64');
+  const der = Buffer.concat([ED25519_PRIVATE_PREFIX, raw]);
+  return crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
+}
+
+function _ed25519PublicKey() {
+  const raw = Buffer.from(config.licenseSigningPublicKey, 'base64');
+  const der = Buffer.concat([ED25519_PUBLIC_PREFIX, raw]);
+  return crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
+}
+
 function issueLicense({
   businessId,
   businessName,
@@ -33,13 +58,44 @@ function issueLicense({
   }
 
   const payloadBase64 = base64UrlEncode(JSON.stringify(payload));
-  const signature = signPayload(payloadBase64);
+  const signature = signPayloadEd25519(payloadBase64);
 
   return {
     payload,
     payloadBase64,
     signature,
+    alg: 'ed25519',
   };
+}
+
+function signPayloadEd25519(payloadBase64) {
+  const signature = crypto.sign(
+    null,
+    Buffer.from(payloadBase64, 'utf8'),
+    _ed25519PrivateKey(),
+  );
+  return signature.toString('base64url');
+}
+
+function verifyPayloadEd25519(payloadBase64, signature) {
+  try {
+    const rawSignature = Buffer.from(signature, 'base64url');
+    return crypto.verify(
+      null,
+      Buffer.from(payloadBase64, 'utf8'),
+      _ed25519PublicKey(),
+      rawSignature,
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function verifyLicenseToken({ payloadBase64, signature, alg }) {
+  if (alg !== 'ed25519') {
+    return false;
+  }
+  return verifyPayloadEd25519(payloadBase64, signature);
 }
 
 function resolveSubscriptionState(subscription, referenceDate = new Date()) {
@@ -83,15 +139,6 @@ function resolveSubscriptionState(subscription, referenceDate = new Date()) {
   };
 }
 
-function signPayload(payloadBase64) {
-  return base64UrlEncode(
-    crypto
-      .createHmac('sha256', config.licenseSigningSecret)
-      .update(String(payloadBase64))
-      .digest(),
-  );
-}
-
 function toIsoString(value) {
   const parsed = parseDate(value);
   if (!parsed) {
@@ -120,5 +167,6 @@ function base64UrlEncode(value) {
 module.exports = {
   issueLicense,
   resolveSubscriptionState,
-  signPayload,
+  verifyLicenseToken,
+  signPayloadEd25519,
 };

@@ -7,6 +7,9 @@ import '../../core/services/session_service.dart';
 import '../../core/services/shop_settings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme_extensions.dart';
+import '../../widgets/piki_mark.dart';
+import '../../widgets/skeleton.dart';
+import '../../widgets/stitch_kit.dart';
 import '../products/data/product_repository.dart';
 import '../sales/data/sale_repository.dart';
 import '../training/widgets/training_anchor.dart';
@@ -435,10 +438,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         children: [
                           _buildHeader(),
                           const SizedBox(height: AppSpacing.xl),
+                          _buildTradingPulse(),
+                          const SizedBox(height: AppSpacing.xl),
                           _buildSearch(),
                           const SizedBox(height: AppSpacing.xl),
                           if (_isLoading)
-                            const LinearProgressIndicator(minHeight: 2)
+                            const SkeletonKpiGrid()
                           else if (isWide)
                             _buildWideLayout()
                           else
@@ -460,35 +465,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final theme = Theme.of(context);
     return Row(
       children: [
-        Container(
-          width: 46,
-          height: 46,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: theme.colorScheme.outline),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            child: Image.asset(
-              'assets/images/logo.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, error, stackTrace) => ColoredBox(
-                color: theme.colorScheme.primaryContainer,
-                child: Center(
-                  child: Text(
-                    _firstName.substring(0, 1).toUpperCase(),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        const PikiMark(size: 46),
         const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
@@ -560,27 +537,181 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildSearch() {
-    return Semantics(
-      button: true,
-      label: 'Search app actions',
-      child: InkWell(
-        onTap: _showActionSearch,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: IgnorePointer(
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: 'What do you want to do today?',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: Icon(
-                Icons.tune_rounded,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
+  Widget _buildTradingPulse() {
+    final canSell =
+        SessionService.canUseProductPos &&
+        SessionService.canAccessFeature(UserAccessProfile.featurePos);
+    final sales = _money(_todaySummary['total_revenue'] as num?);
+    final profit = _money(_todaySummary['total_profit'] as num?);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 720;
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(compact ? AppSpacing.xl : 30),
+          decoration: BoxDecoration(
+            color: AppColors.ink,
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            boxShadow: context.isDarkMode
+                ? const []
+                : [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: 0.14),
+                      blurRadius: 34,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
           ),
-        ),
-      ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: compact ? -58 : 6,
+                top: compact ? -72 : -54,
+                child: Container(
+                  width: compact ? 170 : 210,
+                  height: compact ? 170 : 210,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.brandCoral.withValues(alpha: 0.11),
+                  ),
+                ),
+              ),
+              if (compact)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _PulseHeading(shopName: ShopSettings.shopName),
+                    const SizedBox(height: 11),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        sales,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -1.2,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _isLoading
+                          ? 'Loading today\'s trade…'
+                          : 'Sales recorded today',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.66),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _PulseStat(label: 'Profit', value: profit),
+                        _PulseStat(
+                          label: 'Orders waiting',
+                          value: '$_pendingOrders',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => AppShell.selectIndex(canSell ? 0 : 4),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.brandCoral,
+                          foregroundColor: AppColors.ink,
+                        ),
+                        icon: Icon(
+                          canSell
+                              ? Icons.arrow_forward_rounded
+                              : Icons.receipt_long_rounded,
+                        ),
+                        label: Text(canSell ? 'Start a sale' : 'View sales'),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _PulseHeading(shopName: ShopSettings.shopName),
+                          const SizedBox(height: 12),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              sales,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 42,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -1.7,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _isLoading
+                                ? 'Loading today\'s trade…'
+                                : 'Sales recorded today',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.66),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 4,
+                      child: Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          _PulseStat(label: 'Profit', value: profit),
+                          _PulseStat(
+                            label: 'Orders waiting',
+                            value: '$_pendingOrders',
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    FilledButton.icon(
+                      onPressed: () => AppShell.selectIndex(canSell ? 0 : 4),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.brandCoral,
+                        foregroundColor: AppColors.ink,
+                      ),
+                      icon: const Icon(Icons.arrow_forward_rounded),
+                      label: Text(canSell ? 'Start a sale' : 'View sales'),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Widget _buildSearch() {
+    return StitchSearchBar(onTap: _showActionSearch);
   }
 
   Widget _buildWideLayout() {
@@ -767,7 +898,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: AppSpacing.md,
             mainAxisSpacing: AppSpacing.md,
-            childAspectRatio: crossAxisCount == 2 ? 1.28 : 1.22,
+            mainAxisExtent: 148,
           ),
           itemCount: _actions.length,
           itemBuilder: (context, index) {
@@ -910,10 +1041,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    'Recent activity',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  child: StitchSectionHeader(title: 'Recent activity'),
                 ),
                 TextButton(
                   onPressed: () => AppShell.selectIndex(4),
@@ -1000,6 +1128,92 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
+class _PulseHeading extends StatelessWidget {
+  final String shopName;
+
+  const _PulseHeading({required this.shopName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: AppColors.signal,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            'TODAY • ${shopName.toUpperCase()}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.74),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PulseStat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PulseStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 146,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.075),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.58),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class DashboardData {
   final Map<String, dynamic> todaySummary;
   final Map<String, dynamic> monthSummary;
@@ -1047,53 +1261,42 @@ class _MetricTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.72),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: metric.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                ),
-                child: Icon(metric.icon, size: 20, color: metric.color),
-              ),
-              const Spacer(),
-              Text(
-                metric.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                metric.value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
+    return StitchCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      radius: AppRadius.md,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: metric.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Icon(metric.icon, size: 20, color: metric.color),
           ),
-        ),
+          const Spacer(),
+          Text(
+            metric.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            metric.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1124,46 +1327,35 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.72),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _ActionIcon(icon: action.icon, enabled: action.available),
-              const Spacer(),
-              Text(
-                action.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: action.available
-                      ? theme.colorScheme.onSurface
-                      : theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                action.available ? action.description : 'No access',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
+    return StitchCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      radius: AppRadius.md,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _ActionIcon(icon: action.icon, enabled: action.available),
+          const Spacer(),
+          Text(
+            action.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: action.available
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
+          const SizedBox(height: 3),
+          Text(
+            action.available ? action.description : 'No access',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }

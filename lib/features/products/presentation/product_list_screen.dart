@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/shop_settings.dart';
+import '../../../core/services/sync_controller.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -16,6 +17,8 @@ import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../../widgets/piki_activity_panel.dart';
+import '../../../widgets/skeleton.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../purchases/presentation/purchase_management_screen.dart';
@@ -48,6 +51,7 @@ class ProductListScreen extends ConsumerStatefulWidget {
 }
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String? _selectedCategory;
   bool _isImporting = false;
@@ -63,7 +67,21 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      syncControllerProvider.select((state) => state.dataVersion),
+      (previous, next) {
+        if (previous != null && previous != next && mounted) {
+          _refreshProducts();
+        }
+      },
+    );
     final isMobile = MediaQuery.of(context).size.width <= 800;
     final categoriesAsync = ref.watch(categoriesProvider);
 
@@ -193,35 +211,31 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                 future: _productsFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return ListView.separated(
-                      padding: EdgeInsets.all(isMobile ? 12 : 24),
+                    return SkeletonList(
                       itemCount: 8,
-                      separatorBuilder: (_, _) => SizedBox(height: 12),
-                      itemBuilder: (_, _) => Container(
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
+                      itemHeight: 100,
+                      padding: EdgeInsets.all(isMobile ? 12 : 24),
+                      spacing: 12,
                     );
                   }
                   final products = snapshot.data ?? [];
                   if (products.isEmpty) {
                     return EmptyStateWidget(
-                      icon: Icons.inventory_2_outlined,
+                      icon: _searchQuery.isEmpty
+                          ? Icons.inventory_2_outlined
+                          : Icons.search_off_rounded,
                       title: _searchQuery.isEmpty
                           ? 'No products yet'
                           : 'No results found',
                       subtitle: _searchQuery.isEmpty
-                          ? 'Add your first product to start managing inventory.'
-                          : 'Try searching with different keywords or clear the filter.',
+                          ? 'Add your first product or import a spreadsheet to start selling.'
+                          : 'Try different keywords or clear the filter.',
                       actionLabel: _searchQuery.isEmpty
-                          ? 'Add Your First Product'
-                          : null,
+                          ? 'Add product'
+                          : 'Clear search',
+                      actionIcon: _searchQuery.isEmpty
+                          ? Icons.add_rounded
+                          : Icons.clear_rounded,
                       onAction: _searchQuery.isEmpty
                           ? () async {
                               final result = await Navigator.push(
@@ -232,6 +246,17 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                               );
                               if (result == true) _refreshProducts();
                             }
+                          : () {
+                              _searchController.clear();
+                              _setSelectedCategory(null);
+                              _setSearchQuery('');
+                            },
+                      secondaryActionLabel:
+                          _searchQuery.isEmpty && !_isImporting
+                          ? 'Import with Piki AI'
+                          : null,
+                      onSecondaryAction: _searchQuery.isEmpty && !_isImporting
+                          ? _importProductsFromFile
                           : null,
                     );
                   }
@@ -358,6 +383,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     bool isMobile,
   ) {
     final search = TextField(
+      controller: _searchController,
       onChanged: _setSearchQuery,
       decoration: InputDecoration(
         hintText: 'Search name, SKU, or barcode...',
@@ -365,6 +391,16 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           Icons.search,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear search',
+                icon: const Icon(Icons.clear_rounded, size: 18),
+                onPressed: () {
+                  _searchController.clear();
+                  _setSearchQuery('');
+                },
+              ),
         contentPadding: EdgeInsets.symmetric(vertical: 12),
       ),
     );
@@ -455,6 +491,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
   void _refreshProducts() {
     ref.invalidate(filteredProductsProvider);
+    ref.invalidate(posCategoriesProvider);
     setState(_reloadProductFutures);
   }
 
@@ -495,6 +532,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       MaterialPageRoute(builder: (_) => const CategoryManagementScreen()),
     );
     ref.invalidate(categoriesProvider);
+    ref.invalidate(posCategoriesProvider);
     ref.invalidate(filteredProductsProvider);
     _refreshProducts();
   }
@@ -761,6 +799,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   ) async {
     _refreshProducts();
     ref.invalidate(categoriesProvider);
+    ref.invalidate(posCategoriesProvider);
     if (!mounted) {
       return;
     }
@@ -1226,22 +1265,10 @@ class _ProductRow extends StatelessWidget {
     final isOut = tracksStock && stock == 0;
     final isMobile = MediaQuery.of(context).size.width < 600;
 
-    return Container(
+    return StitchCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.6),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      radius: 18,
+      borderColor: Theme.of(context).colorScheme.outline.withValues(alpha: 0.6),
       child: isMobile
           ? _buildMobileLayout(
               context,

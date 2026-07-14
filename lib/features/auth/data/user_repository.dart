@@ -76,6 +76,61 @@ class UserRepository {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Stores the server-verified user in the active business database so the
+  /// same account can sign in offline later. This is shared by login, signup,
+  /// and in-app business switching to keep session restoration identical.
+  static Future<Map<String, dynamic>> upsertCloudAuthenticatedUser({
+    required Map<String, dynamic> cloudUser,
+    required String fallbackEmail,
+    required String passwordHash,
+  }) async {
+    final userId = (cloudUser['id'] as String?)?.trim() ?? '';
+    if (userId.isEmpty) {
+      throw const AuthException(
+        'Cloud authentication returned an incomplete user.',
+      );
+    }
+
+    final now = DateTime.now().toIso8601String();
+    final values = <String, dynamic>{
+      'name': (cloudUser['name'] as String?) ?? '',
+      'email': (cloudUser['email'] as String?) ?? fallbackEmail,
+      'phone': (cloudUser['phone'] as String?) ?? '',
+      'password': passwordHash,
+      'role': (cloudUser['role'] as String?) ?? 'CASHIER',
+      'custom_role_id': cloudUser['custom_role_id'] as String?,
+      'feature_access_json': cloudUser['feature_access_json'] as String?,
+      'allowed_service_ids_json':
+          cloudUser['allowed_service_ids_json'] as String?,
+      'allowed_branch_ids_json':
+          cloudUser['allowed_branch_ids_json'] as String?,
+      'pos_mode': (cloudUser['pos_mode'] as String?) ?? 'both',
+      'service_order_scope':
+          (cloudUser['service_order_scope'] as String?) ??
+          'all_visible_services',
+      'updated_at': now,
+      'cloud_verified_at': now,
+      'sync_status': 'synced',
+    };
+    final existing = await DatabaseService.queryById(_table, userId);
+    if (existing == null) {
+      await DatabaseService.db.insert(_table, {
+        'id': userId,
+        ...values,
+        'created_at': (cloudUser['created_at'] as String?) ?? now,
+      });
+    } else {
+      await DatabaseService.db.update(
+        _table,
+        values,
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+    }
+
+    return await DatabaseService.queryById(_table, userId) ?? cloudUser;
+  }
+
   static Future<String> createUser({
     required String name,
     required String email,

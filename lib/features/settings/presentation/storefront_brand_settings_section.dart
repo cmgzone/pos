@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme_extensions.dart';
+import '../../../widgets/stitch_kit.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -1117,13 +1118,9 @@ class _StorefrontBrandSettingsSectionState
   }
 
   Widget _buildCard(List<Widget> children) {
-    return Container(
+    return StitchCard(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-      ),
+      radius: 18,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,

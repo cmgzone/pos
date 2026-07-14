@@ -19,6 +19,7 @@ import 'package:pos_app/core/services/support_diagnostics_service.dart';
 import 'package:pos_app/core/services/sync_controller.dart';
 import 'package:pos_app/core/services/sync_settings_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
+import 'package:pos_app/widgets/stitch_kit.dart';
 import 'package:pos_app/core/providers/theme_provider.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
 import 'package:pos_app/features/auth/data/user_repository.dart';
@@ -4313,14 +4314,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _buildCard(List<Widget> children) {
     final colors = Theme.of(context).colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 480;
-    return Container(
-      width: double.infinity,
+    return StitchCard(
       padding: EdgeInsets.all(compact ? 16 : 24),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.outline),
-      ),
+      radius: 16,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,

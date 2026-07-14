@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:pos_app/core/services/database_service.dart';
+import 'package:pos_app/features/products/data/category_repository.dart';
 import 'package:pos_app/features/products/data/product_repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -16,9 +17,7 @@ void main() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
 
-    tempDir = await Directory.systemTemp.createTemp(
-      'pos-product-lookup-test-',
-    );
+    tempDir = await Directory.systemTemp.createTemp('pos-product-lookup-test-');
     testDbPath = p.join(tempDir.path, 'velora_pos.db');
 
     await DatabaseService.overrideDatabasePathForTesting(testDbPath);
@@ -89,55 +88,58 @@ void main() {
     expect((product['active_variant_count'] as num).toInt(), 2);
   });
 
-  test('lookupBarcode returns variant row with parent product details', () async {
-    final now = DateTime.now().toIso8601String();
+  test(
+    'lookupBarcode returns variant row with parent product details',
+    () async {
+      final now = DateTime.now().toIso8601String();
 
-    await DatabaseService.db.insert('products', {
-      'id': 'product-hat',
-      'branch_id': DatabaseService.defaultBranchId,
-      'name': 'Hat',
-      'price': 30.0,
-      'cost': 12.0,
-      'stock': 20.0,
-      'low_stock': 3.0,
-      'unit': 'pcs',
-      'stock_unit': 'pcs',
-      'sale_unit': 'pcs',
-      'sale_to_stock_factor': 1.0,
-      'purchase_unit': 'pcs',
-      'purchase_to_stock_factor': 1.0,
-      'track_stock': 1,
-      'has_variants': 1,
-      'created_at': now,
-      'updated_at': now,
-      'sync_status': 'pending',
-    });
-    await DatabaseService.db.insert('product_variants', {
-      'id': 'variant-green',
-      'product_id': 'product-hat',
-      'branch_id': DatabaseService.defaultBranchId,
-      'name': 'Green',
-      'price': 35.0,
-      'cost': 14.0,
-      'stock': 5.0,
-      'low_stock': 1.0,
-      'barcode': 'HAT-GREEN-001',
-      'created_at': now,
-      'updated_at': now,
-      'sync_status': 'pending',
-    });
+      await DatabaseService.db.insert('products', {
+        'id': 'product-hat',
+        'branch_id': DatabaseService.defaultBranchId,
+        'name': 'Hat',
+        'price': 30.0,
+        'cost': 12.0,
+        'stock': 20.0,
+        'low_stock': 3.0,
+        'unit': 'pcs',
+        'stock_unit': 'pcs',
+        'sale_unit': 'pcs',
+        'sale_to_stock_factor': 1.0,
+        'purchase_unit': 'pcs',
+        'purchase_to_stock_factor': 1.0,
+        'track_stock': 1,
+        'has_variants': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+      await DatabaseService.db.insert('product_variants', {
+        'id': 'variant-green',
+        'product_id': 'product-hat',
+        'branch_id': DatabaseService.defaultBranchId,
+        'name': 'Green',
+        'price': 35.0,
+        'cost': 14.0,
+        'stock': 5.0,
+        'low_stock': 1.0,
+        'barcode': 'HAT-GREEN-001',
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
 
-    final result = await ProductRepository.lookupBarcode('HAT-GREEN-001');
+      final result = await ProductRepository.lookupBarcode('HAT-GREEN-001');
 
-    expect(result, isNotNull);
-    expect(result!['result_type'], 'variant');
-    expect(result['id'], 'product-hat');
-    expect(result['name'], 'Hat');
-    expect(result['variant_id'], 'variant-green');
-    expect(result['variant_name'], 'Green');
-    expect(result['variant_barcode'], 'HAT-GREEN-001');
-    expect((result['variant_price'] as num).toDouble(), 35.0);
-  });
+      expect(result, isNotNull);
+      expect(result!['result_type'], 'variant');
+      expect(result['id'], 'product-hat');
+      expect(result['name'], 'Hat');
+      expect(result['variant_id'], 'variant-green');
+      expect(result['variant_name'], 'Green');
+      expect(result['variant_barcode'], 'HAT-GREEN-001');
+      expect((result['variant_price'] as num).toDouble(), 35.0);
+    },
+  );
 
   test('lookupBarcode returns simple product row', () async {
     final now = DateTime.now().toIso8601String();
@@ -176,5 +178,91 @@ void main() {
   test('lookupBarcode returns null for unknown barcode', () async {
     final result = await ProductRepository.lookupBarcode('UNKNOWN-BARCODE');
     expect(result, isNull);
+  });
+
+  test(
+    'retail POS excludes restaurant menu items and menu-only categories',
+    () async {
+      final now = DateTime.now().toIso8601String();
+      await DatabaseService.db.insert('categories', {
+        'id': 'retail-category',
+        'branch_id': DatabaseService.defaultBranchId,
+        'name': 'Groceries',
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      });
+      await DatabaseService.db.insert('categories', {
+        'id': 'menu-category',
+        'branch_id': DatabaseService.defaultBranchId,
+        'name': 'Main',
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'synced',
+      });
+      await _insertProduct(
+        id: 'restaurant-meal',
+        name: 'Chapati And Beans',
+        barcode: 'MEAL-001',
+        categoryId: 'menu-category',
+        restaurantMenu: true,
+        now: now,
+      );
+
+      expect(await ProductRepository.hasRetailProducts(), isFalse);
+      expect(await ProductRepository.searchForPos('Chapati'), isEmpty);
+      expect(await ProductRepository.lookupBarcode('MEAL-001'), isNull);
+
+      await _insertProduct(
+        id: 'retail-milk',
+        name: 'Fresh Milk',
+        barcode: 'MILK-001',
+        categoryId: 'retail-category',
+        restaurantMenu: false,
+        now: now,
+      );
+
+      final retailProducts = await ProductRepository.getAll(
+        excludeRestaurantMenu: true,
+      );
+      final retailCategories = await CategoryRepository.getForRetailPos();
+      expect(await ProductRepository.hasRetailProducts(), isTrue);
+      expect(retailProducts.map((row) => row['id']), ['retail-milk']);
+      expect(retailCategories.map((row) => row['id']), ['retail-category']);
+      expect(await ProductRepository.getAll(), hasLength(2));
+    },
+  );
+}
+
+Future<void> _insertProduct({
+  required String id,
+  required String name,
+  required String barcode,
+  required String categoryId,
+  required bool restaurantMenu,
+  required String now,
+}) {
+  return DatabaseService.db.insert('products', {
+    'id': id,
+    'branch_id': DatabaseService.defaultBranchId,
+    'name': name,
+    'price': 200.0,
+    'cost': 80.0,
+    'stock': 0.0,
+    'low_stock': 0.0,
+    'unit': 'item',
+    'stock_unit': 'item',
+    'sale_unit': 'item',
+    'sale_to_stock_factor': 1.0,
+    'purchase_unit': 'item',
+    'purchase_to_stock_factor': 1.0,
+    'barcode': barcode,
+    'is_restaurant_menu': restaurantMenu ? 1 : 0,
+    'category_id': categoryId,
+    'track_stock': 0,
+    'has_variants': 0,
+    'created_at': now,
+    'updated_at': now,
+    'sync_status': 'synced',
   });
 }

@@ -5,8 +5,11 @@ class AppConstants {
   static const String productionPublicBaseUrl = 'https://pikipos.com';
   static const String debugApiBaseUrl = 'http://127.0.0.1:3000/api';
   static const String _defaultSocketUrl = 'https://pikipos.com';
-  static const String _defaultLicenseSigningSecret =
-      'velora-pos-dev-license-secret-change-me';
+  // Embedded Ed25519 public verification key (raw 32 bytes, base64). The
+  // matching private key signs licenses on the server and is NEVER shipped in
+  // the app, so extracted APKs cannot forge offline licenses.
+  static const String licenseSigningPublicKeyRaw =
+      'ANELBBdGdvDqdj23GqZQi9eZMYZ0kUASLQHs3t7i/+k=';
   static const String supportEmail = String.fromEnvironment(
     'SUPPORT_EMAIL',
     defaultValue: 'support@pikipos.com',
@@ -46,20 +49,6 @@ class AppConstants {
     );
     final selected = explicit.isNotEmpty ? explicit : productionPublicBaseUrl;
     return selected.replaceFirst(RegExp(r'/+$'), '');
-  }
-
-  static String get licenseSigningSecret {
-    const explicit = String.fromEnvironment(
-      'LICENSE_SIGNING_SECRET',
-      defaultValue: '',
-    );
-    if (explicit.isNotEmpty) {
-      return explicit;
-    }
-    // Fall back to the built-in dev secret so the app can launch even when
-    // the env var is not supplied.  For production, pass a real secret via
-    // --dart-define=LICENSE_SIGNING_SECRET=<value>.
-    return _defaultLicenseSigningSecret;
   }
 
   // Shared Preferences Keys

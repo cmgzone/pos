@@ -21,6 +21,7 @@ import 'features/app/app_shell.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/training/widgets/training_overlay_host.dart';
+import 'widgets/piki_mark.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -273,130 +274,132 @@ class _SplashScreenState extends State<SplashScreen>
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 120,
-                  height: 120,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            theme.primaryColor,
-                            theme.primaryColor.withValues(alpha: 0.6),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(28),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.primaryColor.withValues(alpha: 0.4),
-                            blurRadius: 40,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.point_of_sale_rounded,
-                        size: 56,
-                        color: Colors.white,
-                      ),
-                    );
-                  },
-                ),
+      body: Stack(
+        children: [
+          Positioned(
+            right: -90,
+            top: -110,
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.primary.withValues(alpha: 0.055),
               ),
-              const SizedBox(height: 32),
-              Text(
-                'Piki POS',
-                style: theme.textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                ),
+            ),
+          ),
+          Positioned(
+            left: -70,
+            bottom: -100,
+            child: Container(
+              width: 230,
+              height: 230,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.secondary.withValues(alpha: 0.055),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'AI-Powered Point of Sale',
-                style: theme.textTheme.bodyMedium?.copyWith(letterSpacing: 4),
-              ),
-              const SizedBox(height: 40),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: _startupError == null
-                    ? Column(
-                        key: const ValueKey('startup-loading'),
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: theme.primaryColor,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _isInitializing
-                                ? 'Preparing your workspace...'
-                                : 'Opening...',
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                        ],
-                      )
-                    : ConstrainedBox(
-                        key: const ValueKey('startup-error'),
-                        constraints: const BoxConstraints(maxWidth: 420),
+            ),
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - 48)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: Center(
+                    child: FadeTransition(
+                      opacity: _fadeIn,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 460),
                         child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: theme.colorScheme.error,
-                              size: 30,
-                            ),
-                            const SizedBox(height: 12),
+                            const PikiMark(size: 112, showShadow: true),
+                            const SizedBox(height: 30),
                             Text(
-                              'Startup failed',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
+                              'Piki',
+                              style: theme.textTheme.displaySmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -1.5,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                              ),
-                              child: Text(
-                                _startupError!,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                            Text(
+                              'The calm way to run a busy shop.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            FilledButton.icon(
-                              onPressed: _startInitialization,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Try again'),
+                            const SizedBox(height: 38),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              child: _startupError == null
+                                  ? Column(
+                                      key: const ValueKey('startup-loading'),
+                                      children: [
+                                        SizedBox(
+                                          width: 160,
+                                          child: LinearProgressIndicator(
+                                            minHeight: 3,
+                                            borderRadius: BorderRadius.circular(
+                                              99,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          _isInitializing
+                                              ? 'Preparing your workspace'
+                                              : 'Opening Piki',
+                                          style: theme.textTheme.bodyMedium,
+                                        ),
+                                      ],
+                                    )
+                                  : Column(
+                                      key: const ValueKey('startup-error'),
+                                      children: [
+                                        Icon(
+                                          Icons.error_outline_rounded,
+                                          color: theme.colorScheme.error,
+                                          size: 30,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'Piki could not open',
+                                          style: theme.textTheme.titleMedium,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          _startupError!,
+                                          textAlign: TextAlign.center,
+                                          style: theme.textTheme.bodyMedium,
+                                        ),
+                                        const SizedBox(height: 20),
+                                        FilledButton.icon(
+                                          onPressed: _startInitialization,
+                                          icon: const Icon(
+                                            Icons.refresh_rounded,
+                                          ),
+                                          label: const Text('Try again'),
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ],
                         ),
                       ),
+                    ),
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

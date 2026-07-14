@@ -657,7 +657,7 @@ class _TopBar extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Image.asset(
-            'assets/images/logo.png',
+            'assets/images/piki_mark_v2.png',
             width: 52,
             height: 52,
             fit: BoxFit.cover,

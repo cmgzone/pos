@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 
+import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import 'database_service.dart';
@@ -13,9 +14,11 @@ class AuditLogService {
     required String entityTable,
     String? entityId,
     String? branchId,
+    DatabaseExecutor? executor,
   }) async {
     try {
-      await DatabaseService.insert('audit_logs', {
+      final now = DateTime.now().toIso8601String();
+      final payload = <String, dynamic>{
         'id': _auditUuid.v4(),
         'branch_id': branchId ?? DatabaseService.currentBranchId,
         'user_id': SessionService.currentUserId.trim().isEmpty
@@ -26,7 +29,15 @@ class AuditLogService {
         'action': action,
         'entity_table': entityTable,
         'entity_id': entityId,
-      });
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      };
+      if (executor != null) {
+        await executor.insert('audit_logs', payload);
+      } else {
+        await DatabaseService.insert('audit_logs', payload);
+      }
     } catch (e, st) {
       developer.log(
         'Failed to write audit log',

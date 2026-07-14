@@ -7,6 +7,8 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../../widgets/empty_state_widget.dart';
+import '../../../widgets/skeleton.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 
@@ -133,18 +135,36 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
                 future: _stockFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
+                    return SkeletonList(
+                      itemCount: 8,
+                      itemHeight: isMobile ? 112 : 96,
+                      padding: EdgeInsets.all(isMobile ? 12 : 20),
+                      spacing: 10,
+                    );
                   }
 
                   final rows = snapshot.data ?? [];
                   if (rows.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No tracked stock found.',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                    final hasQuery = _searchController.text.trim().isNotEmpty;
+                    return EmptyStateWidget(
+                      icon: hasQuery
+                          ? Icons.search_off_rounded
+                          : Icons.inventory_2_outlined,
+                      title: hasQuery
+                          ? 'No stock matches'
+                          : 'No tracked stock yet',
+                      subtitle: hasQuery
+                          ? 'Try a different product name, SKU, barcode, or batch.'
+                          : 'Add products with stock tracking to see inventory levels here.',
+                      actionLabel: hasQuery ? 'Clear search' : null,
+                      actionIcon: Icons.clear_rounded,
+                      onAction: hasQuery
+                          ? () {
+                              _searchController.clear();
+                              _refresh();
+                            }
+                          : null,
+                      compact: true,
                     );
                   }
 

@@ -534,6 +534,7 @@ class SyncController extends Notifier<SyncState> {
 
   Future<void> _invalidateVisibleData() async {
     ref.invalidate(categoriesProvider);
+    ref.invalidate(posCategoriesProvider);
     ref.invalidate(productsProvider);
     ref.invalidate(filteredProductsProvider);
     ref.invalidate(lowStockProductsProvider);

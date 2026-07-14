@@ -10,6 +10,7 @@ import '../../../core/services/product_image_upload_service.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../data/product_variant_color_repository.dart';
@@ -1326,14 +1327,10 @@ class _VariantColorsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
+    return StitchCard(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.outline),
-      ),
+      radius: 14,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

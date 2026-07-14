@@ -308,7 +308,9 @@ CREATE TABLE IF NOT EXISTS delivery_zones (
   branch_id text NOT NULL DEFAULT 'main_branch', name text NOT NULL,
   fee double precision NOT NULL DEFAULT 0, minimum_order double precision NOT NULL DEFAULT 0,
   is_active integer NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz
+  updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
 );
 
 CREATE TABLE IF NOT EXISTS deliveries (
@@ -316,8 +318,17 @@ CREATE TABLE IF NOT EXISTS deliveries (
   branch_id text NOT NULL DEFAULT 'main_branch', order_id text NOT NULL REFERENCES public_catalog_orders(id) ON DELETE CASCADE,
   zone_id text, status text NOT NULL DEFAULT 'pending', tracking_code text NOT NULL,
   rider_name text, rider_phone text, scheduled_at timestamptz, delivered_at timestamptz,
-  note text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+  note text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz, sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq')
 );
+
+-- Keep existing installations compatible with the cursor-based sync contract.
+ALTER TABLE delivery_zones ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+ALTER TABLE delivery_zones ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 
 ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS payment_method text NOT NULL DEFAULT 'manual';
 ALTER TABLE public_catalog_orders ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'pending';
@@ -1562,8 +1573,10 @@ CREATE TABLE IF NOT EXISTS customer_group_members (
   id text PRIMARY KEY, business_id text, branch_id text, group_id text NOT NULL,
   customer_id text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz, sync_status text NOT NULL DEFAULT 'synced',
+  server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq'),
   UNIQUE(group_id, customer_id)
 );
+ALTER TABLE customer_group_members ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS business_id text;
 ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS branch_id text;
@@ -1730,6 +1743,9 @@ CREATE INDEX IF NOT EXISTS idx_table_orders_branch_status ON table_orders(busine
 CREATE INDEX IF NOT EXISTS idx_employee_attendance_branch_user ON employee_attendance(business_id, branch_id, user_id, clock_in_at DESC);
 CREATE INDEX IF NOT EXISTS idx_customer_groups_branch ON customer_groups(business_id, branch_id, name);
 CREATE INDEX IF NOT EXISTS idx_customer_group_members_group ON customer_group_members(business_id, group_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_group_members_business_revision ON customer_group_members(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_delivery_zones_business_revision ON delivery_zones(business_id, server_revision, id);
+CREATE INDEX IF NOT EXISTS idx_deliveries_business_revision ON deliveries(business_id, server_revision, id);
 ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 ALTER TABLE table_orders ADD COLUMN IF NOT EXISTS server_revision bigint NOT NULL DEFAULT nextval('sync_revision_seq');
 

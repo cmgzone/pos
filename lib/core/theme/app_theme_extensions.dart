@@ -39,22 +39,20 @@ extension AppThemeColors on BuildContext {
       ? const []
       : const [
           BoxShadow(
-            color: Color(0x0A20242D),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: Color(0x0B0B1020),
+            blurRadius: 10,
+            offset: Offset(0, 3),
           ),
           BoxShadow(
-            color: Color(0x0B20242D),
-            blurRadius: 20,
-            offset: Offset(0, 8),
+            color: Color(0x0D0B1020),
+            blurRadius: 30,
+            offset: Offset(0, 14),
           ),
         ];
 
   /// Soft tinted panel background (e.g. warning cards).
   Color warningPanelBackground([double alpha = 1]) {
-    final base = isDarkMode
-        ? const Color(0xFF2A2318)
-        : const Color(0xFFFFFAF0);
+    final base = isDarkMode ? const Color(0xFF2D2519) : const Color(0xFFFFF7E8);
     return alpha == 1 ? base : base.withValues(alpha: alpha);
   }
 
@@ -65,8 +63,7 @@ extension AppThemeColors on BuildContext {
   Color get posImageBackground =>
       isDarkMode ? AppColors.darkSurfaceHighlight : appSurfaceHighlight;
 
-  Color get posCardBorder =>
-      isDarkMode ? AppColors.darkBorder : appBorder;
+  Color get posCardBorder => isDarkMode ? AppColors.darkBorder : appBorder;
 
   Color get posTextPrimary =>
       isDarkMode ? AppColors.darkTextPrimary : appTextPrimary;
@@ -79,8 +76,7 @@ extension AppThemeColors on BuildContext {
 
   Color get posAccent => isDarkMode ? AppColors.darkAccent : appPrimary;
 
-  Color get posAccentSoft =>
-      isDarkMode ? AppColors.darkAccentSoft : appPrimary;
+  Color get posAccentSoft => isDarkMode ? AppColors.darkAccentSoft : appPrimary;
 
   Color get posPrice => isDarkMode ? AppColors.darkAccentSoft : appPrimary;
 
@@ -106,16 +102,17 @@ extension AppThemeColors on BuildContext {
   // ── Section header style (uppercase, tracked, small) ─────────────────────
   // Replaces the AI-default titleMedium blob with a real section label.
   TextStyle get appSectionHeaderStyle => TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.08,
-        color: appTextSecondary,
-        fontFamily: GoogleFonts.inter().fontFamily,
-      );
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.75,
+    color: appTextSecondary,
+    fontFamily: GoogleFonts.hankenGrotesk().fontFamily,
+  );
 
   // ── Flat brand badge color (no gradient) ─────────────────────────────────
   // Used in AppBar logo badges instead of LinearGradient(primary, primaryLight).
-  Color get brandBadgeColor => appPrimary;
+  Color get brandBadgeColor =>
+      isDarkMode ? AppColors.darkAccent : AppColors.brandCoral;
 
   // ── Named metric colors for dashboard KPIs ───────────────────────────────
   // Centralizes the magic hex that used to live in dashboard_screen.dart so

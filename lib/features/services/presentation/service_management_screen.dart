@@ -10,6 +10,7 @@ import '../../../core/services/session_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_message_dialog.dart';
@@ -1953,14 +1954,10 @@ class _InfoPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return StitchCard(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-      ),
+      radius: AppRadius.md,
       child: child,
     );
   }
@@ -5119,20 +5116,15 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(
-          title,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        Spacer(),
-        if (onRefresh != null)
-          IconButton(
-            icon: Icon(Icons.refresh, size: 18),
-            onPressed: onRefresh,
-            tooltip: 'Refresh',
-          ),
-      ],
+    return StitchSectionHeader(
+      title: title,
+      action: onRefresh == null
+          ? null
+          : IconButton(
+              icon: const Icon(Icons.refresh, size: 18),
+              onPressed: onRefresh,
+              tooltip: 'Refresh',
+            ),
     );
   }
 }

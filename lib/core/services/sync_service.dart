@@ -80,6 +80,7 @@ class SyncRunSummary {
 class SyncService {
   static const _timeout = Duration(seconds: 20);
   static const _pullTimeout = Duration(seconds: 90);
+  static const _localSnapshotMarkerKey = 'cloud_snapshot_v1';
 
   static const List<String> _pushTableOrder = [
     'branches',
@@ -206,6 +207,23 @@ class SyncService {
     Map<String, dynamic> remoteRow,
   ) => _applyRemoteRow(txn, table, remoteRow);
 
+  @visibleForTesting
+  static Future<bool> localSnapshotNeedsRecoveryForTesting({
+    required String cursor,
+    required String businessId,
+  }) => _localSnapshotNeedsRecovery(cursor: cursor, businessId: businessId);
+
+  @visibleForTesting
+  static Future<void> writeLocalSnapshotMarkerForTesting({
+    required String businessId,
+    required String cursor,
+    String scopeKey = '',
+  }) => _writeLocalSnapshotMarker(
+    businessId: businessId,
+    cursor: cursor,
+    scopeKey: scopeKey,
+  );
+
   static Future<LocalSyncSnapshot> getLocalSnapshot() async {
     final pendingChanges = <String, List<Map<String, dynamic>>>{};
     var pendingCount = 0;
@@ -311,7 +329,14 @@ class SyncService {
       allowReadOnly: true,
     );
     await _normalizeLocalSystemRowsForRole();
-    final initialCursor = forceFullPull ? '0' : _cursorForBusiness(license);
+    final savedCursor = _cursorForBusiness(license);
+    final recoverLocalSnapshot = await _localSnapshotNeedsRecovery(
+      cursor: savedCursor,
+      businessId: license.businessId?.trim() ?? '',
+    );
+    final initialCursor = forceFullPull || recoverLocalSnapshot
+        ? '0'
+        : savedCursor;
     final localSnapshot = await getLocalSnapshot();
 
     var pushedCount = 0;
@@ -354,6 +379,11 @@ class SyncService {
     await SyncSettingsService.setSyncScopeKey(pullSummary.scopeKey);
     await SyncSettingsService.setLastSyncAt(DateTime.now());
     await _markBusinessPulled(license);
+    await _writeLocalSnapshotMarker(
+      businessId: license.businessId?.trim() ?? '',
+      cursor: pullSummary.nextCursor,
+      scopeKey: pullSummary.scopeKey,
+    );
 
     final updatedLocalSnapshot = await getLocalSnapshot();
 
@@ -1115,6 +1145,53 @@ class SyncService {
       return '0';
     }
     return SyncSettingsService.syncCursor;
+  }
+
+  static Future<bool> _localSnapshotNeedsRecovery({
+    required String cursor,
+    required String businessId,
+  }) async {
+    final normalizedCursor = cursor.trim();
+    if (normalizedCursor.isEmpty || normalizedCursor == '0') {
+      return false;
+    }
+
+    final rows = await DatabaseService.rawQuery(
+      'SELECT value FROM sync_metadata WHERE key = ? LIMIT 1',
+      [_localSnapshotMarkerKey],
+    );
+    if (rows.isEmpty) {
+      return true;
+    }
+
+    try {
+      final decoded = jsonDecode(rows.first['value']?.toString() ?? '');
+      if (decoded is! Map) {
+        return true;
+      }
+      final markerBusinessId =
+          _readString(decoded['business_id'])?.trim() ?? '';
+      return businessId.isNotEmpty && markerBusinessId != businessId;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> _writeLocalSnapshotMarker({
+    required String businessId,
+    required String cursor,
+    required String scopeKey,
+  }) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await DatabaseService.db.insert('sync_metadata', {
+      'key': _localSnapshotMarkerKey,
+      'value': jsonEncode({
+        'business_id': businessId.trim(),
+        'cursor': cursor.trim(),
+        'scope_key': scopeKey.trim(),
+      }),
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static Future<void> _markBusinessPulled(LicenseSnapshot snapshot) async {

@@ -30,6 +30,7 @@ void main() {
     WidgetTester tester, {
     required Size size,
     required ThemeMode themeMode,
+    double textScale = 1,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -42,29 +43,34 @@ void main() {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: themeMode,
-          home: const DashboardScreen(
-            initialData: DashboardData(
-              todaySummary: {
-                'total_revenue': 12450,
-                'total_sales': 8,
-                'total_profit': 4200,
-              },
-              monthSummary: {'total_revenue': 186500},
-              topProductName: 'Milk 500ml',
-              pendingOrders: 4,
-              activeStaff: 6,
-              lowStockProducts: [
-                {'name': 'Milk 500ml', 'stock': 3, 'stock_unit': 'pcs'},
-                {'name': 'Bread', 'stock': 2, 'stock_unit': 'pcs'},
-              ],
-              recentSales: [
-                {
-                  'id': 'sale-1024',
-                  'total_amount': 2350,
-                  'payment_type': 'Cash',
-                  'created_at': '2026-06-14T10:30:00',
+          home: MediaQuery(
+            data: MediaQueryData.fromView(
+              tester.view,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: const DashboardScreen(
+              initialData: DashboardData(
+                todaySummary: {
+                  'total_revenue': 12450,
+                  'total_sales': 8,
+                  'total_profit': 4200,
                 },
-              ],
+                monthSummary: {'total_revenue': 186500},
+                topProductName: 'Milk 500ml',
+                pendingOrders: 4,
+                activeStaff: 6,
+                lowStockProducts: [
+                  {'name': 'Milk 500ml', 'stock': 3, 'stock_unit': 'pcs'},
+                  {'name': 'Bread', 'stock': 2, 'stock_unit': 'pcs'},
+                ],
+                recentSales: [
+                  {
+                    'id': 'sale-1024',
+                    'total_amount': 2350,
+                    'payment_type': 'Cash',
+                    'created_at': '2026-06-14T10:30:00',
+                  },
+                ],
+              ),
             ),
           ),
         ),
@@ -105,6 +111,21 @@ void main() {
     expect(find.text('Pending Orders'), findsOneWidget);
     expect(find.text('Active Staff'), findsOneWidget);
     expect(find.text('Recent activity'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dashboard fits a compact phone with enlarged text', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      size: const Size(320, 568),
+      themeMode: ThemeMode.light,
+      textScale: 1.2,
+    );
+
+    expect(find.text('Start a sale'), findsOneWidget);
+    expect(find.text('QUICK ACTIONS'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

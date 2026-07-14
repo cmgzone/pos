@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/number_utils.dart';
 import '../../app/app_shell.dart';
 import '../data/bi_repository.dart';
@@ -276,19 +277,16 @@ class _Panel extends StatelessWidget {
   const _Panel({required this.title, required this.subtitle, required this.child});
 
   @override
-  Widget build(BuildContext context) => Card(
-    elevation: 0,
-    child: Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 3),
-        Text(subtitle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        const SizedBox(height: AppSpacing.lg),
-        child,
-      ]),
-    ),
-  );
+  Widget build(BuildContext context) => StitchCard(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 3),
+          Text(subtitle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: AppSpacing.lg),
+          child,
+        ]),
+      );
 }
 
 class _RankedRows extends StatelessWidget {

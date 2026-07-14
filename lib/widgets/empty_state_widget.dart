@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../core/theme/app_colors.dart';
 import 'beautiful_icon.dart';
 
@@ -8,6 +9,11 @@ class EmptyStateWidget extends StatelessWidget {
   final String subtitle;
   final VoidCallback? onAction;
   final String? actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onSecondaryAction;
+  final String? secondaryActionLabel;
+  final bool compact;
+  final bool positiveTone;
 
   const EmptyStateWidget({
     super.key,
@@ -16,66 +22,97 @@ class EmptyStateWidget extends StatelessWidget {
     required this.subtitle,
     this.onAction,
     this.actionLabel,
+    this.actionIcon,
+    this.onSecondaryAction,
+    this.secondaryActionLabel,
+    this.compact = false,
+    this.positiveTone = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final iconColor = positiveTone
+        ? AppColors.success.withValues(alpha: 0.55)
+        : scheme.onSurfaceVariant.withValues(alpha: 0.35);
+    final pad = compact ? AppSpacing.xxl : 40.0;
+    final iconPad = compact ? AppSpacing.xl : AppSpacing.xxl;
+    final iconSize = compact ? 36.0 : 48.0;
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.xxl),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
-              child: BeautifulIcon(
-                icon,
-                size: 48,
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-              ),
-            ),
-            SizedBox(height: AppSpacing.xxl),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: AppSpacing.md),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 14,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (onAction != null && actionLabel != null) ...[
-              SizedBox(height: AppSpacing.xxl),
-              FilledButton.icon(
-                onPressed: onAction,
-                icon: Icon(Icons.add),
-                label: Text(actionLabel!),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xxl,
-                    vertical: AppSpacing.md,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
+        padding: EdgeInsets.all(pad),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: EdgeInsets.all(iconPad),
+                decoration: BoxDecoration(
+                  color: positiveTone
+                      ? AppColors.success.withValues(alpha: 0.10)
+                      : scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: positiveTone
+                        ? AppColors.success.withValues(alpha: 0.22)
+                        : scheme.outline.withValues(alpha: 0.35),
                   ),
                 ),
+                child: BeautifulIcon(icon, size: iconSize, color: iconColor),
               ),
+              SizedBox(height: compact ? AppSpacing.lg : AppSpacing.xxl),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: compact ? 16 : 18,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                  letterSpacing: -0.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: scheme.onSurfaceVariant,
+                  height: 1.45,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (onAction != null && actionLabel != null) ...[
+                SizedBox(height: compact ? AppSpacing.lg : AppSpacing.xxl),
+                FilledButton.icon(
+                  onPressed: onAction,
+                  icon: Icon(actionIcon ?? Icons.add_rounded, size: 18),
+                  label: Text(actionLabel!),
+                  style: FilledButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? AppSpacing.xl : AppSpacing.xxl,
+                      vertical: compact ? AppSpacing.sm : AppSpacing.md,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                  ),
+                ),
+              ],
+              if (onSecondaryAction != null && secondaryActionLabel != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                TextButton(
+                  onPressed: onSecondaryAction,
+                  child: Text(
+                    secondaryActionLabel!,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

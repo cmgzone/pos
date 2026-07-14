@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/cloud_auth_service.dart';
 import '../../../core/services/country_detector.dart';
-import '../../../core/services/database_service.dart';
 import '../../../core/services/local_business_reset_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
@@ -12,9 +11,11 @@ import '../../../core/services/sync_settings_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/piki_mark.dart';
 import '../../app/app_shell.dart';
 import '../../onboarding/presentation/business_setup_wizard_screen.dart';
 import '../data/auth_password_service.dart';
+import '../data/user_repository.dart';
 import '../../settings/presentation/subscription_screen.dart';
 import 'login_screen.dart';
 
@@ -568,7 +569,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       final backendUrl = await _resolveSignupBackendUrl();
 
-      final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+      // Protect the existing business before the registration request creates
+      // and binds a new cloud account. The candidate ID is not persisted until
+      // registration succeeds, so a rejected request cannot break the current
+      // account's device binding.
+      await LocalBusinessResetService.prepareForBusinessSwitch();
+      final deviceId = SyncSettingsService.generateFreshDeviceId();
 
       final response = await CloudAuthService.registerOnline(
         backendUrl: backendUrl,
@@ -587,10 +593,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         emailVerificationToken: _emailVerificationToken,
       );
 
-      if (backendUrl != SyncSettingsService.backendUrl) {
-        await SyncSettingsService.setBackendUrl(backendUrl);
-      }
-
       final incomingBusinessId = ((response.business['id'] as String?) ?? '')
           .trim();
       final incomingBusinessName =
@@ -600,41 +602,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
         await LocalBusinessResetService.clearForBusinessSwitch();
       }
 
-      final now = DateTime.now().toIso8601String();
+      if (backendUrl != SyncSettingsService.backendUrl) {
+        await SyncSettingsService.setBackendUrl(backendUrl);
+      }
+      await SyncSettingsService.setDeviceId(deviceId);
+
       final user = response.user;
-      final userId = (user['id'] as String?) ?? '';
-
-      if (userId.isEmpty) {
-        throw Exception('Cloud registration returned an incomplete user.');
-      }
-
-      final existingLocal = await DatabaseService.rawQuery(
-        'SELECT id FROM users WHERE id = ? LIMIT 1',
-        [userId],
+      final localUser = await UserRepository.upsertCloudAuthenticatedUser(
+        cloudUser: user,
+        fallbackEmail: email,
+        passwordHash: AuthPasswordService.hashPassword(password),
       );
-      if (existingLocal.isEmpty) {
-        await DatabaseService.db.insert('users', {
-          'id': userId,
-          'name': (user['name'] as String?) ?? name,
-          'email': (user['email'] as String?) ?? email,
-          'phone': (user['phone'] as String?) ?? phone,
-          'password': AuthPasswordService.hashPassword(password),
-          'role': (user['role'] as String?) ?? 'ADMIN',
-          'custom_role_id': user['custom_role_id'] as String?,
-          'feature_access_json': user['feature_access_json'] as String?,
-          'allowed_service_ids_json':
-              user['allowed_service_ids_json'] as String?,
-          'allowed_branch_ids_json': user['allowed_branch_ids_json'] as String?,
-          'pos_mode': (user['pos_mode'] as String?) ?? 'both',
-          'service_order_scope':
-              (user['service_order_scope'] as String?) ??
-              'all_visible_services',
-          'created_at': (user['created_at'] as String?) ?? now,
-          'updated_at': (user['updated_at'] as String?) ?? now,
-          'cloud_verified_at': now,
-          'sync_status': 'synced',
-        });
-      }
 
       await CloudAuthService.persistCloudResponse(response);
       if (incomingBusinessId.isNotEmpty) {
@@ -651,8 +629,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         await ShopSettings.setCurrency(_selectedCurrency);
       }
 
-      final localUser = await DatabaseService.queryById('users', userId);
-      await SessionService.signIn(localUser ?? user);
+      await SessionService.signIn(localUser);
 
       if (!mounted) return;
 
@@ -1408,6 +1385,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final compact = MediaQuery.sizeOf(context).width < 520;
     final form = SingleChildScrollView(
       child: Container(
+        width: double.infinity,
         constraints: const BoxConstraints(maxWidth: 560),
         margin: EdgeInsets.all(compact ? 14 : 24),
         padding: EdgeInsets.all(compact ? 24 : 36),
@@ -1429,34 +1407,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Image.asset(
-                'assets/images/logo.png',
-                width: 72,
-                height: 72,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Theme.of(context).colorScheme.secondary,
-                          AppColors.primaryLight,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(
-                      Icons.person_add_alt_1_rounded,
-                      size: 36,
-                      color: Colors.white,
-                    ),
-                  );
-                },
-              ),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: PikiMark(size: 72, showShadow: true),
             ),
             SizedBox(height: 28),
             Text(
@@ -1574,21 +1527,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           if (constraints.maxWidth > 800) {
             return Row(
               children: [
-                Expanded(
-                  flex: 5,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage('assets/images/pos_users.png'),
-                        fit: BoxFit.cover,
-                        colorFilter: ColorFilter.mode(
-                          Colors.black26,
-                          BlendMode.darken,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(flex: 5, child: const _SignUpStoryPanel()),
                 Expanded(flex: 4, child: Center(child: form)),
               ],
             );
@@ -1596,17 +1535,197 @@ class _SignUpScreenState extends State<SignUpScreen> {
             return Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(
-                  'assets/images/pos_users.png',
-                  fit: BoxFit.cover,
-                  color: Colors.black54,
-                  colorBlendMode: BlendMode.darken,
+                ColoredBox(color: theme.scaffoldBackgroundColor),
+                Positioned(
+                  right: -82,
+                  top: -94,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.07),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: -72,
+                  bottom: -86,
+                  child: Container(
+                    width: 190,
+                    height: 190,
+                    decoration: BoxDecoration(
+                      color: colors.secondary.withValues(alpha: 0.06),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
                 Center(child: form),
               ],
             );
           }
         },
+      ),
+    );
+  }
+}
+
+class _SignUpStoryPanel extends StatelessWidget {
+  const _SignUpStoryPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.ink,
+      child: Stack(
+        children: [
+          Positioned(
+            right: -110,
+            top: -100,
+            child: Container(
+              width: 350,
+              height: 350,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.brandCoral.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 70,
+            top: 124,
+            child: Container(
+              width: 15,
+              height: 15,
+              decoration: const BoxDecoration(
+                color: AppColors.signal,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.all(48),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - 96)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          PikiMark(size: 58),
+                          SizedBox(width: 14),
+                          Text(
+                            'Piki',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: constraints.maxHeight > 700 ? 126 : 68),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'SET UP ONCE. TRADE WITH CONFIDENCE.',
+                              style: TextStyle(
+                                color: AppColors.darkAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Start with the shop\nyou already know.',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 40,
+                                height: 1.05,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              'Tell Piki the essentials. You can refine branches, payments, stock, and roles whenever the business grows.',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.68),
+                                fontSize: 16,
+                                height: 1.55,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            const Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                _SignUpPoint(label: 'Business'),
+                                _SignUpPoint(label: 'Owner'),
+                                _SignUpPoint(label: 'Ready to trade'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignUpPoint extends StatelessWidget {
+  final String label;
+
+  const _SignUpPoint({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: AppColors.signal,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
