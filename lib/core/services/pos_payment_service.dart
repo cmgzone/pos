@@ -183,6 +183,29 @@ class PosPaymentService {
     return BusinessMpesaSettings.fromJson(data);
   }
 
+  /// Updates only non-secret M-Pesa settings. Existing credentials remain on
+  /// the server and are never exposed to an AI tool or copied through chat.
+  static Future<BusinessMpesaSettings> configureBusinessMpesaSettings({
+    required bool isActive,
+    required String displayName,
+    required String shortcode,
+    required String transactionType,
+    required String accountReference,
+    required bool sendSms,
+  }) {
+    return saveBusinessMpesaSettings(
+      isActive: isActive,
+      displayName: displayName,
+      shortcode: shortcode,
+      transactionType: transactionType,
+      accountReference: accountReference,
+      sendSms: sendSms,
+      consumerKey: '',
+      consumerSecret: '',
+      passkey: '',
+    );
+  }
+
   static Future<PosPayment> startMpesaCheckout({
     required double amount,
     required String phoneNumber,

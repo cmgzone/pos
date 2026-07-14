@@ -38,6 +38,7 @@ import 'package:pos_app/features/settings/presentation/custom_roles_section.dart
 import 'package:pos_app/features/settings/presentation/multi_currency_section.dart';
 import 'package:pos_app/features/settings/presentation/piki_cloud_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/storefront_brand_settings_section.dart';
+import 'package:pos_app/features/settings/presentation/storefront_theme_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -2562,6 +2563,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 SizedBox(
                   width: cardWidth,
                   child: _buildFeaturePageCard(
+                    icon: Icons.web_asset_outlined,
+                    title: 'Storefront Themes',
+                    subtitle:
+                        'Unlimited themes, checkout, and Piki customization.',
+                    onTap: () => _openSettingsMiniPage(
+                      title: 'Storefront Themes',
+                      icon: Icons.web_asset_outlined,
+                      maxWidth: 1040,
+                      child: const StorefrontThemeSettingsSection(),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _buildFeaturePageCard(
                     icon: Icons.dark_mode_outlined,
                     title: 'Appearance',
                     subtitle: 'Choose light, dark, or system theme.',
@@ -4312,7 +4328,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildCard(List<Widget> children) {
-    final colors = Theme.of(context).colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 480;
     return StitchCard(
       padding: EdgeInsets.all(compact ? 16 : 24),

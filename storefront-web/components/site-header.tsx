@@ -9,9 +9,10 @@ interface SiteHeaderProps {
   business?: Business;
   storefront?: Storefront;
   onTrackOrder: () => void;
+  showTracking?: boolean;
 }
 
-export function SiteHeader({ business, storefront, onTrackOrder }: SiteHeaderProps) {
+export function SiteHeader({ business, storefront, onTrackOrder, showTracking = true }: SiteHeaderProps) {
   const { cartCount, setIsCartOpen } = useStore();
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
@@ -54,13 +55,15 @@ export function SiteHeader({ business, storefront, onTrackOrder }: SiteHeaderPro
           >
             {storefront?.type === "services" ? "Services" : storefront?.type === "restaurant" ? "Menu" : "Shop"}
           </button>
-          <button
-            onClick={onTrackOrder}
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground"
-          >
-            <Search className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{storefront?.type === "services" ? "Track booking" : "Track order"}</span>
-          </button>
+          {showTracking && (
+            <button
+              onClick={onTrackOrder}
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{storefront?.type === "services" ? "Track booking" : "Track order"}</span>
+            </button>
+          )}
           {business?.id && (
             <a
               href={`/portal?businessId=${encodeURIComponent(business.id)}`}

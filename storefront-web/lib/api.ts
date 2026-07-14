@@ -82,7 +82,14 @@ export async function fetchCatalog(
 export async function placeOrder(
   businessId: string,
   payload: OrderPayload
-): Promise<{ orderNumber: string; checkoutUrl?: string }> {
+): Promise<{
+  orderNumber: string;
+  trackingCode?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  paymentRequestId?: string;
+  checkoutUrl?: string;
+}> {
   const res = await fetch(
     buildUrl(`/online-orders`),
     {
@@ -99,7 +106,14 @@ export async function placeOrder(
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || "Failed to place order");
   }
-  return (json.order || json.data) as { orderNumber: string; checkoutUrl?: string };
+  return (json.order || json.data) as {
+    orderNumber: string;
+    trackingCode?: string;
+    paymentMethod?: string;
+    paymentStatus?: string;
+    paymentRequestId?: string;
+    checkoutUrl?: string;
+  };
 }
 
 export async function trackOrder(

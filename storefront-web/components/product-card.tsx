@@ -64,11 +64,11 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
   return (
     <StaggerItem>
-      <div className="group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
+      <div className="theme-product-card group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
         <button
           type="button"
           onClick={() => setShowQuickView(true)}
-          className="relative aspect-[4/5] overflow-hidden bg-surface-elevated text-left"
+          className="theme-product-image relative aspect-[4/5] overflow-hidden bg-surface-elevated text-left"
         >
           {hasImage ? (
             <img

@@ -6,6 +6,8 @@ import '../../../core/services/catalog_share_service.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/storefront_brand_service.dart';
+import '../../../core/services/pos_payment_service.dart';
+import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/openrouter_service.dart';
@@ -175,6 +177,8 @@ class PikiAgentService {
   static const toolBusinessIntelligence = 'business_intelligence';
   static const toolCustomerPortalOverview = 'customer_portal_overview';
   static const toolBuildStorefront = 'build_storefront';
+  static const toolCustomizeCheckout = 'customize_checkout';
+  static const toolSetupPaymentGateway = 'setup_payment_gateway';
 
   // Each skill has a list of keyword-group patterns (ALL keywords in a group
   // must appear for a match).
@@ -471,6 +475,8 @@ class PikiAgentService {
     toolCheckout: 'Checkout',
     toolHoldSale: 'Hold sale',
     toolTeachAlias: 'Teach cashier alias',
+    toolCustomizeCheckout: 'Customize storefront checkout',
+    toolSetupPaymentGateway: 'Configure storefront payment gateway',
     toolBuildStorefront: 'Build storefront website',
   };
 
@@ -594,7 +600,11 @@ class PikiAgentService {
     toolTeachAlias:
         'Remember a cashier phrase, nickname, or local term for a product query.',
     toolBuildStorefront:
-        'Create or refresh a retail, service, or restaurant storefront using approved brand copy, colour, and module settings. The website change is staged for confirmation before publishing.',
+        'Create or refresh a retail, service, or restaurant storefront using approved brand copy, theme, colour, and checkout settings. The website change is staged for confirmation before publishing.',
+    toolCustomizeCheckout:
+        'Create a storefront checkout draft using safe fields, labels, fulfillment, and active payment methods. The draft is published only after explicit confirmation.',
+    toolSetupPaymentGateway:
+        'Configure public M-Pesa gateway settings and enable it only when owner-supplied credentials already exist securely on the server. Never requests, reads, displays, or changes consumer secrets or passkeys.',
   };
 
   static final _toolArguments = <String, String>{
@@ -676,7 +686,11 @@ class PikiAgentService {
     toolCheckout: 'payment_type(string)',
     toolTeachAlias: 'alias(string, required), target(string, required)',
     toolBuildStorefront:
-        'storefront_type(string: retail|services|restaurant, required), business_name(string), tagline(string), description(string), theme(string: modern|warm|fresh|elegant|bold|dark), primary_color(string #RRGGBB), make_main(bool)',
+        'storefront_type(string: retail|services|restaurant, required), business_name(string), tagline(string), description(string), theme_name(string), preset/theme(string: studio|minimal|warm|fresh|bold), primary_color(string #RRGGBB), hero_style(string: cover|split|minimal), card_style(string: bordered|elevated|minimal), image_ratio(string: square|portrait|landscape), corner_style(string: sharp|soft|rounded|pill), make_main(bool), publish(bool)',
+    toolCustomizeCheckout:
+        'storefront_type(string: retail|services|restaurant, required), theme_id(string), payment_methods(list: manual|mpesa), fulfillment_methods(list: pickup|delivery), show_delivery_address(bool), show_order_note(bool), show_order_tracking(bool), checkout_title(string), checkout_button_label(string), success_message(string), publish(bool)',
+    toolSetupPaymentGateway:
+        'provider(string: mpesa, required), display_name(string), shortcode(string), transaction_type(string: CustomerPayBillOnline|CustomerBuyGoodsOnline), account_reference(string), send_sms(bool), enable(bool). Secret credentials are forbidden.',
   };
 
   static String toolCatalogPrompt() {
@@ -721,6 +735,8 @@ class PikiAgentService {
     toolHoldSale,
     toolTeachAlias,
     toolBuildStorefront,
+    toolCustomizeCheckout,
+    toolSetupPaymentGateway,
   };
 
   static bool requiresConfirmation(String tool) => _writeTools.contains(tool);
@@ -1726,6 +1742,8 @@ Example: ["detergent", "soap", "laundry"]
         toolEnhanceProductImage => Icons.auto_fix_high_rounded,
         toolImageOrderDraft => Icons.document_scanner_rounded,
         toolBuildStorefront => Icons.web_rounded,
+        toolCustomizeCheckout => Icons.shopping_cart_checkout_rounded,
+        toolSetupPaymentGateway => Icons.account_balance_wallet_rounded,
         toolWebSearch => Icons.public_rounded,
         _ => Icons.auto_awesome_rounded,
       },
@@ -1821,6 +1839,10 @@ Example: ["detergent", "soap", "laundry"]
         return _searchSuppliers(safeArgs);
       case toolWebSearch:
         return _webSearch(safeArgs);
+      case toolCustomizeCheckout:
+        return _customizeStorefrontCheckout(safeArgs);
+      case toolSetupPaymentGateway:
+        return _setupStorefrontPaymentGateway(safeArgs);
       default:
         throw Exception('Unknown agent tool: $tool');
     }
@@ -3491,6 +3513,28 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       ),
     );
 
+    final themeName =
+        _stringArg(args, ['theme_name']) ?? '${saved.businessName} theme';
+    final designChanges = _storefrontDesignChanges(
+      args,
+      accentColor: primaryColor,
+    );
+    final checkoutChanges = _storefrontCheckoutChanges(args);
+    final themeDraft = await StorefrontThemeService.create(
+      branchId: saved.branchId,
+      storefrontType: storefrontType.apiValue,
+      name: themeName,
+      preset: _storefrontPreset(args),
+      design: designChanges,
+      checkout: checkoutChanges.isEmpty ? null : checkoutChanges,
+      source: 'ai',
+    );
+    final shouldPublish =
+        !args.containsKey('publish') || _boolArg(args, ['publish']);
+    final storefrontTheme = shouldPublish
+        ? await StorefrontThemeService.publish(themeDraft.id)
+        : themeDraft;
+
     final makeMain = _boolArg(args, ['make_main', 'set_main']);
     if (makeMain) {
       await CatalogShareService.setPrimaryStorefront(storefrontType);
@@ -3542,8 +3586,12 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       'is_main': makeMain,
       'url': url,
       'features': capabilities,
-      'summary':
-          '${storefrontType.label} website for "${saved.businessName}" was published${makeMain ? ' as the main business website' : ''}${url == null ? '.' : ': $url'}',
+      'theme_id': storefrontTheme.id,
+      'theme_name': storefrontTheme.name,
+      'theme_published': storefrontTheme.isPublished,
+      'summary': shouldPublish
+          ? '${storefrontType.label} website for "${saved.businessName}" was published${makeMain ? ' as the main business website' : ''}${url == null ? '.' : ': $url'}'
+          : '${storefrontType.label} website theme for "${saved.businessName}" was saved as a draft for preview.',
     }, args: args);
   }
 
@@ -3591,6 +3639,234 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       default:
         return fallback;
     }
+  }
+
+  static Future<Map<String, dynamic>> _customizeStorefrontCheckout(
+    Map<String, dynamic> args,
+  ) async {
+    final storefrontType = _requiredStorefrontType(args);
+    final brand = await StorefrontBrandService.fetchSettings();
+    final collection = await StorefrontThemeService.list(
+      branchId: brand.branchId,
+      storefrontType: storefrontType.apiValue,
+    );
+    final requestedThemeId = _stringArg(args, ['theme_id']);
+    StorefrontTheme? selected;
+    if (requestedThemeId != null) {
+      for (final theme in collection.themes) {
+        if (theme.id == requestedThemeId) {
+          selected = theme;
+          break;
+        }
+      }
+      if (selected == null) {
+        throw Exception('The selected storefront theme was not found.');
+      }
+    } else {
+      for (final theme in collection.themes) {
+        if (theme.isPublished) {
+          selected = theme;
+          break;
+        }
+      }
+      selected ??= collection.themes.isEmpty ? null : collection.themes.first;
+    }
+
+    selected ??= await StorefrontThemeService.create(
+      branchId: brand.branchId,
+      storefrontType: storefrontType.apiValue,
+      name: '${brand.businessName} checkout',
+      preset: 'studio',
+      source: 'ai',
+    );
+    final draft = selected.isPublished
+        ? await StorefrontThemeService.duplicate(
+            selected.id,
+            name: '${selected.name} checkout draft',
+            source: 'ai',
+          )
+        : selected;
+    final checkout = _storefrontCheckoutChanges(args, draft.checkout);
+    if (checkout.isEmpty) {
+      throw Exception('Describe at least one checkout setting to change.');
+    }
+    final updated = await StorefrontThemeService.update(draft.id, {
+      'checkout': checkout,
+      'source': 'ai',
+    });
+    final shouldPublish = _boolArg(args, ['publish']);
+    final result = shouldPublish
+        ? await StorefrontThemeService.publish(updated.id)
+        : updated;
+    return _enrichToolResult(toolCustomizeCheckout, {
+      'type': toolCustomizeCheckout,
+      'success': true,
+      'theme_id': result.id,
+      'theme_name': result.name,
+      'storefront_type': result.storefrontType,
+      'published': result.isPublished,
+      'payment_methods': result.checkout.paymentMethods,
+      'fulfillment_methods': result.checkout.fulfillmentMethods,
+      'summary': result.isPublished
+          ? 'Published the customized checkout for ${storefrontType.label}.'
+          : 'Created a checkout draft for ${storefrontType.label}. Preview it, then publish when ready.',
+    }, args: args);
+  }
+
+  static Future<Map<String, dynamic>> _setupStorefrontPaymentGateway(
+    Map<String, dynamic> args,
+  ) async {
+    final provider = (_stringArg(args, ['provider']) ?? 'mpesa')
+        .trim()
+        .toLowerCase();
+    if (provider != 'mpesa') {
+      throw Exception('Piki currently supports secure setup for M-Pesa only.');
+    }
+    final existing = await PosPaymentService.fetchBusinessMpesaSettings();
+    final credentialsReady = const [
+      'consumerKey',
+      'consumerSecret',
+      'passkey',
+    ].every((key) => (existing.secretConfig[key]?.toString() ?? '').isNotEmpty);
+    final hasEnableArgument =
+        args.containsKey('enable') || args.containsKey('is_active');
+    final requestedEnabled = hasEnableArgument
+        ? _boolArg(args, ['enable', 'is_active'])
+        : existing.isActive;
+    final shortcode =
+        _stringArg(args, ['shortcode', 'till', 'paybill']) ??
+        existing.publicConfig['shortcode']?.toString() ??
+        '';
+    if (shortcode.trim().isEmpty) {
+      throw Exception('Add the M-Pesa Till or PayBill number.');
+    }
+    final transactionType =
+        _stringArg(args, ['transaction_type']) ??
+        existing.publicConfig['transactionType']?.toString() ??
+        'CustomerPayBillOnline';
+    final accountReference =
+        _stringArg(args, ['account_reference']) ??
+        existing.publicConfig['accountReference']?.toString() ??
+        'PikiPOS';
+    final configured = await PosPaymentService.configureBusinessMpesaSettings(
+      isActive: requestedEnabled && credentialsReady,
+      displayName: _stringArg(args, ['display_name']) ?? existing.displayName,
+      shortcode: shortcode,
+      transactionType: transactionType,
+      accountReference: accountReference,
+      sendSms: args.containsKey('send_sms')
+          ? _boolArg(args, ['send_sms'])
+          : existing.publicConfig['sendSms'] == true,
+    );
+    final needsCredentials = requestedEnabled && !credentialsReady;
+    return _enrichToolResult(toolSetupPaymentGateway, {
+      'type': toolSetupPaymentGateway,
+      'success': true,
+      'provider': 'mpesa',
+      'display_name': configured.displayName,
+      'shortcode': configured.publicConfig['shortcode'],
+      'enabled': configured.isActive,
+      'needs_credentials': needsCredentials,
+      'summary': needsCredentials
+          ? 'Saved the public M-Pesa settings as inactive. The owner must add Consumer Key, Consumer Secret, and Passkey in Settings > Payment Methods before Piki can enable it.'
+          : configured.isActive
+          ? 'M-Pesa is configured and enabled for storefront checkout.'
+          : 'M-Pesa public settings were saved and the gateway remains disabled.',
+    }, args: args);
+  }
+
+  static String _storefrontPreset(Map<String, dynamic> args) {
+    final requested = (_stringArg(args, ['preset', 'theme']) ?? 'studio')
+        .toLowerCase();
+    return switch (requested) {
+      'minimal' => 'minimal',
+      'warm' || 'elegant' => 'warm',
+      'fresh' => 'fresh',
+      'bold' || 'dark' => 'bold',
+      _ => 'studio',
+    };
+  }
+
+  static Map<String, dynamic> _storefrontDesignChanges(
+    Map<String, dynamic> args, {
+    String? accentColor,
+  }) {
+    final result = <String, dynamic>{};
+    if (accentColor != null && accentColor.trim().isNotEmpty) {
+      result['accentColor'] = accentColor.trim();
+    }
+    const fields = {
+      'background_color': 'backgroundColor',
+      'text_color': 'textColor',
+      'muted_color': 'mutedColor',
+      'surface_color': 'surfaceColor',
+      'surface_elevated_color': 'surfaceElevatedColor',
+      'border_color': 'borderColor',
+      'font_family': 'fontFamily',
+      'hero_style': 'heroStyle',
+      'card_style': 'cardStyle',
+      'image_ratio': 'imageRatio',
+      'density': 'density',
+      'corner_style': 'cornerStyle',
+    };
+    for (final entry in fields.entries) {
+      final value = _stringArg(args, [entry.key]);
+      if (value != null) result[entry.value] = value;
+    }
+    return result;
+  }
+
+  static Map<String, dynamic> _storefrontCheckoutChanges(
+    Map<String, dynamic> args, [
+    StorefrontCheckoutSettings? existing,
+  ]) {
+    final result = existing == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(existing.toJson());
+    final paymentMethods = _stringListArg(args, ['payment_methods'])
+        .map((item) => item.toLowerCase())
+        .where((item) => item == 'manual' || item == 'mpesa')
+        .toSet()
+        .toList();
+    if (paymentMethods.isNotEmpty) {
+      result['paymentMethods'] = paymentMethods;
+      result['defaultPaymentMethod'] =
+          paymentMethods.contains(existing?.defaultPaymentMethod)
+          ? existing!.defaultPaymentMethod
+          : paymentMethods.first;
+    }
+    final fulfillmentMethods = _stringListArg(args, ['fulfillment_methods'])
+        .map((item) => item.toLowerCase())
+        .where((item) => item == 'pickup' || item == 'delivery')
+        .toSet()
+        .toList();
+    if (fulfillmentMethods.isNotEmpty) {
+      result['fulfillmentMethods'] = fulfillmentMethods;
+      result['defaultFulfillmentMethod'] =
+          fulfillmentMethods.contains(existing?.defaultFulfillmentMethod)
+          ? existing!.defaultFulfillmentMethod
+          : fulfillmentMethods.first;
+    }
+    const boolFields = {
+      'show_delivery_address': 'showDeliveryAddress',
+      'show_order_note': 'showOrderNote',
+      'show_order_tracking': 'showOrderTracking',
+    };
+    for (final entry in boolFields.entries) {
+      if (args.containsKey(entry.key)) {
+        result[entry.value] = _boolArg(args, [entry.key]);
+      }
+    }
+    const textFields = {
+      'checkout_title': 'checkoutTitle',
+      'checkout_button_label': 'checkoutButtonLabel',
+      'success_message': 'successMessage',
+    };
+    for (final entry in textFields.entries) {
+      final value = _stringArg(args, [entry.key]);
+      if (value != null) result[entry.value] = value;
+    }
+    return result;
   }
 
   static Future<Map<String, dynamic>> _recordProductSale(

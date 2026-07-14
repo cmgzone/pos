@@ -61,6 +61,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_storefronts_business_type_unique
 CREATE INDEX IF NOT EXISTS idx_storefronts_business
   ON storefronts (business_id);
 
+CREATE TABLE IF NOT EXISTS storefront_themes (
+  id text PRIMARY KEY,
+  business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  branch_id text NOT NULL DEFAULT 'main_branch',
+  storefront_type text NOT NULL DEFAULT 'retail',
+  name text NOT NULL,
+  preset text NOT NULL DEFAULT 'studio',
+  design_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  checkout_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  source text NOT NULL DEFAULT 'manual',
+  is_published boolean NOT NULL DEFAULT false,
+  created_by text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  published_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_storefront_themes_business_scope
+  ON storefront_themes (business_id, branch_id, storefront_type, updated_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_storefront_themes_one_published
+  ON storefront_themes (business_id, branch_id, storefront_type)
+  WHERE is_published = true;
+
+-- Themes are intentionally unlimited; only the published theme is unique per storefront scope.
+
 DO $$
 BEGIN
   IF EXISTS (

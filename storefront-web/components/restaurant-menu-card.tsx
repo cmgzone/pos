@@ -31,8 +31,8 @@ export function RestaurantMenuCard({
 
   return (
     <StaggerItem>
-      <article className="group overflow-hidden rounded-2xl border border-border-subtle bg-surface shadow-sm transition hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-md">
-        <div className="relative aspect-[16/10] overflow-hidden bg-surface-elevated">
+      <article className="theme-product-card group overflow-hidden rounded-2xl border border-border-subtle bg-surface shadow-sm transition hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-md">
+        <div className="theme-product-image relative aspect-[16/10] overflow-hidden bg-surface-elevated">
           {imageUrl ? (
             <img
               src={imageUrl}

@@ -150,6 +150,19 @@ const {
   normalizeCatalogSubdomain,
 } = require('./catalogSubdomains');
 const { normalizePublicCatalogBranches } = require('./catalogBranches');
+const {
+  checkoutForActiveGateways,
+  createStorefrontTheme,
+  deleteStorefrontTheme,
+  duplicateStorefrontTheme,
+  ensureStorefrontThemeSchema,
+  getStorefrontTheme,
+  listStorefrontThemes,
+  loadPublishedStorefrontTheme,
+  publishStorefrontTheme,
+  storefrontThemePresets,
+  updateStorefrontTheme,
+} = require('./storefrontThemes');
 
 const app = express();
 const server = http.createServer(app);
@@ -193,7 +206,7 @@ const CATALOG_CACHE_TABLES = new Set([
   'purchase_invoices',
   'stock_transfers',
 ]);
-const CATALOG_CACHE_CODE_VERSION = '2';
+const CATALOG_CACHE_CODE_VERSION = '3';
 const STOREFRONT_TYPES = Object.freeze({
   retail: Object.freeze({
     type: 'retail',
@@ -2842,18 +2855,54 @@ app.post('/api/online-orders', async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.body?.businessId || req.body?.business_id);
     if (!businessId) throw createHttpError(400, 'businessId is required.');
-    const order = await createPublicCatalogOrder(businessId, req.body || {});
-    const paymentMethod = ['manual', 'mpesa', 'paypal', 'stripe'].includes(req.body?.paymentMethod)
+    const paymentMethod = ['manual', 'mpesa'].includes(req.body?.paymentMethod)
       ? req.body.paymentMethod : 'manual';
+    let mpesaBusinessContext = null;
+    if (paymentMethod === 'mpesa') {
+      const businessResult = await query(
+        `SELECT country_code FROM businesses WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+        [businessId],
+      );
+      const business = businessResult.rows[0];
+      if (!business) throw createHttpError(404, 'Catalog not found.');
+      mpesaBusinessContext = {
+        businessId,
+        countryCode: business.country_code || 'KE',
+      };
+      const mpesaStatus = await loadPosMpesaConfig(mpesaBusinessContext);
+      if (!mpesaStatus.active) {
+        throw createHttpError(400, mpesaStatus.message || 'M-Pesa is not ready for this storefront.');
+      }
+    }
+    const order = await createPublicCatalogOrder(businessId, req.body || {});
     const trackingCode = `DLV-${order.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
     const deliveryStatus = order.fulfillmentMethod === 'delivery' ? 'pending' : null;
     let checkoutUrl = null;
+    let paymentRequestId = null;
     await withTransaction(async (client) => {
       await client.query(`UPDATE public_catalog_orders SET payment_method = $1, payment_status = $2, delivery_status = $3, tracking_code = $4, updated_at = NOW() WHERE id = $5`, [paymentMethod, paymentMethod === 'manual' ? 'pending' : 'initiated', deliveryStatus, trackingCode, order.id]);
       if (deliveryStatus) {
         await client.query(`INSERT INTO deliveries (id,business_id,branch_id,order_id,status,tracking_code,created_at,updated_at) VALUES ($1,$2,$3,$4,'pending',$5,NOW(),NOW())`, [crypto.randomUUID(), businessId, order.branchId, order.id, trackingCode]);
       }
     });
+    if (paymentMethod === 'mpesa') {
+      const payment = await createMpesaPosCheckout({
+        businessContext: mpesaBusinessContext,
+        amountMinor: Math.round(Number(order.subtotal || 0) * 100),
+        phoneNumber: order.phone,
+        metadata: {
+          publicCatalogOrder: {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+          },
+        },
+      });
+      paymentRequestId = payment.id;
+      await query(
+        `UPDATE public_catalog_orders SET payment_reference = $1, updated_at = NOW() WHERE id = $2`,
+        [payment.id, order.id],
+      );
+    }
     if (paymentMethod === 'paypal') {
       const gateway = await loadPaymentGateway('paypal');
       if (!gateway?.isActive) throw createHttpError(400, 'PayPal is not active.');
@@ -2870,7 +2919,18 @@ app.post('/api/online-orders', async (req, res, next) => {
       if (!response.ok || !body.id || !checkoutUrl) throw createHttpError(502, body.message || 'PayPal checkout could not be created.');
       await query(`UPDATE public_catalog_orders SET payment_reference = $1, updated_at = NOW() WHERE id = $2`, [body.id, order.id]);
     }
-    res.status(201).json({ ok: true, order: {...order, paymentMethod, paymentStatus: paymentMethod === 'manual' ? 'pending' : 'initiated', trackingCode, deliveryStatus, checkoutUrl} });
+    res.status(201).json({
+      ok: true,
+      order: {
+        ...order,
+        paymentMethod,
+        paymentStatus: paymentMethod === 'manual' ? 'pending' : 'initiated',
+        paymentRequestId,
+        trackingCode,
+        deliveryStatus,
+        checkoutUrl,
+      },
+    });
   } catch (error) { next(error); }
 });
 
@@ -5769,6 +5829,7 @@ async function handlePosMpesaStkCallback(req, res, next) {
       });
       if (paymentResult?.businessId) {
         await applyCustomerPortalMpesaPayment(paymentResult);
+        await applyPublicCatalogMpesaPayment(paymentResult);
         notifyBusinessRealtimeChange({
           businessId: paymentResult.businessId,
           reason: 'payment',
@@ -7875,6 +7936,107 @@ ${sourceText}`;
     warnings: smartImportWarnings(parsed, sourceTextTruncated),
     usage: body?.usage || {},
     model: aiConfig.model || 'openai/gpt-4o-mini',
+  };
+}
+
+async function requestOpenRouterStorefrontTheme({
+  fetchImpl,
+  aiConfig,
+  instruction,
+  theme,
+}) {
+  const currentTheme = {
+    name: theme.name,
+    storefrontType: theme.storefrontType,
+    design: theme.design,
+    checkout: theme.checkout,
+  };
+  const prompt = `You are Piki's storefront design agent. Customize a safe ecommerce theme for a real business.
+
+Return JSON only, with no markdown or commentary:
+{
+  "name": "short theme name",
+  "summary": "one sentence explaining the changes",
+  "design": {
+    "backgroundColor": "#RRGGBB",
+    "textColor": "#RRGGBB",
+    "mutedColor": "#RRGGBB",
+    "surfaceColor": "#RRGGBB",
+    "surfaceElevatedColor": "#RRGGBB",
+    "borderColor": "#RRGGBB",
+    "accentColor": "#RRGGBB",
+    "fontFamily": "inter|modern|serif|rounded|system",
+    "heroStyle": "cover|split|minimal",
+    "cardStyle": "bordered|elevated|minimal",
+    "imageRatio": "square|portrait|landscape",
+    "density": "comfortable|compact",
+    "cornerStyle": "sharp|soft|rounded|pill"
+  },
+  "checkout": {
+    "paymentMethods": ["manual", "mpesa"],
+    "defaultPaymentMethod": "manual|mpesa",
+    "fulfillmentMethods": ["pickup", "delivery"],
+    "defaultFulfillmentMethod": "pickup|delivery",
+    "showDeliveryAddress": true,
+    "showOrderNote": true,
+    "showOrderTracking": true,
+    "checkoutTitle": "short title",
+    "checkoutButtonLabel": "short action label",
+    "successMessage": "short confirmation message"
+  }
+}
+
+Rules:
+- Return a complete design and checkout object.
+- Use accessible contrast between text, backgrounds, surfaces, and the accent.
+- Do not output CSS, HTML, JavaScript, URLs, credentials, analytics, pixels, or scripts.
+- Do not add payment providers outside manual and mpesa.
+- Customer name and phone always remain required and cannot be removed.
+- Preserve values that the owner did not ask to change.
+
+CURRENT THEME:
+${JSON.stringify(currentTheme)}
+
+OWNER REQUEST:
+${instruction}`;
+
+  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${aiConfig.api_key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://pikipos.com',
+      'X-Title': 'Piki Storefront Designer',
+    },
+    body: JSON.stringify({
+      model: aiConfig.model || 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1800,
+      temperature: 0.25,
+    }),
+  });
+  const body = await readMaybeJson(response);
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'Piki storefront customization failed',
+    );
+  }
+  const parsed = parseJsonObjectFromText(extractOpenRouterTextContent(body));
+  if (!parsed || typeof parsed !== 'object') {
+    throw createHttpError(502, 'Piki did not return a valid storefront theme.');
+  }
+  return {
+    name: limitText(parsed.name, 80) || theme.name,
+    summary:
+      limitText(parsed.summary, 240) ||
+      'Piki prepared a storefront theme draft for review.',
+    design:
+      parsed.design && typeof parsed.design === 'object' ? parsed.design : {},
+    checkout:
+      parsed.checkout && typeof parsed.checkout === 'object'
+        ? parsed.checkout
+        : {},
   };
 }
 
@@ -10161,6 +10323,209 @@ app.put('/api/catalog/brand', async (req, res, next) => {
   }
 });
 
+app.get('/api/catalog/themes/presets', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    res.json({ ok: true, data: storefrontThemePresets() });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/themes', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.query || {}, businessContext);
+    const themes = await listStorefrontThemes(
+      query,
+      businessContext.businessId,
+      scope,
+    );
+    res.json({
+      ok: true,
+      data: {
+        themes,
+        presets: storefrontThemePresets(),
+        branchId: scope.branchId,
+        storefrontType: scope.storefrontType,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/themes', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const brand = await loadStorefrontBrand(businessContext.businessId, {
+      branchId: scope.branchId,
+    });
+    const theme = await createStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.body || {},
+      {
+        ...scope,
+        brandColor: brand.primaryColor,
+        createdBy: businessContext.userId,
+      },
+    );
+    res.status(201).json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/themes/:themeId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const theme = await updateStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.params.themeId,
+      req.body || {},
+    );
+    if (theme.isPublished) {
+      await invalidateCatalogCache(businessContext.businessId);
+    }
+    res.json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/themes/:themeId/duplicate', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const theme = await duplicateStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.params.themeId,
+      req.body || {},
+      { createdBy: businessContext.userId },
+    );
+    res.status(201).json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/themes/:themeId/publish', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const theme = await withTransaction((client) =>
+      publishStorefrontTheme(
+        client,
+        businessContext.businessId,
+        req.params.themeId,
+      ),
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'storefront_theme',
+      tables: ['storefront_themes'],
+    });
+    res.json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.delete('/api/catalog/themes/:themeId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const theme = await deleteStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.params.themeId,
+    );
+    res.json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/themes/:themeId/ai-customize', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    ensureAiFeatureAllowed(businessContext);
+    const instruction = limitText(req.body?.instruction || req.body?.prompt, 700);
+    if (!instruction || instruction.length < 5) {
+      throw createHttpError(400, 'Describe how Piki should customize this theme.');
+    }
+    const theme = await getStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.params.themeId,
+    );
+    if (!theme) throw createHttpError(404, 'Theme was not found.');
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+    const rateCheck = await checkAiRateLimit(businessContext, {
+      consumeQuota: req.body?.consumeQuota !== false,
+    });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const proposal = await requestOpenRouterStorefrontTheme({
+      fetchImpl: fetch,
+      aiConfig,
+      instruction,
+      theme,
+    });
+    const draft = theme.isPublished
+      ? await duplicateStorefrontTheme(
+          query,
+          businessContext.businessId,
+          theme.id,
+          { name: `${theme.name} AI draft`, source: 'ai' },
+          { createdBy: businessContext.userId },
+        )
+      : theme;
+    const updated = await updateStorefrontTheme(
+      query,
+      businessContext.businessId,
+      draft.id,
+      {
+        name: proposal.name || draft.name,
+        preset: draft.preset,
+        design: proposal.design,
+        checkout: proposal.checkout,
+        source: 'ai',
+      },
+    );
+    res.json({
+      ok: true,
+      data: updated,
+      summary: proposal.summary,
+      draftCreated: theme.isPublished,
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/api/catalog/orders', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -10432,6 +10797,7 @@ Promise.all([
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),
   ensureStorefrontBrandSchema(),
+  ensureStorefrontThemeSchema(query),
   ensureProductStorefrontSchema(),
   ensureQuotationsSchema(),
   ensurePlatformNotificationSchema(),
@@ -12819,6 +13185,34 @@ function defaultStorefrontTypeForSellingMode(sellingMode) {
   }
 }
 
+function resolveStorefrontThemeScope(input, businessContext) {
+  const raw = input && typeof input === 'object' ? input : {};
+  const branchId =
+    normalizeOptionalText(raw.branchId || raw.branch_id) || 'main_branch';
+  resolveDataScope(businessContext, branchId);
+  const requestedRaw =
+    raw.storefrontType || raw.storefront_type || raw.type || raw.module;
+  const requestedType = normalizeStorefrontType(requestedRaw, {
+    fallback: null,
+  });
+  if (requestedRaw != null && !requestedType) {
+    throw createHttpError(
+      400,
+      'Storefront type must be retail, services, or restaurant.',
+    );
+  }
+  const storefrontType =
+    requestedType || defaultStorefrontTypeForSellingMode(businessContext.sellingMode);
+  const available = storefrontTypesForEntitlements(
+    businessContext.entitlements,
+    businessContext.sellingMode,
+  );
+  if (!available.includes(storefrontType)) {
+    throw createHttpError(403, 'This subscription does not include that storefront.');
+  }
+  return { branchId, storefrontType };
+}
+
 function storefrontTypesForEntitlements(entitlements, sellingMode) {
   const features = new Set(entitlements?.features || []);
   const mode = normalizeSellingMode(sellingMode);
@@ -13173,6 +13567,7 @@ async function loadPublicCatalog(
 ) {
   await ensureCatalogSubdomainSchema(query);
   await ensureStorefrontBrandSchema(query);
+  await ensureStorefrontThemeSchema(query);
   await ensureProductStorefrontSchema(query);
   const businessResult = await query(
     `
@@ -13396,6 +13791,33 @@ async function loadPublicCatalog(
     branchName: selectedBranch.name,
   });
 
+  const publishedTheme = await loadPublishedStorefrontTheme(
+    query,
+    business.id,
+    {
+      branchId: selectedBranch.id,
+      storefrontType: selectedStorefrontType,
+      brandColor: branchBrand.primaryColor,
+    },
+  );
+  const activePaymentProviders = [];
+  try {
+    const mpesaStatus = await loadPosMpesaConfig({
+      businessId: business.id,
+      countryCode: business.country_code,
+    });
+    if (mpesaStatus.active) activePaymentProviders.push('mpesa');
+  } catch (_) {
+    // Manual checkout remains available if gateway readiness cannot be loaded.
+  }
+  const publicTheme = {
+    ...publishedTheme,
+    checkout: checkoutForActiveGateways(
+      publishedTheme.checkout,
+      activePaymentProviders,
+    ),
+  };
+
   const catalog = {
     business: {
       id: business.id,
@@ -13407,6 +13829,8 @@ async function loadPublicCatalog(
       selectedBranch,
     },
     storefront,
+    theme: publicTheme,
+    checkout: publicTheme.checkout,
     currency: currencyInfo.code,
     currencyCode: currencyInfo.code,
     currencySymbol: currencyInfo.symbol,
@@ -16309,9 +16733,29 @@ async function applyCustomerPortalMpesaPayment(paymentResult) {
   });
 }
 
+async function applyPublicCatalogMpesaPayment(paymentResult) {
+  if (!paymentResult?.businessId || !paymentResult?.paymentId) return;
+  const payment = await loadPosPayment({
+    businessId: paymentResult.businessId,
+    paymentId: paymentResult.paymentId,
+  });
+  const orderId = normalizeOptionalText(payment?.metadata?.publicCatalogOrder?.orderId);
+  if (!payment || !orderId) return;
+  const status = paymentResult.status === 'paid' ? 'paid' : 'failed';
+  await query(
+    `UPDATE public_catalog_orders
+     SET payment_status = $1,
+         payment_reference = COALESCE($2, payment_reference),
+         updated_at = NOW()
+     WHERE id = $3 AND business_id = $4 AND payment_method = 'mpesa'`,
+    [status, payment.receiptNumber || payment.id, orderId, payment.businessId],
+  );
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
+
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',

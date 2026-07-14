@@ -7,9 +7,10 @@ import { getInitials } from "@/lib/utils";
 interface FooterProps {
   business?: Business;
   onTrackOrder: () => void;
+  showTracking?: boolean;
 }
 
-export function Footer({ business, onTrackOrder }: FooterProps) {
+export function Footer({ business, onTrackOrder, showTracking = true }: FooterProps) {
   const year = new Date().getFullYear();
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
@@ -65,15 +66,17 @@ export function Footer({ business, onTrackOrder }: FooterProps) {
                   All products
                 </button>
               </li>
-              <li>
-                <button
-                  onClick={onTrackOrder}
-                  className="inline-flex items-center gap-1.5 text-muted-strong transition hover:text-foreground"
-                >
-                  <Search className="h-3.5 w-3.5" />
-                  Track order
-                </button>
-              </li>
+              {showTracking && (
+                <li>
+                  <button
+                    onClick={onTrackOrder}
+                    className="inline-flex items-center gap-1.5 text-muted-strong transition hover:text-foreground"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    Track order
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

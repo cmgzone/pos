@@ -29,8 +29,8 @@ export function ServiceCard({ item, currencySymbol, currencyCode }: ServiceCardP
 
   return (
     <StaggerItem>
-      <div className="group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
-        <div className="relative flex aspect-[4/5] flex-col items-center justify-center gap-4 border-b border-border-subtle bg-surface-elevated">
+      <div className="theme-product-card group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
+        <div className="theme-product-image relative flex aspect-[4/5] flex-col items-center justify-center gap-4 border-b border-border-subtle bg-surface-elevated">
           <div className="flex h-14 w-14 items-center justify-center rounded-full ring-1 ring-border-strong">
             <Calendar className="h-6 w-6 text-muted-strong" />
           </div>

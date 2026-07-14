@@ -47,7 +47,7 @@ export function Hero({ business, storefront, onBrowse }: HeroProps) {
 
   if (coverUrls.length > 0) {
     return (
-      <section className="relative overflow-hidden">
+      <section className="theme-hero relative overflow-hidden">
         <div className="absolute inset-0">
           {hasSlides ? (
             <AnimatePresence mode="wait">
@@ -128,7 +128,7 @@ export function Hero({ business, storefront, onBrowse }: HeroProps) {
   }
 
   return (
-    <section className="relative border-b border-border-subtle">
+    <section className="theme-hero relative border-b border-border-subtle">
       <div className="mx-auto max-w-4xl px-4 py-20 sm:px-6 sm:py-28 lg:px-10 lg:py-32">
         <FadeIn delay={0.05}>
           {eyebrow && (

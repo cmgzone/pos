@@ -17,7 +17,7 @@ import { ErrorState } from "./error-state";
 import { getBootstrap, getBranchIdFromQuery } from "@/lib/utils";
 import { fetchCatalog } from "@/lib/api";
 import { FadeIn } from "./motion";
-import type { BusinessBrand, StorefrontType } from "@/lib/types";
+import type { BusinessBrand, StorefrontTheme, StorefrontType } from "@/lib/types";
 
 function StorefrontInner() {
   const {
@@ -41,7 +41,7 @@ function StorefrontInner() {
         const data = await fetchCatalog(businessId, branchId, storefrontType);
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
-        applyStorefrontStyles(data.business.brand, data.storefront.type);
+        applyStorefrontStyles(data.business.brand, data.storefront.type, data.theme);
       } catch (err) {
         setCatalog(null);
         setError(err instanceof Error ? err.message : "Failed to load store");
@@ -58,6 +58,7 @@ function StorefrontInner() {
       applyStorefrontStyles(
         bootstrap.catalog.business.brand,
         bootstrap.catalog.storefront.type,
+        bootstrap.catalog.theme,
       );
       return;
     }
@@ -144,6 +145,7 @@ function StorefrontInner() {
         business={catalog?.business}
         storefront={catalog?.storefront}
         onTrackOrder={() => setShowTracker(true)}
+        showTracking={catalog?.checkout.showOrderTracking !== false}
       />
 
       <Hero
@@ -244,6 +246,7 @@ function StorefrontInner() {
       <Footer
         business={catalog?.business}
         onTrackOrder={() => setShowTracker(true)}
+        showTracking={catalog?.checkout.showOrderTracking !== false}
       />
 
       <FloatingCart onOpen={() => setIsCartOpen(true)} />
@@ -261,10 +264,11 @@ function StorefrontInner() {
             currencySymbol={catalog.currencySymbol}
             currencyCode={catalog.currencyCode}
             storefrontType={catalog.storefront.type}
+            checkout={catalog.checkout}
             onClose={() => setShowCheckout(false)}
           />
         )}
-        {showTracker && catalog && (
+        {showTracker && catalog && catalog.checkout.showOrderTracking && (
           <OrderTracker
             business={catalog.business}
             currency={catalog.currencySymbol}
@@ -280,13 +284,47 @@ function StorefrontInner() {
 function applyStorefrontStyles(
   brand?: BusinessBrand,
   storefrontType: StorefrontType = "retail",
+  theme?: StorefrontTheme,
 ) {
   const root = document.documentElement;
+  const design = theme?.design;
   root.dataset.storefrontType = storefrontType;
-  if (brand?.primaryColor) {
-    root.style.setProperty("--accent", brand.primaryColor);
+  root.dataset.themeHero = design?.heroStyle || "cover";
+  root.dataset.themeCard = design?.cardStyle || "bordered";
+  root.dataset.themeImage = design?.imageRatio || "portrait";
+  root.dataset.themeDensity = design?.density || "comfortable";
+  root.dataset.themeCorner = design?.cornerStyle || "soft";
+
+  const colors: Record<string, string | undefined> = {
+    "--background": design?.backgroundColor,
+    "--foreground": design?.textColor,
+    "--accent": design?.accentColor || brand?.primaryColor || undefined,
+    "--muted": design?.mutedColor,
+    "--muted-strong": design?.mutedColor,
+    "--surface": design?.surfaceColor,
+    "--surface-elevated": design?.surfaceElevatedColor,
+    "--border": design?.borderColor,
+    "--border-strong": design?.borderColor,
+  };
+  Object.entries(colors).forEach(([name, value]) => {
+    if (value) root.style.setProperty(name, value);
+    else root.style.removeProperty(name);
+  });
+
+  const fontFamilies: Record<StorefrontTheme["design"]["fontFamily"], string> = {
+    inter: 'Inter, ui-sans-serif, system-ui, sans-serif',
+    modern: '"Avenir Next", "Segoe UI", ui-sans-serif, sans-serif',
+    serif: 'Georgia, "Times New Roman", serif',
+    rounded: 'Nunito, "Arial Rounded MT Bold", ui-sans-serif, sans-serif',
+    system: 'ui-sans-serif, system-ui, sans-serif',
+  };
+  const font = design ? fontFamilies[design.fontFamily] : undefined;
+  if (font) {
+    root.style.setProperty("--storefront-font", font);
+    root.style.setProperty("--storefront-display-font", font);
   } else {
-    root.style.removeProperty("--accent");
+    root.style.removeProperty("--storefront-font");
+    root.style.removeProperty("--storefront-display-font");
   }
 }
 

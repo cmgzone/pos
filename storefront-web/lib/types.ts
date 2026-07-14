@@ -17,6 +17,47 @@ export interface Storefront {
   browseLabel: string;
 }
 
+export interface StorefrontThemeDesign {
+  backgroundColor: string;
+  textColor: string;
+  mutedColor: string;
+  surfaceColor: string;
+  surfaceElevatedColor: string;
+  borderColor: string;
+  accentColor: string;
+  fontFamily: "inter" | "modern" | "serif" | "rounded" | "system";
+  heroStyle: "cover" | "split" | "minimal";
+  cardStyle: "bordered" | "elevated" | "minimal";
+  imageRatio: "square" | "portrait" | "landscape";
+  density: "comfortable" | "compact";
+  cornerStyle: "sharp" | "soft" | "rounded" | "pill";
+}
+
+export interface StorefrontCheckoutSettings {
+  paymentMethods: ("manual" | "mpesa")[];
+  defaultPaymentMethod: "manual" | "mpesa";
+  fulfillmentMethods: ("pickup" | "delivery")[];
+  defaultFulfillmentMethod: "pickup" | "delivery";
+  showDeliveryAddress: boolean;
+  showOrderNote: boolean;
+  showOrderTracking: boolean;
+  checkoutTitle: string;
+  checkoutButtonLabel: string;
+  successMessage: string;
+}
+
+export interface StorefrontTheme {
+  id?: string | null;
+  branchId: string;
+  storefrontType: StorefrontType;
+  name: string;
+  preset: string;
+  design: StorefrontThemeDesign;
+  checkout: StorefrontCheckoutSettings;
+  source: string;
+  isPublished: boolean;
+}
+
 export interface Branch {
   id: string;
   name: string;
@@ -72,6 +113,8 @@ export interface Catalog {
   storefront: Storefront;
   currency: string;
   currencyCode: string;
+  theme: StorefrontTheme;
+  checkout: StorefrontCheckoutSettings;
   currencySymbol: string;
   currencyLabel: string;
   categories: string[];
@@ -97,7 +140,7 @@ export interface CustomerInfo {
 export interface OrderPayload {
   branchId: string;
   storefrontType?: StorefrontType;
-  paymentMethod?: "manual" | "mpesa" | "paypal" | "stripe";
+  paymentMethod?: "manual" | "mpesa";
   customerName: string;
   phone: string;
   deliveryAddress?: string;
@@ -129,6 +172,7 @@ export interface Order {
   createdAt: string;
   items: {
     productName: string;
+  paymentRequestId?: string;
     quantity: number;
     unitPrice: number;
     lineTotal: number;
