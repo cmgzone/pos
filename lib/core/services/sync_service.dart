@@ -891,6 +891,15 @@ class SyncService {
         continue;
       }
 
+      // PostgreSQL exposes boolean columns as true/false, while sqflite only
+      // accepts num, String, and Uint8List values. SQLite stores booleans as
+      // INTEGER, so normalize them at the cloud/local boundary for every
+      // synced table.
+      if (value is bool) {
+        normalized[key] = value ? 1 : 0;
+        continue;
+      }
+
       normalized[key] = value is Map || value is List
           ? jsonEncode(value)
           : value;

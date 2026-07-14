@@ -198,6 +198,46 @@ void main() {
   );
 
   test(
+    'PostgreSQL booleans are stored as SQLite integers during pull',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+
+      await DatabaseService.overrideDatabasePathForTesting(':memory:');
+      await DatabaseService.initialize();
+
+      await DatabaseService.db.transaction((txn) async {
+        await SyncService.applyRemoteRowForTesting(txn, 'loyalty_rules', {
+          'id': 'loyalty-rule-1',
+          'branch_id': DatabaseService.defaultBranchId,
+          'points_per_currency': 1.0,
+          'currency_divisor': 100.0,
+          'min_redemption_points': 0,
+          'points_to_currency_factor': 1.0,
+          'is_active': 1,
+          'gift_card_reward_enabled': true,
+          'gift_card_reward_points_threshold': 0,
+          'gift_card_reward_amount': 0.0,
+          'gift_card_reward_expiry_days': 0,
+          'created_at': '2026-07-14T08:00:00.000Z',
+          'updated_at': '2026-07-14T08:00:00.000Z',
+          'deleted_at': null,
+          'sync_status': 'synced',
+        });
+      });
+
+      final rule = await DatabaseService.queryById(
+        'loyalty_rules',
+        'loyalty-rule-1',
+      );
+      expect(rule?['gift_card_reward_enabled'], 1);
+
+      await DatabaseService.overrideDatabasePathForTesting(null);
+    },
+  );
+
+  test(
     'missing database snapshot marker triggers update recovery pull',
     () async {
       TestWidgetsFlutterBinding.ensureInitialized();

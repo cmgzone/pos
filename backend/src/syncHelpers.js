@@ -19,6 +19,15 @@ const NULLABLE_TIMESTAMP_FIELDS = new Set([
   'stock_transfers.received_at',
 ]);
 
+// PostgreSQL stores these as native booleans, while the Flutter SQLite client
+// represents boolean values as INTEGER 0/1.
+const BOOLEAN_FIELDS = new Set([
+  'loyalty_rules.is_active',
+  'loyalty_rules.gift_card_reward_enabled',
+  'gift_cards.is_active',
+  'promotions.is_active',
+]);
+
 function prepareIncomingRecord(tableName, record) {
   const config = getTableConfig(tableName);
   const rawRecord =
@@ -30,7 +39,18 @@ function prepareIncomingRecord(tableName, record) {
       continue;
     }
     if (Object.prototype.hasOwnProperty.call(rawRecord, column)) {
-      prepared[column] = rawRecord[column];
+      if (BOOLEAN_FIELDS.has(`${tableName}.${column}`)) {
+        const normalizedBoolean = normalizeBooleanField(
+          rawRecord[column],
+          column,
+        );
+        if (!normalizedBoolean.ok) {
+          return normalizedBoolean;
+        }
+        prepared[column] = normalizedBoolean.value;
+      } else {
+        prepared[column] = rawRecord[column];
+      }
     }
   }
 
@@ -179,7 +199,11 @@ function canonicalizeRecord(
     if (!Object.prototype.hasOwnProperty.call(record, column)) {
       continue;
     }
-    canonical[column] = canonicalizeValue(column, record[column]);
+    canonical[column] = canonicalizeValue(
+      tableName,
+      column,
+      record[column],
+    );
   }
 
   if (
@@ -292,9 +316,12 @@ function normalizeTimestampField(value, { field, required, fallback } = {}) {
   };
 }
 
-function canonicalizeValue(column, value) {
+function canonicalizeValue(tableName, column, value) {
   if (value === undefined) {
     return null;
+  }
+  if (BOOLEAN_FIELDS.has(`${tableName}.${column}`)) {
+    return value === true || value === 1 || value === '1' ? 1 : 0;
   }
   if (column.endsWith('_at')) {
     return normalizeTimestamp(value);
@@ -303,6 +330,18 @@ function canonicalizeValue(column, value) {
     return normalizeTimestamp(value);
   }
   return value;
+}
+
+function normalizeBooleanField(value, field) {
+  if (value === true || value === 1 || value === '1') {
+    return { ok: true, value: true };
+  }
+  if (value === false || value === 0 || value === '0') {
+    return { ok: true, value: false };
+  }
+  return invalidResult('invalid_boolean', `${field} must be true or false`, {
+    field,
+  });
 }
 
 function isSameValue(left, right) {

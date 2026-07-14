@@ -228,6 +228,39 @@ test('canonicalizeRecord redacts user passwords from client output', () => {
   assert.equal(normalized.sync_status, SERVER_SYNC_STATUS);
 });
 
+test('canonicalizeRecord converts PostgreSQL booleans to SQLite integers', () => {
+  const normalized = canonicalizeRecord(
+    'loyalty_rules',
+    {
+      id: 'loyalty-rule-1',
+      is_active: true,
+      gift_card_reward_enabled: false,
+      created_at: '2026-07-14T08:00:00.000Z',
+      updated_at: '2026-07-14T08:00:00.000Z',
+      sync_status: 'synced',
+    },
+    { forceSyncedStatus: true },
+  );
+
+  assert.equal(normalized.is_active, 1);
+  assert.equal(normalized.gift_card_reward_enabled, 0);
+});
+
+test('prepareIncomingRecord converts SQLite integers to PostgreSQL booleans', () => {
+  const result = prepareIncomingRecord('loyalty_rules', {
+    id: 'loyalty-rule-1',
+    is_active: 1,
+    gift_card_reward_enabled: 0,
+    created_at: '2026-07-14T08:00:00.000Z',
+    updated_at: '2026-07-14T08:00:00.000Z',
+    sync_status: 'pending',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.record.is_active, true);
+  assert.equal(result.record.gift_card_reward_enabled, false);
+});
+
 test('compareTimestamps handles equal instants across time zones', () => {
   assert.equal(
     compareTimestamps('2026-04-17T12:00:00-07:00', '2026-04-17T19:00:00.000Z'),
