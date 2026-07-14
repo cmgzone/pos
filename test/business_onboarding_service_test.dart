@@ -50,6 +50,20 @@ void main() {
     expect(supported, isEmpty);
   });
 
+  test('restaurant setup recommends restaurant mode instead of services', () {
+    final recommended = BusinessOnboardingService.recommendedFeatures(
+      businessType: 'restaurant',
+      sellingFocus: 'products',
+      stockTracking: 'no',
+      creditSales: 'no',
+      onlineSelling: 'no',
+    );
+
+    expect(recommended, contains(UserAccessProfile.featureRestaurantMode));
+    expect(recommended, contains(UserAccessProfile.featureProducts));
+    expect(recommended, isNot(contains(UserAccessProfile.featureServices)));
+  });
+
   test('stores onboarding answers per business', () async {
     final answers = BusinessOnboardingAnswers(
       businessId: 'biz-1',

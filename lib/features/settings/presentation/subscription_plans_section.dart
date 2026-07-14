@@ -210,7 +210,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     if (sellingMode == null || !plan.sellingModes.contains(sellingMode)) {
       setState(
         () => _message =
-            'Choose products, services, or combo for this subscription.',
+            'Choose products, services, restaurant, or combo for this subscription.',
       );
       return;
     }
@@ -2201,6 +2201,8 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     switch (mode) {
       case 'services':
         return 'Services only';
+      case 'restaurant':
+        return 'Restaurant';
       case 'combo':
         return 'Products + Services';
       case 'products':
@@ -2214,6 +2216,8 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
     switch (mode) {
       case 'services':
         return Icons.design_services_outlined;
+      case 'restaurant':
+        return Icons.restaurant_outlined;
       case 'combo':
         return Icons.all_inclusive_outlined;
       default:

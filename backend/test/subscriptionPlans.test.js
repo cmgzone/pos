@@ -19,15 +19,18 @@ test('selling mode labels normalize to entitlement modes', () => {
   assert.equal(normalizeSellingMode('Services only'), 'services');
   assert.equal(normalizeSellingMode('Product only'), 'products');
   assert.equal(normalizeSellingMode('Products only'), 'products');
+  assert.equal(normalizeSellingMode('Restaurant'), 'restaurant');
+  assert.equal(normalizeSellingMode('Food service'), 'restaurant');
   assert.equal(normalizeSellingMode('Products + Services'), 'combo');
 });
 
-test('default trial can onboard service businesses', () => {
+test('default trial can onboard product, service, and restaurant businesses', () => {
   const trialPlan = DEFAULT_PLANS.find((plan) => plan.code === 'trial');
 
   assert.ok(trialPlan);
   assert.equal(trialPlan.features.includes('services'), true);
-  assert.deepEqual(trialPlan.sellingModes, ['products', 'services', 'combo']);
+  assert.equal(trialPlan.features.includes('restaurant_mode'), true);
+  assert.deepEqual(trialPlan.sellingModes, ['products', 'services', 'restaurant', 'combo']);
   assert.equal(
     validateSellingModeEntitlement(
       {
@@ -35,6 +38,16 @@ test('default trial can onboard service businesses', () => {
         allowedSellingModes: trialPlan.sellingModes,
       },
       'Service only',
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateSellingModeEntitlement(
+      {
+        features: trialPlan.features,
+        allowedSellingModes: trialPlan.sellingModes,
+      },
+      'Restaurant',
     ).ok,
     true,
   );
@@ -52,8 +65,9 @@ test('service selling mode hides product inventory features', () => {
         'stock_list',
         'transfers',
         'sales',
+        'restaurant_mode',
       ],
-      allowedSellingModes: ['products', 'services', 'combo'],
+      allowedSellingModes: ['products', 'services', 'restaurant', 'combo'],
       maxBranches: 3,
       maxEmployees: 10,
       maxAiAgents: 3,
@@ -69,6 +83,33 @@ test('service selling mode hides product inventory features', () => {
   assert.equal(entitlements.features.includes('purchases'), false);
   assert.equal(entitlements.features.includes('stock_list'), false);
   assert.equal(entitlements.features.includes('transfers'), false);
+  assert.equal(entitlements.features.includes('restaurant_mode'), false);
+});
+
+test('product and restaurant registrations receive separate workspaces', () => {
+  const source = {
+    features: [
+      'pos',
+      'products',
+      'services',
+      'categories',
+      'sales',
+      'restaurant_mode',
+    ],
+    allowedSellingModes: ['products', 'services', 'restaurant', 'combo'],
+  };
+
+  const products = applySellingModeToEntitlements(source, 'products');
+  assert.equal(products.sellingMode, 'products');
+  assert.equal(products.features.includes('products'), true);
+  assert.equal(products.features.includes('restaurant_mode'), false);
+  assert.equal(products.features.includes('services'), false);
+
+  const restaurant = applySellingModeToEntitlements(source, 'restaurant');
+  assert.equal(restaurant.sellingMode, 'restaurant');
+  assert.equal(restaurant.features.includes('restaurant_mode'), true);
+  assert.equal(restaurant.features.includes('products'), true);
+  assert.equal(restaurant.features.includes('services'), false);
 });
 
 test('selling mode validation requires the selected plan to support the mode', () => {
@@ -77,13 +118,17 @@ test('selling mode validation requires the selected plan to support the mode', (
     allowedSellingModes: ['products'],
   };
   const comboPlan = {
-    features: ['pos', 'products', 'services', 'sales'],
-    allowedSellingModes: ['products', 'services', 'combo'],
+    features: ['pos', 'products', 'services', 'sales', 'restaurant_mode'],
+    allowedSellingModes: ['products', 'services', 'restaurant', 'combo'],
   };
 
   assert.equal(validateSellingModeEntitlement(productOnlyPlan, 'products').ok, true);
   assert.equal(validateSellingModeEntitlement(productOnlyPlan, 'services').ok, false);
   assert.equal(validateSellingModeEntitlement(productOnlyPlan, 'combo').ok, false);
+  assert.deepEqual(validateSellingModeEntitlement(comboPlan, 'restaurant'), {
+    ok: true,
+    mode: 'restaurant',
+  });
   assert.deepEqual(validateSellingModeEntitlement(comboPlan, 'combo'), {
     ok: true,
     mode: 'combo',

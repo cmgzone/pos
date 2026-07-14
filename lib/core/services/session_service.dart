@@ -111,6 +111,9 @@ class SessionService {
     return allowedIds.isEmpty || allowedIds.contains(cleanId);
   }
 
+  static bool get isRestaurantMode =>
+      LicenseService.currentSnapshot.entitlements.isRestaurant;
+
   static bool get canUseProductPos =>
       currentPosMode != UserAccessProfile.posModeServices &&
       LicenseService.currentSnapshot.entitlements.canSellProducts;

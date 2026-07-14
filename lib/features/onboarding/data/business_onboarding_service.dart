@@ -169,6 +169,7 @@ class BusinessOnboardingService {
       add(UserAccessProfile.featureReports);
     }
     if (businessType == 'restaurant') {
+      add(UserAccessProfile.featureRestaurantMode);
       add(UserAccessProfile.featureShifts);
     }
 

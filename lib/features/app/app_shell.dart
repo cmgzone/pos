@@ -432,9 +432,12 @@ class AppShellState extends ConsumerState<AppShell> {
   static const _fallbackNavigationIndex = 9;
   static const _posIndex = 0;
   static const _servicesIndex = 11;
+  static const _restaurantIndex = 29;
 
   bool get _isServiceOnlyAccount =>
       !SessionService.canUseProductPos && SessionService.canUseServicePos;
+
+  bool get _isRestaurantAccount => SessionService.isRestaurantMode;
 
   // The module launcher replaces persistent side navigation. Keeping this as
   // a getter leaves room for an embedded/kiosk shell to override later.
@@ -493,6 +496,10 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   bool _isAllowedForCurrentSellingMode(int index) {
+    if (_isRestaurantAccount &&
+        (index == _posIndex || index == _servicesIndex)) {
+      return false;
+    }
     if (_isServiceOnlyAccount && index == _posIndex) {
       return false;
     }
@@ -506,6 +513,9 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   int _normalizeNavigationIndex(int index) {
+    if (_isRestaurantAccount && index == _posIndex) {
+      return _restaurantIndex;
+    }
     if (_isServiceOnlyAccount && index == _posIndex) {
       return _servicesIndex;
     }
@@ -513,6 +523,9 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   int _initialIndexForCurrentAccount(int index) {
+    if (_isRestaurantAccount && index == _posIndex) {
+      return _restaurantIndex;
+    }
     if (_isServiceOnlyAccount && index == _posIndex) {
       return _servicesIndex;
     }

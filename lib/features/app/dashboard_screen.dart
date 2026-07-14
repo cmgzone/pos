@@ -176,32 +176,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     });
   }
 
+  bool get _canStartSale => SessionService.isRestaurantMode
+      ? SessionService.canAccessFeature(UserAccessProfile.featureRestaurantMode)
+      : (SessionService.canUseProductPos &&
+                SessionService.canAccessFeature(
+                  UserAccessProfile.featurePos,
+                )) ||
+            (SessionService.canUseServicePos &&
+                SessionService.canAccessFeature(
+                  UserAccessProfile.featureServices,
+                ));
+
   List<_HomeAction> get _actions => [
     _HomeAction(
-      label: 'Sell',
-      description: 'Start a new sale',
-      icon: Icons.shopping_cart_checkout_rounded,
-      destinationIndex:
-          (SessionService.canUseProductPos &&
-              SessionService.canAccessFeature(UserAccessProfile.featurePos))
+      label: SessionService.isRestaurantMode ? 'Restaurant' : 'Sell',
+      description: SessionService.isRestaurantMode
+          ? 'Open tables and kitchen orders'
+          : 'Start a new sale',
+      icon: SessionService.isRestaurantMode
+          ? Icons.restaurant_rounded
+          : Icons.shopping_cart_checkout_rounded,
+      destinationIndex: SessionService.isRestaurantMode
+          ? 29
+          : (SessionService.canUseProductPos &&
+                SessionService.canAccessFeature(UserAccessProfile.featurePos))
           ? 0
           : 11,
-      available:
-          (SessionService.canUseProductPos &&
-              SessionService.canAccessFeature(UserAccessProfile.featurePos)) ||
-          (SessionService.canUseServicePos &&
-              SessionService.canAccessFeature(
-                UserAccessProfile.featureServices,
-              )),
+      available: _canStartSale,
     ),
     _HomeAction(
       label: 'Products',
       description: 'Manage products',
       icon: Icons.inventory_2_outlined,
       destinationIndex: 1,
-      available: SessionService.canAccessFeature(
-        UserAccessProfile.featureProducts,
-      ),
+      available:
+          SessionService.canUseProductPos &&
+          SessionService.canAccessFeature(UserAccessProfile.featureProducts),
     ),
     _HomeAction(
       label: 'Orders',
@@ -237,8 +247,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       icon: Icons.warehouse_outlined,
       destinationIndex: 12,
       available:
-          SessionService.canAccessFeature(UserAccessProfile.featureStockList) ||
-          SessionService.canAccessFeature(UserAccessProfile.featureProducts),
+          SessionService.canUseProductPos &&
+          (SessionService.canAccessFeature(
+                UserAccessProfile.featureStockList,
+              ) ||
+              SessionService.canAccessFeature(
+                UserAccessProfile.featureProducts,
+              )),
     ),
     _HomeAction(
       label: 'Expenses',
@@ -1040,9 +1055,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: StitchSectionHeader(title: 'Recent activity'),
-                ),
+                Expanded(child: StitchSectionHeader(title: 'Recent activity')),
                 TextButton(
                   onPressed: () => AppShell.selectIndex(4),
                   child: const Text('View all'),

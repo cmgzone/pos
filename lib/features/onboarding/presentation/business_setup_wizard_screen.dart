@@ -12,6 +12,7 @@ class BusinessSetupWizardScreen extends StatefulWidget {
   final String? planName;
   final List<String> planFeatures;
   final String initialSellingFocus;
+  final String initialBusinessType;
   final Widget destination;
 
   const BusinessSetupWizardScreen({
@@ -23,6 +24,7 @@ class BusinessSetupWizardScreen extends StatefulWidget {
     this.planName,
     this.planFeatures = const [],
     this.initialSellingFocus = '',
+    this.initialBusinessType = '',
   });
 
   @override
@@ -50,6 +52,7 @@ class _BusinessSetupWizardScreenState extends State<BusinessSetupWizardScreen>
   @override
   void initState() {
     super.initState();
+    _businessType = _normalizeBusinessType(widget.initialBusinessType);
     _sellingFocus = _normalizeSellingFocus(widget.initialSellingFocus);
     _welcomeController = AnimationController(
       vsync: this,
@@ -464,6 +467,7 @@ class _BusinessSetupWizardScreenState extends State<BusinessSetupWizardScreen>
       case 'services':
         return 'services';
       case 'restaurant':
+        return 'products';
       case 'other':
         return _sellingFocus.isEmpty ? 'both' : _sellingFocus;
       default:
@@ -480,6 +484,21 @@ class _BusinessSetupWizardScreenState extends State<BusinessSetupWizardScreen>
       case 'combo':
       case 'both':
         return 'both';
+      case 'restaurant':
+        return 'products';
+      default:
+        return '';
+    }
+  }
+
+  static String _normalizeBusinessType(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'products':
+      case 'product':
+        return 'retail';
+      case 'services':
+      case 'restaurant':
+        return value.trim().toLowerCase();
       default:
         return '';
     }

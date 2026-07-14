@@ -55,44 +55,49 @@ void main() {
     expect(plan.priceFor(market, billingPeriod: 'weekly'), isNull);
   });
 
-  test('subscription plan prices render non-KES currencies with their symbol', () {
-    const usdMarket = SubscriptionMarket(
-      countryCode: 'GLOBAL',
-      label: 'Other Countries',
-      currency: 'USD',
-      provider: 'paypal',
-      providerLabel: 'PayPal',
-    );
-    const plan = SubscriptionPlanSummary(
-      code: 'pro',
-      name: 'Pro',
-      description: 'Full POS suite',
-      features: ['pos', 'products', 'services'],
-      sellingModes: ['products', 'services', 'combo'],
-      entitlements: SubscriptionEntitlements.empty(),
-      prices: [
-        SubscriptionPlanPrice(
-          id: 'pro-global-monthly',
-          planCode: 'pro',
-          countryCode: 'GLOBAL',
-          currency: 'USD',
-          amountMinor: 1500,
-          billingPeriod: 'monthly',
-          provider: 'paypal',
-        ),
-      ],
-      price: null,
-    );
+  test(
+    'subscription plan prices render non-KES currencies with their symbol',
+    () {
+      const usdMarket = SubscriptionMarket(
+        countryCode: 'GLOBAL',
+        label: 'Other Countries',
+        currency: 'USD',
+        provider: 'paypal',
+        providerLabel: 'PayPal',
+      );
+      const plan = SubscriptionPlanSummary(
+        code: 'pro',
+        name: 'Pro',
+        description: 'Full POS suite',
+        features: ['pos', 'products', 'services'],
+        sellingModes: ['products', 'services', 'combo'],
+        entitlements: SubscriptionEntitlements.empty(),
+        prices: [
+          SubscriptionPlanPrice(
+            id: 'pro-global-monthly',
+            planCode: 'pro',
+            countryCode: 'GLOBAL',
+            currency: 'USD',
+            amountMinor: 1500,
+            billingPeriod: 'monthly',
+            provider: 'paypal',
+          ),
+        ],
+        price: null,
+      );
 
-    expect(
-      plan.priceFor(usdMarket, billingPeriod: 'monthly')?.displayAmount,
-      r'$15.00',
-    );
-    expect(
-      plan.priceFor(usdMarket, billingPeriod: 'monthly')?.displayAmountWithCode,
-      r'$15.00 (USD)',
-    );
-  });
+      expect(
+        plan.priceFor(usdMarket, billingPeriod: 'monthly')?.displayAmount,
+        r'$15.00',
+      );
+      expect(
+        plan
+            .priceFor(usdMarket, billingPeriod: 'monthly')
+            ?.displayAmountWithCode,
+        r'$15.00 (USD)',
+      );
+    },
+  );
 
   test('subscription checkout parses Google Play details', () {
     final checkout = SubscriptionCheckoutResult.fromJson({
@@ -170,5 +175,24 @@ void main() {
     expect(plan.prices, hasLength(1));
     expect(plan.prices.single.provider, 'google_play');
     expect(plan.price, isNull);
+  });
+
+  test('restaurant entitlements do not activate the retail or service POS', () {
+    final restaurant = SubscriptionEntitlements.fromJson({
+      'features': ['pos', 'products', 'restaurant_mode'],
+      'sellingMode': 'restaurant',
+      'sellingModes': ['products', 'services', 'restaurant'],
+    });
+    final products = SubscriptionEntitlements.fromJson({
+      'features': ['pos', 'products'],
+      'sellingMode': 'products',
+      'sellingModes': ['products', 'services', 'restaurant'],
+    });
+
+    expect(restaurant.isRestaurant, isTrue);
+    expect(restaurant.canSellProducts, isFalse);
+    expect(restaurant.canSellServices, isFalse);
+    expect(products.isRestaurant, isFalse);
+    expect(products.canSellProducts, isTrue);
   });
 }

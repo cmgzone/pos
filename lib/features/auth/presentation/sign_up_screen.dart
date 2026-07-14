@@ -35,6 +35,19 @@ const _reservedStoreLinks = {
   'www',
 };
 
+const signupBusinessTypes = ['products', 'services', 'restaurant'];
+
+String signupBusinessTypeLabel(String mode) {
+  switch (mode) {
+    case 'services':
+      return 'Services';
+    case 'restaurant':
+      return 'Restaurant';
+    default:
+      return 'Products';
+  }
+}
+
 String signupStoreSlugPreview(String businessName) {
   var slug = businessName
       .trim()
@@ -87,7 +100,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   bool get _isBusinessSetupFlow => widget.initialRole.toUpperCase() == 'ADMIN';
 
-  static const _sellingModeOrder = ['products', 'services', 'combo'];
+  static const _sellingModeOrder = signupBusinessTypes;
 
   SubscriptionMarket? get _selectedMarket {
     final catalog = _catalog;
@@ -651,6 +664,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               planName: signupPlan?.name,
               planFeatures: signupPlan?.features ?? const [],
               initialSellingFocus: _selectedSellingMode,
+              initialBusinessType: _selectedSellingMode,
               destination: destination,
             )
           : destination;
@@ -837,22 +851,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   String _sellingModeLabel(String mode) {
-    switch (mode) {
-      case 'services':
-        return 'Services only';
-      case 'combo':
-        return 'Products + Services';
-      default:
-        return 'Products only';
-    }
+    return signupBusinessTypeLabel(mode);
   }
 
   IconData _sellingModeIcon(String mode) {
     switch (mode) {
       case 'services':
         return Icons.design_services_outlined;
-      case 'combo':
-        return Icons.all_inclusive_outlined;
+      case 'restaurant':
+        return Icons.restaurant_outlined;
       default:
         return Icons.inventory_2_outlined;
     }

@@ -40,6 +40,7 @@ const FEATURE_KEYS = Object.freeze({
 const SELLING_MODES = Object.freeze({
   products: 'products',
   services: 'services',
+  restaurant: 'restaurant',
   combo: 'combo',
 });
 
@@ -63,6 +64,7 @@ const BASE_FEATURES = [
 const TRIAL_FEATURES = [
   ...BASE_FEATURES,
   FEATURE_KEYS.services,
+  FEATURE_KEYS.restaurantMode,
 ];
 
 const STARTER_FEATURES = [
@@ -239,7 +241,7 @@ async function ensureSubscriptionSchema(target = query) {
       description text,
       is_active boolean NOT NULL DEFAULT true,
       features_json jsonb NOT NULL DEFAULT '[]'::jsonb,
-      allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb,
+      allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","restaurant","combo"]'::jsonb,
       max_branches integer NOT NULL DEFAULT 1,
       max_employees integer NOT NULL DEFAULT 1,
       max_ai_agents integer NOT NULL DEFAULT 0,
@@ -257,7 +259,7 @@ async function ensureSubscriptionSchema(target = query) {
     target,
     `
     ALTER TABLE subscription_plans
-      ADD COLUMN IF NOT EXISTS allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","combo"]'::jsonb
+      ADD COLUMN IF NOT EXISTS allowed_selling_modes_json jsonb NOT NULL DEFAULT '["products","services","restaurant","combo"]'::jsonb
     `,
   );
 
@@ -483,11 +485,12 @@ async function ensureSubscriptionSchema(target = query) {
     ],
   );
 
-  // Backfill paid-plan features (loyalty, gift cards, etc.) into plans that
-  // were seeded before those features existed in the canonical feature lists.
+  // Backfill canonical features (restaurant mode, loyalty, gift cards, etc.)
+  // into plans seeded before those features existed in the canonical lists.
   // Without this, devices on those plans receive a license token whose
   // entitlements omit the features, so the corresponding screens stay hidden.
   for (const [planCode, canonicalFeatures] of [
+    ['trial', TRIAL_FEATURES],
     ['growth', GROWTH_FEATURES],
     ['pro', ALL_FEATURES],
     ['enterprise', ALL_FEATURES],
@@ -515,6 +518,21 @@ async function ensureSubscriptionSchema(target = query) {
       [planCode, JSON.stringify(canonicalFeatures)],
     );
   }
+
+  // Restaurant became its own registration choice after the original three
+  // modes were stored in production. Backfill compatible plans so existing
+  // Coolify/PostgreSQL databases expose it without a manual data edit.
+  await runQuery(
+    target,
+    `
+    UPDATE subscription_plans
+    SET allowed_selling_modes_json = allowed_selling_modes_json || '["restaurant"]'::jsonb,
+        updated_at = NOW()
+    WHERE features_json ? $1
+      AND NOT (allowed_selling_modes_json ? $2)
+    `,
+    [FEATURE_KEYS.restaurantMode, SELLING_MODES.restaurant],
+  );
 
   for (const price of DEFAULT_PRICES) {
     const [
@@ -1492,6 +1510,11 @@ function normalizeSellingMode(value) {
     case 'service_only':
     case 'services_only':
       return SELLING_MODES.services;
+    case SELLING_MODES.restaurant:
+    case 'food':
+    case 'food_service':
+    case 'restaurant_only':
+      return SELLING_MODES.restaurant;
     case SELLING_MODES.combo:
     case 'both':
     case 'mixed':
@@ -1531,6 +1554,13 @@ function availableSellingModesForFeatures(features, allowedModes = DEFAULT_SELLI
     modes.push(SELLING_MODES.services);
   }
   if (
+    allowedSet.has(SELLING_MODES.restaurant) &&
+    featureSet.has(FEATURE_KEYS.products) &&
+    featureSet.has(FEATURE_KEYS.restaurantMode)
+  ) {
+    modes.push(SELLING_MODES.restaurant);
+  }
+  if (
     allowedSet.has(SELLING_MODES.combo) &&
     featureSet.has(FEATURE_KEYS.products) &&
     featureSet.has(FEATURE_KEYS.services)
@@ -1548,12 +1578,20 @@ function applySellingModeToEntitlements(entitlements, sellingMode) {
   const disabled = new Set();
   if (mode === SELLING_MODES.products) {
     disabled.add(FEATURE_KEYS.services);
+    disabled.add(FEATURE_KEYS.restaurantMode);
   } else if (mode === SELLING_MODES.services) {
     disabled.add(FEATURE_KEYS.products);
     disabled.add(FEATURE_KEYS.categories);
     disabled.add(FEATURE_KEYS.purchases);
     disabled.add(FEATURE_KEYS.stockList);
     disabled.add(FEATURE_KEYS.transfers);
+    disabled.add(FEATURE_KEYS.restaurantMode);
+  } else if (mode === SELLING_MODES.restaurant) {
+    // Menu items use the products table underneath, so products stays
+    // entitled for sync while the client routes this mode to Restaurant.
+    disabled.add(FEATURE_KEYS.services);
+  } else if (mode === SELLING_MODES.combo) {
+    disabled.add(FEATURE_KEYS.restaurantMode);
   }
   return {
     ...source,
@@ -1569,7 +1607,7 @@ function validateSellingModeEntitlement(entitlements, sellingMode) {
   if (!mode) {
     return {
       ok: false,
-      message: 'Choose products, services, or combo for the business type.',
+      message: 'Choose products, services, restaurant, or combo for the business type.',
     };
   }
   const modes = availableSellingModesForEntitlements(entitlements);

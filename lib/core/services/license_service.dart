@@ -90,9 +90,13 @@ class SubscriptionEntitlements {
       aiRateLimits.isEmpty &&
       sellingModes.isEmpty;
 
-  bool get canSellProducts => features.isEmpty || features.contains('products');
+  bool get isRestaurant => sellingMode.trim().toLowerCase() == 'restaurant';
 
-  bool get canSellServices => features.isEmpty || features.contains('services');
+  bool get canSellProducts =>
+      !isRestaurant && (features.isEmpty || features.contains('products'));
+
+  bool get canSellServices =>
+      !isRestaurant && (features.isEmpty || features.contains('services'));
 
   int limitFor(SubscriptionLimit limit) {
     switch (limit) {

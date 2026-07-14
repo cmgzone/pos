@@ -5160,7 +5160,7 @@ app.put('/api/platform/businesses/:businessId/subscription', requirePlatformAdmi
       req.body?.sellingMode ?? req.body?.selling_mode,
     );
     if (hasExplicitSellingMode && !requestedSellingMode) {
-      throw createHttpError(400, 'Choose products, services, or combo for the business type.');
+      throw createHttpError(400, 'Choose products, services, restaurant, or combo for the business type.');
     }
     const currentSellingMode = normalizeSellingMode(businessResult.rows[0].selling_mode);
     const sellingMode = selectSellingModeForPlan(
@@ -12809,15 +12809,21 @@ function normalizeStorefrontType(value, { fallback = 'retail' } = {}) {
 }
 
 function defaultStorefrontTypeForSellingMode(sellingMode) {
-  return normalizeSellingMode(sellingMode) === 'services'
-    ? 'services'
-    : 'retail';
+  switch (normalizeSellingMode(sellingMode)) {
+    case 'services':
+      return 'services';
+    case 'restaurant':
+      return 'restaurant';
+    default:
+      return 'retail';
+  }
 }
 
 function storefrontTypesForEntitlements(entitlements, sellingMode) {
   const features = new Set(entitlements?.features || []);
+  const mode = normalizeSellingMode(sellingMode);
   const types = [];
-  if (features.has(FEATURE_KEYS.products)) {
+  if (mode !== 'restaurant' && features.has(FEATURE_KEYS.products)) {
     types.push('retail');
   }
   if (features.has(FEATURE_KEYS.services)) {
@@ -13044,7 +13050,7 @@ function selectSellingModeForPlan(entitlements, requestedMode, fallbackMode = nu
     }
   }
 
-  for (const mode of ['products', 'services', 'combo']) {
+  for (const mode of ['products', 'services', 'restaurant', 'combo']) {
     const validation = validateSellingModeEntitlement(entitlements, mode);
     if (validation.ok) {
       return validation.mode;
@@ -13053,7 +13059,7 @@ function selectSellingModeForPlan(entitlements, requestedMode, fallbackMode = nu
 
   throw createHttpError(
     400,
-    'This plan is not available for product or service selling yet.',
+    'This plan is not available for product, service, or restaurant selling yet.',
   );
 }
 
