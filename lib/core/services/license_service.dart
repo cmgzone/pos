@@ -318,11 +318,18 @@ class LicenseService {
     }
 
     final now = DateTime.now().toUtc();
-    final hasValidSignature = _matchesSignature(payloadBase64, signature, alg);
     final wasRecentlyVerifiedOnline = _wasRecentlyVerifiedOnline(
       lastVerifiedAt: lastVerifiedAt,
       now: now,
     );
+    // A license just returned by the authenticated cloud API is already
+    // covered by the server-verification trust window. Avoid performing the
+    // CPU-heavy pure-Dart Ed25519 verification on the UI isolate in that case;
+    // on Windows it can make the app appear frozen during login. Stale/offline
+    // licenses still require a valid local signature.
+    final hasValidSignature =
+        wasRecentlyVerifiedOnline ||
+        _matchesSignature(payloadBase64, signature, alg);
     if (!hasValidSignature && !wasRecentlyVerifiedOnline) {
       return LicenseSnapshot(
         businessId: businessId,
