@@ -1,39 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  --background: #100f0d;
-  --foreground: #f5f3ef;
-  --accent: #f0ead6;
-  --muted: #9a958c;
-  --muted-strong: #b8b3aa;
-  --surface: #181614;
-  --surface-elevated: #211f1c;
-  --border: rgba(245, 243, 239, 0.08);
-  --border-strong: rgba(245, 243, 239, 0.16);
+  --background: #f8f7f3;
+  --foreground: #191916;
+  --accent: #d14343;
+  --accent-contrast: #ffffff;
+  --muted: #77736b;
+  --muted-strong: #545149;
+  --surface: #ffffff;
+  --surface-elevated: #efede7;
+  --border: rgba(25, 25, 22, 0.1);
+  --border-strong: rgba(25, 25, 22, 0.19);
   --theme-radius: 0.5rem;
   --theme-card-shadow: none;
 }
 
 :root[data-storefront-type="services"] {
-  --background: #091820;
-  --foreground: #e9f7f5;
-  --muted: #91adaa;
-  --muted-strong: #bed3d0;
-  --surface: #0e252d;
-  --surface-elevated: #13313a;
-  --border: rgba(233, 247, 245, 0.1);
-  --border-strong: rgba(233, 247, 245, 0.19);
+  --background: #f3f8f7;
+  --foreground: #102523;
+  --muted: #647c79;
+  --muted-strong: #3f5d59;
+  --surface: #ffffff;
+  --surface-elevated: #e7f1ef;
+  --border: rgba(16, 37, 35, 0.1);
+  --border-strong: rgba(16, 37, 35, 0.19);
 }
 
 :root[data-storefront-type="restaurant"] {
-  --background: #1b0d09;
-  --foreground: #fff4e8;
-  --muted: #c6a99a;
-  --muted-strong: #e2c7b8;
-  --surface: #27130d;
-  --surface-elevated: #351a11;
-  --border: rgba(255, 244, 232, 0.1);
-  --border-strong: rgba(255, 244, 232, 0.2);
+  --background: #fff8f2;
+  --foreground: #2b1912;
+  --muted: #816a5f;
+  --muted-strong: #60483e;
+  --surface: #ffffff;
+  --surface-elevated: #f5e9df;
+  --border: rgba(43, 25, 18, 0.1);
+  --border-strong: rgba(43, 25, 18, 0.19);
 }
 
 @theme inline {
@@ -61,6 +62,7 @@ body {
   font-family: var(--storefront-font, var(--font-sans)), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
 .storefront-section {
@@ -102,7 +104,7 @@ body {
 
 .section-primary-action {
   background: var(--accent);
-  color: var(--background);
+  color: var(--accent-contrast);
 }
 
 .storefront-section[data-section-style="accent"] .section-primary-action,
@@ -173,7 +175,19 @@ button {
 }
 
 select {
+  color-scheme: light;
+}
+
+:root[data-appearance="dark"] select {
   color-scheme: dark;
+}
+
+.bg-accent.text-background {
+  color: var(--accent-contrast);
+}
+
+.hover\:text-background:hover {
+  color: var(--accent-contrast);
 }
 
 @media (prefers-reduced-motion: reduce) {

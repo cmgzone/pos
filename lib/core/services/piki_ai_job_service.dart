@@ -552,10 +552,7 @@ class PikiAiJobService {
   }
 
   static Map<String, dynamic> _decodeBody(http.Response response) {
-    final text = utf8.decode(response.bodyBytes);
-    if (text.trim().isEmpty) return const {};
-    final decoded = jsonDecode(text);
-    return decoded is Map ? Map<String, dynamic>.from(decoded) : const {};
+    return decodePikiCloudJsonResponse(response);
   }
 
   static Future<LicenseSnapshot> _ensureAccess(
@@ -596,6 +593,33 @@ class PikiAiJobService {
     return Uri.parse(
       '$backendUrl/$path',
     ).replace(queryParameters: queryParameters);
+  }
+}
+
+Map<String, dynamic> decodePikiCloudJsonResponse(http.Response response) {
+  final text = utf8.decode(response.bodyBytes, allowMalformed: true).trim();
+  if (text.isEmpty) return const {};
+  try {
+    final decoded = jsonDecode(text);
+    return decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : const <String, dynamic>{};
+  } on FormatException {
+    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+    final looksLikeHtml =
+        contentType.contains('text/html') ||
+        text.startsWith('<!DOCTYPE') ||
+        text.startsWith('<html');
+    if (looksLikeHtml) {
+      throw Exception(
+        response.statusCode == 404
+            ? 'This Piki Cloud feature is not available on the current server deployment. Please redeploy the backend and try again.'
+            : 'Piki Cloud returned a website page instead of API data. Please check the backend routing and try again.',
+      );
+    }
+    throw Exception(
+      'Piki Cloud returned invalid data (${response.statusCode}). Please try again.',
+    );
   }
 }
 

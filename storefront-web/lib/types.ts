@@ -8,6 +8,7 @@ export interface BusinessBrand {
 }
 
 export type StorefrontType = "retail" | "services" | "restaurant";
+export type StorefrontAppearance = "light" | "dark";
 
 export interface Storefront {
   type: StorefrontType;

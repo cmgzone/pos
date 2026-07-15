@@ -27,10 +27,14 @@ import {
 } from "@/lib/api";
 import type {
   BusinessBrand,
+  StorefrontAppearance,
   StorefrontSectionAction,
   StorefrontTheme,
+  StorefrontThemeDesign,
   StorefrontType,
 } from "@/lib/types";
+
+const APPEARANCE_STORAGE_KEY = "piki-storefront-appearance";
 
 function StorefrontInner() {
   const {
@@ -46,6 +50,7 @@ function StorefrontInner() {
   const [sortBy, setSortBy] = useState("featured");
   const [showCheckout, setShowCheckout] = useState(false);
   const [showTracker, setShowTracker] = useState(false);
+  const [appearance, setAppearance] = useState<StorefrontAppearance>("light");
 
   const loadCatalog = useCallback(
     async (
@@ -66,11 +71,6 @@ function StorefrontInner() {
         );
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
-        applyStorefrontStyles(
-          data.business.brand,
-          data.storefront.type,
-          data.theme,
-        );
       } catch (loadError) {
         setCatalog(null);
         setError(
@@ -96,11 +96,6 @@ function StorefrontInner() {
     if (bootstrap.catalog) {
       setCatalog(bootstrap.catalog);
       setSelectedBranch(bootstrap.catalog.business.selectedBranch);
-      applyStorefrontStyles(
-        bootstrap.catalog.business.brand,
-        bootstrap.catalog.storefront.type,
-        bootstrap.catalog.theme,
-      );
     } else if (!businessId) {
       setError(
         "No store link detected. Visit a catalog URL like /catalog/<businessId>.",
@@ -116,6 +111,28 @@ function StorefrontInner() {
     }, 2000);
     return () => window.clearInterval(timer);
   }, [loadCatalog, setCatalog, setSelectedBranch]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+    if (saved === "light" || saved === "dark") {
+      setAppearance(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!catalog) return;
+    applyStorefrontStyles(
+      catalog.business.brand,
+      catalog.storefront.type,
+      catalog.theme,
+      appearance,
+    );
+  }, [appearance, catalog]);
+
+  const handleAppearanceChange = (nextAppearance: StorefrontAppearance) => {
+    setAppearance(nextAppearance);
+    window.localStorage.setItem(APPEARANCE_STORAGE_KEY, nextAppearance);
+  };
 
   const handleBranchChange = useCallback(
     (branchId: string) => {
@@ -221,6 +238,8 @@ function StorefrontInner() {
         business={catalog?.business}
         storefront={catalog?.storefront}
         onTrackOrder={() => setShowTracker(true)}
+        appearance={appearance}
+        onAppearanceChange={handleAppearanceChange}
         showTracking={catalog?.checkout.showOrderTracking !== false}
       />
 
@@ -293,6 +312,7 @@ function applyStorefrontStyles(
   brand?: BusinessBrand,
   storefrontType: StorefrontType = "retail",
   theme?: StorefrontTheme,
+  appearance: StorefrontAppearance = "light",
 ) {
   const root = document.documentElement;
   const design = theme?.design;
@@ -302,17 +322,22 @@ function applyStorefrontStyles(
   root.dataset.themeImage = design?.imageRatio || "portrait";
   root.dataset.themeDensity = design?.density || "comfortable";
   root.dataset.themeCorner = design?.cornerStyle || "soft";
+  root.dataset.appearance = appearance;
+  root.style.colorScheme = appearance;
 
+  const palette = resolveAppearancePalette(design, storefrontType, appearance);
+  const accent = design?.accentColor || brand?.primaryColor || "#d14343";
   const colors: Record<string, string | undefined> = {
-    "--background": design?.backgroundColor,
-    "--foreground": design?.textColor,
-    "--accent": design?.accentColor || brand?.primaryColor || undefined,
-    "--muted": design?.mutedColor,
-    "--muted-strong": design?.mutedColor,
-    "--surface": design?.surfaceColor,
-    "--surface-elevated": design?.surfaceElevatedColor,
-    "--border": design?.borderColor,
-    "--border-strong": design?.borderColor,
+    "--background": palette.background,
+    "--foreground": palette.foreground,
+    "--accent": accent,
+    "--accent-contrast": readableTextOn(accent),
+    "--muted": palette.muted,
+    "--muted-strong": palette.mutedStrong,
+    "--surface": palette.surface,
+    "--surface-elevated": palette.surfaceElevated,
+    "--border": palette.border,
+    "--border-strong": palette.borderStrong,
   };
   Object.entries(colors).forEach(([name, value]) => {
     if (value) root.style.setProperty(name, value);
@@ -334,6 +359,130 @@ function applyStorefrontStyles(
     root.style.removeProperty("--storefront-font");
     root.style.removeProperty("--storefront-display-font");
   }
+}
+
+interface AppearancePalette {
+  background: string;
+  foreground: string;
+  muted: string;
+  mutedStrong: string;
+  surface: string;
+  surfaceElevated: string;
+  border: string;
+  borderStrong: string;
+}
+
+function resolveAppearancePalette(
+  design: StorefrontThemeDesign | undefined,
+  storefrontType: StorefrontType,
+  appearance: StorefrontAppearance,
+): AppearancePalette {
+  const designIsLight = colorLuminance(design?.backgroundColor) > 0.55;
+  if (design && designIsLight === (appearance === "light")) {
+    return {
+      background: design.backgroundColor,
+      foreground: design.textColor,
+      muted: design.mutedColor,
+      mutedStrong: design.mutedColor,
+      surface: design.surfaceColor,
+      surfaceElevated: design.surfaceElevatedColor,
+      border: design.borderColor,
+      borderStrong: design.borderColor,
+    };
+  }
+
+  if (appearance === "dark") {
+    if (storefrontType === "services") {
+      return {
+        background: "#091820",
+        foreground: "#e9f7f5",
+        muted: "#91adaa",
+        mutedStrong: "#bed3d0",
+        surface: "#0e252d",
+        surfaceElevated: "#13313a",
+        border: "rgba(233, 247, 245, 0.10)",
+        borderStrong: "rgba(233, 247, 245, 0.19)",
+      };
+    }
+    if (storefrontType === "restaurant") {
+      return {
+        background: "#1b0d09",
+        foreground: "#fff4e8",
+        muted: "#c6a99a",
+        mutedStrong: "#e2c7b8",
+        surface: "#27130d",
+        surfaceElevated: "#351a11",
+        border: "rgba(255, 244, 232, 0.10)",
+        borderStrong: "rgba(255, 244, 232, 0.20)",
+      };
+    }
+    return {
+      background: "#100f0d",
+      foreground: "#f5f3ef",
+      muted: "#9a958c",
+      mutedStrong: "#c0bbb1",
+      surface: "#181614",
+      surfaceElevated: "#211f1c",
+      border: "rgba(245, 243, 239, 0.09)",
+      borderStrong: "rgba(245, 243, 239, 0.18)",
+    };
+  }
+
+  if (storefrontType === "services") {
+    return {
+      background: "#f3f8f7",
+      foreground: "#102523",
+      muted: "#647c79",
+      mutedStrong: "#3f5d59",
+      surface: "#ffffff",
+      surfaceElevated: "#e7f1ef",
+      border: "rgba(16, 37, 35, 0.10)",
+      borderStrong: "rgba(16, 37, 35, 0.19)",
+    };
+  }
+  if (storefrontType === "restaurant") {
+    return {
+      background: "#fff8f2",
+      foreground: "#2b1912",
+      muted: "#816a5f",
+      mutedStrong: "#60483e",
+      surface: "#ffffff",
+      surfaceElevated: "#f5e9df",
+      border: "rgba(43, 25, 18, 0.10)",
+      borderStrong: "rgba(43, 25, 18, 0.19)",
+    };
+  }
+  return {
+    background: "#f8f7f3",
+    foreground: "#191916",
+    muted: "#77736b",
+    mutedStrong: "#545149",
+    surface: "#ffffff",
+    surfaceElevated: "#efede7",
+    border: "rgba(25, 25, 22, 0.10)",
+    borderStrong: "rgba(25, 25, 22, 0.19)",
+  };
+}
+
+function colorLuminance(color?: string): number {
+  const match = color?.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (!match) return 0;
+  const normalized =
+    match[1].length === 3
+      ? match[1]
+          .split("")
+          .map((character) => `${character}${character}`)
+          .join("")
+      : match[1].slice(0, 6);
+  const value = Number.parseInt(normalized, 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return (red * 0.2126 + green * 0.7152 + blue * 0.0722) / 255;
+}
+
+function readableTextOn(color: string): string {
+  return colorLuminance(color) > 0.57 ? "#151511" : "#ffffff";
 }
 
 export function StorefrontApp() {

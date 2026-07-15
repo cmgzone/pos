@@ -1,7 +1,7 @@
 "use client";
 
-import { ShoppingBag, Search } from "lucide-react";
-import type { Business, Storefront } from "@/lib/types";
+import { Moon, Search, ShoppingBag, Sun } from "lucide-react";
+import type { Business, Storefront, StorefrontAppearance } from "@/lib/types";
 import { useStore } from "./store-provider";
 import { getInitials } from "@/lib/utils";
 
@@ -9,10 +9,19 @@ interface SiteHeaderProps {
   business?: Business;
   storefront?: Storefront;
   onTrackOrder: () => void;
+  appearance: StorefrontAppearance;
+  onAppearanceChange: (appearance: StorefrontAppearance) => void;
   showTracking?: boolean;
 }
 
-export function SiteHeader({ business, storefront, onTrackOrder, showTracking = true }: SiteHeaderProps) {
+export function SiteHeader({
+  business,
+  storefront,
+  onTrackOrder,
+  appearance,
+  onAppearanceChange,
+  showTracking = true,
+}: SiteHeaderProps) {
   const { cartCount, setIsCartOpen } = useStore();
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
@@ -73,6 +82,19 @@ export function SiteHeader({ business, storefront, onTrackOrder, showTracking = 
               My account
             </a>
           )}
+          <button
+            type="button"
+            onClick={() => onAppearanceChange(appearance === "light" ? "dark" : "light")}
+            aria-label={appearance === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            title={appearance === "light" ? "Dark mode" : "Light mode"}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border-subtle bg-surface text-muted-strong transition hover:border-border-strong hover:text-foreground"
+          >
+            {appearance === "light" ? (
+              <Moon className="h-4 w-4" />
+            ) : (
+              <Sun className="h-4 w-4" />
+            )}
+          </button>
           <button
             onClick={() => setIsCartOpen(true)}
             aria-label={storefront?.type === "services" ? "Open bookings" : storefront?.type === "restaurant" ? "Open order" : "Open cart"}
