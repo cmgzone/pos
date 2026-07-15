@@ -8,6 +8,7 @@ import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/piki_activity_panel.dart';
+import 'storefront_section_editor.dart';
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -669,6 +670,23 @@ class _StorefrontThemeSettingsSectionState
     });
   }
 
+  Future<void> _editSections(StorefrontTheme theme) async {
+    final sections = await showStorefrontSectionEditor(context, theme);
+    if (sections == null || !mounted) return;
+    await _run(() async {
+      final draft = theme.isPublished
+          ? await StorefrontThemeService.duplicate(
+              theme.id,
+              name: '${theme.name} layout draft',
+            )
+          : theme;
+      await StorefrontThemeService.update(draft.id, {
+        'sections': sections,
+        'source': 'manual',
+      });
+    });
+  }
+
   Future<void> _publish(StorefrontTheme theme) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1011,6 +1029,11 @@ class _StorefrontThemeSettingsSectionState
                       onPressed: _busy ? null : () => _customizeWithPiki(theme),
                       icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                       label: const Text('Piki build'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _editSections(theme),
+                      icon: const Icon(Icons.view_quilt_outlined, size: 18),
+                      label: const Text('Edit sections'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _editCheckout(theme),

@@ -226,6 +226,44 @@ class PikiAiJobService {
     return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
   }
 
+  static Future<PikiAiJob> createMarketingContentJob(
+    String instruction, {
+    String branchId = 'main_branch',
+    String storefrontType = 'retail',
+    List<String> productIds = const [],
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) throw Exception('Cloud sync is not configured');
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final response = await http
+        .post(
+          _buildUri(backendUrl, 'catalog/marketing/ai-jobs'),
+          headers: {
+            ..._authHeaders(license),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'deviceId': deviceId,
+            'instruction': instruction.trim(),
+            'branchId': branchId,
+            'storefrontType': storefrontType,
+            'productIds': productIds,
+          }),
+        )
+        .timeout(_timeout);
+    final body = _decodeBody(response);
+    if (response.statusCode != 202 ||
+        body['ok'] != true ||
+        body['job'] is! Map) {
+      throw Exception(
+        body['error']?.toString() ??
+            'Piki could not start the marketing job (${response.statusCode}).',
+      );
+    }
+    return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
   static Future<PikiAiJob> createProductImportJob(
     SpreadsheetFileRows file, {
     String? branchId,
@@ -287,6 +325,20 @@ class PikiAiJobService {
     final body = await _getJson('ai/jobs', {
       'status': 'queued,running,completed,failed',
       'jobType': 'storefront_theme',
+      'limit': '20',
+    });
+    final jobs = body['jobs'];
+    if (jobs is! List) return const [];
+    return jobs
+        .whereType<Map>()
+        .map((item) => PikiAiJob.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  static Future<List<PikiAiJob>> listMarketingContentJobs() async {
+    final body = await _getJson('ai/jobs', {
+      'status': 'queued,running,completed,failed',
+      'jobType': 'marketing_content',
       'limit': '20',
     });
     final jobs = body['jobs'];

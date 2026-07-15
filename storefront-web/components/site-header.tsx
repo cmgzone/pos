@@ -58,6 +58,7 @@ export function SiteHeader({ business, storefront, onTrackOrder, showTracking = 
           {showTracking && (
             <button
               onClick={onTrackOrder}
+              aria-label={storefront?.type === "services" ? "Track booking" : "Track order"}
               className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground"
             >
               <Search className="h-3.5 w-3.5" />
@@ -74,6 +75,7 @@ export function SiteHeader({ business, storefront, onTrackOrder, showTracking = 
           )}
           <button
             onClick={() => setIsCartOpen(true)}
+            aria-label={storefront?.type === "services" ? "Open bookings" : storefront?.type === "restaurant" ? "Open order" : "Open cart"}
             className="relative inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-[13px] font-semibold text-background transition hover:opacity-90"
           >
             <ShoppingBag className="h-4 w-4" />

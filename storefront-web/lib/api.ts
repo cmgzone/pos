@@ -50,6 +50,17 @@ export function storefrontTypeFromPath(pathname?: string): StorefrontType {
   return "retail";
 }
 
+export function campaignSlugFromPath(pathname?: string): string | undefined {
+  const path = pathname ?? (typeof window === "undefined" ? "" : window.location.pathname);
+  const match = path.match(/(?:^|\/)campaign\/([^/?#]+)\/?$/i);
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
 async function readApiJson(res: Response): Promise<ApiJsonResponse> {
   const text = await res.text();
   if (!text.trim()) return {};
@@ -65,10 +76,12 @@ export async function fetchCatalog(
   branchId?: string,
   storefrontType: StorefrontType = storefrontTypeFromPath(),
   previewToken?: string,
+  campaignSlug?: string,
 ): Promise<Catalog> {
   const params = new URLSearchParams();
   if (branchId) params.set("branchId", branchId);
   if (previewToken) params.set("preview", previewToken);
+  if (campaignSlug) params.set("campaign", campaignSlug);
   params.set("storefront", storefrontType);
   const query = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(

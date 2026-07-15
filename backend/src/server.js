@@ -164,6 +164,17 @@ const {
   updateStorefrontTheme,
 } = require('./storefrontThemes');
 const {
+  createStorefrontCampaign,
+  deleteStorefrontCampaign,
+  ensureStorefrontCampaignSchema,
+  getStorefrontCampaign,
+  listStorefrontCampaigns,
+  loadPublishedStorefrontCampaign,
+  publishStorefrontCampaign,
+  unpublishStorefrontCampaign,
+  updateStorefrontCampaign,
+} = require('./storefrontCampaigns');
+const {
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
   isUnsupportedJsonModeResponse,
@@ -221,8 +232,10 @@ const CATALOG_CACHE_TABLES = new Set([
   'sales',
   'purchase_invoices',
   'stock_transfers',
+  'promotions',
+  'promotion_rules',
 ]);
-const CATALOG_CACHE_CODE_VERSION = '3';
+const CATALOG_CACHE_CODE_VERSION = '4';
 const STOREFRONT_TYPES = Object.freeze({
   retail: Object.freeze({
     type: 'retail',
@@ -8126,6 +8139,147 @@ ${instruction}`;
   };
 }
 
+async function requestOpenRouterMarketingContent({
+  fetchImpl,
+  aiConfig,
+  instruction,
+  business,
+  products,
+}) {
+  const prompt = `You are Piki's ecommerce marketing writer. Create a truthful, ready-to-review marketing pack for this business.
+
+Return exactly one JSON object with this shape:
+{
+  "summary": "one sentence summary",
+  "campaignName": "short campaign name",
+  "socialCaptions": [
+    { "channel": "instagram|facebook", "caption": "caption", "hashtags": ["tag"] }
+  ],
+  "whatsapp": {
+    "headline": "short internal label",
+    "message": "customer-ready WhatsApp message",
+    "cta": "short call to action"
+  },
+  "productDescriptions": [
+    { "productId": "exact supplied id", "name": "exact supplied name", "description": "clear product description" }
+  ]
+}
+
+Rules:
+- Use only facts supplied below. Do not invent discounts, stock, delivery times, ingredients, warranties, reviews, addresses, or product specifications.
+- Keep social captions under 700 characters and the WhatsApp message under 900 characters.
+- Write naturally for customers in Kenya unless the brief requests another market or tone.
+- Use no more than 8 relevant hashtags per caption.
+- Product descriptions must be specific but factual, 1 to 3 sentences, and retain the exact product id and name.
+- Do not include markdown, HTML, scripts, URLs, or tracking codes.
+- If a product has little information, write a concise neutral description without pretending to know more.
+
+BUSINESS:
+${JSON.stringify(business)}
+
+PRODUCTS:
+${JSON.stringify(products)}
+
+OWNER BRIEF:
+${instruction}`;
+  const sendRequest = async (useJsonMode) => {
+    const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${aiConfig.api_key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://pikipos.com',
+        'X-Title': 'Piki Marketing Studio',
+      },
+      body: JSON.stringify({
+        model: aiConfig.model || 'openai/gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Return one valid JSON object only. Never wrap it in markdown.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        ...(useJsonMode ? { response_format: storefrontJsonResponseFormat() } : {}),
+        max_tokens: 3500,
+        temperature: 0.45,
+      }),
+    });
+    return { response, body: await readMaybeJson(response) };
+  };
+  let requestResult = await sendRequest(true);
+  if (
+    isUnsupportedJsonModeResponse(
+      requestResult.response.status,
+      requestResult.body,
+    )
+  ) {
+    requestResult = await sendRequest(false);
+  }
+  const { response, body } = requestResult;
+  if (!response.ok) {
+    throw createHttpError(
+      response.status === 401 ? 502 : response.status,
+      body?.error?.message || body?.message || 'Piki marketing generation failed',
+    );
+  }
+  const parsed = parseJsonObjectFromText(extractOpenRouterTextContent(body));
+  if (!parsed) {
+    throw createHttpError(502, 'Piki could not prepare a valid marketing draft.');
+  }
+  const validProductIds = new Set(products.map((product) => product.id));
+  const productDescriptions = (Array.isArray(parsed.productDescriptions)
+    ? parsed.productDescriptions
+    : [])
+    .map((item) => ({
+      productId: limitText(item?.productId, 120),
+      name: limitText(item?.name, 160),
+      description: limitText(item?.description, 700),
+    }))
+    .filter(
+      (item) =>
+        item.productId && validProductIds.has(item.productId) && item.description,
+    )
+    .slice(0, 20);
+  const socialCaptions = (Array.isArray(parsed.socialCaptions)
+    ? parsed.socialCaptions
+    : [])
+    .map((item) => ({
+      channel: ['instagram', 'facebook'].includes(
+        normalizeOptionalText(item?.channel)?.toLowerCase(),
+      )
+        ? normalizeOptionalText(item.channel).toLowerCase()
+        : 'social',
+      caption: limitText(item?.caption, 700),
+      hashtags: (Array.isArray(item?.hashtags) ? item.hashtags : [])
+        .map((tag) => limitText(String(tag || '').replace(/^#/, ''), 40))
+        .filter(Boolean)
+        .slice(0, 8),
+    }))
+    .filter((item) => item.caption)
+    .slice(0, 4);
+  const result = {
+    summary:
+      limitText(parsed.summary, 240) || 'Piki prepared a marketing pack for review.',
+    campaignName: limitText(parsed.campaignName, 80) || 'Storefront campaign',
+    socialCaptions,
+    whatsapp: {
+      headline: limitText(parsed.whatsapp?.headline, 80) || 'WhatsApp campaign',
+      message: limitText(parsed.whatsapp?.message, 900),
+      cta: limitText(parsed.whatsapp?.cta, 60),
+    },
+    productDescriptions,
+  };
+  if (
+    result.socialCaptions.length === 0 &&
+    !result.whatsapp.message &&
+    result.productDescriptions.length === 0
+  ) {
+    throw createHttpError(502, 'Piki could not prepare a usable marketing draft.');
+  }
+  return result;
+}
+
 async function requestOpenRouterProductFileExtraction({
   fetchImpl,
   aiConfig,
@@ -8951,6 +9105,7 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
 
 aiJobs.registerHandler('product_import', runProductImportAiJob);
 aiJobs.registerHandler('storefront_theme', runStorefrontThemeAiJob);
+aiJobs.registerHandler('marketing_content', runMarketingContentAiJob);
 
 async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
   const totalSteps = 5;
@@ -9114,6 +9269,153 @@ async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
     toolName: 'complete_storefront_theme',
     progress: 100,
     metadata: { themeId: updated.id },
+  });
+}
+
+async function runMarketingContentAiJob({ job, updateJob, addEvent }) {
+  const payload = parseJsonObjectFromText(job.payload_json) || {};
+  const instruction = limitText(job.instruction, 700);
+  if (!instruction) throw createHttpError(400, 'The saved marketing brief is incomplete.');
+  const branchId = normalizeOptionalText(job.branch_id) || 'main_branch';
+  const storefrontType = normalizeStorefrontType(payload.storefrontType);
+  const isServices = storefrontType === 'services';
+  const requestedIds = Array.isArray(payload.productIds)
+    ? payload.productIds
+        .map((value) => normalizeOptionalText(value))
+        .filter(Boolean)
+        .map((value) => isServices ? value.replace(/^service:/, '') : value)
+        .slice(0, 20)
+    : [];
+  const params = [job.business_id, branchId];
+  let productFilter = '';
+  if (requestedIds.length) {
+    params.push(requestedIds);
+    productFilter = `AND p.id = ANY($${params.length}::text[])`;
+  }
+  await updateJob(job.id, job.business_id, {
+    completedSteps: 1,
+    totalSteps: 4,
+    currentStep: 'Reading products and brand voice',
+    progress: 18,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId,
+    eventType: 'marketing_context',
+    title: 'Reading your products and brand',
+    message: 'Piki is collecting only the verified details it can safely use.',
+    toolName: 'read_marketing_context',
+    progress: 18,
+  });
+  const [brand, productsResult] = await Promise.all([
+    loadStorefrontBrand(job.business_id, { branchId }),
+    query(
+      isServices
+        ? `SELECT p.id, p.name, 'Service' AS brand, p.description,
+                  p.base_price AS price, p.category
+           FROM services p
+           WHERE p.business_id = $1
+             AND COALESCE(p.branch_id, 'main_branch') = $2
+             AND p.deleted_at IS NULL
+             AND COALESCE(NULLIF(LOWER(p.is_active::text), ''), '1') NOT IN ('0', 'false', 'no', 'off')
+             ${productFilter}
+           ORDER BY p.updated_at DESC
+           LIMIT 20`
+        : `SELECT p.id, p.name, p.brand, p.description, p.price, c.name AS category
+           FROM products p
+           LEFT JOIN categories c
+             ON c.id = p.category_id
+            AND c.business_id = p.business_id
+            AND c.deleted_at IS NULL
+           WHERE p.business_id = $1
+             AND COALESCE(p.branch_id, 'main_branch') = $2
+             AND p.deleted_at IS NULL
+             AND COALESCE(p.show_online, 1) <> 0
+             ${productFilter}
+           ORDER BY COALESCE(p.is_featured, 0) DESC, p.updated_at DESC
+           LIMIT 20`,
+      params,
+    ),
+  ]);
+  const products = productsResult.rows.map((row) => ({
+    id: isServices ? `service:${row.id}` : row.id,
+    name: row.name,
+    brand: row.brand,
+    category: row.category,
+    currentDescription: row.description,
+    price: Number(row.price || 0),
+  }));
+  if (products.length === 0) {
+    throw createHttpError(
+      400,
+      `Publish at least one ${isServices ? 'service' : 'product'} before generating marketing content.`,
+    );
+  }
+  await updateJob(job.id, job.business_id, {
+    completedSteps: 2,
+    currentStep: 'Writing channel-ready content',
+    progress: 46,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId,
+    eventType: 'marketing_writing',
+    title: 'Writing the marketing pack',
+    message: 'Piki is preparing social captions, WhatsApp copy, and product descriptions.',
+    toolName: 'write_marketing_content',
+    progress: 46,
+  });
+  const aiConfig = await loadPlatformAiConfig();
+  if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    throw createHttpError(403, 'AI is not enabled by the platform administrator');
+  }
+  const fetch = (await import('node-fetch')).default;
+  const content = await requestOpenRouterMarketingContent({
+    fetchImpl: fetch,
+    aiConfig,
+    instruction,
+    business: {
+      name: brand.businessName,
+      tagline: brand.tagline,
+      description: brand.description,
+    },
+    products,
+  });
+  await updateJob(job.id, job.business_id, {
+    completedSteps: 3,
+    currentStep: 'Checking facts and channel limits',
+    progress: 78,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId,
+    eventType: 'marketing_validating',
+    title: 'Checking the content',
+    message: 'Piki is checking product references, message length, and unsupported claims.',
+    toolName: 'validate_marketing_content',
+    progress: 78,
+  });
+  await updateJob(job.id, job.business_id, {
+    status: 'completed',
+    progress: 100,
+    completedSteps: 4,
+    totalSteps: 4,
+    currentStep: 'Marketing pack ready',
+    completedAt: new Date().toISOString(),
+    resultJson: content,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId,
+    eventType: 'marketing_ready',
+    title: 'Marketing pack ready',
+    message: 'Review and copy each channel-ready draft before sending it to customers.',
+    toolName: 'complete_marketing_content',
+    progress: 100,
   });
 }
 
@@ -10423,6 +10725,7 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
       storefrontType:
         preview?.storefrontType || req.query?.storefront || req.query?.type,
       previewThemeId: preview?.themeId,
+      campaignSlug: req.query?.campaign,
     });
     if (preview) res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, data: catalog });
@@ -10461,6 +10764,7 @@ app.get('/api/public/catalog', async (req, res, next) => {
         req.query?.storefront ||
         req.query?.type,
       previewThemeId: preview?.themeId,
+      campaignSlug: req.query?.campaign,
     });
     if (preview) res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, data: catalog });
@@ -10606,6 +10910,253 @@ app.put('/api/catalog/brand', async (req, res, next) => {
       tables: ['businesses', 'storefront_brands'],
     });
     res.json({ ok: true, data: brand });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/readiness', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.query || {}, businessContext);
+    const [brand, themes, productCountResult] = await Promise.all([
+      loadStorefrontBrand(businessContext.businessId, {
+        branchId: scope.branchId,
+      }),
+      listStorefrontThemes(query, businessContext.businessId, scope),
+      query(
+        scope.storefrontType === 'services'
+          ? `SELECT COUNT(*)::int AS count
+             FROM services
+             WHERE business_id = $1
+               AND deleted_at IS NULL
+               AND COALESCE(branch_id, 'main_branch') = $2
+               AND COALESCE(NULLIF(LOWER(is_active::text), ''), '1') NOT IN ('0', 'false', 'no', 'off')`
+          : `SELECT COUNT(*)::int AS count
+             FROM products
+             WHERE business_id = $1
+               AND deleted_at IS NULL
+               AND COALESCE(branch_id, 'main_branch') = $2
+               AND COALESCE(show_online, 1) <> 0`,
+        [businessContext.businessId, scope.branchId],
+      ),
+    ]);
+    const publishedTheme = themes.find((theme) => theme.isPublished) || null;
+    const workingTheme = publishedTheme || themes[0] || null;
+    const productCount = Number(productCountResult.rows[0]?.count || 0);
+    const checkout = workingTheme?.checkout;
+    let mpesaActive = false;
+    try {
+      const mpesa = await loadPosMpesaConfig({
+        businessId: businessContext.businessId,
+        countryCode: businessContext.countryCode,
+      });
+      mpesaActive = mpesa.active === true;
+    } catch (_) {
+      // Manual payment remains a valid launch option.
+    }
+    const paymentMethods = checkout?.paymentMethods || ['manual'];
+    const fulfillmentMethods = checkout?.fulfillmentMethods || [];
+    const steps = [
+      {
+        id: 'branding',
+        label: 'Branding',
+        ready: Boolean(brand?.logoUrl || brand?.tagline || brand?.description),
+        detail: brand?.logoUrl
+          ? 'Logo and storefront identity are ready.'
+          : 'Add a logo, description, and brand colour.',
+      },
+      {
+        id: 'products',
+        label: 'Products',
+        ready: productCount > 0,
+        detail: productCount > 0
+          ? `${productCount} ${scope.storefrontType === 'services' ? 'service' : 'product'}${productCount === 1 ? '' : 's'} available online.`
+          : `Publish at least one ${scope.storefrontType === 'services' ? 'service' : 'product'} to the website.`,
+      },
+      {
+        id: 'payments',
+        label: 'Payments',
+        ready:
+          paymentMethods.includes('manual') ||
+          (paymentMethods.includes('mpesa') && mpesaActive),
+        detail: mpesaActive
+          ? 'M-Pesa is connected; manual confirmation can remain as a fallback.'
+          : 'Manual order confirmation is available. Connect M-Pesa when ready.',
+      },
+      {
+        id: 'delivery',
+        label: 'Delivery',
+        ready: fulfillmentMethods.length > 0,
+        detail: fulfillmentMethods.length > 0
+          ? `${fulfillmentMethods.map((item) => item === 'pickup' ? 'Pickup' : 'Delivery').join(' and ')} enabled.`
+          : 'Choose pickup, delivery, or both.',
+      },
+      {
+        id: 'preview',
+        label: 'Preview',
+        ready: Boolean(workingTheme),
+        detail: workingTheme
+          ? 'The exact customer website is ready to preview.'
+          : 'Create a storefront theme to preview the website.',
+      },
+      {
+        id: 'publish',
+        label: 'Publish',
+        ready: Boolean(publishedTheme),
+        detail: publishedTheme
+          ? `${publishedTheme.name} is live.`
+          : 'Review a draft, then publish it for customers.',
+      },
+    ];
+    res.json({
+      ok: true,
+      data: {
+        branchId: scope.branchId,
+        storefrontType: scope.storefrontType,
+        readyCount: steps.filter((step) => step.ready).length,
+        totalCount: steps.length,
+        steps,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/campaigns', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.query || {}, businessContext);
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    const campaigns = await listStorefrontCampaigns(
+      query,
+      businessContext.businessId,
+      scope,
+    );
+    res.json({
+      ok: true,
+      data: campaigns.map((campaign) => ({
+        ...campaign,
+        url: campaignShareUrl(publicSubdomain, campaign),
+      })),
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/campaigns', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const campaign = await createStorefrontCampaign(
+      query,
+      businessContext.businessId,
+      req.body || {},
+      { ...scope, createdBy: businessContext.userId },
+    );
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    res.status(201).json({
+      ok: true,
+      data: { ...campaign, url: campaignShareUrl(publicSubdomain, campaign) },
+    });
+  } catch (error) {
+    if (error?.code === '23505') {
+      next(createHttpError(409, 'That campaign URL is already in use. Choose another one.'));
+      return;
+    }
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/campaigns/:campaignId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const campaign = await updateStorefrontCampaign(
+      query,
+      businessContext.businessId,
+      req.params.campaignId,
+      req.body || {},
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    res.json({
+      ok: true,
+      data: { ...campaign, url: campaignShareUrl(publicSubdomain, campaign) },
+    });
+  } catch (error) {
+    if (error?.code === '23505') {
+      next(createHttpError(409, 'That campaign URL is already in use. Choose another one.'));
+      return;
+    }
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/campaigns/:campaignId/publish', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const campaign = await publishStorefrontCampaign(
+      query,
+      businessContext.businessId,
+      req.params.campaignId,
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    res.json({
+      ok: true,
+      data: { ...campaign, url: campaignShareUrl(publicSubdomain, campaign) },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/campaigns/:campaignId/unpublish', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const campaign = await unpublishStorefrontCampaign(
+      query,
+      businessContext.businessId,
+      req.params.campaignId,
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: campaign });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.delete('/api/catalog/campaigns/:campaignId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const campaign = await deleteStorefrontCampaign(
+      query,
+      businessContext.businessId,
+      req.params.campaignId,
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: campaign });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -10776,6 +11327,52 @@ app.delete('/api/catalog/themes/:themeId', async (req, res, next) => {
       req.params.themeId,
     );
     res.json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/marketing/ai-jobs', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    ensureAiFeatureAllowed(businessContext);
+    const instruction = limitText(req.body?.instruction || req.body?.brief, 700);
+    if (!instruction || instruction.length < 5) {
+      throw createHttpError(400, 'Describe the campaign, audience, or offer Piki should write for.');
+    }
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+    const rateCheck = await checkAiRateLimit(businessContext, {
+      consumeQuota: req.body?.consumeQuota !== false,
+    });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const productIds = Array.isArray(req.body?.productIds)
+      ? [...new Set(req.body.productIds.map(normalizeOptionalText).filter(Boolean))].slice(0, 20)
+      : [];
+    const job = await aiJobs.createJob({
+      businessId: businessContext.businessId,
+      branchId: scope.branchId,
+      userId: businessContext.userId,
+      jobType: 'marketing_content',
+      title: 'Create storefront marketing pack',
+      instruction,
+      payload: {
+        branchId: scope.branchId,
+        storefrontType: scope.storefrontType,
+        productIds,
+      },
+      totalSteps: 4,
+    });
+    res.status(202).json({ ok: true, job, remaining: rateCheck.remaining });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -11068,6 +11665,52 @@ app.post('/api/public/demo-requests', publicWriteRateLimit, async (req, res, nex
 });
 
 app.get(
+  '/catalog/:businessId/:storefrontType/campaign/:campaignSlug',
+  async (req, res, next) => {
+    try {
+      const businessId = normalizeOptionalText(req.params.businessId);
+      if (!businessId) throw createHttpError(400, 'Business catalog link is invalid');
+      const catalog = await loadPublicCatalog(businessId, {
+        currencyOverride: req.query?.currency,
+        branchId: req.query?.branchId,
+        storefrontType: req.params.storefrontType,
+        campaignSlug: req.params.campaignSlug,
+      });
+      await sendStorefrontCatalogPage(res, catalog);
+    } catch (error) {
+      next(normalizeRouteError(error));
+    }
+  },
+);
+
+app.get('/campaign/:campaignSlug', async (req, res, next) => {
+  try {
+    const subdomain = extractCatalogSubdomain(
+      req.get('x-forwarded-host') || req.get('host'),
+      config.publicCatalogRootDomain,
+    );
+    if (!subdomain) {
+      next();
+      return;
+    }
+    const storefrontLookup = await findBusinessCatalogStorefrontBySubdomain(
+      query,
+      subdomain,
+    );
+    if (!storefrontLookup) throw createHttpError(404, 'Catalog not found');
+    const catalog = await loadPublicCatalog(storefrontLookup.businessId, {
+      currencyOverride: req.query?.currency,
+      branchId: req.query?.branchId,
+      storefrontType: storefrontLookup.storefrontType || req.query?.storefront,
+      campaignSlug: req.params.campaignSlug,
+    });
+    await sendStorefrontCatalogPage(res, catalog);
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get(
   ['/catalog/:businessId', '/catalog/:businessId/:storefrontType'],
   async (req, res, next) => {
     try {
@@ -11217,6 +11860,7 @@ Promise.all([
   ensurePosPaymentSchema(),
   ensureStorefrontBrandSchema(),
   ensureStorefrontThemeSchema(query),
+  ensureStorefrontCampaignSchema(query),
   ensureProductStorefrontSchema(),
   ensureQuotationsSchema(),
   ensurePlatformNotificationSchema(),
@@ -13686,6 +14330,14 @@ function buildTypedStorefrontUrl(businessSubdomain, type) {
   );
 }
 
+function campaignShareUrl(businessSubdomain, campaign) {
+  const base = buildTypedStorefrontUrl(
+    businessSubdomain,
+    campaign?.storefrontType || 'retail',
+  );
+  return `${base}/campaign/${encodeURIComponent(campaign?.slug || '')}`;
+}
+
 function storefrontItemMatchesType(item, storefrontType) {
   const itemType = normalizePublicCatalogItemType(item?.itemType || item?.type);
   return storefrontType === 'services'
@@ -14001,6 +14653,7 @@ async function loadPublicCatalog(
     branchId: requestedBranchId,
     storefrontType,
     previewThemeId,
+    campaignSlug,
   } = {},
 ) {
   await ensureCatalogSubdomainSchema(query);
@@ -14062,6 +14715,7 @@ async function loadPublicCatalog(
         currencyOverride,
         branchId: requestedBranchId,
         storefrontType: selectedStorefrontType,
+        campaignSlug,
       });
   const cached = cacheKey ? await cacheGetJson(cacheKey) : null;
   if (cached) {
@@ -14110,6 +14764,7 @@ async function loadPublicCatalog(
       p.updated_at,
       COALESCE(sales_stats.sold_qty, 0) AS sold_qty,
       COALESCE(sales_stats.sold_revenue, 0) AS sold_revenue,
+      c.id AS category_id,
       c.name AS category_name,
       COALESCE(
         json_agg(
@@ -14172,6 +14827,7 @@ async function loadPublicCatalog(
       p.updated_at,
       sales_stats.sold_qty,
       sales_stats.sold_revenue,
+      c.id,
       c.name
     ORDER BY
       COALESCE(p.is_featured, 0) DESC,
@@ -14183,8 +14839,13 @@ async function loadPublicCatalog(
     [businessId, selectedBranch.id],
   );
 
-  const products = deduplicatePublicCatalogProducts(
+  const baseProducts = deduplicatePublicCatalogProducts(
     productsResult.rows.map((row) => normalizePublicCatalogProduct(row)),
+  );
+  const products = await applyActiveStorefrontPromotions(
+    baseProducts,
+    businessId,
+    selectedBranch.id,
   );
   const servicesResult = await query(
     `
@@ -14263,6 +14924,18 @@ async function loadPublicCatalog(
     ),
   };
 
+  const requestedCampaignSlug = normalizeOptionalText(campaignSlug);
+  const campaign = requestedCampaignSlug
+    ? await loadPublishedStorefrontCampaign(query, business.id, {
+        branchId: selectedBranch.id,
+        storefrontType: selectedStorefrontType,
+        slug: requestedCampaignSlug,
+      })
+    : null;
+  if (requestedCampaignSlug && !campaign) {
+    throw createHttpError(404, 'This campaign is not available.');
+  }
+
   const catalog = {
     preview: Boolean(previewThemeId),
     business: {
@@ -14277,6 +14950,7 @@ async function loadPublicCatalog(
     storefront,
     theme: publicTheme,
     checkout: publicTheme.checkout,
+    campaign,
     currency: currencyInfo.code,
     currencyCode: currencyInfo.code,
     currencySymbol: currencyInfo.symbol,
@@ -14295,7 +14969,7 @@ async function loadPublicCatalog(
 
 async function buildCatalogCacheKey(
   businessId,
-  { currencyOverride, branchId, storefrontType } = {},
+  { currencyOverride, branchId, storefrontType, campaignSlug } = {},
 ) {
   const version = (await cacheGetText(catalogCacheVersionKey(businessId))) || '0';
   return [
@@ -14305,6 +14979,7 @@ async function buildCatalogCacheKey(
     normalizeCacheKeyPart(branchId || 'default'),
     normalizeCacheKeyPart(currencyOverride || 'default'),
     normalizeCacheKeyPart(storefrontType || 'default'),
+    normalizeCacheKeyPart(campaignSlug || 'store'),
     CATALOG_CACHE_CODE_VERSION,
   ].join(':');
 }
@@ -14890,6 +15565,7 @@ async function resolvePublicCatalogOrderItem({
       p.id AS product_id,
       COALESCE(p.branch_id, 'main_branch') AS branch_id,
       p.name AS product_name,
+      p.category_id,
       p.price AS product_price,
       p.track_stock,
       p.show_online,
@@ -14935,7 +15611,14 @@ async function resolvePublicCatalogOrderItem({
     );
   }
 
-  const unitPrice = Number(variantId ? row.variant_price : row.product_price) || 0;
+  const baseUnitPrice = Number(variantId ? row.variant_price : row.product_price) || 0;
+  const unitPrice = await activeStorefrontProductPrice({
+    businessId,
+    branchId: row.branch_id,
+    productId: row.product_id,
+    categoryId: row.category_id,
+    price: baseUnitPrice,
+  });
   const cleanQuantity = Math.round(quantity * 1000) / 1000;
   return {
     itemType: 'product',
@@ -15186,6 +15869,134 @@ function normalizeServiceCatalogId(value) {
     : normalized;
 }
 
+async function applyActiveStorefrontPromotions(products, businessId, branchId) {
+  if (!products.length) return products;
+  const result = await query(
+    `SELECT
+       p.id,
+       p.name,
+       p.promotion_type,
+       p.discount_type,
+       p.discount_value,
+       p.priority,
+       r.product_id,
+       r.category_id
+     FROM promotions p
+     JOIN promotion_rules r
+       ON r.promotion_id = p.id
+      AND r.business_id = p.business_id
+      AND r.deleted_at IS NULL
+     WHERE p.business_id = $1
+       AND COALESCE(p.branch_id, 'main_branch') = $2
+       AND p.deleted_at IS NULL
+       AND p.is_active = true
+       AND (p.starts_at IS NULL OR p.starts_at <= NOW())
+       AND (p.ends_at IS NULL OR p.ends_at >= NOW())
+       AND p.promotion_type IN ('percent_off', 'amount_off')
+       AND p.days_of_week IS NULL
+       AND p.start_time IS NULL
+       AND p.end_time IS NULL
+       AND COALESCE(r.min_quantity, 0) <= 1
+       AND COALESCE(r.min_subtotal, 0) <= 0
+       AND COALESCE(r.free_quantity, 0) <= 0
+       AND COALESCE(r.bundle_quantity, 0) <= 0
+       AND (r.product_id IS NOT NULL OR r.category_id IS NOT NULL)
+     ORDER BY p.priority DESC, p.updated_at DESC`,
+    [businessId, branchId],
+  );
+  return products.map((product) => {
+    const candidates = result.rows.filter(
+      (promotion) =>
+        promotion.product_id === product.id ||
+        (promotion.category_id && promotion.category_id === product.categoryId),
+    );
+    let best = null;
+    for (const promotion of candidates) {
+      const salePrice = storefrontPromotionPrice(product.price, promotion);
+      if (salePrice >= product.price || (best && salePrice >= best.salePrice)) continue;
+      best = { promotion, salePrice };
+    }
+    if (!best) return product;
+    const originalPrice = product.price;
+    const discountPercent = Math.max(
+      1,
+      Math.round(((originalPrice - best.salePrice) / originalPrice) * 100),
+    );
+    return {
+      ...product,
+      price: best.salePrice,
+      compareAtPrice: originalPrice,
+      discountPercent,
+      promotionLabel:
+        limitText(best.promotion.name, 50) || `${discountPercent}% off`,
+      variants: product.variants.map((variant) => {
+        const variantSalePrice = storefrontPromotionPrice(
+          variant.price,
+          best.promotion,
+        );
+        return variantSalePrice < variant.price
+          ? {
+              ...variant,
+              price: variantSalePrice,
+              compareAtPrice: variant.price,
+            }
+          : variant;
+      }),
+    };
+  });
+}
+
+function storefrontPromotionPrice(priceValue, promotion) {
+  const price = Number(priceValue || 0);
+  if (!(price > 0)) return price;
+  const value = Math.max(0, Number(promotion?.discount_value || 0));
+  const percent =
+    promotion?.promotion_type === 'percent_off' ||
+    ['percent', 'percentage'].includes(
+      String(promotion?.discount_type || '').toLowerCase(),
+    );
+  const discounted = percent ? price * (1 - Math.min(value, 100) / 100) : price - value;
+  return Math.round(Math.max(0, discounted) * 100) / 100;
+}
+
+async function activeStorefrontProductPrice({
+  businessId,
+  branchId,
+  productId,
+  categoryId,
+  price,
+}) {
+  const result = await query(
+    `SELECT p.promotion_type, p.discount_type, p.discount_value
+     FROM promotions p
+     JOIN promotion_rules r
+       ON r.promotion_id = p.id
+      AND r.business_id = p.business_id
+      AND r.deleted_at IS NULL
+     WHERE p.business_id = $1
+       AND COALESCE(p.branch_id, 'main_branch') = $2
+       AND p.deleted_at IS NULL
+       AND p.is_active = true
+       AND (p.starts_at IS NULL OR p.starts_at <= NOW())
+       AND (p.ends_at IS NULL OR p.ends_at >= NOW())
+       AND p.promotion_type IN ('percent_off', 'amount_off')
+       AND p.days_of_week IS NULL
+       AND p.start_time IS NULL
+       AND p.end_time IS NULL
+       AND COALESCE(r.min_quantity, 0) <= 1
+       AND COALESCE(r.min_subtotal, 0) <= 0
+       AND COALESCE(r.free_quantity, 0) <= 0
+       AND COALESCE(r.bundle_quantity, 0) <= 0
+       AND (r.product_id = $3 OR ($4::text IS NOT NULL AND r.category_id = $4))
+     ORDER BY p.priority DESC, p.updated_at DESC`,
+    [businessId, branchId, productId, categoryId || null],
+  );
+  return result.rows.reduce(
+    (best, promotion) => Math.min(best, storefrontPromotionPrice(price, promotion)),
+    Number(price || 0),
+  );
+}
+
 function normalizePublicCatalogProduct(row) {
   const trackStock = Number(row.track_stock ?? 1) !== 0;
   const imageUrls = normalizeStoredProductImageUrls(
@@ -15199,6 +16010,7 @@ function normalizePublicCatalogProduct(row) {
           id: variant.id,
           name: String(variant.name || '').trim(),
           price: Number(variant.price || 0),
+          stock: Number(variant.stock || 0),
           available: !trackStock || Number(variant.stock || 0) > 0,
         }))
     : [];
@@ -15216,7 +16028,10 @@ function normalizePublicCatalogProduct(row) {
     serviceId: null,
     name: String(row.name || '').trim(),
     price: Number(row.price || 0),
+    stock,
+    trackStock,
     brand: normalizeOptionalText(row.brand),
+    categoryId: normalizeOptionalText(row.category_id),
     category: normalizeOptionalText(row.category_name),
     description: limitText(row.description, 420),
     unit: normalizeOptionalText(row.sale_unit) || normalizeOptionalText(row.unit) || 'pcs',
@@ -15383,6 +16198,7 @@ function buildStorefrontBootstrapScript(catalog) {
 function injectStorefrontMeta(html, catalog) {
   const businessName = normalizeOptionalText(catalog.business?.name) || 'Online Store';
   const brand = catalog.business?.brand || {};
+  const campaign = catalog.campaign || null;
   const storefront = storefrontDefinition(catalog.storefront?.type);
   const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
     fallback: '#111827',
@@ -15392,11 +16208,17 @@ function injectStorefrontMeta(html, catalog) {
     brand.coverUrls,
     safePublicImageUrl(brand.coverUrl),
   );
-  const coverUrl = coverUrls[0] || safePublicImageUrl(brand.coverUrl);
+  const coverUrl =
+    safePublicImageUrl(campaign?.heroImageUrl) ||
+    coverUrls[0] ||
+    safePublicImageUrl(brand.coverUrl);
   const description =
+    normalizeOptionalText(campaign?.description) ||
     normalizeOptionalText(brand.description) ||
     storefront.description;
-  const title = `${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}`;
+  const title = campaign
+    ? `${escapeHtml(campaign.title)} - ${escapeHtml(businessName)}`
+    : `${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}`;
 
   const headTags = [
     `<title>${title}</title>`,
@@ -15437,6 +16259,18 @@ function injectStorefrontMeta(html, catalog) {
   return updated;
 }
 
+async function sendStorefrontCatalogPage(res, catalog) {
+  res
+    .status(200)
+    .type('html')
+    .set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  try {
+    res.send(await renderStorefrontSpaPage(catalog));
+  } catch (_) {
+    res.send(renderPublicCatalogPage(catalog));
+  }
+}
+
 async function renderStorefrontSpaPage(catalog) {
   const template = await readStorefrontSpaTemplate();
   return injectStorefrontMeta(template, catalog);
@@ -15459,6 +16293,7 @@ function injectStorefrontRootFallback(html, catalog) {
 function renderStorefrontRootFallback(catalog) {
   const business = catalog.business || {};
   const brand = business.brand || {};
+  const campaign = catalog.campaign || null;
   const storefront = storefrontDefinition(catalog.storefront?.type);
   const businessName = normalizeOptionalText(business.name) || 'Online Store';
   const branchName = normalizeOptionalText(business.selectedBranch?.name);
@@ -15468,14 +16303,23 @@ function renderStorefrontRootFallback(catalog) {
   });
   const logoUrl = safePublicImageUrl(brand.logoUrl);
   const coverUrls = normalizeStoredStorefrontCoverUrls(
-    brand.coverUrls,
-    safePublicImageUrl(brand.coverUrl),
+    campaign?.heroImageUrl ? [campaign.heroImageUrl] : brand.coverUrls,
+    safePublicImageUrl(campaign?.heroImageUrl || brand.coverUrl),
   );
-  const tagline = normalizeOptionalText(brand.tagline) || storefront.title;
+  const tagline =
+    normalizeOptionalText(campaign?.title) ||
+    normalizeOptionalText(brand.tagline) ||
+    storefront.title;
   const description =
+    normalizeOptionalText(campaign?.description) ||
     normalizeOptionalText(brand.description) ||
     storefront.description;
-  const products = Array.isArray(catalog.products) ? catalog.products : [];
+  const campaignProductIds = new Set(
+    Array.isArray(campaign?.productIds) ? campaign.productIds : [],
+  );
+  const products = (Array.isArray(catalog.products) ? catalog.products : []).filter(
+    (item) => !campaign || campaignProductIds.has(item.id),
+  );
   const visibleItems = products.slice(0, 12);
   const storeInitial = businessName.trim().charAt(0).toUpperCase() || 'P';
   const itemNoun = storefront.type === 'services' ? 'service' : 'item';

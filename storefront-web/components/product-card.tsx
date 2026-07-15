@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Check, ImageOff } from "lucide-react";
+import { Plus, Check, ImageOff, PackageCheck } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
 import { formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { useStore } from "./store-provider";
@@ -37,12 +37,21 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
       : item.price;
   const pricePrefix =
     hasVariants && !selectedAvailableVariant && variantPrices.length > 0 ? "From " : "";
+  const compareAtPrice = selectedAvailableVariant?.compareAtPrice ?? item.compareAtPrice;
   const isOutOfStock = hasVariants
     ? availableVariants.length === 0
     : Boolean(item.trackStock && item.stock <= 0);
   const images = getCatalogItemImages(item);
   const image = images[0];
   const hasImage = image && !imageError;
+  const availableOptionCount = availableVariants.length;
+  const stockLabel = isOutOfStock
+    ? "Sold out"
+    : hasVariants
+      ? `${availableOptionCount} option${availableOptionCount === 1 ? "" : "s"} available`
+      : item.trackStock && item.stock <= 5
+        ? `Only ${Math.max(0, item.stock)} left`
+        : "In stock";
 
   const handleAdd = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -64,7 +73,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
   return (
     <StaggerItem>
-      <div className="theme-product-card group flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface transition hover:border-border-strong">
+      <div className="theme-product-card group flex h-full flex-col overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface shadow-[0_18px_50px_-34px_rgba(0,0,0,0.85)] transition duration-300 hover:-translate-y-1 hover:border-border-strong hover:shadow-[0_24px_60px_-30px_rgba(0,0,0,0.9)]">
         <button
           type="button"
           onClick={() => setShowQuickView(true)}
@@ -87,10 +96,19 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             </div>
           )}
 
-          {item.isFeatured && !isOutOfStock && (
-            <span className="absolute left-3 top-3 rounded bg-accent px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-background">
-              Featured
-            </span>
+          {!isOutOfStock && (
+            <div className="absolute left-3 top-3 flex flex-col items-start gap-2">
+              {item.discountPercent && item.discountPercent > 0 && (
+                <span className="rounded-full bg-accent px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.1em] text-background shadow-sm">
+                  Save {item.discountPercent}%
+                </span>
+              )}
+              {item.isFeatured && (
+                <span className="rounded-full border border-white/15 bg-background/82 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground backdrop-blur-md">
+                  Featured
+                </span>
+              )}
+            </div>
           )}
 
           {isOutOfStock && (
@@ -101,14 +119,15 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             </div>
           )}
 
-          {hasVariants && variants.length > 1 && !isOutOfStock && (
-            <span className="absolute bottom-3 left-3 rounded bg-background/80 px-2 py-1 text-[10px] font-medium text-muted-strong backdrop-blur-sm">
-              {variants.length} options
+          {!isOutOfStock && (
+            <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/82 px-2.5 py-1 text-[10px] font-semibold text-muted-strong backdrop-blur-md">
+              <PackageCheck className="h-3 w-3 text-accent" />
+              {stockLabel}
             </span>
           )}
         </button>
 
-        <div className="flex flex-1 flex-col p-4">
+        <div className="flex flex-1 flex-col p-3 sm:p-4">
           {item.category && (
             <span className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
               {item.category}
@@ -119,7 +138,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             onClick={() => setShowQuickView(true)}
             className="text-left"
           >
-            <h3 className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground">
+            <h3 className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground sm:text-[15px]">
               {item.name}
             </h3>
           </button>
@@ -127,14 +146,24 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             <p className="mt-1 text-[12px] text-muted">{item.brand}</p>
           )}
 
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-auto flex items-end justify-between gap-3 pt-5">
             <div className="flex flex-col">
-              <span className="text-[17px] font-semibold tracking-tight text-accent">
+              {compareAtPrice != null && compareAtPrice > price && (
+                <span className="text-[12px] text-muted line-through decoration-current/60">
+                  {formatPrice(compareAtPrice, currencySymbol, currencyCode)}
+                </span>
+              )}
+              <span className="text-[15px] font-semibold tracking-tight text-accent sm:text-[17px]">
                 {pricePrefix}
                 {formatPrice(price, currencySymbol, currencyCode)}
               </span>
               {hasVariants && !selectedAvailableVariant && variantPrices.length > 0 && (
                 <span className="text-[11px] text-muted">multiple options</span>
+              )}
+              {item.promotionLabel && compareAtPrice != null && compareAtPrice > price && (
+                <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                  {item.promotionLabel}
+                </span>
               )}
             </div>
           </div>
@@ -159,7 +188,14 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
               ) : (
                 <>
                   {!isOutOfStock && <Plus className="h-4 w-4" />}
-                  {buttonLabel}
+                  <span className="sm:hidden">
+                    {isOutOfStock
+                      ? "Sold out"
+                      : hasVariants && !selectedAvailableVariant
+                        ? "Options"
+                        : "Add"}
+                  </span>
+                  <span className="hidden sm:inline">{buttonLabel}</span>
                 </>
               )}
             </motion.span>

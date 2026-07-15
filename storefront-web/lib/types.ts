@@ -122,6 +122,7 @@ export interface ProductVariant {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number | null;
   stock?: number;
   available?: boolean;
 }
@@ -130,6 +131,9 @@ export interface CatalogItem {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number | null;
+  discountPercent?: number | null;
+  promotionLabel?: string | null;
   stock: number;
   unit?: string;
   saleUnit?: string;
@@ -153,6 +157,24 @@ export interface CatalogItem {
   serviceId?: string | null;
 }
 
+export interface StorefrontCampaign {
+  id: string;
+  branchId: string;
+  storefrontType: StorefrontType;
+  name: string;
+  slug: string;
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  badgeLabel?: string | null;
+  buttonLabel: string;
+  heroImageUrl?: string | null;
+  productIds: string[];
+  highlights: string[];
+  startsAt?: string | null;
+  endsAt?: string | null;
+}
+
 export interface Catalog {
   preview?: boolean;
   business: Business;
@@ -161,6 +183,7 @@ export interface Catalog {
   currencyCode: string;
   theme: StorefrontTheme;
   checkout: StorefrontCheckoutSettings;
+  campaign?: StorefrontCampaign | null;
   currencySymbol: string;
   currencyLabel: string;
   categories: string[];

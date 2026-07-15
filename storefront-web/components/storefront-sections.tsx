@@ -3,6 +3,7 @@
 import type { ComponentType, ReactNode } from "react";
 import {
   ArrowRight,
+  BadgeCheck,
   Clock3,
   Heart,
   MessageCircle,
@@ -66,6 +67,14 @@ export function StorefrontSections({
 
   return (
     <main className="flex-1">
+      {catalog.campaign && (
+        <CampaignHero
+          campaign={catalog.campaign}
+          onShop={() => {
+            document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+          }}
+        />
+      )}
       {visibleSections.map((section) => {
         switch (section.type) {
           case "announcement":
@@ -189,7 +198,7 @@ export function StorefrontSections({
             return (
               <SectionShell key={section.id} section={section}>
                 <CatalogToolbar
-                  categories={catalog.categories}
+                  categories={campaignCategories(catalog)}
                   activeCategory={category}
                   onCategoryChange={onCategoryChange}
                   search={search}
@@ -218,8 +227,17 @@ export function StorefrontSections({
                           <SectionHeading
                             section={{
                               ...section,
-                              eyebrow: isSearching ? "Results" : section.eyebrow,
-                              title: isSearching ? "Search results" : section.title,
+                              eyebrow: isSearching
+                                ? "Results"
+                                : catalog.campaign
+                                  ? "Campaign collection"
+                                  : section.eyebrow,
+                              title: isSearching
+                                ? "Search results"
+                                : catalog.campaign
+                                  ? campaignCollectionTitle(catalog)
+                                  : section.title,
+                              body: catalog.campaign ? "Selected products for this campaign." : section.body,
                             }}
                           />
                           <p className="hidden text-[13px] text-muted sm:block">
@@ -258,6 +276,70 @@ export function StorefrontSections({
         }
       })}
     </main>
+  );
+}
+
+function CampaignHero({
+  campaign,
+  onShop,
+}: {
+  campaign: NonNullable<Catalog["campaign"]>;
+  onShop: () => void;
+}) {
+  return (
+    <section className="storefront-section border-b border-border-subtle" data-section-style="contrast">
+      <div className={`mx-auto grid max-w-7xl items-stretch ${campaign.heroImageUrl ? "lg:grid-cols-[1.08fr_0.92fr]" : ""}`}>
+        <div className="flex flex-col justify-center px-5 py-16 sm:px-10 sm:py-24 lg:px-16">
+          <div className="flex flex-wrap items-center gap-2">
+            {campaign.badgeLabel && (
+              <span className="rounded-full bg-accent px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-background">
+                {campaign.badgeLabel}
+              </span>
+            )}
+            {campaign.eyebrow && (
+              <span className="section-muted text-[11px] font-semibold uppercase tracking-[0.18em]">
+                {campaign.eyebrow}
+              </span>
+            )}
+          </div>
+          <h1 className="mt-5 max-w-3xl font-display text-4xl leading-[1.05] tracking-tight sm:text-6xl">
+            {campaign.title}
+          </h1>
+          {campaign.description && (
+            <p className="section-muted mt-5 max-w-2xl text-[15px] leading-7 sm:text-[17px]">
+              {campaign.description}
+            </p>
+          )}
+          {campaign.highlights.length > 0 && (
+            <ul className="mt-7 grid gap-3 sm:grid-cols-2">
+              {campaign.highlights.map((highlight) => (
+                <li key={highlight} className="flex items-start gap-2 text-[13px] text-muted-strong">
+                  <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                  <span>{highlight}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={onShop}
+            className="section-primary-action mt-8 inline-flex w-fit items-center gap-2 rounded-[var(--theme-radius)] px-6 py-3.5 text-[13px] font-bold transition hover:-translate-y-0.5"
+          >
+            {campaign.buttonLabel || "Shop the campaign"}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+        {campaign.heroImageUrl && (
+          <div className="min-h-[320px] overflow-hidden lg:min-h-[620px]">
+            <img
+              src={campaign.heroImageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -427,4 +509,19 @@ function alignmentClass(alignment: StorefrontSection["alignment"]) {
     : alignment === "right"
       ? "ml-auto flex max-w-2xl flex-col items-end text-right"
       : "flex max-w-2xl flex-col items-start text-left";
+}
+
+function campaignCollectionTitle(catalog: Catalog) {
+  return catalog.campaign?.name || "Campaign products";
+}
+
+function campaignCategories(catalog: Catalog) {
+  if (!catalog.campaign) return catalog.categories;
+  const selectedIds = new Set(catalog.campaign.productIds);
+  return [...new Set(
+    catalog.products
+      .filter((item) => selectedIds.has(item.id))
+      .map((item) => item.category)
+      .filter((value): value is string => Boolean(value)),
+  )].sort((first, second) => first.localeCompare(second));
 }

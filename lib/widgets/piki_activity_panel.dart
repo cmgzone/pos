@@ -259,6 +259,10 @@ class _ActivityLine extends StatelessWidget {
       'storefront_validating' => Icons.fact_check_outlined,
       'storefront_saving' => Icons.cloud_upload_outlined,
       'storefront_ready' => Icons.web_asset_rounded,
+      'marketing_context' => Icons.inventory_2_outlined,
+      'marketing_writing' => Icons.edit_note_rounded,
+      'marketing_validating' => Icons.fact_check_outlined,
+      'marketing_ready' => Icons.campaign_outlined,
       'completed' => Icons.check_circle_outline,
       _ => Icons.bolt_outlined,
     };

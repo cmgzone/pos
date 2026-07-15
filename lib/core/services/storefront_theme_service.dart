@@ -170,20 +170,54 @@ class StorefrontThemeSection {
   final String type;
   final String title;
   final bool enabled;
+  final Map<String, dynamic> data;
 
   const StorefrontThemeSection({
     required this.id,
     required this.type,
     required this.title,
     required this.enabled,
+    required this.data,
   });
 
   factory StorefrontThemeSection.fromJson(Map<String, dynamic> json) {
+    final data = Map<String, dynamic>.from(json);
     return StorefrontThemeSection(
       id: json['id']?.toString() ?? '',
       type: json['type']?.toString() ?? 'catalog',
       title: json['title']?.toString() ?? json['text']?.toString() ?? 'Section',
       enabled: json['enabled'] != false,
+      data: data,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    ...data,
+    'id': id,
+    'type': type,
+    'enabled': enabled,
+  };
+
+  StorefrontThemeSection copyWith({
+    String? id,
+    String? type,
+    String? title,
+    bool? enabled,
+    Map<String, dynamic>? data,
+  }) {
+    final nextData = Map<String, dynamic>.from(data ?? this.data);
+    final nextTitle = title ?? this.title;
+    if (type == 'announcement' || this.type == 'announcement') {
+      nextData['text'] = nextTitle;
+    } else {
+      nextData['title'] = nextTitle;
+    }
+    return StorefrontThemeSection(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      title: nextTitle,
+      enabled: enabled ?? this.enabled,
+      data: nextData,
     );
   }
 }

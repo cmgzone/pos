@@ -1,19 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/services/license_service.dart';
+import '../../../core/services/piki_ai_job_service.dart';
 import '../../products/presentation/catalog_orders_screen.dart';
 import '../../products/presentation/catalog_publish_section.dart';
 import '../../products/presentation/product_list_screen.dart';
 import '../../settings/presentation/payment_methods_section.dart';
 import '../../settings/presentation/storefront_brand_settings_section.dart';
 import '../../settings/presentation/storefront_theme_settings_section.dart';
+import 'storefront_campaigns_section.dart';
+import 'storefront_delivery_section.dart';
+import 'storefront_launch_checklist.dart';
+import 'storefront_marketing_section.dart';
 
 enum OnlineStoreSection {
   overview,
   products,
   orders,
+  campaigns,
+  marketing,
   branding,
   website,
   payments,
+  delivery,
 }
 
 class OnlineStoreScreen extends StatefulWidget {
@@ -36,11 +47,20 @@ class OnlineStoreScreen extends StatefulWidget {
 
 class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
   late OnlineStoreSection _selectedSection;
+  late final String _storefrontType;
 
   @override
   void initState() {
     super.initState();
     _selectedSection = widget.initialSection;
+    final sellingMode = LicenseService.currentSnapshot.entitlements.sellingMode
+        .trim()
+        .toLowerCase();
+    _storefrontType = sellingMode == 'restaurant'
+        ? 'restaurant'
+        : sellingMode == 'services' || sellingMode == 'service'
+        ? 'services'
+        : 'retail';
   }
 
   @override
@@ -76,6 +96,7 @@ class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _OnlineStoreHeader(selectedSection: _selectedSection),
+            const _OnlineStorePikiStatusBar(),
             if (isWide)
               Expanded(
                 child: Row(
@@ -108,12 +129,19 @@ class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
     return switch (_selectedSection) {
       OnlineStoreSection.overview => _OnlineStoreOverview(
         onSelected: _selectSection,
+        storefrontType: _storefrontType,
       ),
       OnlineStoreSection.products => ProductListScreen(
         onOpenCatalogOrders: () => _selectSection(OnlineStoreSection.orders),
       ),
       OnlineStoreSection.orders => CatalogOrdersScreen(
         onOpenPos: widget.onOpenPos,
+      ),
+      OnlineStoreSection.campaigns => StorefrontCampaignsSection(
+        storefrontType: _storefrontType,
+      ),
+      OnlineStoreSection.marketing => StorefrontMarketingSection(
+        storefrontType: _storefrontType,
       ),
       OnlineStoreSection.branding => const _ScrollableSettingsSection(
         child: StorefrontBrandSettingsSection(),
@@ -122,7 +150,119 @@ class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
         child: StorefrontThemeSettingsSection(),
       ),
       OnlineStoreSection.payments => const PaymentMethodsSection(),
+      OnlineStoreSection.delivery => StorefrontDeliverySection(
+        storefrontType: _storefrontType,
+      ),
     };
+  }
+}
+
+class _OnlineStorePikiStatusBar extends StatefulWidget {
+  const _OnlineStorePikiStatusBar();
+
+  @override
+  State<_OnlineStorePikiStatusBar> createState() =>
+      _OnlineStorePikiStatusBarState();
+}
+
+class _OnlineStorePikiStatusBarState extends State<_OnlineStorePikiStatusBar> {
+  PikiAiJob? _job;
+  Timer? _timer;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _timer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_refresh()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final jobs = await PikiAiJobService.listActiveJobs();
+      final onlineStoreJobs = jobs
+          .where(
+            (job) => const {
+              'storefront_theme',
+              'marketing_content',
+            }.contains(job.jobType),
+          )
+          .toList();
+      if (!mounted) return;
+      setState(() => _job = onlineStoreJobs.firstOrNull);
+    } catch (_) {
+      // Online Store remains usable when cloud activity cannot refresh.
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final job = _job;
+    if (job == null) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.primaryContainer.withValues(alpha: 0.72),
+      child: InkWell(
+        onTap: _refresh,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 9, 24, 10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  value: job.progress <= 0 ? null : job.progress / 100,
+                  strokeWidth: 2.5,
+                  color: colors.primary,
+                  backgroundColor: colors.primary.withValues(alpha: 0.15),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  '${job.title ?? 'Piki is working'} · ${job.currentStep ?? 'Working in Piki Cloud'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.onPrimaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${job.progress}%',
+                style: TextStyle(
+                  color: colors.onPrimaryContainer,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Continues after app closes',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.onPrimaryContainer.withValues(alpha: 0.78),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -198,7 +338,7 @@ class _OnlineStoreNavigation extends StatelessWidget {
       width: 248,
       color: theme.colorScheme.surface,
       padding: const EdgeInsets.all(12),
-      child: Column(
+      child: ListView(
         children: [
           for (final section in OnlineStoreSection.values)
             Padding(
@@ -305,8 +445,12 @@ class _OnlineStoreTabBar extends StatelessWidget {
 
 class _OnlineStoreOverview extends StatelessWidget {
   final ValueChanged<OnlineStoreSection> onSelected;
+  final String storefrontType;
 
-  const _OnlineStoreOverview({required this.onSelected});
+  const _OnlineStoreOverview({
+    required this.onSelected,
+    required this.storefrontType,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +464,16 @@ class _OnlineStoreOverview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const CatalogPublishSection(),
+                StorefrontLaunchChecklist(
+                  storefrontType: storefrontType,
+                  onStepSelected: (step) => onSelected(switch (step) {
+                    'branding' => OnlineStoreSection.branding,
+                    'products' => OnlineStoreSection.products,
+                    'payments' => OnlineStoreSection.payments,
+                    'delivery' => OnlineStoreSection.delivery,
+                    _ => OnlineStoreSection.website,
+                  }),
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
                   child: Column(
@@ -498,6 +652,16 @@ const _sectionDetails = <OnlineStoreSection, _OnlineStoreSectionDetails>{
     description: 'Review and fulfil orders placed on your website.',
     icon: Icons.receipt_long_outlined,
   ),
+  OnlineStoreSection.campaigns: _OnlineStoreSectionDetails(
+    label: 'Campaigns',
+    description: 'Create focused landing pages with reusable share links.',
+    icon: Icons.campaign_outlined,
+  ),
+  OnlineStoreSection.marketing: _OnlineStoreSectionDetails(
+    label: 'Marketing',
+    description: 'Generate social, WhatsApp, and product copy with Piki.',
+    icon: Icons.auto_awesome_outlined,
+  ),
   OnlineStoreSection.branding: _OnlineStoreSectionDetails(
     label: 'Branding',
     description: 'Manage your store name, logo, cover, and brand colors.',
@@ -512,5 +676,10 @@ const _sectionDetails = <OnlineStoreSection, _OnlineStoreSectionDetails>{
     label: 'Payments',
     description: 'Configure how customers pay for their online orders.',
     icon: Icons.payments_outlined,
+  ),
+  OnlineStoreSection.delivery: _OnlineStoreSectionDetails(
+    label: 'Delivery',
+    description: 'Configure pickup, delivery, and checkout instructions.',
+    icon: Icons.local_shipping_outlined,
   ),
 };

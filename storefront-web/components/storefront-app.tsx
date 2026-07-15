@@ -20,7 +20,11 @@ import {
   getBranchIdFromQuery,
   getPreviewTokenFromQuery,
 } from "@/lib/utils";
-import { fetchCatalog, storefrontTypeFromPath } from "@/lib/api";
+import {
+  campaignSlugFromPath,
+  fetchCatalog,
+  storefrontTypeFromPath,
+} from "@/lib/api";
 import type {
   BusinessBrand,
   StorefrontSectionAction,
@@ -49,6 +53,7 @@ function StorefrontInner() {
       branchId?: string,
       storefrontType?: StorefrontType,
       previewToken?: string,
+      campaignSlug?: string,
     ) => {
       setError(null);
       try {
@@ -57,6 +62,7 @@ function StorefrontInner() {
           branchId,
           storefrontType,
           previewToken,
+          campaignSlug,
         );
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
@@ -85,6 +91,7 @@ function StorefrontInner() {
       getBranchIdFromQuery();
     const storefrontType =
       bootstrap.catalog?.storefront.type || storefrontTypeFromPath();
+    const campaignSlug = bootstrap.catalog?.campaign?.slug || campaignSlugFromPath();
 
     if (bootstrap.catalog) {
       setCatalog(bootstrap.catalog);
@@ -100,12 +107,12 @@ function StorefrontInner() {
       );
       return;
     } else {
-      loadCatalog(businessId, branchId, storefrontType, previewToken);
+      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug);
     }
 
     if (!previewToken || !businessId) return;
     const timer = window.setInterval(() => {
-      loadCatalog(businessId, branchId, storefrontType, previewToken);
+      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug);
     }, 2000);
     return () => window.clearInterval(timer);
   }, [loadCatalog, setCatalog, setSelectedBranch]);
@@ -123,6 +130,7 @@ function StorefrontInner() {
         branchId,
         catalog.storefront.type,
         getPreviewTokenFromQuery(),
+        catalog.campaign?.slug || campaignSlugFromPath(),
       );
     },
     [catalog, loadCatalog, setSelectedBranch],
@@ -130,7 +138,10 @@ function StorefrontInner() {
 
   const filteredItems = useMemo(() => {
     if (!catalog) return [];
-    let items = [...catalog.products];
+    const campaignProductIds = new Set(catalog.campaign?.productIds || []);
+    let items = catalog.campaign
+      ? catalog.products.filter((item) => campaignProductIds.has(item.id))
+      : [...catalog.products];
     const query = search.trim().toLowerCase();
     if (query) {
       items = items.filter(
@@ -221,7 +232,12 @@ function StorefrontInner() {
         <StorefrontSections
           catalog={catalog}
           sections={catalog.theme.sections.filter(
-            (section) => section.type !== "announcement",
+            (section) =>
+              section.type !== "announcement" &&
+              (!catalog.campaign ||
+                section.type === "catalog" ||
+                section.type === "contact" ||
+                section.type === "benefits"),
           )}
           filteredItems={filteredItems}
           isSearching={isSearching}

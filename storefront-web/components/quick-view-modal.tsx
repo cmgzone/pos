@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, X, Plus, Check, Package } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Plus, Check, Package, BadgePercent } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
 import { classNames, formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { ScaleIn } from "./motion";
@@ -40,6 +40,10 @@ export function QuickViewModal({
     selectedVariant && selectedVariant.available !== false ? selectedVariant : undefined;
   const fallbackVariant = availableVariants[0] || variants[0];
   const price = selectedAvailableVariant?.price ?? fallbackVariant?.price ?? item.price;
+  const compareAtPrice =
+    selectedAvailableVariant?.compareAtPrice ??
+    fallbackVariant?.compareAtPrice ??
+    item.compareAtPrice;
   const image = images[selectedImageIndex];
   const hasMultipleImages = images.length > 1;
   const canAdd = !requiresVariant || Boolean(selectedAvailableVariant);
@@ -120,9 +124,15 @@ export function QuickViewModal({
                 <Package className="h-14 w-14 text-muted/40" />
               </div>
             )}
+            {item.discountPercent && item.discountPercent > 0 && (
+              <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-background shadow-md">
+                <BadgePercent className="h-3.5 w-3.5" />
+                Save {item.discountPercent}%
+              </span>
+            )}
             {hasMultipleImages && (
               <>
-                <span className="absolute left-3 top-3 rounded bg-background/80 px-2 py-1 text-[11px] font-medium text-muted-strong backdrop-blur">
+                <span className="absolute right-3 top-3 rounded bg-background/80 px-2 py-1 text-[11px] font-medium text-muted-strong backdrop-blur">
                   {selectedImageIndex + 1} / {images.length}
                 </span>
                 <button
@@ -210,6 +220,9 @@ export function QuickViewModal({
                       >
                         {variant.name} ·{" "}
                         {formatPrice(variant.price, currencySymbol, currencyCode)}
+                        {variant.compareAtPrice && variant.compareAtPrice > variant.price
+                          ? ` (was ${formatPrice(variant.compareAtPrice, currencySymbol, currencyCode)})`
+                          : ""}
                         {!isAvailable ? " · Sold out" : ""}
                       </button>
                     );
@@ -228,8 +241,15 @@ export function QuickViewModal({
                 <span className="text-[12px] font-medium uppercase tracking-[0.12em] text-muted">
                   Price
                 </span>
-                <span className="font-display text-3xl tracking-tight text-accent">
-                  {formatPrice(price, currencySymbol, currencyCode)}
+                <span className="flex flex-col items-end">
+                  {compareAtPrice != null && compareAtPrice > price && (
+                    <span className="text-[13px] text-muted line-through">
+                      {formatPrice(compareAtPrice, currencySymbol, currencyCode)}
+                    </span>
+                  )}
+                  <span className="font-display text-3xl tracking-tight text-accent">
+                    {formatPrice(price, currencySymbol, currencyCode)}
+                  </span>
                 </span>
               </div>
               <button
