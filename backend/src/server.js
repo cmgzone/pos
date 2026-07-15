@@ -8950,6 +8950,172 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
 });
 
 aiJobs.registerHandler('product_import', runProductImportAiJob);
+aiJobs.registerHandler('storefront_theme', runStorefrontThemeAiJob);
+
+async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
+  const totalSteps = 5;
+  const payload = parseJsonObjectFromText(job.payload_json) || {};
+  const themeId = normalizeOptionalText(payload.themeId);
+  const instruction = limitText(job.instruction, 700);
+  const buildFromScratch = payload.buildFromScratch === true;
+  if (!themeId || !instruction) {
+    throw createHttpError(400, 'The saved storefront job is incomplete.');
+  }
+
+  const step = async ({
+    completedSteps,
+    currentStep,
+    progress,
+    eventType,
+    title,
+    message,
+    toolName,
+  }) => {
+    await updateJob(job.id, job.business_id, {
+      completedSteps,
+      totalSteps,
+      currentStep,
+      progress,
+    });
+    await addEvent({
+      jobId: job.id,
+      businessId: job.business_id,
+      branchId: job.branch_id,
+      eventType,
+      title,
+      message,
+      toolName,
+      progress,
+    });
+  };
+
+  await step({
+    completedSteps: 1,
+    currentStep: 'Reading your storefront brief',
+    progress: 14,
+    eventType: 'storefront_brief',
+    title: 'Reading your storefront brief',
+    message: buildFromScratch
+      ? 'Piki is planning a complete customer journey from a blank canvas.'
+      : 'Piki is identifying the requested changes while preserving the current theme.',
+    toolName: 'read_storefront_brief',
+  });
+
+  const theme = await getStorefrontTheme(query, job.business_id, themeId);
+  if (!theme) throw createHttpError(404, 'The storefront theme was not found.');
+  const aiConfig = await loadPlatformAiConfig();
+  if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    throw createHttpError(403, 'AI is not enabled by the platform administrator');
+  }
+  const storefrontBrand = await loadStorefrontBrand(job.business_id, {
+    branchId: theme.branchId,
+  });
+
+  await step({
+    completedSteps: 2,
+    currentStep: 'Planning sections and customer flow',
+    progress: 34,
+    eventType: 'storefront_planning',
+    title: 'Planning the customer journey',
+    message: 'Piki is organizing the hero, categories, featured items, catalogue, and support sections.',
+    toolName: 'plan_storefront_sections',
+  });
+
+  await step({
+    completedSteps: 3,
+    currentStep: 'Designing your storefront',
+    progress: 52,
+    eventType: 'storefront_designing',
+    title: 'Designing the storefront',
+    message: 'Piki is creating the theme copy, visual direction, section order, and checkout settings.',
+    toolName: 'design_storefront_theme',
+  });
+  const fetch = (await import('node-fetch')).default;
+  const proposal = await requestOpenRouterStorefrontTheme({
+    fetchImpl: fetch,
+    aiConfig,
+    instruction,
+    theme,
+    buildFromScratch,
+    storeContext: {
+      name: storefrontBrand.businessName || payload.businessName,
+      tagline: storefrontBrand.tagline,
+      description: storefrontBrand.description,
+      primaryColor: storefrontBrand.primaryColor,
+    },
+  });
+
+  await step({
+    completedSteps: 4,
+    currentStep: 'Validating the real website layout',
+    progress: 78,
+    eventType: 'storefront_validating',
+    title: 'Checking the storefront',
+    message: 'Piki is validating accessible colours, safe actions, checkout, and the required full catalogue.',
+    toolName: 'validate_storefront_theme',
+  });
+  const draft = theme.isPublished
+    ? await duplicateStorefrontTheme(
+        query,
+        job.business_id,
+        theme.id,
+        { name: `${theme.name} AI draft`, source: 'ai' },
+        { createdBy: job.user_id },
+      )
+    : theme;
+  const updated = await updateStorefrontTheme(
+    query,
+    job.business_id,
+    draft.id,
+    {
+      name: proposal.name || draft.name,
+      preset: draft.preset,
+      design: proposal.design,
+      sections: proposal.sections,
+      checkout: proposal.checkout,
+      source: 'ai',
+    },
+  );
+
+  await step({
+    completedSteps: 5,
+    currentStep: 'Saving your preview-ready draft',
+    progress: 94,
+    eventType: 'storefront_saving',
+    title: 'Saving the storefront draft',
+    message: 'The completed layout is being saved for the exact customer website preview.',
+    toolName: 'save_storefront_theme',
+  });
+  const result = {
+    theme: updated,
+    themeId: updated.id,
+    sourceThemeId: theme.id,
+    branchId: updated.branchId,
+    storefrontType: updated.storefrontType,
+    summary: proposal.summary,
+    draftCreated: theme.isPublished,
+  };
+  await updateJob(job.id, job.business_id, {
+    status: 'completed',
+    progress: 100,
+    completedSteps: totalSteps,
+    totalSteps,
+    currentStep: 'Storefront draft ready',
+    completedAt: new Date().toISOString(),
+    resultJson: result,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId: job.branch_id,
+    eventType: 'storefront_ready',
+    title: 'Storefront draft ready',
+    message: 'Open the exact website preview, review it, and publish only when you are satisfied.',
+    toolName: 'complete_storefront_theme',
+    progress: 100,
+    metadata: { themeId: updated.id },
+  });
+}
 
 async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems }) {
   const totalSteps = 7;
@@ -9325,7 +9491,15 @@ app.get('/api/ai/jobs', async (req, res, next) => {
       : statusParam
         ? statusParam.split(',').map((item) => item.trim()).filter(Boolean)
         : null;
-    const jobs = await aiJobs.listJobs(businessContext.businessId, { statuses });
+    const jobTypeParam = normalizeOptionalText(req.query?.jobType);
+    const jobTypes = jobTypeParam
+      ? jobTypeParam.split(',').map((item) => item.trim()).filter(Boolean)
+      : null;
+    const jobs = await aiJobs.listJobs(businessContext.businessId, {
+      statuses,
+      jobTypes,
+      limit: req.query?.limit,
+    });
     res.json({ ok: true, jobs });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -9414,6 +9588,21 @@ app.post('/api/ai/imports/:jobId/retry', async (req, res, next) => {
     const businessContext = await requireBusinessContext(req);
     ensureAiFeatureAllowed(businessContext);
     const job = await aiJobs.retryJob(req.params.jobId, businessContext.businessId);
+    if (!job) throw createHttpError(404, 'AI job is not retryable');
+    res.json({ ok: true, job });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/ai/jobs/:jobId/retry', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    ensureAiFeatureAllowed(businessContext);
+    const job = await aiJobs.retryJob(
+      req.params.jobId,
+      businessContext.businessId,
+    );
     if (!job) throw createHttpError(404, 'AI job is not retryable');
     res.json({ ok: true, job });
   } catch (error) {
@@ -10587,6 +10776,67 @@ app.delete('/api/catalog/themes/:themeId', async (req, res, next) => {
       req.params.themeId,
     );
     res.json({ ok: true, data: theme });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/themes/:themeId/ai-jobs', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    ensureAiFeatureAllowed(businessContext);
+    const instruction = limitText(req.body?.instruction || req.body?.prompt, 700);
+    if (!instruction || instruction.length < 5) {
+      throw createHttpError(400, 'Describe how Piki should customize this theme.');
+    }
+    const theme = await getStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.params.themeId,
+    );
+    if (!theme) throw createHttpError(404, 'Theme was not found.');
+
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
+    const rateCheck = await checkAiRateLimit(businessContext, {
+      consumeQuota: req.body?.consumeQuota !== false,
+    });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+
+    const buildFromScratch =
+      req.body?.fromScratch === true ||
+      normalizeOptionalText(req.body?.mode)?.toLowerCase() === 'build';
+    const job = await aiJobs.createJob({
+      businessId: businessContext.businessId,
+      branchId: theme.branchId,
+      userId: businessContext.userId,
+      jobType: 'storefront_theme',
+      title: buildFromScratch
+        ? `Build a complete ${theme.name} storefront`
+        : `Refine the ${theme.name} storefront`,
+      instruction,
+      payload: {
+        themeId: theme.id,
+        branchId: theme.branchId,
+        storefrontType: theme.storefrontType,
+        buildFromScratch,
+        businessName: businessContext.businessName,
+      },
+      totalSteps: 5,
+    });
+    res.status(202).json({
+      ok: true,
+      job,
+      remaining: rateCheck.remaining,
+    });
   } catch (error) {
     next(normalizeRouteError(error));
   }

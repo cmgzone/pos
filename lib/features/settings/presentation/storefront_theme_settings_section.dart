@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/license_service.dart';
+import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/piki_activity_panel.dart';
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -26,6 +28,10 @@ class _StorefrontThemeSettingsSectionState
   List<StorefrontTheme> _themes = const [];
   List<StorefrontThemePreset> _presets = const [];
   StreamSubscription<StorefrontThemeChange>? _themeChanges;
+  PikiAiJob? _pikiJob;
+  List<PikiAiJobEvent> _pikiEvents = const [];
+  Timer? _pikiPollTimer;
+  bool _pikiRefreshing = false;
 
   @override
   void initState() {
@@ -33,11 +39,13 @@ class _StorefrontThemeSettingsSectionState
     _storefrontType = _initialStorefrontType();
     _themeChanges = StorefrontThemeService.changes.listen(_onThemeChanged);
     _load();
+    unawaited(_loadPikiJob());
   }
 
   @override
   void dispose() {
     _themeChanges?.cancel();
+    _pikiPollTimer?.cancel();
     super.dispose();
   }
 
@@ -77,6 +85,107 @@ class _StorefrontThemeSettingsSectionState
     } finally {
       if (mounted && showLoading) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadPikiJob() async {
+    try {
+      final jobs = await PikiAiJobService.listStorefrontThemeJobs();
+      final now = DateTime.now();
+      final matching = jobs.where((job) {
+        final payload = job.payload;
+        if (job.branchId != null && job.branchId != _branchId) return false;
+        if (payload?['storefrontType']?.toString() != _storefrontType) {
+          return false;
+        }
+        final createdAt = job.createdAt;
+        return job.isRunning ||
+            createdAt == null ||
+            now.difference(createdAt).inHours < 48;
+      }).toList();
+      if (!mounted) return;
+      if (matching.isEmpty) {
+        _pikiPollTimer?.cancel();
+        setState(() {
+          _pikiJob = null;
+          _pikiEvents = const [];
+        });
+        return;
+      }
+      final job = matching.first;
+      final events = await PikiAiJobService.getEvents(job.id);
+      if (!mounted) return;
+      setState(() {
+        _pikiJob = job;
+        _pikiEvents = events;
+      });
+      _syncPikiPolling();
+    } catch (_) {
+      // Theme management remains available if background activity cannot load.
+    }
+  }
+
+  void _syncPikiPolling() {
+    _pikiPollTimer?.cancel();
+    _pikiPollTimer = null;
+    if (_pikiJob?.isRunning != true) return;
+    _pikiPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(_refreshPikiJob()),
+    );
+  }
+
+  Future<void> _refreshPikiJob() async {
+    final current = _pikiJob;
+    if (current == null || _pikiRefreshing) return;
+    _pikiRefreshing = true;
+    try {
+      final job = await PikiAiJobService.getJob(current.id);
+      final events = await PikiAiJobService.getEvents(current.id);
+      if (!mounted) return;
+      final justCompleted = current.isRunning && job.status == 'completed';
+      setState(() {
+        _pikiJob = job;
+        _pikiEvents = _mergePikiEvents(_pikiEvents, events);
+      });
+      if (!job.isRunning) {
+        _pikiPollTimer?.cancel();
+        _pikiPollTimer = null;
+      }
+      if (justCompleted) {
+        await _load(showLoading: false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Piki finished the storefront draft. It is ready to preview.',
+              ),
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      // The saved backend job continues even when this polling request fails.
+    } finally {
+      _pikiRefreshing = false;
+    }
+  }
+
+  List<PikiAiJobEvent> _mergePikiEvents(
+    List<PikiAiJobEvent> current,
+    List<PikiAiJobEvent> incoming,
+  ) {
+    final byId = <String, PikiAiJobEvent>{
+      for (final event in current) event.id: event,
+    };
+    for (final event in incoming) {
+      byId[event.id] = event;
+    }
+    final merged = byId.values.toList()
+      ..sort(
+        (a, b) => (a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
+      );
+    return merged;
   }
 
   void _onThemeChanged(StorefrontThemeChange change) {
@@ -277,15 +386,111 @@ class _StorefrontThemeSettingsSectionState
       ),
     );
     controller.dispose();
+    if (!mounted) return;
     if (request == null || request.instruction.length < 5) return;
-    await _run(() async {
-      final draft = await StorefrontThemeService.aiCustomize(
+    if (_pikiJob?.isRunning == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Piki is already building a storefront in the cloud.'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+      _errorRetry = null;
+    });
+    try {
+      final job = await PikiAiJobService.createStorefrontThemeJob(
         theme.id,
         request.instruction,
         fromScratch: request.fromScratch,
       );
-      await _openWebsitePreview(draft);
+      if (!mounted) return;
+      setState(() {
+        _pikiJob = job;
+        _pikiEvents = const [];
+      });
+      _syncPikiPolling();
+      unawaited(_refreshPikiJob());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Piki is building in the cloud. You can leave this page or close the app.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = _message(error);
+          _errorRetry = () => _customizeWithPiki(theme);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  StorefrontTheme? _pikiResultTheme(PikiAiJob job) {
+    final value = job.result?['theme'];
+    if (value is Map) {
+      return StorefrontTheme.fromJson(Map<String, dynamic>.from(value));
+    }
+    final themeId = job.result?['themeId']?.toString();
+    return _themes.where((theme) => theme.id == themeId).firstOrNull;
+  }
+
+  Future<void> _previewPikiDraft() async {
+    final job = _pikiJob;
+    if (job == null || job.status != 'completed') return;
+    final theme = _pikiResultTheme(job);
+    if (theme == null) {
+      await _load(showLoading: false);
+    }
+    final refreshedTheme = _pikiResultTheme(job);
+    if (refreshedTheme == null) {
+      setState(() {
+        _error = 'Piki finished, but the saved theme could not be loaded.';
+        _errorRetry = _previewPikiDraft;
+      });
+      return;
+    }
+    await _run(
+      () => _openWebsitePreview(refreshedTheme),
+      reloadAfter: false,
+      retry: _previewPikiDraft,
+    );
+  }
+
+  Future<void> _retryPikiJob() async {
+    final job = _pikiJob;
+    if (job == null || !job.isFailed || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _errorRetry = null;
     });
+    try {
+      final retried = await PikiAiJobService.retryJob(job.id);
+      if (!mounted) return;
+      setState(() {
+        _pikiJob = retried;
+        _pikiEvents = const [];
+      });
+      _syncPikiPolling();
+      unawaited(_refreshPikiJob());
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = _message(error);
+          _errorRetry = _retryPikiJob;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _openWebsitePreview(StorefrontTheme theme) async {
@@ -513,6 +718,82 @@ class _StorefrontThemeSettingsSectionState
     await _run(() => StorefrontThemeService.delete(theme.id));
   }
 
+  Widget _buildPikiJobNotice() {
+    final job = _pikiJob!;
+    final colors = Theme.of(context).colorScheme;
+    final title = job.isRunning
+        ? 'Piki is building your storefront'
+        : job.status == 'completed'
+        ? 'Your storefront draft is ready'
+        : 'Piki could not finish the storefront';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PikiActivityPanel(job: job, events: _pikiEvents, title: title),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              job.isRunning
+                  ? Icons.cloud_done_outlined
+                  : job.status == 'completed'
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.info_outline_rounded,
+              size: 18,
+              color: job.status == 'completed'
+                  ? colors.primary
+                  : colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                job.isRunning
+                    ? 'This task runs in Piki Cloud. It continues if you leave this page or close the app.'
+                    : job.status == 'completed'
+                    ? 'Open the exact customer website preview, then publish only when it looks right.'
+                    : (job.errorMessage ??
+                          'You can retry the same saved request.'),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (job.isRunning)
+              TextButton.icon(
+                onPressed: _pikiRefreshing ? null : _refreshPikiJob,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Refresh'),
+              )
+            else if (job.status == 'completed')
+              FilledButton.icon(
+                onPressed: _busy ? null : _previewPikiDraft,
+                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                label: const Text('Preview draft'),
+              )
+            else if (job.isFailed)
+              FilledButton.icon(
+                onPressed: _busy ? null : _retryPikiJob,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+              ),
+            if (!job.isRunning) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Dismiss',
+                onPressed: () => setState(() {
+                  _pikiJob = null;
+                  _pikiEvents = const [];
+                }),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -554,8 +835,10 @@ class _StorefrontThemeSettingsSectionState
                             if (value == null || value == _storefrontType) {
                               return;
                             }
+                            _pikiPollTimer?.cancel();
                             setState(() => _storefrontType = value);
                             _load();
+                            unawaited(_loadPikiJob());
                           },
                   ),
                 ),
@@ -583,6 +866,10 @@ class _StorefrontThemeSettingsSectionState
         if (_error != null) ...[
           const SizedBox(height: 12),
           _buildErrorNotice(),
+        ],
+        if (_pikiJob != null) ...[
+          const SizedBox(height: 12),
+          _buildPikiJobNotice(),
         ],
         const SizedBox(height: 16),
         if (_loading)

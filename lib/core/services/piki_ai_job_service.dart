@@ -11,6 +11,7 @@ import 'sync_settings_service.dart';
 
 class PikiAiJob {
   final String id;
+  final String? branchId;
   final String jobType;
   final String status;
   final String? title;
@@ -20,6 +21,7 @@ class PikiAiJob {
   final int completedSteps;
   final String? currentStep;
   final Map<String, dynamic>? result;
+  final Map<String, dynamic>? payload;
   final String? errorMessage;
   final DateTime? createdAt;
   final DateTime? completedAt;
@@ -31,10 +33,12 @@ class PikiAiJob {
     required this.progress,
     required this.totalSteps,
     required this.completedSteps,
+    this.branchId,
     this.title,
     this.sourceFileName,
     this.currentStep,
     this.result,
+    this.payload,
     this.errorMessage,
     this.createdAt,
     this.completedAt,
@@ -52,6 +56,7 @@ class PikiAiJob {
   factory PikiAiJob.fromJson(Map<String, dynamic> json) {
     return PikiAiJob(
       id: json['id']?.toString() ?? '',
+      branchId: json['branchId']?.toString(),
       jobType: json['jobType']?.toString() ?? '',
       status: json['status']?.toString() ?? 'queued',
       title: json['title']?.toString(),
@@ -62,6 +67,9 @@ class PikiAiJob {
       currentStep: json['currentStep']?.toString(),
       result: json['result'] is Map
           ? Map<String, dynamic>.from(json['result'] as Map)
+          : null,
+      payload: json['payload'] is Map
+          ? Map<String, dynamic>.from(json['payload'] as Map)
           : null,
       errorMessage: json['errorMessage']?.toString(),
       createdAt: _readDate(json['createdAt']),
@@ -180,6 +188,44 @@ class PikiAiJobUpdate {
 class PikiAiJobService {
   static const _timeout = Duration(seconds: 45);
 
+  static Future<PikiAiJob> createStorefrontThemeJob(
+    String themeId,
+    String instruction, {
+    bool fromScratch = false,
+  }) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) {
+      throw Exception('Cloud sync is not configured');
+    }
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final response = await http
+        .post(
+          _buildUri(backendUrl, 'catalog/themes/$themeId/ai-jobs'),
+          headers: {
+            ..._authHeaders(license),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'deviceId': deviceId,
+            'instruction': instruction.trim(),
+            'mode': fromScratch ? 'build' : 'refine',
+            'fromScratch': fromScratch,
+          }),
+        )
+        .timeout(_timeout);
+    final body = _decodeBody(response);
+    if (response.statusCode != 202 ||
+        body['ok'] != true ||
+        body['job'] is! Map) {
+      throw Exception(
+        body['error']?.toString() ??
+            'Piki could not start the storefront job (${response.statusCode}).',
+      );
+    }
+    return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
   static Future<PikiAiJob> createProductImportJob(
     SpreadsheetFileRows file, {
     String? branchId,
@@ -229,6 +275,20 @@ class PikiAiJobService {
 
   static Future<List<PikiAiJob>> listActiveJobs() async {
     final body = await _getJson('ai/jobs', {'status': 'active'});
+    final jobs = body['jobs'];
+    if (jobs is! List) return const [];
+    return jobs
+        .whereType<Map>()
+        .map((item) => PikiAiJob.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  static Future<List<PikiAiJob>> listStorefrontThemeJobs() async {
+    final body = await _getJson('ai/jobs', {
+      'status': 'queued,running,completed,failed',
+      'jobType': 'storefront_theme',
+      'limit': '20',
+    });
     final jobs = body['jobs'];
     if (jobs is! List) return const [];
     return jobs
@@ -289,6 +349,28 @@ class PikiAiJobService {
   static Future<PikiAiJob> retryImportJob(String jobId) async {
     final body = await _postJson('ai/imports/$jobId/retry', const {});
     return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
+  static Future<PikiAiJob> retryJob(String jobId) async {
+    final body = await _postJson('ai/jobs/$jobId/retry', const {});
+    return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
+  static Future<PikiAiJob> waitForCompletion(
+    String jobId, {
+    Duration timeout = const Duration(minutes: 3),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final job = await getJob(jobId);
+      if (job.isDone) return job;
+      if (DateTime.now().isAfter(deadline)) {
+        throw Exception(
+          'Piki is still working in the background. Open Online Store to see its progress.',
+        );
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
   }
 
   static Stream<PikiAiJobUpdate> streamJob(String jobId) async* {

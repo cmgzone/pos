@@ -39,6 +39,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         source_extension TEXT,
         source_text TEXT,
         instruction TEXT,
+        payload_json TEXT,
         progress INTEGER NOT NULL DEFAULT 0,
         total_steps INTEGER NOT NULL DEFAULT 0,
         completed_steps INTEGER NOT NULL DEFAULT 0,
@@ -55,6 +56,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       CREATE INDEX IF NOT EXISTS idx_ai_jobs_business_status_created
       ON ai_jobs (business_id, status, created_at DESC)
     `);
+    await run(target, 'ALTER TABLE ai_jobs ADD COLUMN IF NOT EXISTS payload_json TEXT');
     await run(target, `
       CREATE TABLE IF NOT EXISTS ai_job_events (
         id TEXT PRIMARY KEY,
@@ -134,6 +136,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
     sourceExtension = null,
     sourceText = null,
     instruction = null,
+    payload = null,
     totalSteps = 6,
   }) {
     await ensureSchemaOnce();
@@ -144,10 +147,10 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       INSERT INTO ai_jobs (
         id, business_id, branch_id, user_id, job_type, status, title,
         source_file_name, source_file_base64, source_mime_type, source_extension,
-        source_text, instruction, progress, total_steps, completed_steps,
+        source_text, instruction, payload_json, progress, total_steps, completed_steps,
         current_step, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $9, $10, $11, $12, 0, $13, 0, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $9, $10, $11, $12, $13, 0, $14, 0, $15, $16)
       `,
       [
         jobId,
@@ -162,20 +165,24 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         sourceExtension,
         sourceText,
         instruction,
+        stringifyJson(payload),
         totalSteps,
         'Queued',
         now,
       ],
     );
+    const hasSourceFile = Boolean(normalizeOptionalText(sourceFileName));
     await addEvent({
       jobId,
       businessId,
       branchId,
-      eventType: 'file_received',
-      title: 'Uploaded file received',
-      message: sourceFileName ? `Received ${sourceFileName}` : 'Received uploaded file',
+      eventType: hasSourceFile ? 'file_received' : 'job_queued',
+      title: hasSourceFile ? 'Uploaded file received' : 'Piki task queued',
+      message: hasSourceFile
+        ? `Received ${sourceFileName}`
+        : title || 'Piki will start this task shortly.',
       progress: 2,
-      metadata: { sourceFileName },
+      metadata: hasSourceFile ? { sourceFileName } : payload,
     });
     enqueue(jobId);
     return getJob(jobId, businessId);
@@ -255,7 +262,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         branchId: job.branch_id,
         eventType: 'job_started',
         title: 'Piki started working',
-        message: job.title || 'Preparing AI import',
+        message: job.title || 'Preparing the AI task',
         progress: 5,
       });
       await handler({
@@ -449,7 +456,10 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
     return saved;
   }
 
-  async function listJobs(businessId, { statuses = null, limit = 20 } = {}) {
+  async function listJobs(
+    businessId,
+    { statuses = null, jobTypes = null, limit = 20 } = {},
+  ) {
     await ensureSchemaOnce();
     const params = [businessId, Math.min(Math.max(Number(limit) || 20, 1), 50)];
     let statusClause = '';
@@ -457,11 +467,16 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       params.push(statuses);
       statusClause = ` AND status = ANY($${params.length}::text[])`;
     }
+    let jobTypeClause = '';
+    if (jobTypes?.length) {
+      params.push(jobTypes);
+      jobTypeClause = ` AND job_type = ANY($${params.length}::text[])`;
+    }
     const result = await query(
       `
       SELECT *
       FROM ai_jobs
-      WHERE business_id = $1${statusClause}
+      WHERE business_id = $1${statusClause}${jobTypeClause}
       ORDER BY created_at DESC
       LIMIT $2
       `,
@@ -529,7 +544,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         eventType: 'cancelled',
         level: 'warning',
         title: 'Piki task cancelled',
-        message: 'The import job was cancelled.',
+        message: 'The Piki task was cancelled.',
         progress: 100,
       });
     }
@@ -594,7 +609,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
         branchId: row.branch_id,
         eventType: 'job_retried',
         title: 'Retrying now',
-        message: 'Piki is retrying the same import job.',
+        message: 'Piki is retrying the same task.',
         progress: 1,
       });
       enqueue(jobId);
@@ -644,6 +659,7 @@ function createAiJobsModule({ query, withTransaction, normalizeOptionalText }) {
       title: row.title,
       sourceFileName: row.source_file_name,
       sourceFileUrl: row.source_file_url,
+      payload: parseJson(row.payload_json),
       progress: Number(row.progress || 0),
       totalSteps: Number(row.total_steps || 0),
       completedSteps: Number(row.completed_steps || 0),

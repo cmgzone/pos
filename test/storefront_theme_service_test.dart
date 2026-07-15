@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_app/core/services/piki_ai_job_service.dart';
 import 'package:pos_app/core/services/storefront_theme_service.dart';
 import 'package:pos_app/features/agent/data/piki_agent_service.dart';
 
@@ -72,4 +73,36 @@ void main() {
       isTrue,
     );
   });
+
+  test(
+    'storefront background job restores progress and saved theme result',
+    () {
+      final job = PikiAiJob.fromJson({
+        'id': 'job_1',
+        'branchId': 'main_branch',
+        'jobType': 'storefront_theme',
+        'status': 'completed',
+        'progress': 100,
+        'totalSteps': 5,
+        'completedSteps': 5,
+        'currentStep': 'Storefront draft ready',
+        'payload': {
+          'themeId': 'theme_1',
+          'storefrontType': 'retail',
+          'buildFromScratch': true,
+        },
+        'result': {
+          'themeId': 'theme_2',
+          'theme': {'id': 'theme_2', 'name': 'Piki draft'},
+        },
+      });
+
+      expect(job.jobType, 'storefront_theme');
+      expect(job.branchId, 'main_branch');
+      expect(job.payload?['buildFromScratch'], isTrue);
+      expect(job.result?['themeId'], 'theme_2');
+      expect(job.isDone, isTrue);
+      expect(job.isRunning, isFalse);
+    },
+  );
 }

@@ -11,6 +11,7 @@ import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/services/openrouter_service.dart';
+import '../../../core/services/piki_ai_job_service.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../products/data/category_repository.dart';
 import '../../products/data/product_repository.dart';
@@ -3543,10 +3544,25 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
     final buildFromScratch =
         !args.containsKey('build_from_scratch') ||
         _boolArg(args, ['build_from_scratch']);
-    final builtDraft = await StorefrontThemeService.aiCustomize(
+    final storefrontJob = await PikiAiJobService.createStorefrontThemeJob(
       themeDraft.id,
       storefrontBrief,
       fromScratch: buildFromScratch,
+    );
+    final completedJob = await PikiAiJobService.waitForCompletion(
+      storefrontJob.id,
+    );
+    if (completedJob.isFailed) {
+      throw Exception(
+        completedJob.errorMessage ?? 'Piki could not finish the storefront.',
+      );
+    }
+    final builtThemeJson = completedJob.result?['theme'];
+    if (builtThemeJson is! Map) {
+      throw Exception('Piki finished but did not save the storefront draft.');
+    }
+    final builtDraft = StorefrontTheme.fromJson(
+      Map<String, dynamic>.from(builtThemeJson),
     );
     final shouldPublish =
         !args.containsKey('publish') || _boolArg(args, ['publish']);
