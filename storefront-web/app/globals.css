@@ -63,6 +63,56 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.storefront-section {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.storefront-section[data-section-style="surface"] {
+  background: var(--surface);
+}
+
+.storefront-section[data-section-style="accent"] {
+  background: var(--accent);
+  color: var(--background);
+}
+
+.storefront-section[data-section-style="contrast"] {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.storefront-section .section-muted {
+  color: var(--muted);
+}
+
+.storefront-section[data-section-style="accent"] .section-muted,
+.storefront-section[data-section-style="accent"] .text-muted,
+.storefront-section[data-section-style="accent"] .text-muted-strong,
+.storefront-section[data-section-style="contrast"] .section-muted,
+.storefront-section[data-section-style="contrast"] .text-muted,
+.storefront-section[data-section-style="contrast"] .text-muted-strong {
+  color: color-mix(in srgb, var(--background) 72%, transparent);
+}
+
+.storefront-section[data-section-style="accent"] .text-foreground,
+.storefront-section[data-section-style="contrast"] .text-foreground {
+  color: var(--background);
+}
+
+.section-primary-action {
+  background: var(--accent);
+  color: var(--background);
+}
+
+.storefront-section[data-section-style="accent"] .section-primary-action,
+.storefront-section[data-section-style="contrast"] .section-primary-action,
+.storefront-section[data-section-style="accent"] .theme-hero .bg-accent,
+.storefront-section[data-section-style="contrast"] .theme-hero .bg-accent {
+  background: var(--background);
+  color: var(--accent);
+}
+
 .font-display {
   font-family: var(--storefront-display-font, var(--font-display)), Georgia, "Times New Roman", serif;
   font-weight: 400;

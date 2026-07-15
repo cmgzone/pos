@@ -7963,14 +7963,22 @@ async function requestOpenRouterStorefrontTheme({
   aiConfig,
   instruction,
   theme,
+  buildFromScratch = false,
+  storeContext = {},
 }) {
   const currentTheme = {
+    business: storeContext,
     name: theme.name,
     storefrontType: theme.storefrontType,
     design: theme.design,
+    sections: theme.sections,
     checkout: theme.checkout,
   };
-  const prompt = `You are Piki's storefront design agent. Customize a safe ecommerce theme for a real business.
+  const prompt = `You are Piki's storefront architect. ${
+    buildFromScratch
+      ? 'Build a complete storefront homepage from a blank canvas for a real business.'
+      : 'Refine the existing storefront while preserving anything the owner did not ask to change.'
+  }
 
 Return JSON only, with no markdown or commentary:
 {
@@ -7991,6 +7999,30 @@ Return JSON only, with no markdown or commentary:
     "density": "comfortable|compact",
     "cornerStyle": "sharp|soft|rounded|pill"
   },
+  "sections": [
+    {
+      "id": "short-unique-id",
+      "type": "announcement|hero|categoryShowcase|featuredProducts|promoBanner|benefits|story|catalog|contact",
+      "enabled": true,
+      "style": "default|surface|accent|contrast",
+      "eyebrow": "optional short label",
+      "title": "section heading",
+      "body": "concise useful copy",
+      "text": "announcement text only",
+      "buttonLabel": "optional action label",
+      "buttonAction": "none|catalog|whatsapp|trackOrder",
+      "secondaryButtonLabel": "optional second action",
+      "secondaryButtonAction": "none|catalog|whatsapp|trackOrder",
+      "alignment": "left|center|right",
+      "showImage": true,
+      "source": "featured|all|category",
+      "category": "category name when source is category",
+      "limit": 4,
+      "items": [
+        { "title": "benefit title", "body": "benefit explanation", "icon": "sparkles|shield|truck|clock|heart|message|star" }
+      ]
+    }
+  ],
   "checkout": {
     "paymentMethods": ["manual", "mpesa"],
     "defaultPaymentMethod": "manual|mpesa",
@@ -8006,15 +8038,24 @@ Return JSON only, with no markdown or commentary:
 }
 
 Rules:
-- Return a complete design and checkout object.
+- Return a complete design, ordered sections, and checkout object.
+- Compose the page from 4 to 9 useful sections. Do not repeat section types unnecessarily.
+- Include exactly one catalog section so customers can browse every available item.
+- Use featuredProducts for a curated product row and catalog for the searchable full range.
+- Use only truthful general business copy. Never invent reviews, discounts, delivery promises, awards, addresses, opening hours, or product facts.
+- Header, cart, secure checkout, order tracking, and footer are managed by Piki and must not be represented as sections.
 - Use accessible contrast between text, backgrounds, surfaces, and the accent.
 - Do not output CSS, HTML, JavaScript, URLs, credentials, analytics, pixels, or scripts.
 - Do not add payment providers outside manual and mpesa.
 - Customer name and phone always remain required and cannot be removed.
 - Preserve values that the owner did not ask to change.
 
-CURRENT THEME:
-${JSON.stringify(currentTheme)}
+${buildFromScratch ? 'BUSINESS STOREFRONT TYPE' : 'CURRENT STOREFRONT'}:
+${
+  buildFromScratch
+    ? JSON.stringify({ storefrontType: theme.storefrontType, business: storeContext })
+    : JSON.stringify(currentTheme)
+}
 
 OWNER REQUEST:
 ${instruction}`;
@@ -8029,7 +8070,7 @@ ${instruction}`;
       },
       { role: 'user', content: prompt },
     ],
-    max_tokens: 1800,
+    max_tokens: 4000,
     temperature: 0.2,
   };
   const sendRequest = async (useJsonMode) => {
@@ -8067,8 +8108,9 @@ ${instruction}`;
     );
   }
   const parsed =
-    parseStorefrontAiThemeResponse(extractStorefrontAiContent(body), theme) ??
-    fallbackStorefrontAiTheme(theme, instruction);
+    parseStorefrontAiThemeResponse(extractStorefrontAiContent(body), theme, {
+      buildFromScratch,
+    }) ?? fallbackStorefrontAiTheme(theme, instruction, { buildFromScratch });
   return {
     name: limitText(parsed.name, 80) || theme.name,
     summary:
@@ -8076,6 +8118,7 @@ ${instruction}`;
       'Piki prepared a storefront theme draft for review.',
     design:
       parsed.design && typeof parsed.design === 'object' ? parsed.design : {},
+    sections: Array.isArray(parsed.sections) ? parsed.sections : [],
     checkout:
       parsed.checkout && typeof parsed.checkout === 'object'
         ? parsed.checkout
@@ -10580,11 +10623,25 @@ app.post('/api/catalog/themes/:themeId/ai-customize', async (req, res, next) => 
     }
 
     const fetch = (await import('node-fetch')).default;
+    const buildFromScratch =
+      req.body?.fromScratch === true ||
+      normalizeOptionalText(req.body?.mode)?.toLowerCase() === 'build';
+    const storefrontBrand = await loadStorefrontBrand(
+      businessContext.businessId,
+      { branchId: theme.branchId },
+    );
     const proposal = await requestOpenRouterStorefrontTheme({
       fetchImpl: fetch,
       aiConfig,
       instruction,
       theme,
+      buildFromScratch,
+      storeContext: {
+        name: storefrontBrand.businessName || businessContext.businessName,
+        tagline: storefrontBrand.tagline,
+        description: storefrontBrand.description,
+        primaryColor: storefrontBrand.primaryColor,
+      },
     });
     const draft = theme.isPublished
       ? await duplicateStorefrontTheme(
@@ -10603,6 +10660,7 @@ app.post('/api/catalog/themes/:themeId/ai-customize', async (req, res, next) => 
         name: proposal.name || draft.name,
         preset: draft.preset,
         design: proposal.design,
+        sections: proposal.sections,
         checkout: proposal.checkout,
         source: 'ai',
       },

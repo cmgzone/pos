@@ -200,22 +200,60 @@ class _StorefrontThemeSettingsSectionState
 
   Future<void> _customizeWithPiki(StorefrontTheme theme) async {
     final controller = TextEditingController();
-    final instruction = await showDialog<String>(
+    var fromScratch = true;
+    final request = await showDialog<_PikiStorefrontRequest>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Customize with Piki'),
-        content: SizedBox(
-          width: 500,
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            minLines: 3,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              hintText:
-                  'Example: Make it clean and minimal with square product images and a warm accent.',
-              helperText:
-                  'Piki creates a draft. Your live theme is not changed.',
+        title: const Text('Build with Piki'),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) => SizedBox(
+            width: 540,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Tell Piki what the customer website should feel like and what it should emphasize.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment<bool>(
+                      value: true,
+                      icon: Icon(Icons.dashboard_customize_rounded),
+                      label: Text('Build complete store'),
+                    ),
+                    ButtonSegment<bool>(
+                      value: false,
+                      icon: Icon(Icons.tune_rounded),
+                      label: Text('Refine current'),
+                    ),
+                  ],
+                  selected: {fromScratch},
+                  onSelectionChanged: (selection) =>
+                      setDialogState(() => fromScratch = selection.first),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  minLines: 4,
+                  maxLines: 7,
+                  decoration: InputDecoration(
+                    labelText: fromScratch
+                        ? 'Describe the complete storefront'
+                        : 'Describe the changes',
+                    hintText: fromScratch
+                        ? 'Example: Build a warm modern grocery store with a strong welcome, category shortcuts, featured products, trust benefits, and WhatsApp help.'
+                        : 'Example: Move featured products above categories and make the hero more minimal.',
+                    helperText: fromScratch
+                        ? 'Piki creates and orders the full page as a safe draft.'
+                        : 'Piki keeps the structure and refines only what you request.',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -225,19 +263,26 @@ class _StorefrontThemeSettingsSectionState
             child: const Text('Cancel'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            onPressed: () => Navigator.pop(
+              context,
+              _PikiStorefrontRequest(
+                instruction: controller.text.trim(),
+                fromScratch: fromScratch,
+              ),
+            ),
             icon: const Icon(Icons.auto_awesome_rounded),
-            label: const Text('Create draft'),
+            label: const Text('Build draft'),
           ),
         ],
       ),
     );
     controller.dispose();
-    if (instruction == null || instruction.length < 5) return;
+    if (request == null || request.instruction.length < 5) return;
     await _run(() async {
       final draft = await StorefrontThemeService.aiCustomize(
         theme.id,
-        instruction,
+        request.instruction,
+        fromScratch: request.fromScratch,
       );
       await _openWebsitePreview(draft);
     });
@@ -662,7 +707,7 @@ class _StorefrontThemeSettingsSectionState
                   ],
                 ),
                 Text(
-                  '${theme.preset} · ${theme.design.heroStyle} hero · ${theme.design.cardStyle} cards',
+                  '${theme.sections.where((section) => section.enabled).length} sections · ${theme.design.heroStyle} hero · ${theme.design.cardStyle} cards',
                   style: TextStyle(color: colors.onSurfaceVariant),
                 ),
                 const SizedBox(height: 14),
@@ -678,7 +723,7 @@ class _StorefrontThemeSettingsSectionState
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _customizeWithPiki(theme),
                       icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: const Text('Piki customize'),
+                      label: const Text('Piki build'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _editCheckout(theme),
@@ -796,4 +841,14 @@ class _StorefrontThemeSettingsSectionState
       ),
     );
   }
+}
+
+class _PikiStorefrontRequest {
+  final String instruction;
+  final bool fromScratch;
+
+  const _PikiStorefrontRequest({
+    required this.instruction,
+    required this.fromScratch,
+  });
 }

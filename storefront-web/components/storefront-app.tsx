@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { StoreProvider, useStore } from "./store-provider";
 import { SiteHeader } from "./site-header";
-import { Hero } from "./hero";
-import { CatalogToolbar } from "./catalog-toolbar";
-import { ProductGrid } from "./product-grid";
+import {
+  StorefrontAnnouncement,
+  StorefrontSections,
+} from "./storefront-sections";
 import { CartDrawer } from "./cart-drawer";
 import { CheckoutModal } from "./checkout-modal";
 import { OrderTracker } from "./order-tracker";
@@ -20,8 +21,12 @@ import {
   getPreviewTokenFromQuery,
 } from "@/lib/utils";
 import { fetchCatalog, storefrontTypeFromPath } from "@/lib/api";
-import { FadeIn } from "./motion";
-import type { BusinessBrand, StorefrontTheme, StorefrontType } from "@/lib/types";
+import type {
+  BusinessBrand,
+  StorefrontSectionAction,
+  StorefrontTheme,
+  StorefrontType,
+} from "@/lib/types";
 
 function StorefrontInner() {
   const {
@@ -33,8 +38,8 @@ function StorefrontInner() {
   } = useStore();
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("featured");
+  const [category, setCategory] = useState("all");
+  const [sortBy, setSortBy] = useState("featured");
   const [showCheckout, setShowCheckout] = useState(false);
   const [showTracker, setShowTracker] = useState(false);
 
@@ -55,13 +60,19 @@ function StorefrontInner() {
         );
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
-        applyStorefrontStyles(data.business.brand, data.storefront.type, data.theme);
-      } catch (err) {
+        applyStorefrontStyles(
+          data.business.brand,
+          data.storefront.type,
+          data.theme,
+        );
+      } catch (loadError) {
         setCatalog(null);
-        setError(err instanceof Error ? err.message : "Failed to load store");
+        setError(
+          loadError instanceof Error ? loadError.message : "Failed to load store",
+        );
       }
     },
-    [setCatalog, setSelectedBranch]
+    [setCatalog, setSelectedBranch],
   );
 
   useEffect(() => {
@@ -102,80 +113,99 @@ function StorefrontInner() {
   const handleBranchChange = useCallback(
     (branchId: string) => {
       if (!catalog) return;
-      const branch = catalog.business.branches.find((b) => b.id === branchId);
-      if (branch) {
-        setSelectedBranch(branch);
-        loadCatalog(
-          catalog.business.id,
-          branchId,
-          catalog.storefront.type,
-          getPreviewTokenFromQuery(),
-        );
-      }
+      const branch = catalog.business.branches.find(
+        (candidate) => candidate.id === branchId,
+      );
+      if (!branch) return;
+      setSelectedBranch(branch);
+      loadCatalog(
+        catalog.business.id,
+        branchId,
+        catalog.storefront.type,
+        getPreviewTokenFromQuery(),
+      );
     },
-    [catalog, loadCatalog, setSelectedBranch]
+    [catalog, loadCatalog, setSelectedBranch],
   );
 
   const filteredItems = useMemo(() => {
     if (!catalog) return [];
     let items = [...catalog.products];
-
-    const q = search.trim().toLowerCase();
-    if (q) {
+    const query = search.trim().toLowerCase();
+    if (query) {
       items = items.filter(
         (item) =>
-          item.name.toLowerCase().includes(q) ||
-          (item.description && item.description.toLowerCase().includes(q)) ||
-          (item.category && item.category.toLowerCase().includes(q)) ||
-          (item.brand && item.brand.toLowerCase().includes(q))
+          item.name.toLowerCase().includes(query) ||
+          item.description?.toLowerCase().includes(query) ||
+          item.category?.toLowerCase().includes(query) ||
+          item.brand?.toLowerCase().includes(query),
       );
     }
-
     if (category !== "all") {
       items = items.filter((item) => item.category === category);
     }
-
     switch (sortBy) {
       case "priceAsc":
-        items.sort((a, b) => a.price - b.price);
+        items.sort((first, second) => first.price - second.price);
         break;
       case "priceDesc":
-        items.sort((a, b) => b.price - a.price);
+        items.sort((first, second) => second.price - first.price);
         break;
       case "name":
-        items.sort((a, b) => a.name.localeCompare(b.name));
+        items.sort((first, second) => first.name.localeCompare(second.name));
         break;
-      case "featured":
       default:
-        items.sort((a, b) => {
-          if (a.isFeatured && !b.isFeatured) return -1;
-          if (!a.isFeatured && b.isFeatured) return 1;
-          return (b.soldQty || 0) - (a.soldQty || 0);
+        items.sort((first, second) => {
+          if (first.isFeatured && !second.isFeatured) return -1;
+          if (!first.isFeatured && second.isFeatured) return 1;
+          return (second.soldQty || 0) - (first.soldQty || 0);
         });
     }
-
     return items;
   }, [catalog, search, category, sortBy]);
 
-  const isLoading = catalog === null && error === null;
-
-  const scrollToCatalog = () => {
-    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+  const handleSectionAction = (action: StorefrontSectionAction) => {
+    if (action === "catalog") {
+      document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    if (action === "trackOrder") {
+      setShowTracker(true);
+      return;
+    }
+    if (action === "whatsapp" && catalog?.business.whatsappNumber) {
+      const phone = catalog.business.whatsappNumber.replace(/[^\d]/g, "");
+      if (phone) {
+        window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+      }
+    }
   };
 
-  if (error) {
-    return <ErrorState message={error} />;
-  }
+  if (error) return <ErrorState message={error} />;
 
+  const isLoading = catalog === null;
   const isSearching = Boolean(search) || category !== "all";
 
   return (
     <>
       {catalog?.preview && (
         <div className="sticky top-0 z-[80] border-b border-amber-300/30 bg-amber-300 px-4 py-2 text-center text-[12px] font-bold text-black shadow-sm">
-          Draft website preview · Updates automatically · Customers cannot see this theme until you publish
+          Draft website preview · Updates automatically · Customers cannot see
+          this theme until you publish
         </div>
       )}
+      {catalog?.theme.sections
+        .filter(
+          (section) =>
+            section.enabled !== false && section.type === "announcement",
+        )
+        .map((section) => (
+          <StorefrontAnnouncement
+            key={section.id}
+            section={section}
+            onAction={handleSectionAction}
+          />
+        ))}
       <SiteHeader
         business={catalog?.business}
         storefront={catalog?.storefront}
@@ -183,109 +213,36 @@ function StorefrontInner() {
         showTracking={catalog?.checkout.showOrderTracking !== false}
       />
 
-      <Hero
-        business={catalog?.business}
-        storefront={catalog?.storefront}
-        onBrowse={scrollToCatalog}
-      />
-
-      <main className="flex-1 w-full px-4 pb-20 pt-10 sm:px-6 lg:px-10">
-        <CatalogToolbar
-          categories={catalog?.categories || []}
-          activeCategory={category}
-          onCategoryChange={setCategory}
+      {isLoading || !catalog ? (
+        <main className="flex-1 px-4 py-16 sm:px-6 lg:px-10">
+          <SkeletonGrid />
+        </main>
+      ) : (
+        <StorefrontSections
+          catalog={catalog}
+          sections={catalog.theme.sections.filter(
+            (section) => section.type !== "announcement",
+          )}
+          filteredItems={filteredItems}
+          isSearching={isSearching}
           search={search}
           onSearchChange={setSearch}
+          category={category}
+          onCategoryChange={setCategory}
           sortBy={sortBy}
           onSortChange={setSortBy}
-          branches={catalog?.business.branches || []}
           selectedBranch={selectedBranch}
           onBranchChange={handleBranchChange}
+          onAction={handleSectionAction}
         />
-
-        <div className="mt-10">
-          {isLoading || !catalog ? (
-            <SkeletonGrid />
-          ) : filteredItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              {catalog.products.length === 0 && !isSearching ? (
-                <>
-                  <p className="font-display text-2xl tracking-tight">
-                    {catalog.storefront.type === "services"
-                      ? "No services published for this branch yet"
-                      : catalog.storefront.type === "restaurant"
-                        ? "No menu items published for this branch yet"
-                        : "No products published for this branch yet"}
-                  </p>
-                  <p className="mt-2 text-[13px] text-muted">
-                    {selectedBranch?.name
-                      ? `Switch to another branch or publish products for ${selectedBranch.name}.`
-                      : "Publish products to see them in this store."}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="font-display text-2xl tracking-tight">
-                    No items match your search
-                  </p>
-                  <p className="mt-2 text-[13px] text-muted">
-                    Try a different keyword or clear your filters.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setSearch("");
-                      setCategory("all");
-                    }}
-                    className="mt-5 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 text-[13px] font-semibold transition hover:border-accent hover:bg-accent hover:text-background"
-                  >
-                    Clear filters
-                  </button>
-                </>
-              )}
-            </div>
-          ) : (
-            <section>
-              <FadeIn>
-                <div className="mb-6 flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-                      {isSearching ? "Results" : catalog.storefront.type === "services" ? "Services" : catalog.storefront.type === "restaurant" ? "Today’s menu" : "Collection"}
-                    </p>
-                    <h2 className="mt-1.5 font-display text-3xl tracking-tight sm:text-4xl">
-                      {isSearching
-                        ? "Search results"
-                        : catalog.storefront.type === "services"
-                          ? "Choose a service"
-                          : catalog.storefront.type === "restaurant"
-                            ? "Order from the menu"
-                            : "Browse the store"}
-                    </h2>
-                  </div>
-                  <p className="hidden text-[13px] text-muted sm:block">
-                    {filteredItems.length}{" "}
-                    {filteredItems.length === 1 ? "item" : "items"}
-                  </p>
-                </div>
-              </FadeIn>
-              <ProductGrid
-                items={filteredItems}
-                currencySymbol={catalog.currencySymbol}
-                currencyCode={catalog.currencyCode}
-                storefrontType={catalog.storefront.type}
-              />
-            </section>
-          )}
-        </div>
-      </main>
+      )}
 
       <Footer
         business={catalog?.business}
         onTrackOrder={() => setShowTracker(true)}
         showTracking={catalog?.checkout.showOrderTracking !== false}
       />
-
       <FloatingCart onOpen={() => setIsCartOpen(true)} />
-
       <CartDrawer
         onCheckout={() => setShowCheckout(true)}
         currencySymbol={catalog?.currencySymbol || ""}
@@ -347,11 +304,11 @@ function applyStorefrontStyles(
   });
 
   const fontFamilies: Record<StorefrontTheme["design"]["fontFamily"], string> = {
-    inter: 'Inter, ui-sans-serif, system-ui, sans-serif',
+    inter: "Inter, ui-sans-serif, system-ui, sans-serif",
     modern: '"Avenir Next", "Segoe UI", ui-sans-serif, sans-serif',
     serif: 'Georgia, "Times New Roman", serif',
     rounded: 'Nunito, "Arial Rounded MT Bold", ui-sans-serif, sans-serif',
-    system: 'ui-sans-serif, system-ui, sans-serif',
+    system: "ui-sans-serif, system-ui, sans-serif",
   };
   const font = design ? fontFamilies[design.fontFamily] : undefined;
   if (font) {

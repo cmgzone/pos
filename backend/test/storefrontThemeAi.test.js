@@ -29,6 +29,42 @@ test('storefront AI parser accepts prose-wrapped fenced JSON and normalizes it',
   assert.equal(parsed.usedFallback, false);
 });
 
+test('storefront AI can build a complete validated section plan from scratch', () => {
+  const current = defaultStorefrontTheme({ storefrontType: 'retail' });
+  const parsed = parseStorefrontAiThemeResponse(
+    JSON.stringify({
+      name: 'Complete shop',
+      design: { backgroundColor: '#ffffff', accentColor: '#cc3300' },
+      sections: [
+        {
+          id: 'opening',
+          type: 'hero',
+          title: 'Everything for the week',
+          buttonLabel: 'Start shopping',
+          buttonAction: 'catalog',
+        },
+        {
+          id: 'offer',
+          type: 'promoBanner',
+          title: 'Simple online ordering',
+          buttonAction: 'whatsapp',
+        },
+        { id: 'shop', type: 'catalog', title: 'All products' },
+      ],
+      checkout: { paymentMethods: ['manual'] },
+    }),
+    current,
+    { buildFromScratch: true },
+  );
+
+  assert.deepEqual(
+    parsed.sections.map((section) => section.type),
+    ['hero', 'promoBanner', 'catalog'],
+  );
+  assert.equal(parsed.sections[0].buttonAction, 'catalog');
+  assert.equal(parsed.sections[2].title, 'All products');
+});
+
 test('storefront AI content reads tool-call arguments', () => {
   const content = extractStorefrontAiContent({
     choices: [

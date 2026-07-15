@@ -165,6 +165,29 @@ class StorefrontThemePreset {
   }
 }
 
+class StorefrontThemeSection {
+  final String id;
+  final String type;
+  final String title;
+  final bool enabled;
+
+  const StorefrontThemeSection({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.enabled,
+  });
+
+  factory StorefrontThemeSection.fromJson(Map<String, dynamic> json) {
+    return StorefrontThemeSection(
+      id: json['id']?.toString() ?? '',
+      type: json['type']?.toString() ?? 'catalog',
+      title: json['title']?.toString() ?? json['text']?.toString() ?? 'Section',
+      enabled: json['enabled'] != false,
+    );
+  }
+}
+
 class StorefrontTheme {
   final String id;
   final String branchId;
@@ -172,6 +195,7 @@ class StorefrontTheme {
   final String name;
   final String preset;
   final StorefrontThemeDesign design;
+  final List<StorefrontThemeSection> sections;
   final StorefrontCheckoutSettings checkout;
   final String source;
   final bool isPublished;
@@ -184,6 +208,7 @@ class StorefrontTheme {
     required this.name,
     required this.preset,
     required this.design,
+    required this.sections,
     required this.checkout,
     required this.source,
     required this.isPublished,
@@ -200,6 +225,14 @@ class StorefrontTheme {
       design: StorefrontThemeDesign.fromJson(
         Map<String, dynamic>.from(json['design'] as Map? ?? const {}),
       ),
+      sections: (json['sections'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (section) => StorefrontThemeSection.fromJson(
+              Map<String, dynamic>.from(section),
+            ),
+          )
+          .toList(),
       checkout: StorefrontCheckoutSettings.fromJson(
         Map<String, dynamic>.from(json['checkout'] as Map? ?? const {}),
       ),
@@ -354,12 +387,17 @@ class StorefrontThemeService {
 
   static Future<StorefrontTheme> aiCustomize(
     String themeId,
-    String instruction,
-  ) {
+    String instruction, {
+    bool fromScratch = false,
+  }) {
     return _write(
       method: 'POST',
       path: 'catalog/themes/$themeId/ai-customize',
-      data: {'instruction': instruction.trim()},
+      data: {
+        'instruction': instruction.trim(),
+        'mode': fromScratch ? 'build' : 'refine',
+        'fromScratch': fromScratch,
+      },
       action: 'create an AI storefront theme draft',
     );
   }

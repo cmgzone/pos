@@ -33,6 +33,50 @@ export interface StorefrontThemeDesign {
   cornerStyle: "sharp" | "soft" | "rounded" | "pill";
 }
 
+export type StorefrontSectionType =
+  | "announcement"
+  | "hero"
+  | "categoryShowcase"
+  | "featuredProducts"
+  | "promoBanner"
+  | "benefits"
+  | "story"
+  | "catalog"
+  | "contact";
+
+export type StorefrontSectionAction =
+  | "none"
+  | "catalog"
+  | "whatsapp"
+  | "trackOrder";
+
+export interface StorefrontBenefit {
+  title: string;
+  body: string;
+  icon: "sparkles" | "shield" | "truck" | "clock" | "heart" | "message" | "star";
+}
+
+export interface StorefrontSection {
+  id: string;
+  type: StorefrontSectionType;
+  enabled: boolean;
+  style: "default" | "surface" | "accent" | "contrast";
+  eyebrow?: string;
+  title?: string;
+  body?: string;
+  text?: string;
+  buttonLabel?: string;
+  buttonAction?: StorefrontSectionAction;
+  secondaryButtonLabel?: string;
+  secondaryButtonAction?: StorefrontSectionAction;
+  alignment?: "left" | "center" | "right";
+  showImage?: boolean;
+  source?: "featured" | "all" | "category";
+  category?: string;
+  limit?: number;
+  items?: StorefrontBenefit[];
+}
+
 export interface StorefrontCheckoutSettings {
   paymentMethods: ("manual" | "mpesa")[];
   defaultPaymentMethod: "manual" | "mpesa";
@@ -53,6 +97,7 @@ export interface StorefrontTheme {
   name: string;
   preset: string;
   design: StorefrontThemeDesign;
+  sections: StorefrontSection[];
   checkout: StorefrontCheckoutSettings;
   source: string;
   isPublished: boolean;

@@ -1,6 +1,8 @@
 const {
+  defaultStorefrontSections,
   normalizeStorefrontCheckout,
   normalizeStorefrontThemeDesign,
+  normalizeStorefrontThemeSections,
   presetStorefrontTheme,
 } = require('./storefrontThemes');
 
@@ -39,7 +41,11 @@ function extractStorefrontAiContent(body) {
   return '';
 }
 
-function parseStorefrontAiThemeResponse(value, theme = {}) {
+function parseStorefrontAiThemeResponse(
+  value,
+  theme = {},
+  { buildFromScratch = false } = {},
+) {
   const parsed = parseJsonValue(value);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return null;
@@ -49,7 +55,15 @@ function parseStorefrontAiThemeResponse(value, theme = {}) {
   );
   const designInput = objectOrNull(candidate.design);
   const checkoutInput = objectOrNull(candidate.checkout);
-  if (!designInput && !checkoutInput) return null;
+  const sectionsInput = Array.isArray(candidate.sections)
+    ? candidate.sections
+    : null;
+  if (!designInput && !checkoutInput && !sectionsInput) return null;
+
+  const sectionFallback = buildFromScratch
+    ? defaultStorefrontSections({ storefrontType: theme.storefrontType })
+    : theme.sections ||
+      defaultStorefrontSections({ storefrontType: theme.storefrontType });
 
   return {
     name: limitText(candidate.name, 80) || theme.name || 'Piki storefront',
@@ -57,6 +71,11 @@ function parseStorefrontAiThemeResponse(value, theme = {}) {
       limitText(candidate.summary, 240) ||
       'Piki prepared a storefront theme draft for review.',
     design: normalizeStorefrontThemeDesign(designInput || {}, theme.design || {}),
+    sections: normalizeStorefrontThemeSections(
+      sectionsInput,
+      sectionFallback,
+      { storefrontType: theme.storefrontType },
+    ),
     checkout: normalizeStorefrontCheckout(
       checkoutInput || {},
       theme.checkout || {},
@@ -65,7 +84,11 @@ function parseStorefrontAiThemeResponse(value, theme = {}) {
   };
 }
 
-function fallbackStorefrontAiTheme(theme = {}, instruction = '') {
+function fallbackStorefrontAiTheme(
+  theme = {},
+  instruction = '',
+  { buildFromScratch = false } = {},
+) {
   const request = String(instruction || '').trim().toLowerCase();
   const storefrontType = theme.storefrontType || 'retail';
   let preset = null;
@@ -124,6 +147,13 @@ function fallbackStorefrontAiTheme(theme = {}, instruction = '') {
     summary:
       'Piki applied a safe storefront draft after the model returned an invalid format.',
     design: normalizeStorefrontThemeDesign(design, theme.design || {}),
+    sections: buildFromScratch
+      ? defaultStorefrontSections({ storefrontType })
+      : normalizeStorefrontThemeSections(
+          theme.sections,
+          defaultStorefrontSections({ storefrontType }),
+          { storefrontType },
+        ),
     checkout: normalizeStorefrontCheckout({}, theme.checkout || {}),
     usedFallback: true,
   };

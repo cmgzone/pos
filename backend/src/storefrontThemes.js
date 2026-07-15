@@ -107,6 +107,41 @@ const THEME_ENUMS = Object.freeze({
   cornerStyle: new Set(['sharp', 'soft', 'rounded', 'pill']),
 });
 
+const STOREFRONT_SECTION_TYPES = new Set([
+  'announcement',
+  'hero',
+  'categoryShowcase',
+  'featuredProducts',
+  'promoBanner',
+  'benefits',
+  'story',
+  'catalog',
+  'contact',
+]);
+const STOREFRONT_SECTION_STYLES = new Set([
+  'default',
+  'surface',
+  'accent',
+  'contrast',
+]);
+const STOREFRONT_SECTION_ACTIONS = new Set([
+  'none',
+  'catalog',
+  'whatsapp',
+  'trackOrder',
+]);
+const STOREFRONT_SECTION_ALIGNMENTS = new Set(['left', 'center', 'right']);
+const STOREFRONT_PRODUCT_SOURCES = new Set(['featured', 'all', 'category']);
+const STOREFRONT_BENEFIT_ICONS = new Set([
+  'sparkles',
+  'shield',
+  'truck',
+  'clock',
+  'heart',
+  'message',
+  'star',
+]);
+
 const CHECKOUT_PAYMENT_METHODS = new Set(['manual', 'mpesa']);
 const CHECKOUT_FULFILLMENT_METHODS = new Set(['pickup', 'delivery']);
 const STOREFRONT_TYPES = new Set(['retail', 'services', 'restaurant']);
@@ -165,6 +200,7 @@ function defaultStorefrontTheme({
     name: 'Piki default',
     preset: typePreset,
     design: base.design,
+    sections: defaultStorefrontSections({ storefrontType: cleanType }),
     checkout: normalizeStorefrontCheckout({}, {}),
     source: 'system',
     isPublished: true,
@@ -224,6 +260,8 @@ function normalizeStorefrontThemeInput(input = {}, options = {}) {
     brandColor: options.brandColor,
   });
   const designFallback = existing?.design || presetValue.design;
+  const sectionsFallback =
+    existing?.sections || defaultStorefrontSections({ storefrontType });
   const checkoutFallback = existing?.checkout || normalizeStorefrontCheckout({}, {});
   const name = limitText(raw.name ?? existing?.name ?? STOREFRONT_THEME_PRESETS[preset].label, 80);
   if (!name) throw createError(400, 'Theme name is required.');
@@ -236,6 +274,11 @@ function normalizeStorefrontThemeInput(input = {}, options = {}) {
     design: normalizeStorefrontThemeDesign(
       raw.design ?? raw.design_json ?? raw,
       designFallback,
+    ),
+    sections: normalizeStorefrontThemeSections(
+      raw.sections ?? raw.design?.sections ?? raw.design_json?.sections,
+      sectionsFallback,
+      { storefrontType },
     ),
     checkout: normalizeStorefrontCheckout(
       raw.checkout ?? raw.checkout_json ?? {},
@@ -274,6 +317,266 @@ function normalizeStorefrontThemeDesign(input = {}, fallback = {}) {
     density: enumValue('density'),
     cornerStyle: enumValue('cornerStyle', ['corner_style', 'corners']),
   };
+}
+
+function defaultStorefrontSections({ storefrontType = 'retail' } = {}) {
+  const cleanType = normalizeStorefrontType(storefrontType);
+  return normalizeStorefrontThemeSections(
+    defaultStorefrontSectionBlueprints(cleanType),
+    [],
+    { storefrontType: cleanType },
+  );
+}
+
+function defaultStorefrontSectionBlueprints(storefrontType) {
+  const isServices = storefrontType === 'services';
+  const isRestaurant = storefrontType === 'restaurant';
+  const noun = isServices ? 'services' : isRestaurant ? 'menu' : 'collection';
+  return [
+    {
+      id: 'welcome',
+      type: 'announcement',
+      style: 'accent',
+      text: isServices
+        ? 'Book online in a few simple steps.'
+        : isRestaurant
+          ? 'Order ahead for pickup or delivery.'
+          : 'Shop online for pickup or delivery.',
+    },
+    {
+      id: 'hero',
+      type: 'hero',
+      style: 'default',
+      eyebrow: isServices ? 'Appointments made simple' : isRestaurant ? 'Fresh today' : 'Welcome',
+      title: isServices
+        ? 'Make time for what matters'
+        : isRestaurant
+          ? 'Made fresh. Ready when you are.'
+          : 'Find something worth bringing home',
+      body: isServices
+        ? 'Explore available services and request the time that works for you.'
+        : `Explore our ${noun}, choose what you love, and order in minutes.`,
+      buttonLabel: isServices ? 'Browse services' : isRestaurant ? 'View menu' : 'Shop now',
+      buttonAction: 'catalog',
+      secondaryButtonLabel: '',
+      secondaryButtonAction: 'none',
+      alignment: 'left',
+      showImage: true,
+    },
+    {
+      id: 'discover',
+      type: 'categoryShowcase',
+      style: 'surface',
+      eyebrow: 'Discover',
+      title: isServices ? 'Find the right service' : isRestaurant ? 'Choose your favourites' : 'Shop by category',
+      body: `Explore the ${noun} in the way that suits you.`,
+    },
+    {
+      id: 'featured',
+      type: 'featuredProducts',
+      style: 'default',
+      eyebrow: 'Popular now',
+      title: isServices ? 'Recommended services' : isRestaurant ? 'Customer favourites' : 'Featured picks',
+      body: 'A quick look at what customers choose most.',
+      source: 'featured',
+      category: '',
+      limit: 4,
+    },
+    {
+      id: 'catalog',
+      type: 'catalog',
+      style: 'default',
+      eyebrow: isServices ? 'All services' : isRestaurant ? 'Full menu' : 'The store',
+      title: isServices ? 'Choose a service' : isRestaurant ? 'Order from the menu' : 'Browse the store',
+      body: '',
+    },
+    {
+      id: 'support',
+      type: 'contact',
+      style: 'surface',
+      eyebrow: 'Need help?',
+      title: 'Talk to the team',
+      body: 'Ask a question before placing your order and we will help you choose.',
+      buttonLabel: 'Chat on WhatsApp',
+      buttonAction: 'whatsapp',
+      alignment: 'center',
+    },
+  ];
+}
+
+function normalizeStorefrontThemeSections(input, fallback = [], options = {}) {
+  const storefrontType = normalizeStorefrontType(options.storefrontType);
+  const requested = Array.isArray(input) ? input : [];
+  const fallbackSections = Array.isArray(fallback) ? fallback : [];
+  const candidates = requested.length
+    ? requested
+    : fallbackSections.length
+      ? fallbackSections
+      : defaultStorefrontSectionBlueprints(storefrontType);
+  const normalized = [];
+  const ids = new Set();
+  let hasCatalog = false;
+
+  for (const [index, candidateValue] of candidates.slice(0, 12).entries()) {
+    const candidate = objectValue(candidateValue);
+    const type = normalizeStorefrontSectionType(candidate.type);
+    if (!STOREFRONT_SECTION_TYPES.has(type)) continue;
+    if (type === 'catalog' && hasCatalog) continue;
+    const fallbackSection = objectValue(
+      fallbackSections.find((section) => section?.id === candidate.id) ||
+        fallbackSections.find(
+          (section) => normalizeStorefrontSectionType(section?.type) === type,
+        ) ||
+        defaultStorefrontSectionBlueprints(storefrontType).find(
+          (section) => section.type === type,
+        ),
+    );
+    const section = normalizeStorefrontSection(candidate, fallbackSection, {
+      index,
+      type,
+    });
+    let id = section.id;
+    while (ids.has(id)) id = `${section.id}-${ids.size + 1}`;
+    section.id = id;
+    ids.add(id);
+    normalized.push(section);
+    if (type === 'catalog') hasCatalog = true;
+  }
+
+  if (!hasCatalog) {
+    const catalogFallback = defaultStorefrontSectionBlueprints(storefrontType).find(
+      (section) => section.type === 'catalog',
+    );
+    normalized.push(
+      normalizeStorefrontSection(catalogFallback, catalogFallback, {
+        index: normalized.length,
+        type: 'catalog',
+      }),
+    );
+  }
+  return normalized;
+}
+
+function normalizeStorefrontSection(raw, fallback, { index, type }) {
+  const text = (key, maxLength, defaultValue = '') =>
+    limitText(raw[key] ?? fallback[key] ?? defaultValue, maxLength) || '';
+  const enumValue = (key, values, defaultValue) => {
+    const value = normalizeText(raw[key] ?? fallback[key]);
+    const match = [...values].find(
+      (candidate) => normalizeEnumToken(candidate) === normalizeEnumToken(value),
+    );
+    return match || defaultValue;
+  };
+  const common = {
+    id: normalizeSectionId(raw.id, `${type}-${index + 1}`),
+    type,
+    enabled: raw.enabled !== false,
+    style: enumValue('style', STOREFRONT_SECTION_STYLES, 'default'),
+  };
+  const heading = () => ({
+    eyebrow: text('eyebrow', 50),
+    title: text('title', 100),
+    body: text('body', 360),
+  });
+  const action = (prefix = '') => {
+    const labelKey = prefix ? `${prefix}ButtonLabel` : 'buttonLabel';
+    const key = prefix ? `${prefix}ButtonAction` : 'buttonAction';
+    return {
+      [labelKey]: text(labelKey, 40),
+      [key]: enumValue(key, STOREFRONT_SECTION_ACTIONS, 'none'),
+    };
+  };
+
+  switch (type) {
+    case 'announcement':
+      return {
+        ...common,
+        text: text('text', 140, 'Order online with confidence.'),
+        ...action(),
+      };
+    case 'hero':
+      return {
+        ...common,
+        ...heading(),
+        ...action(),
+        ...action('secondary'),
+        alignment: enumValue(
+          'alignment',
+          STOREFRONT_SECTION_ALIGNMENTS,
+          'left',
+        ),
+        showImage: raw.showImage ?? fallback.showImage ?? true,
+      };
+    case 'categoryShowcase':
+      return { ...common, ...heading() };
+    case 'featuredProducts': {
+      const source = enumValue(
+        'source',
+        STOREFRONT_PRODUCT_SOURCES,
+        'featured',
+      );
+      return {
+        ...common,
+        ...heading(),
+        source,
+        category: source === 'category' ? text('category', 80) : '',
+        limit: clampInteger(raw.limit ?? fallback.limit, 2, 12, 4),
+      };
+    }
+    case 'promoBanner':
+      return {
+        ...common,
+        ...heading(),
+        ...action(),
+        alignment: enumValue(
+          'alignment',
+          STOREFRONT_SECTION_ALIGNMENTS,
+          'left',
+        ),
+      };
+    case 'benefits': {
+      const requestedItems = Array.isArray(raw.items) ? raw.items : fallback.items;
+      const items = (Array.isArray(requestedItems) ? requestedItems : [])
+        .slice(0, 4)
+        .map((item) => {
+          const value = objectValue(item);
+          const icon = normalizeText(value.icon)?.toLowerCase();
+          return {
+            title: limitText(value.title, 60),
+            body: limitText(value.body, 180),
+            icon: STOREFRONT_BENEFIT_ICONS.has(icon) ? icon : 'sparkles',
+          };
+        })
+        .filter((item) => item.title);
+      return { ...common, ...heading(), items };
+    }
+    case 'story':
+      return {
+        ...common,
+        ...heading(),
+        alignment: enumValue(
+          'alignment',
+          STOREFRONT_SECTION_ALIGNMENTS,
+          'left',
+        ),
+        showImage: raw.showImage ?? fallback.showImage ?? false,
+      };
+    case 'catalog':
+      return { ...common, ...heading() };
+    case 'contact':
+      return {
+        ...common,
+        ...heading(),
+        ...action(),
+        alignment: enumValue(
+          'alignment',
+          STOREFRONT_SECTION_ALIGNMENTS,
+          'center',
+        ),
+      };
+    default:
+      return common;
+  }
 }
 
 function normalizeStorefrontCheckout(input = {}, fallback = {}) {
@@ -416,7 +719,7 @@ async function createStorefrontTheme(target, businessId, input = {}, options = {
       normalized.storefrontType,
       normalized.name,
       normalized.preset,
-      JSON.stringify(normalized.design),
+      JSON.stringify(storefrontThemeDesignForStorage(normalized)),
       JSON.stringify(normalized.checkout),
       normalized.source,
       options.createdBy || null,
@@ -446,7 +749,7 @@ async function updateStorefrontTheme(target, businessId, themeId, input = {}, op
       existing.id,
       normalized.name,
       normalized.preset,
-      JSON.stringify(normalized.design),
+      JSON.stringify(storefrontThemeDesignForStorage(normalized)),
       JSON.stringify(normalized.checkout),
       normalized.source,
     ],
@@ -507,13 +810,18 @@ async function deleteStorefrontTheme(target, businessId, themeId) {
 }
 
 function normalizeStorefrontThemeRow(row) {
+  const storedDesign = parseJson(row.design_json, {});
+  const storefrontType = normalizeStorefrontType(row.storefront_type);
   return {
     id: row.id,
     branchId: normalizeBranchId(row.branch_id),
-    storefrontType: normalizeStorefrontType(row.storefront_type),
+    storefrontType,
     name: normalizeText(row.name) || 'Theme',
     preset: normalizePreset(row.preset),
-    design: normalizeStorefrontThemeDesign(parseJson(row.design_json, {}), {}),
+    design: normalizeStorefrontThemeDesign(storedDesign, {}),
+    sections: normalizeStorefrontThemeSections(storedDesign.sections, [], {
+      storefrontType,
+    }),
     checkout: normalizeStorefrontCheckout(parseJson(row.checkout_json, {}), {}),
     source: normalizeThemeSource(row.source),
     isPublished: Boolean(row.is_published),
@@ -549,6 +857,40 @@ function normalizeThemeId(value) {
   const clean = normalizeText(value);
   if (!clean || clean.length > 120) throw createError(400, 'Theme id is required.');
   return clean;
+}
+
+function storefrontThemeDesignForStorage(theme) {
+  return {
+    ...theme.design,
+    sections: theme.sections,
+  };
+}
+
+function normalizeStorefrontSectionType(value) {
+  const token = normalizeEnumToken(value);
+  return (
+    [...STOREFRONT_SECTION_TYPES].find(
+      (candidate) => normalizeEnumToken(candidate) === token,
+    ) || null
+  );
+}
+
+function normalizeEnumToken(value) {
+  return normalizeText(value)?.toLowerCase().replace(/[^a-z0-9]+/g, '') || '';
+}
+
+function normalizeSectionId(value, fallback) {
+  const clean = (limitText(value, 60) || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return clean || fallback;
+}
+
+function clampInteger(value, minimum, maximum, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
 }
 
 function normalizeColor(value, fallback) {
@@ -633,6 +975,7 @@ module.exports = {
   checkoutForActiveGateways,
   createStorefrontTheme,
   defaultStorefrontTheme,
+  defaultStorefrontSections,
   deleteStorefrontTheme,
   duplicateStorefrontTheme,
   ensureStorefrontThemeSchema,
@@ -642,6 +985,7 @@ module.exports = {
   normalizeStorefrontCheckout,
   normalizeStorefrontThemeDesign,
   normalizeStorefrontThemeInput,
+  normalizeStorefrontThemeSections,
   normalizeStorefrontThemeRow,
   presetStorefrontTheme,
   publishStorefrontTheme,

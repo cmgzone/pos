@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
   checkoutForActiveGateways,
+  createStorefrontTheme,
   defaultStorefrontTheme,
+  normalizeStorefrontThemeSections,
   normalizeStorefrontCheckout,
   normalizeStorefrontThemeDesign,
   normalizeStorefrontThemeInput,
@@ -26,6 +28,87 @@ test('restaurant default theme keeps the restaurant presentation', () => {
   assert.equal(theme.design.accentColor, '#ff2a6d');
   assert.equal(theme.preset, 'warm');
   assert.equal(theme.isPublished, true);
+  assert.ok(theme.sections.some((section) => section.type === 'catalog'));
+});
+
+test('storefront sections keep safe ordered content and always include the catalog', () => {
+  const sections = normalizeStorefrontThemeSections(
+    [
+      {
+        id: 'Main Hero',
+        type: 'hero',
+        title: 'Built for this shop',
+        buttonAction: 'catalog',
+        script: '<script>alert(1)</script>',
+      },
+      {
+        id: 'Why us',
+        type: 'benefits',
+        items: [
+          { title: 'Helpful team', body: 'Ask before ordering.', icon: 'heart' },
+          { title: 'Unsafe', body: 'Ignored icon.', icon: 'javascript' },
+        ],
+      },
+      { id: 'raw-code', type: 'html', body: '<iframe />' },
+    ],
+    [],
+    { storefrontType: 'retail' },
+  );
+
+  assert.deepEqual(
+    sections.map((section) => section.type),
+    ['hero', 'benefits', 'catalog'],
+  );
+  assert.equal(sections[0].id, 'main-hero');
+  assert.equal(sections[0].script, undefined);
+  assert.equal(sections[1].items[1].icon, 'sparkles');
+});
+
+test('storefront sections survive database storage and theme normalization', async () => {
+  const target = async (sql, params = []) => {
+    if (/CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/i.test(sql)) {
+      return { rows: [] };
+    }
+    if (/INSERT INTO storefront_themes/i.test(sql)) {
+      return {
+        rows: [
+          {
+            id: params[0],
+            business_id: params[1],
+            branch_id: params[2],
+            storefront_type: params[3],
+            name: params[4],
+            preset: params[5],
+            design_json: JSON.parse(params[6]),
+            checkout_json: JSON.parse(params[7]),
+            source: params[8],
+            is_published: false,
+            created_by: params[9],
+          },
+        ],
+      };
+    }
+    throw new Error(`Unexpected SQL in test: ${sql}`);
+  };
+
+  const theme = await createStorefrontTheme(
+    target,
+    'business-1',
+    {
+      name: 'Built store',
+      sections: [
+        { type: 'hero', title: 'Start here' },
+        { type: 'catalog', title: 'Everything' },
+      ],
+    },
+    { createdBy: 'owner-1' },
+  );
+
+  assert.deepEqual(
+    theme.sections.map((section) => section.type),
+    ['hero', 'catalog'],
+  );
+  assert.equal(theme.sections[1].title, 'Everything');
 });
 
 test('theme design rejects unsafe values and keeps the valid fallback', () => {

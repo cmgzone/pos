@@ -18,6 +18,20 @@ void main() {
         'cardStyle': 'minimal',
         'imageRatio': 'square',
       },
+      'sections': [
+        {
+          'id': 'hero',
+          'type': 'hero',
+          'title': 'A complete storefront',
+          'enabled': true,
+        },
+        {
+          'id': 'catalog',
+          'type': 'catalog',
+          'title': 'Shop everything',
+          'enabled': true,
+        },
+      ],
       'checkout': {
         'paymentMethods': ['manual', 'mpesa'],
         'fulfillmentMethods': ['pickup'],
@@ -29,6 +43,8 @@ void main() {
     expect(theme.id, 'theme_1');
     expect(theme.design.accentColor, '#123456');
     expect(theme.design.heroStyle, 'split');
+    expect(theme.sections.map((section) => section.type), ['hero', 'catalog']);
+    expect(theme.sections.first.title, 'A complete storefront');
     expect(theme.checkout.paymentMethods, ['manual', 'mpesa']);
     expect(theme.checkout.fulfillmentMethods, ['pickup']);
     expect(theme.checkout.showOrderNote, isFalse);
@@ -36,6 +52,7 @@ void main() {
   });
 
   test('Piki storefront and payment tools always require confirmation', () {
+    expect(PikiAgentService.toolCatalogPrompt(), contains('storefront_brief'));
     expect(
       PikiAgentService.requiresConfirmation(
         PikiAgentService.toolBuildStorefront,

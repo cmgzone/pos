@@ -600,7 +600,7 @@ class PikiAgentService {
     toolTeachAlias:
         'Remember a cashier phrase, nickname, or local term for a product query.',
     toolBuildStorefront:
-        'Create or refresh a retail, service, or restaurant storefront using approved brand copy, theme, colour, and checkout settings. The website change is staged for confirmation before publishing.',
+        'Build a complete section-based retail, service, or restaurant storefront from a business brief. Piki can compose and order the announcement, hero, categories, featured items, promotional content, benefits, story, full catalogue, and contact sections. The website change is staged for confirmation before publishing.',
     toolCustomizeCheckout:
         'Create a storefront checkout draft using safe fields, labels, fulfillment, and active payment methods. The draft is published only after explicit confirmation.',
     toolSetupPaymentGateway:
@@ -686,7 +686,7 @@ class PikiAgentService {
     toolCheckout: 'payment_type(string)',
     toolTeachAlias: 'alias(string, required), target(string, required)',
     toolBuildStorefront:
-        'storefront_type(string: retail|services|restaurant, required), business_name(string), tagline(string), description(string), theme_name(string), preset/theme(string: studio|minimal|warm|fresh|bold), primary_color(string #RRGGBB), hero_style(string: cover|split|minimal), card_style(string: bordered|elevated|minimal), image_ratio(string: square|portrait|landscape), corner_style(string: sharp|soft|rounded|pill), make_main(bool), publish(bool)',
+        'storefront_type(string: retail|services|restaurant, required), storefront_brief/instruction(string: describe the complete customer website), build_from_scratch(bool, default true), business_name(string), tagline(string), description(string), theme_name(string), preset/theme(string: studio|minimal|warm|fresh|bold), primary_color(string #RRGGBB), hero_style(string: cover|split|minimal), card_style(string: bordered|elevated|minimal), image_ratio(string: square|portrait|landscape), corner_style(string: sharp|soft|rounded|pill), make_main(bool), publish(bool)',
     toolCustomizeCheckout:
         'storefront_type(string: retail|services|restaurant, required), theme_id(string), payment_methods(list: manual|mpesa), fulfillment_methods(list: pickup|delivery), show_delivery_address(bool), show_order_note(bool), show_order_tracking(bool), checkout_title(string), checkout_button_label(string), success_message(string), publish(bool)',
     toolSetupPaymentGateway:
@@ -3529,11 +3529,30 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       checkout: checkoutChanges.isEmpty ? null : checkoutChanges,
       source: 'ai',
     );
+    final storefrontBrief =
+        _stringArg(args, [
+          'storefront_brief',
+          'instruction',
+          'brief',
+          'website_brief',
+        ]) ??
+        'Build a complete ${storefrontType.label.toLowerCase()} storefront for ${saved.businessName}. '
+            '${saved.tagline.trim().isEmpty ? '' : 'Use this brand direction: ${saved.tagline}. '}'
+            '${saved.description.trim().isEmpty ? '' : 'Business description: ${saved.description}. '}'
+            'Make the customer journey clear from discovery through the full catalogue and contact support.';
+    final buildFromScratch =
+        !args.containsKey('build_from_scratch') ||
+        _boolArg(args, ['build_from_scratch']);
+    final builtDraft = await StorefrontThemeService.aiCustomize(
+      themeDraft.id,
+      storefrontBrief,
+      fromScratch: buildFromScratch,
+    );
     final shouldPublish =
         !args.containsKey('publish') || _boolArg(args, ['publish']);
     final storefrontTheme = shouldPublish
-        ? await StorefrontThemeService.publish(themeDraft.id)
-        : themeDraft;
+        ? await StorefrontThemeService.publish(builtDraft.id)
+        : builtDraft;
 
     final makeMain = _boolArg(args, ['make_main', 'set_main']);
     if (makeMain) {
@@ -3589,6 +3608,9 @@ Example for "kinyozi": ["haircut", "barber", "shave"]
       'theme_id': storefrontTheme.id,
       'theme_name': storefrontTheme.name,
       'theme_published': storefrontTheme.isPublished,
+      'section_count': storefrontTheme.sections
+          .where((section) => section.enabled)
+          .length,
       'summary': shouldPublish
           ? '${storefrontType.label} website for "${saved.businessName}" was published${makeMain ? ' as the main business website' : ''}${url == null ? '.' : ': $url'}'
           : '${storefrontType.label} website theme for "${saved.businessName}" was saved as a draft for preview.',
