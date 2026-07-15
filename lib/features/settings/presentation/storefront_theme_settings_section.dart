@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/license_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
+import '../../../core/utils/error_messages.dart';
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -20,6 +21,7 @@ class _StorefrontThemeSettingsSectionState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  VoidCallback? _errorRetry;
   late String _storefrontType;
   List<StorefrontTheme> _themes = const [];
   List<StorefrontThemePreset> _presets = const [];
@@ -53,6 +55,7 @@ class _StorefrontThemeSettingsSectionState
       setState(() {
         _loading = true;
         _error = null;
+        _errorRetry = null;
       });
     }
     try {
@@ -67,7 +70,10 @@ class _StorefrontThemeSettingsSectionState
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = _message(error));
+      setState(() {
+        _error = _message(error);
+        _errorRetry = () => _load();
+      });
     } finally {
       if (mounted && showLoading) setState(() => _loading = false);
     }
@@ -89,17 +95,27 @@ class _StorefrontThemeSettingsSectionState
     });
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<void> _run(
+    Future<void> Function() action, {
+    bool reloadAfter = true,
+    VoidCallback? retry,
+  }) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
+      _errorRetry = null;
     });
     try {
       await action();
-      await _load(showLoading: false);
+      if (reloadAfter) await _load(showLoading: false);
     } catch (error) {
-      if (mounted) setState(() => _error = _message(error));
+      if (mounted) {
+        setState(() {
+          _error = _message(error);
+          _errorRetry = retry;
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -228,11 +244,19 @@ class _StorefrontThemeSettingsSectionState
   }
 
   Future<void> _openWebsitePreview(StorefrontTheme theme) async {
-    final uri = await StorefrontThemeService.previewUrl(theme.id);
+    final uri = await StorefrontThemeService.previewUrl(theme);
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened) {
       throw Exception('Could not open the exact storefront website preview.');
     }
+  }
+
+  Future<void> _preview(StorefrontTheme theme) {
+    return _run(
+      () => _openWebsitePreview(theme),
+      reloadAfter: false,
+      retry: () => _preview(theme),
+    );
   }
 
   Future<void> _editCheckout(StorefrontTheme theme) async {
@@ -513,10 +537,7 @@ class _StorefrontThemeSettingsSectionState
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          MaterialBanner(
-            content: Text(_error!),
-            actions: [TextButton(onPressed: _load, child: const Text('Retry'))],
-          ),
+          _buildErrorNotice(),
         ],
         const SizedBox(height: 16),
         if (_loading)
@@ -650,9 +671,7 @@ class _StorefrontThemeSettingsSectionState
                   runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() => _openWebsitePreview(theme)),
+                      onPressed: _busy ? null : () => _preview(theme),
                       icon: const Icon(Icons.open_in_browser_rounded, size: 18),
                       label: const Text('Preview website'),
                     ),
@@ -715,6 +734,66 @@ class _StorefrontThemeSettingsSectionState
   };
 
   String _message(Object error) {
-    return error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+    return AppErrorMessage.from(
+      error,
+      fallback: 'The storefront action could not be completed. Try again.',
+    );
+  }
+
+  Widget _buildErrorNotice() {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: colors.errorContainer.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.error.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(Icons.info_outline_rounded, color: colors.error),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Storefront action could not finish',
+                  style: TextStyle(
+                    color: colors.onErrorContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _error!,
+                  style: TextStyle(
+                    color: colors.onErrorContainer,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_errorRetry != null)
+            TextButton(
+              onPressed: _busy ? null : _errorRetry,
+              child: const Text('Retry'),
+            ),
+          IconButton(
+            tooltip: 'Dismiss',
+            onPressed: () => setState(() {
+              _error = null;
+              _errorRetry = null;
+            }),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
   }
 }

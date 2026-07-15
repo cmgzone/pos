@@ -2170,7 +2170,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: gridColumns,
-                          mainAxisExtent: 144,
+                          mainAxisExtent: 190,
                           crossAxisSpacing: AppSpacing.sm,
                           mainAxisSpacing: AppSpacing.sm,
                         ),
@@ -2189,6 +2189,7 @@ class _ProductSideState extends ConsumerState<_ProductSide> {
                     },
                     loading: () => SkeletonProductGrid(
                       crossAxisCount: gridColumns,
+                      mainAxisExtent: 190,
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                     ),
                     error: (e, _) => EmptyStateWidget(
@@ -2893,6 +2894,7 @@ class _CompactProductTile extends StatelessWidget {
         : isOutOfStock
         ? 'Out of stock'
         : UnitUtils.formatWithUnit(saleStock, saleUnit);
+    final imagePath = product['image_url']?.toString().trim();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -2918,10 +2920,17 @@ class _CompactProductTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _ProductImagePlaceholder(
-                  categoryName: categoryName,
-                  isOutOfStock: isOutOfStock,
-                  size: 42,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  child: SizedBox(
+                    width: 54,
+                    height: 54,
+                    child: _ProductPhoto(
+                      imagePath: imagePath,
+                      categoryName: categoryName,
+                      isOutOfStock: isOutOfStock,
+                    ),
+                  ),
                 ),
                 SizedBox(width: AppSpacing.md),
                 Expanded(
@@ -7846,50 +7855,179 @@ class _CategoryChip extends StatelessWidget {
 class _ProductImagePlaceholder extends StatelessWidget {
   final String? categoryName;
   final bool isOutOfStock;
-  final double size;
 
   const _ProductImagePlaceholder({
     required this.categoryName,
     required this.isOutOfStock,
-    this.size = 64,
   });
 
   @override
   Widget build(BuildContext context) {
-    final radius = size <= 44 ? AppRadius.sm : AppRadius.lg;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = isDark ? AppColors.darkAccent : AppColors.primaryLight;
+    final iconColor = isOutOfStock
+        ? (isDark
+                  ? AppColors.darkTextMuted
+                  : Theme.of(context).colorScheme.onSurfaceVariant)
+              .withValues(alpha: 0.48)
+        : accent;
+
+    final label = categoryName?.trim();
     return Container(
-      width: size,
-      height: size,
+      width: double.infinity,
+      height: double.infinity,
       decoration: BoxDecoration(
-        color:
-            (Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkSurfaceHighlight
-                    : Theme.of(context).colorScheme.surfaceContainerHighest)
-                .withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          if (size > 44)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-        ],
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [AppColors.darkSurfaceHighlight, AppColors.darkSurface]
+              : [
+                  accent.withValues(alpha: 0.13),
+                  AppColors.surfaceHighlight.withValues(alpha: 0.72),
+                ],
+        ),
       ),
-      child: Icon(
-        CategoryIconUtils.iconFor(categoryName),
-        size: size <= 44 ? 22 : 32,
-        color: isOutOfStock
-            ? (Theme.of(context).brightness == Brightness.dark
-                      ? AppColors.darkTextMuted
-                      : Theme.of(context).colorScheme.onSurfaceVariant)
-                  .withValues(alpha: 0.4)
-            : (Theme.of(context).brightness == Brightness.dark
-                      ? AppColors.darkAccent
-                      : AppColors.primaryLight)
-                  .withValues(alpha: 0.9),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxHeight < 72;
+          final iconBoxSize = compact ? 38.0 : 50.0;
+          return Stack(
+            children: [
+              Center(
+                child: Container(
+                  width: iconBoxSize,
+                  height: iconBoxSize,
+                  decoration: BoxDecoration(
+                    color: (isDark ? AppColors.darkSurface : AppColors.surface)
+                        .withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(
+                      compact ? AppRadius.sm : AppRadius.md,
+                    ),
+                    border: Border.all(
+                      color: iconColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Icon(
+                    CategoryIconUtils.iconFor(categoryName),
+                    size: compact ? 21 : 27,
+                    color: iconColor,
+                  ),
+                ),
+              ),
+              if (!compact && label != null && label.isNotEmpty)
+                Positioned(
+                  left: AppSpacing.sm,
+                  right: AppSpacing.sm,
+                  bottom: 6,
+                  child: Text(
+                    label.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.55,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
+  }
+}
+
+class _ProductPhoto extends StatelessWidget {
+  final String? imagePath;
+  final String? categoryName;
+  final bool isOutOfStock;
+
+  const _ProductPhoto({
+    required this.imagePath,
+    required this.categoryName,
+    required this.isOutOfStock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final path = imagePath?.trim();
+    if (path == null || path.isEmpty) {
+      return _ProductImagePlaceholder(
+        categoryName: categoryName,
+        isOutOfStock: isOutOfStock,
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ImageProvider<Object> provider =
+        ProductImageUploadService.isRemoteImage(path)
+        ? NetworkImage(path)
+        : FileImage(File(path));
+
+    Widget image({required BoxFit fit, required bool foreground}) {
+      return Image(
+        image: provider,
+        width: double.infinity,
+        height: double.infinity,
+        fit: fit,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded) return child;
+          return AnimatedOpacity(
+            opacity: frame == null ? 0 : 1,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: child,
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => foreground
+            ? _ProductImagePlaceholder(
+                categoryName: categoryName,
+                isOutOfStock: isOutOfStock,
+              )
+            : const SizedBox.shrink(),
+      );
+    }
+
+    final photo = Stack(
+      fit: StackFit.expand,
+      children: [
+        Opacity(
+          opacity: isDark ? 0.2 : 0.13,
+          child: image(fit: BoxFit.cover, foreground: false),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: isDark
+                  ? [
+                      AppColors.darkSurface.withValues(alpha: 0.28),
+                      AppColors.darkSurface.withValues(alpha: 0.72),
+                    ]
+                  : [
+                      AppColors.surface.withValues(alpha: 0.38),
+                      AppColors.surface.withValues(alpha: 0.8),
+                    ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(6),
+          child: image(fit: BoxFit.contain, foreground: true),
+        ),
+      ],
+    );
+
+    return isOutOfStock ? Opacity(opacity: 0.55, child: photo) : photo;
   }
 }
 
@@ -7909,39 +8047,7 @@ class _ProductCard extends StatefulWidget {
 }
 
 class _ProductCardState extends State<_ProductCard> {
-  Widget _buildProductImage(String imagePath, bool isOutOfStock) {
-    if (ProductImageUploadService.isRemoteImage(imagePath)) {
-      return Image.network(
-        imagePath,
-        width: double.infinity,
-        height: double.infinity,
-        fit: BoxFit.cover,
-        alignment: Alignment.center,
-        filterQuality: FilterQuality.high,
-        errorBuilder: (context, error, stackTrace) => Center(
-          child: _ProductImagePlaceholder(
-            categoryName: widget.categoryName,
-            isOutOfStock: isOutOfStock,
-          ),
-        ),
-      );
-    }
-
-    return Image.file(
-      File(imagePath),
-      width: double.infinity,
-      height: double.infinity,
-      fit: BoxFit.cover,
-      alignment: Alignment.center,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (context, error, stackTrace) => Center(
-        child: _ProductImagePlaceholder(
-          categoryName: widget.categoryName,
-          isOutOfStock: isOutOfStock,
-        ),
-      ),
-    );
-  }
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
@@ -7987,122 +8093,237 @@ class _ProductCardState extends State<_ProductCard> {
         ? 'Out of stock'
         : UnitUtils.formatWithUnit(saleStock, saleUnit);
 
-    final imagePath = product['image_url'] as String?;
-    final hasImage = imagePath != null && imagePath.isNotEmpty;
+    final imagePath = product['image_url']?.toString().trim();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor = isOutOfStock
+        ? (isDark
+              ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.72)
+              : Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.72))
+        : (isDark ? AppColors.darkSurface : AppColors.surface);
+    final borderColor = _isHovered && !isOutOfStock
+        ? (isDark ? AppColors.darkAccent : AppColors.primary).withValues(
+            alpha: 0.42,
+          )
+        : isOutOfStock
+        ? (isDark
+              ? AppColors.darkBorder.withValues(alpha: 0.45)
+              : AppColors.border.withValues(alpha: 0.55))
+        : (isDark ? AppColors.darkBorder : AppColors.border);
 
-    return Material(
-      color: isOutOfStock
-          ? (isDark
-                ? AppColors.darkSurfaceHighlight.withValues(alpha: 0.5)
-                : Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45))
-          : (isDark ? AppColors.darkSurface : AppColors.surface),
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: InkWell(
-        onTap: isOutOfStock ? null : widget.onTap,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(
-              color: isOutOfStock
-                  ? (isDark
-                        ? AppColors.darkBorder.withValues(alpha: 0.3)
-                        : AppColors.border.withValues(alpha: 0.35))
-                  : (isDark ? AppColors.darkBorder : AppColors.border),
-              width: 1,
-            ),
+    return Semantics(
+      button: !isOutOfStock,
+      enabled: !isOutOfStock,
+      label:
+          '$displayName, ${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}, $stockLabel',
+      child: MouseRegion(
+        cursor: isOutOfStock
+            ? SystemMouseCursors.basic
+            : SystemMouseCursors.click,
+        onEnter: isOutOfStock ? null : (_) => setState(() => _isHovered = true),
+        onExit: (_) {
+          if (_isHovered) setState(() => _isHovered = false);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(
+            0,
+            _isHovered && !isOutOfStock ? -2 : 0,
+            0,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: borderColor),
+            boxShadow: _isHovered && !isOutOfStock
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.28 : 0.1,
+                      ),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : const [],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: isOutOfStock ? null : widget.onTap,
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                    child: SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: hasImage
-                          ? _buildProductImage(imagePath, isOutOfStock)
-                          : _ProductImagePlaceholder(
-                              categoryName: widget.categoryName,
-                              isOutOfStock: isOutOfStock,
-                              size: 40,
-                            ),
-                    ),
-                  ),
-                  SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                  SizedBox(
+                    height: 92,
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Text(
-                          displayName,
-                          style: TextStyle(
-                            color: isDark
-                                ? AppColors.darkTextPrimary
-                                : Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                        _ProductPhoto(
+                          imagePath: imagePath,
+                          categoryName: widget.categoryName,
+                          isOutOfStock: isOutOfStock,
                         ),
-                        SizedBox(height: AppSpacing.xs),
-                        Text(
-                          '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            color: isDark
-                                ? AppColors.darkTextPrimary
-                                : Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                        Positioned(
+                          top: AppSpacing.sm,
+                          right: AppSpacing.sm,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 126),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? AppColors.darkSurface.withValues(
+                                        alpha: 0.9,
+                                      )
+                                    : AppColors.surface.withValues(alpha: 0.94),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.xl,
+                                ),
+                                border: Border.all(
+                                  color: stockBadgeColor.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: stockBadgeColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      stockLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: stockBadgeColor,
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              Spacer(),
-              Align(
-                alignment: Alignment.centerRight,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 150),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: stockBadgeColor.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(AppRadius.xl),
-                    ),
-                    child: Text(
-                      stockLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: stockBadgeColor,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: borderColor.withValues(alpha: 0.72),
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (widget.categoryName?.trim().isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(
+                                widget.categoryName!.trim().toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          Text(
+                            displayName,
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppColors.darkTextPrimary
+                                  : Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              height: 1.16,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const Spacer(),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${ShopSettings.currency}${displayPrice.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? AppColors.darkAccentSoft
+                                        : AppColors.textPrimary,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: isOutOfStock
+                                      ? stockBadgeColor.withValues(alpha: 0.1)
+                                      : (isDark
+                                            ? AppColors.darkAccent
+                                            : AppColors.primary),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Icon(
+                                  isOutOfStock
+                                      ? Icons.block_rounded
+                                      : Icons.add_rounded,
+                                  size: 18,
+                                  color: isOutOfStock
+                                      ? stockBadgeColor
+                                      : Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

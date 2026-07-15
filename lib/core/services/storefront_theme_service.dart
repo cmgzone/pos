@@ -233,6 +233,15 @@ class StorefrontThemeChange {
   const StorefrontThemeChange({required this.theme, required this.kind});
 }
 
+class StorefrontPreviewUnavailableException implements Exception {
+  final String message;
+
+  const StorefrontPreviewUnavailableException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class StorefrontThemeService {
   static final Dio _dio = Dio(
     BaseOptions(
@@ -355,13 +364,27 @@ class StorefrontThemeService {
     );
   }
 
-  static Future<Uri> previewUrl(String themeId) async {
+  static Future<Uri> previewUrl(StorefrontTheme theme) async {
     final context = await _requestContext();
-    final response = await _dio.get<Map<String, dynamic>>(
-      _url('catalog/themes/$themeId/preview'),
-      queryParameters: {'deviceId': context.deviceId},
-      options: Options(headers: context.headers),
-    );
+    late final Response<Map<String, dynamic>> response;
+    try {
+      response = await _dio.get<Map<String, dynamic>>(
+        _url('catalog/themes/${theme.id}/preview'),
+        queryParameters: {'deviceId': context.deviceId},
+        options: Options(headers: context.headers),
+      );
+    } on DioException catch (error) {
+      if (!_isMissingPreviewRoute(error)) rethrow;
+      if (theme.isPublished) {
+        return _liveStorefrontUrl(
+          context: context,
+          storefrontType: theme.storefrontType,
+        );
+      }
+      throw const StorefrontPreviewUnavailableException(
+        'Draft preview is temporarily unavailable. Your theme is saved; try again after the website service has been updated.',
+      );
+    }
     final body = _requireOk(response);
     final data = Map<String, dynamic>.from(
       body['data'] as Map? ?? const <String, dynamic>{},
@@ -371,6 +394,40 @@ class StorefrontThemeService {
       throw Exception('The exact storefront preview link is unavailable.');
     }
     return uri;
+  }
+
+  static Future<Uri> _liveStorefrontUrl({
+    required _ThemeRequestContext context,
+    required String storefrontType,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('catalog/storefront'),
+      queryParameters: {'deviceId': context.deviceId, 'type': storefrontType},
+      options: Options(headers: context.headers),
+    );
+    final data = Map<String, dynamic>.from(
+      _requireOk(response)['data'] as Map? ?? const <String, dynamic>{},
+    );
+    final uri = Uri.tryParse(data['url']?.toString() ?? '');
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      throw const StorefrontPreviewUnavailableException(
+        'The live storefront link is temporarily unavailable.',
+      );
+    }
+    return uri;
+  }
+
+  static bool _isMissingPreviewRoute(DioException error) {
+    if (error.response?.statusCode != 404) return false;
+    final data = error.response?.data;
+    if (data is Map) {
+      final message =
+          (data['message'] ?? data['error'])?.toString().trim().toLowerCase() ??
+          '';
+      if (message.contains('theme was not found')) return false;
+      if (message.isNotEmpty && !message.contains('cannot get')) return false;
+    }
+    return true;
   }
 
   static Future<void> delete(String themeId) async {
