@@ -170,6 +170,10 @@ const {
   parseStorefrontAiThemeResponse,
   storefrontJsonResponseFormat,
 } = require('./storefrontThemeAi');
+const {
+  createStorefrontThemePreviewToken,
+  verifyStorefrontThemePreviewToken,
+} = require('./storefrontThemePreview');
 
 const app = express();
 const server = http.createServer(app);
@@ -10172,11 +10176,15 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
       throw createHttpError(400, 'Business catalog link is invalid');
     }
 
+    const preview = storefrontThemePreviewFromRequest(req, businessId);
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
-      branchId: req.query?.branchId,
-      storefrontType: req.query?.storefront || req.query?.type,
+      branchId: preview?.branchId || req.query?.branchId,
+      storefrontType:
+        preview?.storefrontType || req.query?.storefront || req.query?.type,
+      previewThemeId: preview?.themeId,
     });
+    if (preview) res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -10200,12 +10208,21 @@ app.get('/api/public/catalog', async (req, res, next) => {
       throw createHttpError(404, 'Catalog not found');
     }
 
+    const preview = storefrontThemePreviewFromRequest(
+      req,
+      storefront.businessId,
+    );
     const catalog = await loadPublicCatalog(storefront.businessId, {
       currencyOverride: req.query?.currency,
-      branchId: req.query?.branchId,
+      branchId: preview?.branchId || req.query?.branchId,
       storefrontType:
-        storefront.storefrontType || req.query?.storefront || req.query?.type,
+        preview?.storefrontType ||
+        storefront.storefrontType ||
+        req.query?.storefront ||
+        req.query?.type,
+      previewThemeId: preview?.themeId,
     });
+    if (preview) res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -10381,6 +10398,43 @@ app.get('/api/catalog/themes', async (req, res, next) => {
         presets: storefrontThemePresets(),
         branchId: scope.branchId,
         storefrontType: scope.storefrontType,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/themes/:themeId/preview', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const theme = await getStorefrontTheme(
+      query,
+      businessContext.businessId,
+      req.params.themeId,
+    );
+    if (!theme) throw createHttpError(404, 'Theme was not found.');
+
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    const token = createStorefrontThemePreviewToken({
+      secret: config.platformJwtSecret,
+      businessId: businessContext.businessId,
+      theme,
+    });
+    const previewUrl = new URL(
+      buildTypedStorefrontUrl(publicSubdomain, theme.storefrontType),
+    );
+    previewUrl.searchParams.set('branchId', theme.branchId);
+    previewUrl.searchParams.set('preview', token);
+    res.json({
+      ok: true,
+      data: {
+        url: previewUrl.toString(),
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       },
     });
   } catch (error) {
@@ -10697,32 +10751,41 @@ app.post('/api/public/demo-requests', publicWriteRateLimit, async (req, res, nex
   }
 });
 
-app.get(['/catalog/:businessId', '/catalog/:businessId/:storefrontType'], async (req, res, next) => {
-  try {
-    const businessId = normalizeOptionalText(req.params.businessId);
-    if (!businessId) {
-      throw createHttpError(400, 'Business catalog link is invalid');
-    }
-
-    const catalog = await loadPublicCatalog(businessId, {
-      currencyOverride: req.query?.currency,
-      branchId: req.query?.branchId,
-      storefrontType: req.params.storefrontType || req.query?.storefront || req.query?.type,
-    });
-    res
-      .status(200)
-      .type('html')
-      .set('Cache-Control', 'no-cache, no-store, must-revalidate');
+app.get(
+  ['/catalog/:businessId', '/catalog/:businessId/:storefrontType'],
+  async (req, res, next) => {
     try {
-      const html = await renderStorefrontSpaPage(catalog);
-      res.send(html);
-    } catch (spaError) {
-      res.send(renderPublicCatalogPage(catalog));
+      const businessId = normalizeOptionalText(req.params.businessId);
+      if (!businessId) {
+        throw createHttpError(400, 'Business catalog link is invalid');
+      }
+
+      const preview = storefrontThemePreviewFromRequest(req, businessId);
+      const catalog = await loadPublicCatalog(businessId, {
+        currencyOverride: req.query?.currency,
+        branchId: preview?.branchId || req.query?.branchId,
+        storefrontType:
+          preview?.storefrontType ||
+          req.params.storefrontType ||
+          req.query?.storefront ||
+          req.query?.type,
+        previewThemeId: preview?.themeId,
+      });
+      res
+        .status(200)
+        .type('html')
+        .set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      try {
+        const html = await renderStorefrontSpaPage(catalog);
+        res.send(html);
+      } catch (spaError) {
+        res.send(renderPublicCatalogPage(catalog));
+      }
+    } catch (error) {
+      next(normalizeRouteError(error));
     }
-  } catch (error) {
-    next(normalizeRouteError(error));
-  }
-});
+  },
+);
 
 app.get(['/', '/catalog', '/retail', '/services', '/restaurant'], async (req, res, next) => {
   try {
@@ -10743,14 +10806,22 @@ app.get(['/', '/catalog', '/retail', '/services', '/restaurant'], async (req, re
       throw createHttpError(404, 'Catalog not found');
     }
 
+    const preview = storefrontThemePreviewFromRequest(
+      req,
+      storefrontLookup.businessId,
+    );
     const catalog = await loadPublicCatalog(storefrontLookup.businessId, {
       currencyOverride: req.query?.currency,
-      branchId: req.query?.branchId,
+      branchId: preview?.branchId || req.query?.branchId,
       storefrontType:
+        preview?.storefrontType ||
         storefrontLookup.storefrontType ||
-        (req.path === '/retail' || req.path === '/services' || req.path === '/restaurant'
+        (req.path === '/retail' ||
+        req.path === '/services' ||
+        req.path === '/restaurant'
           ? req.path.slice(1)
           : req.query?.storefront || req.query?.type),
+      previewThemeId: preview?.themeId,
     });
     res
       .status(200)
@@ -13592,9 +13663,28 @@ function paymentMetadataMessage(metadata = {}) {
   );
 }
 
+function storefrontThemePreviewFromRequest(req, businessId) {
+  const token = normalizeOptionalText(req.query?.preview);
+  if (!token) return null;
+  const preview = verifyStorefrontThemePreviewToken({
+    secret: config.platformJwtSecret,
+    token,
+    businessId,
+  });
+  if (!preview) {
+    throw createHttpError(401, 'Storefront preview link is invalid or expired.');
+  }
+  return preview;
+}
+
 async function loadPublicCatalog(
   businessId,
-  { currencyOverride, branchId: requestedBranchId, storefrontType } = {},
+  {
+    currencyOverride,
+    branchId: requestedBranchId,
+    storefrontType,
+    previewThemeId,
+  } = {},
 ) {
   await ensureCatalogSubdomainSchema(query);
   await ensureStorefrontBrandSchema(query);
@@ -13649,12 +13739,14 @@ async function loadPublicCatalog(
     throw createHttpError(404, 'Storefront not found');
   }
   const storefront = storefrontDefinition(selectedStorefrontType);
-  const cacheKey = await buildCatalogCacheKey(businessId, {
-    currencyOverride,
-    branchId: requestedBranchId,
-    storefrontType: selectedStorefrontType,
-  });
-  const cached = await cacheGetJson(cacheKey);
+  const cacheKey = previewThemeId
+    ? null
+    : await buildCatalogCacheKey(businessId, {
+        currencyOverride,
+        branchId: requestedBranchId,
+        storefrontType: selectedStorefrontType,
+      });
+  const cached = cacheKey ? await cacheGetJson(cacheKey) : null;
   if (cached) {
     return cached;
   }
@@ -13822,15 +13914,20 @@ async function loadPublicCatalog(
     branchName: selectedBranch.name,
   });
 
-  const publishedTheme = await loadPublishedStorefrontTheme(
-    query,
-    business.id,
-    {
-      branchId: selectedBranch.id,
-      storefrontType: selectedStorefrontType,
-      brandColor: branchBrand.primaryColor,
-    },
-  );
+  const publishedTheme = previewThemeId
+    ? await getStorefrontTheme(query, business.id, previewThemeId)
+    : await loadPublishedStorefrontTheme(query, business.id, {
+        branchId: selectedBranch.id,
+        storefrontType: selectedStorefrontType,
+        brandColor: branchBrand.primaryColor,
+      });
+  if (
+    !publishedTheme ||
+    publishedTheme.branchId !== selectedBranch.id ||
+    publishedTheme.storefrontType !== selectedStorefrontType
+  ) {
+    throw createHttpError(404, 'Storefront preview theme was not found.');
+  }
   const activePaymentProviders = [];
   try {
     const mpesaStatus = await loadPosMpesaConfig({
@@ -13850,6 +13947,7 @@ async function loadPublicCatalog(
   };
 
   const catalog = {
+    preview: Boolean(previewThemeId),
     business: {
       id: business.id,
       name: branchBrand.businessName || business.name,
@@ -13874,7 +13972,7 @@ async function loadPublicCatalog(
       return latest;
     }, toIsoString(business.updated_at)),
   };
-  await cacheSetJson(cacheKey, catalog);
+  if (cacheKey) await cacheSetJson(cacheKey, catalog);
   return catalog;
 }
 
@@ -14986,6 +15084,7 @@ function injectStorefrontMeta(html, catalog) {
   const headTags = [
     `<title>${title}</title>`,
     `<meta name="description" content="${escapeHtml(description)}" />`,
+    catalog.preview ? '<meta name="robots" content="noindex,nofollow" />' : '',
     `<meta name="theme-color" content="${escapeHtml(primaryColor)}" />`,
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${escapeHtml(description)}" />`,

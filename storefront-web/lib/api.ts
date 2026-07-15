@@ -64,9 +64,11 @@ export async function fetchCatalog(
   businessId: string,
   branchId?: string,
   storefrontType: StorefrontType = storefrontTypeFromPath(),
+  previewToken?: string,
 ): Promise<Catalog> {
   const params = new URLSearchParams();
   if (branchId) params.set("branchId", branchId);
+  if (previewToken) params.set("preview", previewToken);
   params.set("storefront", storefrontType);
   const query = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(

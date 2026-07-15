@@ -59,6 +59,7 @@ import '../settings/presentation/custom_roles_screen.dart';
 import '../settings/presentation/settings_screen.dart';
 import '../settings/presentation/subscription_plans_section.dart';
 import '../shifts/presentation/shift_management_screen.dart';
+import '../storefront/presentation/online_store_screen.dart';
 import '../auth/data/auth_password_service.dart';
 import '../auth/data/user_repository.dart';
 import 'dashboard_screen.dart';
@@ -106,6 +107,8 @@ class AppShellState extends ConsumerState<AppShell> {
   Set<String> _deviceNotifiedIds = const <String>{};
   bool _deviceNotificationBusy = false;
   bool _appUpdatePromptScheduled = false;
+  OnlineStoreSection _onlineStoreInitialSection = OnlineStoreSection.overview;
+  int _onlineStoreNavigationRevision = 0;
   AppVersionInfo? _appVersionInfo;
   List<PlatformNotification> _platformNotifications =
       const <PlatformNotification>[];
@@ -127,6 +130,15 @@ class AppShellState extends ConsumerState<AppShell> {
         icon: Icons.shopping_cart_checkout_outlined,
         selectedIcon: Icons.shopping_cart_checkout_rounded,
         label: 'POS',
+      ),
+    ),
+    _NavDestination(
+      index: 36,
+      section: _NavSection.main,
+      item: _NavItem(
+        icon: Icons.storefront_outlined,
+        selectedIcon: Icons.storefront_rounded,
+        label: 'Online Store',
       ),
     ),
     _NavDestination(
@@ -462,6 +474,12 @@ class AppShellState extends ConsumerState<AppShell> {
             ))) {
       indices.add(17);
     }
+    if (SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
+        SessionService.canAccessFeature(UserAccessProfile.featurePos) ||
+        SessionService.canAccessFeature(UserAccessProfile.featureSales) ||
+        SessionService.canAccessFeature(UserAccessProfile.featureReports)) {
+      indices.add(36);
+    }
     if (SessionService.canAccessFeature(UserAccessProfile.featureSales)) {
       indices.add(19);
     }
@@ -513,6 +531,9 @@ class AppShellState extends ConsumerState<AppShell> {
   }
 
   int _normalizeNavigationIndex(int index) {
+    if (index == 17) {
+      return 36;
+    }
     if (_isRestaurantAccount && index == _posIndex) {
       return _restaurantIndex;
     }
@@ -547,6 +568,7 @@ class AppShellState extends ConsumerState<AppShell> {
     final allowed = _allowedDestinations;
     const sharedIndexes = <int>[
       5,
+      36,
       1,
       12,
       2,
@@ -615,11 +637,11 @@ class AppShellState extends ConsumerState<AppShell> {
     addModule(
       id: 'retail_pos',
       title: 'Retail POS',
-      subtitle: 'Checkout, orders, sales, and customer balances.',
+      subtitle: 'Checkout, online store, sales, and customer balances.',
       icon: Icons.point_of_sale_rounded,
       accent: AppColors.primary,
-      indexes: indexesForBusiness(const [0, 17, 4, 19, 20, 6, 18, 10]),
-      coreIndexes: const [0, 17, 4, 19, 20, 6, 18, 10],
+      indexes: indexesForBusiness(const [0, 36, 4, 19, 20, 6, 18, 10]),
+      coreIndexes: const [0, 36, 4, 19, 20, 6, 18, 10],
       enabled: SessionService.canUseProductPos,
     );
     addModule(
@@ -628,8 +650,8 @@ class AppShellState extends ConsumerState<AppShell> {
       subtitle: 'Service desk, queues, quotes, and customer work.',
       icon: Icons.design_services_rounded,
       accent: const Color(0xFF8E4EC6),
-      indexes: indexesForBusiness(const [11, 4, 19, 20, 18, 10]),
-      coreIndexes: const [11, 4, 19, 20, 18, 10],
+      indexes: indexesForBusiness(const [11, 36, 4, 19, 20, 18, 10]),
+      coreIndexes: const [11, 36, 4, 19, 20, 18, 10],
       enabled: SessionService.canUseServicePos,
     );
     addModule(
@@ -693,6 +715,9 @@ class AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialIndex == 17) {
+      _onlineStoreInitialSection = OnlineStoreSection.orders;
+    }
     _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
     if (widget.runStartupTasks) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -709,15 +734,29 @@ class AppShellState extends ConsumerState<AppShell> {
   void didUpdateWidget(covariant AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialIndex != widget.initialIndex) {
+      if (widget.initialIndex == 17) {
+        _onlineStoreInitialSection = OnlineStoreSection.orders;
+      }
       _selectedIndex = _initialIndexForCurrentAccount(widget.initialIndex);
       _navigationHistory.clear();
     }
   }
 
   void _selectIndex(int index) {
+    if (index == 17) {
+      _onlineStoreInitialSection = OnlineStoreSection.orders;
+      _onlineStoreNavigationRevision += 1;
+    } else if (index == 36) {
+      _onlineStoreInitialSection = OnlineStoreSection.overview;
+      _onlineStoreNavigationRevision += 1;
+    }
     final target = _normalizeNavigationIndex(index);
     final current = _currentIndex;
-    if (!_allowedIndices.contains(target) || current == target) {
+    if (!_allowedIndices.contains(target)) {
+      return;
+    }
+    if (current == target) {
+      setState(() {});
       return;
     }
     _navigationHistory.add(current);
@@ -2463,7 +2502,7 @@ class AppShellState extends ConsumerState<AppShell> {
       case 0:
         return const PosScreen(embeddedInAppShell: true);
       case 1:
-        return const ProductListScreen();
+        return ProductListScreen(onOpenCatalogOrders: () => _selectIndex(17));
       case 2:
         return const CategoryManagementScreen();
       case 3:
@@ -2536,6 +2575,13 @@ class AppShellState extends ConsumerState<AppShell> {
           onSelect: _selectIndex,
           onNotifications: _showNotificationsSheet,
           notificationIcon: _buildNotificationIcon(notifications),
+        );
+      case 36:
+        return OnlineStoreScreen(
+          embeddedInAppShell: true,
+          initialSection: _onlineStoreInitialSection,
+          navigationRevision: _onlineStoreNavigationRevision,
+          onOpenPos: () => _selectIndex(_normalizeNavigationIndex(0)),
         );
       default:
         return const PosScreen(embeddedInAppShell: true);
@@ -3066,8 +3112,8 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
     }
 
     final startIndexes = switch (activeModule.id) {
-      'services' => const [11, 5, 4, 10],
-      'retail_pos' => const [0, 17, 5, 4],
+      'services' => const [11, 36, 5, 4],
+      'retail_pos' => const [0, 36, 5, 4],
       _ => const [5],
     };
     final featureGroups = <_FeatureGridGroup?>[
@@ -3079,7 +3125,7 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
       group(
         title: 'SELL & GET PAID',
         subtitle: 'Sales records, documents, balances, and shifts.',
-        indexes: const [0, 11, 17, 4, 19, 20, 6, 10],
+        indexes: const [0, 11, 4, 19, 20, 6, 10],
       ),
       group(
         title: 'STOCK & SUPPLY',

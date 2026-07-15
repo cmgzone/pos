@@ -53,6 +53,13 @@ export function getBranchIdFromQuery(): string | undefined {
   return branchId || undefined;
 }
 
+export function getPreviewTokenFromQuery(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("preview")?.trim();
+  return token || undefined;
+}
+
 export function clamp(num: number, min: number, max: number): number {
   return Math.min(Math.max(num, min), max);
 }

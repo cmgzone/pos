@@ -37,9 +37,8 @@ import 'package:pos_app/features/settings/presentation/communication_settings_se
 import 'package:pos_app/features/settings/presentation/custom_roles_section.dart';
 import 'package:pos_app/features/settings/presentation/multi_currency_section.dart';
 import 'package:pos_app/features/settings/presentation/piki_cloud_settings_section.dart';
-import 'package:pos_app/features/settings/presentation/storefront_brand_settings_section.dart';
-import 'package:pos_app/features/settings/presentation/storefront_theme_settings_section.dart';
 import 'package:pos_app/features/settings/presentation/subscription_plans_section.dart';
+import 'package:pos_app/features/storefront/presentation/online_store_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -2549,29 +2548,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 SizedBox(
                   width: cardWidth,
                   child: _buildFeaturePageCard(
-                    icon: Icons.palette_outlined,
-                    title: 'Online Storefront',
-                    subtitle: 'Logo, cover photo, brand color, and store link.',
-                    onTap: () => _openSettingsMiniPage(
-                      title: 'Online Storefront',
-                      icon: Icons.palette_outlined,
-                      maxWidth: 920,
-                      child: const StorefrontBrandSettingsSection(),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _buildFeaturePageCard(
-                    icon: Icons.web_asset_outlined,
-                    title: 'Storefront Themes',
+                    icon: Icons.storefront_outlined,
+                    title: 'Online Store',
                     subtitle:
-                        'Unlimited themes, checkout, and Piki customization.',
-                    onTap: () => _openSettingsMiniPage(
-                      title: 'Storefront Themes',
-                      icon: Icons.web_asset_outlined,
-                      maxWidth: 1040,
-                      child: const StorefrontThemeSettingsSection(),
+                        'Products, orders, branding, website, checkout, and payments.',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const OnlineStoreScreen(),
+                      ),
                     ),
                   ),
                 ),

@@ -44,7 +44,9 @@ enum _MobileProductPageAction {
 enum _MobileProductMenuAction { viewStock, adjustStock, edit, delete }
 
 class ProductListScreen extends ConsumerStatefulWidget {
-  const ProductListScreen({super.key});
+  final VoidCallback? onOpenCatalogOrders;
+
+  const ProductListScreen({super.key, this.onOpenCatalogOrders});
 
   @override
   ConsumerState<ProductListScreen> createState() => _ProductListScreenState();
@@ -512,6 +514,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   }
 
   Future<void> _openCatalogOrders() async {
+    final onOpenCatalogOrders = widget.onOpenCatalogOrders;
+    if (onOpenCatalogOrders != null) {
+      onOpenCatalogOrders();
+      return;
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const CatalogOrdersScreen()),

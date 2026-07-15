@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/license_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
-import 'storefront_theme_preview.dart';
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -24,7 +24,6 @@ class _StorefrontThemeSettingsSectionState
   List<StorefrontTheme> _themes = const [];
   List<StorefrontThemePreset> _presets = const [];
   StreamSubscription<StorefrontThemeChange>? _themeChanges;
-  String? _previewThemeId;
 
   @override
   void initState() {
@@ -65,16 +64,6 @@ class _StorefrontThemeSettingsSectionState
       setState(() {
         _themes = result.themes;
         _presets = result.presets;
-        final availableIds = result.themes.map((theme) => theme.id).toSet();
-        if (_previewThemeId == null ||
-            !availableIds.contains(_previewThemeId)) {
-          _previewThemeId =
-              result.themes
-                  .where((theme) => theme.isPublished)
-                  .firstOrNull
-                  ?.id ??
-              result.themes.firstOrNull?.id;
-        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -94,23 +83,10 @@ class _StorefrontThemeSettingsSectionState
     setState(() {
       if (change.kind == StorefrontThemeChangeKind.delete) {
         _themes = _themes.where((item) => item.id != theme.id).toList();
-        if (_previewThemeId == theme.id) {
-          _previewThemeId = _themes.firstOrNull?.id;
-        }
         return;
       }
       _themes = [theme, ..._themes.where((item) => item.id != theme.id)];
-      if (theme.source == 'ai' || _previewThemeId == null) {
-        _previewThemeId = theme.id;
-      }
     });
-  }
-
-  StorefrontTheme? get _previewTheme {
-    for (final theme in _themes) {
-      if (theme.id == _previewThemeId) return theme;
-    }
-    return _themes.firstOrNull;
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -243,8 +219,20 @@ class _StorefrontThemeSettingsSectionState
     controller.dispose();
     if (instruction == null || instruction.length < 5) return;
     await _run(() async {
-      await StorefrontThemeService.aiCustomize(theme.id, instruction);
+      final draft = await StorefrontThemeService.aiCustomize(
+        theme.id,
+        instruction,
+      );
+      await _openWebsitePreview(draft);
     });
+  }
+
+  Future<void> _openWebsitePreview(StorefrontTheme theme) async {
+    final uri = await StorefrontThemeService.previewUrl(theme.id);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      throw Exception('Could not open the exact storefront website preview.');
+    }
   }
 
   Future<void> _editCheckout(StorefrontTheme theme) async {
@@ -458,7 +446,6 @@ class _StorefrontThemeSettingsSectionState
 
   @override
   Widget build(BuildContext context) {
-    final previewTheme = _previewTheme;
     final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -498,10 +485,7 @@ class _StorefrontThemeSettingsSectionState
                             if (value == null || value == _storefrontType) {
                               return;
                             }
-                            setState(() {
-                              _storefrontType = value;
-                              _previewThemeId = null;
-                            });
+                            setState(() => _storefrontType = value);
                             _load();
                           },
                   ),
@@ -517,6 +501,12 @@ class _StorefrontThemeSettingsSectionState
                     color: colors.onSurfaceVariant,
                   ),
                 ),
+                Text(
+                  'Preview opens the real customer website.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -529,10 +519,6 @@ class _StorefrontThemeSettingsSectionState
           ),
         ],
         const SizedBox(height: 16),
-        if (!_loading && previewTheme != null) ...[
-          StorefrontThemePreview(theme: previewTheme, isUpdating: _busy),
-          const SizedBox(height: 16),
-        ],
         if (_loading)
           const Center(
             child: Padding(
@@ -664,17 +650,11 @@ class _StorefrontThemeSettingsSectionState
                   runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: () =>
-                          setState(() => _previewThemeId = theme.id),
-                      icon: Icon(
-                        _previewThemeId == theme.id
-                            ? Icons.visibility_rounded
-                            : Icons.preview_rounded,
-                        size: 18,
-                      ),
-                      label: Text(
-                        _previewThemeId == theme.id ? 'Previewing' : 'Preview',
-                      ),
+                      onPressed: _busy
+                          ? null
+                          : () => _run(() => _openWebsitePreview(theme)),
+                      icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                      label: const Text('Preview website'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _customizeWithPiki(theme),

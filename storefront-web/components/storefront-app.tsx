@@ -14,8 +14,12 @@ import { Footer } from "./footer";
 import { FloatingCart } from "./floating-cart";
 import { SkeletonGrid } from "./skeleton-grid";
 import { ErrorState } from "./error-state";
-import { getBootstrap, getBranchIdFromQuery } from "@/lib/utils";
-import { fetchCatalog } from "@/lib/api";
+import {
+  getBootstrap,
+  getBranchIdFromQuery,
+  getPreviewTokenFromQuery,
+} from "@/lib/utils";
+import { fetchCatalog, storefrontTypeFromPath } from "@/lib/api";
 import { FadeIn } from "./motion";
 import type { BusinessBrand, StorefrontTheme, StorefrontType } from "@/lib/types";
 
@@ -35,10 +39,20 @@ function StorefrontInner() {
   const [showTracker, setShowTracker] = useState(false);
 
   const loadCatalog = useCallback(
-    async (businessId: string, branchId?: string, storefrontType?: StorefrontType) => {
+    async (
+      businessId: string,
+      branchId?: string,
+      storefrontType?: StorefrontType,
+      previewToken?: string,
+    ) => {
       setError(null);
       try {
-        const data = await fetchCatalog(businessId, branchId, storefrontType);
+        const data = await fetchCatalog(
+          businessId,
+          branchId,
+          storefrontType,
+          previewToken,
+        );
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
         applyStorefrontStyles(data.business.brand, data.storefront.type, data.theme);
@@ -52,6 +66,15 @@ function StorefrontInner() {
 
   useEffect(() => {
     const bootstrap = getBootstrap();
+    const previewToken = getPreviewTokenFromQuery();
+    const businessId = bootstrap.businessId || bootstrap.catalog?.business.id;
+    const branchId =
+      bootstrap.branchId ||
+      bootstrap.catalog?.business.selectedBranch.id ||
+      getBranchIdFromQuery();
+    const storefrontType =
+      bootstrap.catalog?.storefront.type || storefrontTypeFromPath();
+
     if (bootstrap.catalog) {
       setCatalog(bootstrap.catalog);
       setSelectedBranch(bootstrap.catalog.business.selectedBranch);
@@ -60,18 +83,20 @@ function StorefrontInner() {
         bootstrap.catalog.storefront.type,
         bootstrap.catalog.theme,
       );
-      return;
-    }
-    if (!bootstrap.businessId) {
+    } else if (!businessId) {
       setError(
-        "No store link detected. Visit a catalog URL like /catalog/<businessId>."
+        "No store link detected. Visit a catalog URL like /catalog/<businessId>.",
       );
       return;
+    } else {
+      loadCatalog(businessId, branchId, storefrontType, previewToken);
     }
-    loadCatalog(
-      bootstrap.businessId,
-      bootstrap.branchId || getBranchIdFromQuery(),
-    );
+
+    if (!previewToken || !businessId) return;
+    const timer = window.setInterval(() => {
+      loadCatalog(businessId, branchId, storefrontType, previewToken);
+    }, 2000);
+    return () => window.clearInterval(timer);
   }, [loadCatalog, setCatalog, setSelectedBranch]);
 
   const handleBranchChange = useCallback(
@@ -80,7 +105,12 @@ function StorefrontInner() {
       const branch = catalog.business.branches.find((b) => b.id === branchId);
       if (branch) {
         setSelectedBranch(branch);
-        loadCatalog(catalog.business.id, branchId, catalog.storefront.type);
+        loadCatalog(
+          catalog.business.id,
+          branchId,
+          catalog.storefront.type,
+          getPreviewTokenFromQuery(),
+        );
       }
     },
     [catalog, loadCatalog, setSelectedBranch]
@@ -141,6 +171,11 @@ function StorefrontInner() {
 
   return (
     <>
+      {catalog?.preview && (
+        <div className="sticky top-0 z-[80] border-b border-amber-300/30 bg-amber-300 px-4 py-2 text-center text-[12px] font-bold text-black shadow-sm">
+          Draft website preview · Updates automatically · Customers cannot see this theme until you publish
+        </div>
+      )}
       <SiteHeader
         business={catalog?.business}
         storefront={catalog?.storefront}

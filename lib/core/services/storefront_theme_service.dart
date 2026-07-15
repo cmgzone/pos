@@ -355,6 +355,24 @@ class StorefrontThemeService {
     );
   }
 
+  static Future<Uri> previewUrl(String themeId) async {
+    final context = await _requestContext();
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('catalog/themes/$themeId/preview'),
+      queryParameters: {'deviceId': context.deviceId},
+      options: Options(headers: context.headers),
+    );
+    final body = _requireOk(response);
+    final data = Map<String, dynamic>.from(
+      body['data'] as Map? ?? const <String, dynamic>{},
+    );
+    final uri = Uri.tryParse(data['url']?.toString() ?? '');
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      throw Exception('The exact storefront preview link is unavailable.');
+    }
+    return uri;
+  }
+
   static Future<void> delete(String themeId) async {
     await LicenseService.ensureWriteAccess(action: 'delete a storefront theme');
     final context = await _requestContext();

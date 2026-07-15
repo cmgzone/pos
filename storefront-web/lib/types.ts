@@ -109,6 +109,7 @@ export interface CatalogItem {
 }
 
 export interface Catalog {
+  preview?: boolean;
   business: Business;
   storefront: Storefront;
   currency: string;

@@ -14,7 +14,6 @@ import '../products/data/product_repository.dart';
 import '../sales/data/sale_repository.dart';
 import '../training/widgets/training_anchor.dart';
 import 'app_shell.dart';
-import 'widgets/storefront_share_dialog.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   final DashboardData? initialData;
@@ -272,10 +271,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       available: RolePermissions.canManageUsers(SessionService.currentUserRole),
     ),
     _HomeAction(
-      label: 'Storefront',
-      description: 'Share online store',
+      label: 'Online Store',
+      description: 'Manage website and orders',
       icon: Icons.storefront_outlined,
-      destinationIndex: -1,
+      destinationIndex: 36,
       available:
           SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
           SessionService.canAccessFeature(UserAccessProfile.featurePos) ||
@@ -320,10 +319,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           content: Text('This feature is not available for your account.'),
         ),
       );
-      return;
-    }
-    if (action.destinationIndex == -1) {
-      StorefrontShareDialog.show(context);
       return;
     }
     AppShell.selectIndex(action.destinationIndex);
