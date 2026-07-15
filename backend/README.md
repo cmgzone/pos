@@ -55,15 +55,20 @@ PAYPAL_CLIENT_ID=your-paypal-client-id
 PAYPAL_CLIENT_SECRET=your-paypal-client-secret
 FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret-key
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
+PAYMENT_SECRETS_ENCRYPTION_KEY=replace-with-a-random-32-byte-base64-key
 SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
 RESEND_API_KEY=re_xxxxxxxxx # required only for opt-in Piki Cloud email alerts
 PIKI_CLOUD_FROM_EMAIL="Piki POS <alerts@your-domain.example>"
 ```
 
 In production, `PLATFORM_ALLOWED_ORIGINS` is required for browser CORS. Native
-mobile clients without an `Origin` header are still accepted. If you set
-`MPESA_CALLBACK_SECRET`, include it in the M-Pesa callback URL as
-`?secret=...` or send it with the `X-M-Pesa-Callback-Secret` header.
+mobile clients without an `Origin` header are still accepted.
+`MPESA_CALLBACK_SECRET` is required and must be included in the callback URL as
+`?secret=...` when registering the URL with Safaricom.
+`PAYMENT_SECRETS_ENCRYPTION_KEY` must be one stable random 32-byte key. Generate
+it once with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`,
+store it in the deployment secret manager, and back it up separately. Changing
+or losing it makes saved merchant credentials unreadable.
 
 For manual M-Pesa Till/Paybill matching, register these HTTPS URLs in Daraja
 using the same secret:
@@ -113,6 +118,7 @@ FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
 FLUTTERWAVE_SECRET_KEY=your-live-flutterwave-secret-key
 MPESA_CALLBACK_URL=https://your-api-host.example.com/api/payments/mpesa/stk-callback?secret=replace-with-a-long-random-callback-secret
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
+PAYMENT_SECRETS_ENCRYPTION_KEY=replace-with-a-random-32-byte-base64-key
 ```
 
 ### Move Existing Neon Data

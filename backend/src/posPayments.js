@@ -3,7 +3,13 @@ const crypto = require('crypto');
 const { config } = require('./config');
 const { query, withTransaction } = require('./db');
 const {
+  decryptSecretObject,
+  encryptSecretObject,
+  isEncryptedSecretObject,
+} = require('./secretVault');
+const {
   isHttpsUrl,
+  isPlausibleMpesaPasskey,
   normalizeCountryCode,
 } = require('./subscriptionPlans');
 
@@ -15,6 +21,7 @@ const MPESA_TRANSACTION_TYPES = new Set([
 
 let schemaReady = false;
 let mpesaC2BSchemaReady = false;
+let paymentGatewaySecretsMigrated = false;
 
 const MPESA_MANUAL_MATCH_WINDOW_MINUTES = 5;
 
@@ -40,6 +47,11 @@ async function ensurePosPaymentSchema(target = query) {
     )
     `,
   );
+
+  if (canUseCache && !paymentGatewaySecretsMigrated) {
+    await migratePaymentGatewaySecrets(target);
+    paymentGatewaySecretsMigrated = true;
+  }
 
   await runQuery(
     target,
@@ -93,6 +105,129 @@ async function ensurePosPaymentSchema(target = query) {
 
   if (canUseCache) {
     schemaReady = true;
+  }
+}
+
+async function migratePaymentGatewaySecrets(target = query) {
+  const encryptionKey = config.paymentSecretsEncryptionKey;
+  if (!encryptionKey) return;
+
+  const result = await runQuery(
+    target,
+    `
+    SELECT business_id, provider, secret_config_json
+    FROM business_payment_gateways
+    WHERE secret_config_json <> '{}'::jsonb
+    `,
+  );
+  for (const row of result.rows || []) {
+    const stored = parseJson(row.secret_config_json, {});
+    if (isEncryptedSecretObject(stored)) {
+      decryptPaymentGatewaySecretConfig(
+        row.business_id,
+        row.provider,
+        stored,
+      );
+      continue;
+    }
+    if (Object.keys(stored).length === 0) continue;
+
+    const encrypted = encryptPaymentGatewaySecretConfig(
+      row.business_id,
+      row.provider,
+      stored,
+    );
+    await runQuery(
+      target,
+      `
+      UPDATE business_payment_gateways
+      SET secret_config_json = $3::jsonb,
+          updated_at = NOW()
+      WHERE business_id = $1
+        AND provider = $2
+        AND secret_config_json = $4::jsonb
+      `,
+      [
+        row.business_id,
+        normalizeProvider(row.provider),
+        JSON.stringify(encrypted),
+        JSON.stringify(stored),
+      ],
+    );
+  }
+}
+
+function paymentGatewaySecretAdditionalData(businessId, provider) {
+  return `business_payment_gateways:${String(businessId || '').trim()}:${normalizeProvider(provider)}`;
+}
+
+function encryptPaymentGatewaySecretConfig(businessId, provider, value) {
+  if (
+    value &&
+    typeof value === 'object' &&
+    Object.keys(value).length > 0 &&
+    !config.paymentSecretsEncryptionKey
+  ) {
+    throw createError(
+      503,
+      'Secure payment credential storage is not configured on the server.',
+    );
+  }
+  return encryptSecretObject(value, {
+    encryptionKey: config.paymentSecretsEncryptionKey,
+    additionalData: paymentGatewaySecretAdditionalData(businessId, provider),
+  });
+}
+
+function decryptPaymentGatewaySecretConfig(businessId, provider, value) {
+  if (
+    config.nodeEnv === 'production' &&
+    !config.paymentSecretsEncryptionKey &&
+    value &&
+    typeof value === 'object' &&
+    Object.keys(value).length > 0
+  ) {
+    throw createError(
+      503,
+      'Secure payment credential storage is not configured on the server.',
+    );
+  }
+  return decryptSecretObject(value, {
+    encryptionKey: config.paymentSecretsEncryptionKey,
+    additionalData: paymentGatewaySecretAdditionalData(businessId, provider),
+  }).value;
+}
+
+async function assertMpesaShortcodeAvailable(
+  businessId,
+  gateway,
+  target = query,
+) {
+  if (!gateway?.isActive || gateway.provider !== 'mpesa') return;
+  const shortcode = normalizeText(gateway.publicConfig?.shortcode)?.replace(
+    /\s+/g,
+    '',
+  );
+  if (!shortcode) return;
+
+  const result = await runQuery(
+    target,
+    `
+    SELECT business_id
+    FROM business_payment_gateways
+    WHERE provider = 'mpesa'
+      AND is_active = true
+      AND public_config_json->>'shortcode' = $1
+      AND business_id <> $2
+    LIMIT 1
+    `,
+    [shortcode, businessId],
+  );
+  if (result.rows?.length) {
+    throw createError(
+      409,
+      'This M-Pesa Till or PayBill number is already connected to another business.',
+    );
   }
 }
 
@@ -208,6 +343,16 @@ async function saveBusinessPaymentGateway(
     provider: cleanProvider,
   });
   validateBusinessPaymentGatewayConfiguration(normalized);
+  await assertMpesaShortcodeAvailable(
+    businessId,
+    normalized,
+    target,
+  );
+  const storedSecretConfig = encryptPaymentGatewaySecretConfig(
+    businessId,
+    cleanProvider,
+    normalized.secretConfig,
+  );
 
   const result = await runQuery(
     target,
@@ -237,7 +382,7 @@ async function saveBusinessPaymentGateway(
       normalized.displayName,
       normalized.isActive,
       JSON.stringify(normalized.publicConfig),
-      JSON.stringify(normalized.secretConfig),
+      JSON.stringify(storedSecretConfig),
     ],
   );
 
@@ -307,7 +452,7 @@ async function createMpesaPosCheckout({
     { includeSecrets: true },
   );
   const paymentId = crypto.randomUUID();
-  const externalReference = `pos_${paymentId.slice(0, 12)}`;
+  const externalReference = `P${paymentId.replace(/-/g, '').slice(0, 11)}`;
   const now = new Date().toISOString();
   const payment = await withTransaction(async (client) => {
     const result = await client.query(
@@ -457,7 +602,7 @@ async function handlePosMpesaCallback({
     if (!payment) {
       return null;
     }
-    if (payment.status === 'paid' && Number(resultCode) !== 0) {
+    if (shouldIgnoreMpesaCallback(payment.status, resultCode)) {
       await client.query(
         `
         UPDATE pos_payment_requests
@@ -479,6 +624,7 @@ async function handlePosMpesaCallback({
         paymentId: payment.id,
         saleId: payment.sale_id || null,
         status: payment.status,
+        duplicate: true,
       };
     }
     const status = Number(resultCode) === 0 ? 'paid' : 'failed';
@@ -1152,6 +1298,24 @@ function validateBusinessPaymentGatewayConfiguration(gateway, infrastructure = {
   if (!isHttpsUrl(config.callbackUrl)) {
     throw createError(400, 'M-Pesa callback URL must be a valid HTTPS URL.');
   }
+  if (!/^\d{5,8}$/.test(config.shortcode)) {
+    throw createError(
+      400,
+      'M-Pesa Till or PayBill number must contain 5 to 8 digits.',
+    );
+  }
+  if (!isPlausibleMpesaPasskey(config.passkey)) {
+    throw createError(
+      400,
+      'M-Pesa passkey looks invalid. Use the Lipa na M-Pesa Online passkey for this shortcode.',
+    );
+  }
+  if (config.accountReference && config.accountReference.length > 12) {
+    throw createError(
+      400,
+      'M-Pesa account reference must be 12 characters or fewer.',
+    );
+  }
 }
 
 function normalizeMpesaTransactionType(value) {
@@ -1160,7 +1324,11 @@ function normalizeMpesaTransactionType(value) {
 }
 
 function normalizeBusinessPaymentGatewayRow(row, { includeSecrets = false } = {}) {
-  const secretConfig = parseJson(row.secret_config_json, {});
+  const secretConfig = decryptPaymentGatewaySecretConfig(
+    row.business_id,
+    row.provider,
+    parseJson(row.secret_config_json, {}),
+  );
   return {
     businessId: row.business_id,
     provider: normalizeProvider(row.provider),
@@ -1250,16 +1418,25 @@ function readMpesaReceipt(metadata) {
 
 function normalizeMpesaPhone(value) {
   const digits = String(value || '').replace(/\D/g, '');
+  let normalized = digits;
   if (digits.startsWith('254') && digits.length === 12) {
-    return digits;
+    normalized = digits;
+  } else if (digits.startsWith('0') && digits.length === 10) {
+    normalized = `254${digits.slice(1)}`;
+  } else if (digits.length === 9) {
+    normalized = `254${digits}`;
   }
-  if (digits.startsWith('0') && digits.length === 10) {
-    return `254${digits.slice(1)}`;
+  if (!/^254[17]\d{8}$/.test(normalized)) {
+    throw createError(400, 'Enter a valid Kenyan M-Pesa phone number');
   }
-  if (digits.length === 9) {
-    return `254${digits}`;
-  }
-  return digits;
+  return normalized;
+}
+
+function shouldIgnoreMpesaCallback(existingStatus, resultCode) {
+  return (
+    existingStatus === 'paid' ||
+    (existingStatus === 'failed' && Number(resultCode) !== 0)
+  );
 }
 
 function formatMpesaTimestamp(date) {
@@ -1331,6 +1508,8 @@ module.exports = {
   handlePosMpesaCallback,
   handleMpesaC2BCallback,
   matchManualPayment,
+  normalizeMpesaPhone,
+  shouldIgnoreMpesaCallback,
   resolveMpesaGatewayConfig,
   validateBusinessPaymentGatewayConfiguration,
 };

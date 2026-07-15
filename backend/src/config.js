@@ -1,5 +1,6 @@
 const path = require('path');
 const dotenv = require('dotenv');
+const { decodeEncryptionKey } = require('./secretVault');
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
@@ -110,6 +111,8 @@ const config = {
     process.env.MPESA_BASE_URL?.trim() || 'https://sandbox.safaricom.co.ke',
   mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL?.trim() || '',
   mpesaCallbackSecret: process.env.MPESA_CALLBACK_SECRET?.trim() || '',
+  paymentSecretsEncryptionKey:
+    process.env.PAYMENT_SECRETS_ENCRYPTION_KEY?.trim() || '',
   serpApiKey:
     process.env.SERPAPI_API_KEY?.trim() ||
     process.env.SERP_API_KEY?.trim() ||
@@ -206,6 +209,12 @@ config.allowedOrigins = parseOriginList(
     process.env.CORS_ALLOWED_ORIGINS ||
     process.env.APP_ALLOWED_ORIGINS,
 );
+if (config.paymentSecretsEncryptionKey) {
+  assertEncryptionKey(
+    'PAYMENT_SECRETS_ENCRYPTION_KEY',
+    config.paymentSecretsEncryptionKey,
+  );
+}
 if (config.nodeEnv !== 'production' && config.allowedOrigins.length === 0) {
   config.allowedOrigins = DEFAULT_DEV_ALLOWED_ORIGINS;
 }
@@ -263,6 +272,16 @@ function assertNonSandboxUrl(name, value) {
     throw new Error(
       `${name} must point to a production endpoint in production (found sandbox URL: ${value}). ` +
         'Set the environment variable to the live API base URL.',
+    );
+  }
+}
+
+function assertEncryptionKey(name, value) {
+  try {
+    decodeEncryptionKey(value);
+  } catch (_) {
+    throw new Error(
+      `${name} must be a 32-byte key encoded as base64 or 64 hexadecimal characters`,
     );
   }
 }

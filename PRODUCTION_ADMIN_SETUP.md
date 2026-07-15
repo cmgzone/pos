@@ -52,8 +52,9 @@ LICENSE_SIGNING_SECRET=your-long-random-license-secret-at-least-32-chars
 # CORS - Allow your admin panel domain
 PLATFORM_ALLOWED_ORIGINS=https://admin.yourdomain.com,https://app.yourdomain.com
 
-# Optional: M-Pesa Callback Security
+# Required for M-Pesa callback and merchant credential security
 MPESA_CALLBACK_SECRET=your-mpesa-callback-secret
+PAYMENT_SECRETS_ENCRYPTION_KEY=your-random-32-byte-base64-key
 ```
 
 ### Step 3: Generate Strong Secrets
@@ -424,8 +425,9 @@ LICENSE_SIGNING_SECRET=your-64-char-random-license-secret-here
 # CORS
 PLATFORM_ALLOWED_ORIGINS=https://admin.yourdomain.com,https://app.yourdomain.com
 
-# Optional
+# Required when M-Pesa is enabled
 MPESA_CALLBACK_SECRET=your-32-char-callback-secret
+PAYMENT_SECRETS_ENCRYPTION_KEY=your-random-32-byte-base64-key
 SERPAPI_API_KEY=your-serpapi-key-if-needed
 ```
 

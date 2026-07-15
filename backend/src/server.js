@@ -200,6 +200,11 @@ const publicWriteRateLimit = createRateLimiter({
   max: 30,
   keyPrefix: 'public-write',
 });
+const mpesaCheckoutRateLimit = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 12,
+  keyPrefix: 'mpesa-checkout',
+});
 
 // Serialize write transactions so revision cursors stay in commit order.
 const PUSH_LOCK_CLASS_ID = 41831;
@@ -2862,7 +2867,7 @@ app.delete('/api/wastage/:id', async (req, res, next) => {
 // Restaurant / Hospitality
 // ============================================================================
 
-app.post('/api/online-orders', async (req, res, next) => {
+app.post('/api/online-orders', publicWriteRateLimit, async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.body?.businessId || req.body?.business_id);
     if (!businessId) throw createHttpError(400, 'businessId is required.');
@@ -3050,7 +3055,7 @@ app.get('/api/customer-portal/statement', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post('/api/customer-portal/payments/mpesa', async (req, res, next) => {
+app.post('/api/customer-portal/payments/mpesa', mpesaCheckoutRateLimit, async (req, res, next) => {
   try {
     const portal = requireCustomerPortalSession(req);
     const amount = Number(req.body?.amount);
@@ -5838,7 +5843,7 @@ async function handlePosMpesaStkCallback(req, res, next) {
         resultDescription: callback.ResultDesc,
         metadata,
       });
-      if (paymentResult?.businessId) {
+      if (paymentResult?.businessId && !paymentResult.duplicate) {
         await applyCustomerPortalMpesaPayment(paymentResult);
         await applyPublicCatalogMpesaPayment(paymentResult);
         notifyBusinessRealtimeChange({
@@ -5858,6 +5863,7 @@ async function handlePosMpesaStkCallback(req, res, next) {
 app.get('/api/business/payment-gateways/:provider', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
+    requireAdmin(businessContext);
     const gateway = await loadBusinessPaymentGateway(
       businessContext.businessId,
       req.params.provider,
@@ -5872,6 +5878,7 @@ app.get('/api/business/payment-gateways/:provider', async (req, res, next) => {
 app.put('/api/business/payment-gateways/:provider', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
+    requireAdmin(businessContext);
     const gateway = await saveBusinessPaymentGateway(
       businessContext.businessId,
       req.params.provider,
@@ -5888,6 +5895,7 @@ app.post(
   async (req, res, next) => {
     try {
       const businessContext = await requireBusinessContext(req);
+      requireAdmin(businessContext);
       const gateway = await loadBusinessPaymentGateway(
         businessContext.businessId,
         req.params.provider,
@@ -5921,7 +5929,7 @@ app.post(
         ok: true,
         data: {
           success: true,
-          message: `Connected to Safaricom Daraja API in ${elapsed}ms. Token obtained successfully.`,
+          message: `Daraja credentials were accepted in ${elapsed}ms. OAuth is verified; complete a KSh 1 STK Push to verify the shortcode, passkey, and callback.`,
           gatewayActive: true,
           latencyMs: elapsed,
         },
@@ -6056,7 +6064,7 @@ app.post('/api/payments/mpesa/c2b-confirmation', async (req, res) => {
   }
 });
 
-app.post('/api/payments/mpesa/pos-checkout', async (req, res, next) => {
+app.post('/api/payments/mpesa/pos-checkout', mpesaCheckoutRateLimit, async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
     const amountMinor =
@@ -10898,6 +10906,7 @@ Promise.all([
   ensureEtimsSchema(),
   ensureLandingDemoRequestSchema(),
   ensureSyncStockEffectSchema(),
+  ensurePosPaymentSchema(),
   ensureStorefrontBrandSchema(),
   ensureStorefrontThemeSchema(query),
   ensureProductStorefrontSchema(),
@@ -16796,6 +16805,17 @@ async function applyCustomerPortalMpesaPayment(paymentResult) {
 
   await ensureSyncStockEffectSchema();
   await withTransaction(async (client) => {
+    const lockedPayment = await client.query(
+      `SELECT metadata_json
+       FROM pos_payment_requests
+       WHERE id = $1 AND business_id = $2
+       FOR UPDATE`,
+      [payment.id, payment.businessId],
+    );
+    const lockedPortalMetadata =
+      lockedPayment.rows[0]?.metadata_json?.customerPortal || {};
+    if (lockedPortalMetadata.creditedAt) return;
+
     const customerResult = await client.query(
       `SELECT id FROM customers WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
       [payment.businessId, customerId],
@@ -16852,7 +16872,7 @@ async function applyCustomerPortalMpesaPayment(paymentResult) {
         payment.id,
         JSON.stringify({
           customerPortal: {
-            ...(payment.metadata?.customerPortal || {}),
+            ...lockedPortalMetadata,
             appliedAmount,
             unappliedAmount: Math.max(0, Number(payment.amountMinor || 0) / 100 - appliedAmount),
             creditedAt: now,
