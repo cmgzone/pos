@@ -7,6 +7,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
 import '../../loyalty/data/loyalty_repository.dart';
@@ -496,7 +497,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingPoints = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             AppErrorMessage.from(e, fallback: 'Could not redeem points.'),
@@ -618,7 +620,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
 
   void _handleKopeshaCheckout() {
     if (_selectedCustomer == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         const SnackBar(
           content: Text('Please select a customer for Kopesha'),
           backgroundColor: AppColors.warning,
@@ -821,7 +824,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             AppErrorMessage.from(e, fallback: 'Gift card redemption failed.'),
@@ -860,7 +864,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   void _handleMpesaCheckout() {
     final config = _mpesaConfig;
     if (config?.active != true) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text(config?.message ?? 'M-Pesa is not active.'),
           backgroundColor: AppColors.warning,
@@ -870,7 +875,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
     }
     final phone = _mpesaPhoneController.text.trim();
     if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         const SnackBar(
           content: Text('Enter the customer M-Pesa phone number'),
           backgroundColor: AppColors.warning,
@@ -889,7 +895,8 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   void _startManualMpesaPolling() {
     final config = _mpesaConfig;
     if (config?.active != true) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text(config?.message ?? 'M-Pesa is not active.'),
           backgroundColor: AppColors.warning,

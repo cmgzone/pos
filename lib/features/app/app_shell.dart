@@ -1840,9 +1840,14 @@ class AppShellState extends ConsumerState<AppShell> {
                     hasBackDestination: _hasBackDestination,
                     onBack: _goBack,
                     onModules: () => _selectIndex(35),
+                    onNotifications: _showNotificationsSheet,
+                    notificationIcon: _buildNotificationIcon(
+                      notifications,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-          body: _buildScreenStack(moduleCurrentIndex),
+          body: _buildScreenStack(moduleCurrentIndex, notifications),
         ),
       );
     }
@@ -2005,7 +2010,7 @@ class AppShellState extends ConsumerState<AppShell> {
           Expanded(
             child: ColoredBox(
               color: theme.scaffoldBackgroundColor,
-              child: _buildScreenStack(currentIndex),
+              child: _buildScreenStack(currentIndex, notifications),
             ),
           ),
         ],
@@ -2425,7 +2430,10 @@ class AppShellState extends ConsumerState<AppShell> {
     ScaffoldMessenger.of(context).clearSnackBars();
   }
 
-  Widget _buildScreenStack(int currentIndex) {
+  Widget _buildScreenStack(
+    int currentIndex,
+    List<_AppNotification> notifications,
+  ) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       reverseDuration: const Duration(milliseconds: 110),
@@ -2445,12 +2453,12 @@ class AppShellState extends ConsumerState<AppShell> {
       },
       child: KeyedSubtree(
         key: ValueKey('shell-screen-$currentIndex'),
-        child: _buildScreen(currentIndex),
+        child: _buildScreen(currentIndex, notifications),
       ),
     );
   }
 
-  Widget _buildScreen(int index) {
+  Widget _buildScreen(int index, List<_AppNotification> notifications) {
     switch (index) {
       case 0:
         return const PosScreen(embeddedInAppShell: true);
@@ -2526,6 +2534,8 @@ class AppShellState extends ConsumerState<AppShell> {
         return _ModuleLauncherScreen(
           businessModules: _businessModules,
           onSelect: _selectIndex,
+          onNotifications: _showNotificationsSheet,
+          notificationIcon: _buildNotificationIcon(notifications),
         );
       default:
         return const PosScreen(embeddedInAppShell: true);
@@ -2693,12 +2703,16 @@ class _ModuleNavigationBar extends StatelessWidget {
   final bool hasBackDestination;
   final VoidCallback onBack;
   final VoidCallback onModules;
+  final VoidCallback onNotifications;
+  final Widget notificationIcon;
 
   const _ModuleNavigationBar({
     required this.moduleLabel,
     required this.hasBackDestination,
     required this.onBack,
     required this.onModules,
+    required this.onNotifications,
+    required this.notificationIcon,
   });
 
   @override
@@ -2760,6 +2774,11 @@ class _ModuleNavigationBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: onNotifications,
+                  icon: notificationIcon,
+                ),
                 if (constraints.maxWidth >= 430)
                   OutlinedButton.icon(
                     onPressed: onModules,
@@ -2832,10 +2851,14 @@ class _FeatureGridGroup {
 class _ModuleLauncherScreen extends StatefulWidget {
   final List<_BusinessModule> businessModules;
   final ValueChanged<int> onSelect;
+  final VoidCallback onNotifications;
+  final Widget notificationIcon;
 
   const _ModuleLauncherScreen({
     required this.businessModules,
     required this.onSelect,
+    required this.onNotifications,
+    required this.notificationIcon,
   });
 
   @override
@@ -2853,6 +2876,10 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
       vsync: this,
       duration: const Duration(milliseconds: 520),
     )..forward();
+    if (widget.businessModules.length == 1 &&
+        widget.businessModules.single.directDestinationIndex == null) {
+      _activeModuleId = widget.businessModules.single.id;
+    }
   }
 
   @override
@@ -2897,7 +2924,10 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
   @override
   void didUpdateWidget(covariant _ModuleLauncherScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_activeModuleId != null && _activeModule == null) {
+    if (widget.businessModules.length == 1 &&
+        widget.businessModules.single.directDestinationIndex == null) {
+      _activeModuleId = widget.businessModules.single.id;
+    } else if (_activeModuleId != null && _activeModule == null) {
       _activeModuleId = null;
     }
   }
@@ -2941,6 +2971,8 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                   sliver: SliverToBoxAdapter(
                     child: _ModuleLauncherRootHeader(
                       onOpenSettings: () => widget.onSelect(9),
+                      onNotifications: widget.onNotifications,
+                      notificationIcon: widget.notificationIcon,
                     ),
                   ),
                 ),
@@ -3006,32 +3038,76 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
       return _buildBusinessModuleRoot(context);
     }
     final theme = Theme.of(context);
-    final coreDestinations = activeModule.destinations
-        .where(
-          (destination) =>
-              activeModule.coreDestinationIndexes.contains(destination.index),
-        )
-        .toList(growable: false);
-    final sharedDestinations = activeModule.destinations
-        .where(
-          (destination) =>
-              !activeModule.coreDestinationIndexes.contains(destination.index),
-        )
-        .toList(growable: false);
-    final featureGroups = <_FeatureGridGroup>[
-      if (coreDestinations.isNotEmpty)
+    final remaining = {
+      for (final destination in activeModule.destinations)
+        destination.index: destination,
+    };
+    List<_NavDestination> takeDestinations(List<int> indexes) {
+      final destinations = <_NavDestination>[];
+      for (final index in indexes) {
+        final destination = remaining.remove(index);
+        if (destination != null) destinations.add(destination);
+      }
+      return destinations;
+    }
+
+    _FeatureGridGroup? group({
+      required String title,
+      required String subtitle,
+      required List<int> indexes,
+    }) {
+      final destinations = takeDestinations(indexes);
+      if (destinations.isEmpty) return null;
+      return _FeatureGridGroup(
+        title: title,
+        subtitle: subtitle,
+        destinations: destinations,
+      );
+    }
+
+    final startIndexes = switch (activeModule.id) {
+      'services' => const [11, 5, 4, 10],
+      'retail_pos' => const [0, 17, 5, 4],
+      _ => const [5],
+    };
+    final featureGroups = <_FeatureGridGroup?>[
+      group(
+        title: 'START HERE',
+        subtitle: 'The fastest path through today\'s work.',
+        indexes: startIndexes,
+      ),
+      group(
+        title: 'SELL & GET PAID',
+        subtitle: 'Sales records, documents, balances, and shifts.',
+        indexes: const [0, 11, 17, 4, 19, 20, 6, 10],
+      ),
+      group(
+        title: 'STOCK & SUPPLY',
+        subtitle: 'Products, purchasing, stock control, and fulfilment.',
+        indexes: const [1, 12, 2, 3, 15, 25, 26, 28, 32, 33],
+      ),
+      group(
+        title: 'CUSTOMERS & GROWTH',
+        subtitle: 'Customer records, retention, and marketing.',
+        indexes: const [18, 31, 27, 21, 22, 23],
+      ),
+      group(
+        title: 'INSIGHTS',
+        subtitle: 'Performance, trends, and profitability.',
+        indexes: const [8, 34, 7],
+      ),
+      group(
+        title: 'MANAGE BUSINESS',
+        subtitle: 'Team, branches, settings, controls, and Piki.',
+        indexes: const [30, 9, 13, 14, 24, 16],
+      ),
+      if (remaining.isNotEmpty)
         _FeatureGridGroup(
-          title: 'CORE FEATURES',
-          subtitle: 'Day-to-day tools for this business type.',
-          destinations: coreDestinations,
+          title: 'MORE TOOLS',
+          subtitle: 'Additional features available to your account.',
+          destinations: remaining.values.toList(growable: false),
         ),
-      if (sharedDestinations.isNotEmpty)
-        _FeatureGridGroup(
-          title: 'SHARED TOOLS',
-          subtitle: 'Inventory, insights, and management for this business.',
-          destinations: sharedDestinations,
-        ),
-    ];
+    ].whereType<_FeatureGridGroup>().toList(growable: false);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -3053,12 +3129,31 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                       offsetY: -0.08,
                       child: Row(
                         children: [
-                          IconButton(
-                            tooltip: 'Back to business modules',
-                            onPressed: _returnToBusinessModules,
-                            icon: const Icon(Icons.arrow_back_rounded),
-                          ),
-                          const SizedBox(width: 4),
+                          if (widget.businessModules.length > 1)
+                            IconButton(
+                              tooltip: 'Back to business workspaces',
+                              onPressed: _returnToBusinessModules,
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            )
+                          else
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: activeModule.accent.withValues(
+                                  alpha: 0.12,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
+                              ),
+                              child: Icon(
+                                activeModule.icon,
+                                color: activeModule.accent,
+                                size: 20,
+                              ),
+                            ),
+                          const SizedBox(width: 8),
                           const PikiMark(size: 42),
                           const SizedBox(width: 12),
                           Expanded(
@@ -3086,6 +3181,11 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                                 ),
                               ],
                             ),
+                          ),
+                          IconButton(
+                            tooltip: 'Notifications',
+                            onPressed: widget.onNotifications,
+                            icon: widget.notificationIcon,
                           ),
                           IconButton(
                             tooltip: 'Settings',
@@ -3174,8 +3274,14 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
 
 class _ModuleLauncherRootHeader extends StatelessWidget {
   final VoidCallback onOpenSettings;
+  final VoidCallback onNotifications;
+  final Widget notificationIcon;
 
-  const _ModuleLauncherRootHeader({required this.onOpenSettings});
+  const _ModuleLauncherRootHeader({
+    required this.onOpenSettings,
+    required this.onNotifications,
+    required this.notificationIcon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3210,6 +3316,11 @@ class _ModuleLauncherRootHeader extends StatelessWidget {
               ),
             ],
           ),
+        ),
+        IconButton(
+          tooltip: 'Notifications',
+          onPressed: onNotifications,
+          icon: notificationIcon,
         ),
         IconButton(
           tooltip: 'Settings',

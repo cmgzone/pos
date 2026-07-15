@@ -11,6 +11,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/stitch_kit.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../data/product_variant_color_repository.dart';
@@ -367,7 +368,8 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                         }
                       } catch (error) {
                         if (dialogContext.mounted) {
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            dialogContext,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.withContext(
@@ -518,7 +520,8 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
           return;
         }
         setDialogState(() => imageController.text = hostedUrl);
-        ScaffoldMessenger.of(dialogContext).showSnackBar(
+        AppOverlayNotice.showSnackBar(
+          dialogContext,
           const SnackBar(
             content: Text('Color photo uploaded.'),
             backgroundColor: AppColors.success,
@@ -528,7 +531,8 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
         if (!dialogContext.mounted) {
           return;
         }
-        ScaffoldMessenger.of(dialogContext).showSnackBar(
+        AppOverlayNotice.showSnackBar(
+          dialogContext,
           SnackBar(
             content: Text(
               'Saved locally. ${AppErrorMessage.from(error, fallback: 'Could not upload this image.')}',
@@ -774,7 +778,8 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
                         }
                       } catch (error) {
                         if (dialogContext.mounted) {
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            dialogContext,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.withContext(

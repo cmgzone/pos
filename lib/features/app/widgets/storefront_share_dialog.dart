@@ -6,6 +6,7 @@ import '../../../core/services/catalog_qr_poster_service.dart';
 import '../../../core/services/catalog_share_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/overlay_notice.dart';
 
 class StorefrontShareDialog extends StatefulWidget {
   const StorefrontShareDialog({super.key});
@@ -62,7 +63,8 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
   }
 
   void _showWarning(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppOverlayNotice.showSnackBar(
+      context,
       SnackBar(
         content: Text(message),
         backgroundColor: AppColors.warning,
@@ -72,7 +74,8 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
   }
 
   void _showError(Object error, String fallback) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppOverlayNotice.showSnackBar(
+      context,
       SnackBar(
         content: Text(AppErrorMessage.from(error, fallback: fallback)),
         backgroundColor: AppColors.error,
@@ -86,7 +89,8 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
     if (url == null || url.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: url));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppOverlayNotice.showSnackBar(
+      context,
       const SnackBar(
         content: Text('Store link copied'),
         behavior: SnackBarBehavior.floating,
@@ -113,7 +117,8 @@ class _StorefrontShareDialogState extends State<StorefrontShareDialog> {
       if (!mounted) return;
       await _prepare(syncBeforeShare: false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text('${info.storefrontType.label} is now the main website'),
           backgroundColor: AppColors.success,

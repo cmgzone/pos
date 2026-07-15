@@ -4,6 +4,7 @@ import 'package:pos_app/features/app/app_shell.dart';
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../training/widgets/training_anchor.dart';
 
 class BranchManagementScreen extends StatefulWidget {
@@ -131,7 +132,8 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
                         }
                       } catch (error) {
                         if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            ctx,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(
@@ -182,11 +184,13 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Branches'),
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: const Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         actions: [
@@ -219,7 +223,9 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
                   tileColor: Theme.of(context).colorScheme.surface,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                   leading: Icon(
                     isCurrent ? Icons.store_rounded : Icons.store_outlined,

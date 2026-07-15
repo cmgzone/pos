@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../gift_cards/data/gift_card_repository.dart';
 import '../../purchases/data/purchase_repository.dart';
 import '../data/customer_import_service.dart';
@@ -267,7 +268,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                   ? null
                   : () async {
                       if (nameController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppOverlayNotice.showSnackBar(
+                          context,
                           const SnackBar(
                             content: Text('Customer name is required'),
                             backgroundColor: AppColors.error,
@@ -286,7 +288,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                         if (context.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(
@@ -426,7 +429,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                   ? null
                   : () async {
                       if (nameController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppOverlayNotice.showSnackBar(
+                          context,
                           const SnackBar(
                             content: Text('Supplier name is required'),
                             backgroundColor: AppColors.error,
@@ -447,7 +451,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                         if (context.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(
@@ -644,7 +649,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                   ? null
                   : () async {
                       if (nameController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppOverlayNotice.showSnackBar(
+                          context,
                           const SnackBar(
                             content: Text('Supplier name is required'),
                             backgroundColor: AppColors.error,
@@ -664,7 +670,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                         if (context.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(

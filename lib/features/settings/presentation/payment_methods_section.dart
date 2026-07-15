@@ -6,6 +6,7 @@ import 'package:pos_app/core/services/pos_payment_service.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
 import '../../../widgets/stitch_kit.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../data/payment_method_provider.dart';
 import '../data/payment_method_repository.dart';
 
@@ -370,7 +371,8 @@ class _PaymentMethodsSectionState extends ConsumerState<PaymentMethodsSection> {
                         if (context.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import 'license_service.dart';
@@ -222,6 +224,15 @@ class StorefrontThemeCollection {
   });
 }
 
+enum StorefrontThemeChangeKind { upsert, delete }
+
+class StorefrontThemeChange {
+  final StorefrontTheme theme;
+  final StorefrontThemeChangeKind kind;
+
+  const StorefrontThemeChange({required this.theme, required this.kind});
+}
+
 class StorefrontThemeService {
   static final Dio _dio = Dio(
     BaseOptions(
@@ -230,6 +241,9 @@ class StorefrontThemeService {
       sendTimeout: const Duration(seconds: 30),
     ),
   );
+  static final StreamController<StorefrontThemeChange> _changes =
+      StreamController<StorefrontThemeChange>.broadcast(sync: true);
+  static Stream<StorefrontThemeChange> get changes => _changes.stream;
 
   static Future<StorefrontThemeCollection> list({
     required String branchId,
@@ -349,7 +363,16 @@ class StorefrontThemeService {
       queryParameters: {'deviceId': context.deviceId},
       options: Options(headers: context.headers),
     );
-    _requireOk(response);
+    final body = _requireOk(response);
+    final theme = StorefrontTheme.fromJson(
+      Map<String, dynamic>.from(body['data'] as Map? ?? const {}),
+    );
+    _changes.add(
+      StorefrontThemeChange(
+        theme: theme,
+        kind: StorefrontThemeChangeKind.delete,
+      ),
+    );
   }
 
   static Future<StorefrontTheme> _write({
@@ -376,9 +399,16 @@ class StorefrontThemeService {
       );
     }
     final body = _requireOk(response);
-    return StorefrontTheme.fromJson(
+    final theme = StorefrontTheme.fromJson(
       Map<String, dynamic>.from(body['data'] as Map? ?? const {}),
     );
+    _changes.add(
+      StorefrontThemeChange(
+        theme: theme,
+        kind: StorefrontThemeChangeKind.upsert,
+      ),
+    );
+    return theme;
   }
 
   static String _url(String path) {

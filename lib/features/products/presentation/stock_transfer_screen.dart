@@ -6,6 +6,7 @@ import '../../../core/services/branch_service.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/stock_transfer_repository.dart';
@@ -169,7 +170,8 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                         } catch (error) {
                           setDialogState(() => saving = false);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppOverlayNotice.showSnackBar(
+                              context,
                               SnackBar(
                                 content: Text(
                                   AppErrorMessage.from(
@@ -291,11 +293,13 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: !Navigator.of(context).canPop() &&
+        leading:
+            !Navigator.of(context).canPop() &&
                 MediaQuery.of(context).size.width <= 800
             ? IconButton(
                 icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
+                onPressed: () =>
+                    AppShell.scaffoldKey.currentState?.openDrawer(),
               )
             : null,
         title: Text('Stock Transfers'),
@@ -335,7 +339,9 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                       Text(
                         _loadError!,
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       SizedBox(height: 16),
                       FilledButton.icon(
@@ -351,7 +357,9 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
             ? Center(
                 child: Text(
                   'No stock transfers yet',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               )
             : ListView.separated(
@@ -373,7 +381,9 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Theme.of(context).colorScheme.outline),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -401,9 +411,7 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                                 Text(
                                   transfer['product_name'] as String? ??
                                       'Product',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.w800),
                                 ),
                                 SizedBox(height: 4),
                                 Text(
@@ -411,7 +419,9 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -423,15 +433,15 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                             children: [
                               Text(
                                 '${quantity.toStringAsFixed(2)} ${transfer['unit'] ?? ''}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w900),
                               ),
                               SizedBox(height: 4),
                               Text(
                                 status.toUpperCase(),
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
                                 ),

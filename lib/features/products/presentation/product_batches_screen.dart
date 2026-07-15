@@ -7,6 +7,7 @@ import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../data/serial_number_repository.dart';
 
 class ProductBatchesScreen extends ConsumerStatefulWidget {
@@ -412,17 +413,19 @@ class _ProductBatchesScreenState extends ConsumerState<ProductBatchesScreen> {
                           note: noteController.text,
                         );
                         if (context.mounted) {
-                          Navigator.pop(ctx, true);
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text('$count serial number(s) added'),
                               backgroundColor: AppColors.success,
                             ),
                           );
+                          Navigator.pop(ctx, true);
                         }
                       } catch (error) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(error.toString()),
                               backgroundColor: AppColors.error,

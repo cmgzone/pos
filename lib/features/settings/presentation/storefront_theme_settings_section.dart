@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/services/license_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
+import 'storefront_theme_preview.dart';
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -20,12 +23,21 @@ class _StorefrontThemeSettingsSectionState
   late String _storefrontType;
   List<StorefrontTheme> _themes = const [];
   List<StorefrontThemePreset> _presets = const [];
+  StreamSubscription<StorefrontThemeChange>? _themeChanges;
+  String? _previewThemeId;
 
   @override
   void initState() {
     super.initState();
     _storefrontType = _initialStorefrontType();
+    _themeChanges = StorefrontThemeService.changes.listen(_onThemeChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _themeChanges?.cancel();
+    super.dispose();
   }
 
   String _initialStorefrontType() {
@@ -37,11 +49,13 @@ class _StorefrontThemeSettingsSectionState
     return 'retail';
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final result = await StorefrontThemeService.list(
         branchId: _branchId,
@@ -51,13 +65,52 @@ class _StorefrontThemeSettingsSectionState
       setState(() {
         _themes = result.themes;
         _presets = result.presets;
+        final availableIds = result.themes.map((theme) => theme.id).toSet();
+        if (_previewThemeId == null ||
+            !availableIds.contains(_previewThemeId)) {
+          _previewThemeId =
+              result.themes
+                  .where((theme) => theme.isPublished)
+                  .firstOrNull
+                  ?.id ??
+              result.themes.firstOrNull?.id;
+        }
       });
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = _message(error));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && showLoading) setState(() => _loading = false);
     }
+  }
+
+  void _onThemeChanged(StorefrontThemeChange change) {
+    final theme = change.theme;
+    if (theme.branchId != _branchId ||
+        theme.storefrontType != _storefrontType ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      if (change.kind == StorefrontThemeChangeKind.delete) {
+        _themes = _themes.where((item) => item.id != theme.id).toList();
+        if (_previewThemeId == theme.id) {
+          _previewThemeId = _themes.firstOrNull?.id;
+        }
+        return;
+      }
+      _themes = [theme, ..._themes.where((item) => item.id != theme.id)];
+      if (theme.source == 'ai' || _previewThemeId == null) {
+        _previewThemeId = theme.id;
+      }
+    });
+  }
+
+  StorefrontTheme? get _previewTheme {
+    for (final theme in _themes) {
+      if (theme.id == _previewThemeId) return theme;
+    }
+    return _themes.firstOrNull;
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -68,7 +121,7 @@ class _StorefrontThemeSettingsSectionState
     });
     try {
       await action();
-      await _load();
+      await _load(showLoading: false);
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
@@ -405,6 +458,7 @@ class _StorefrontThemeSettingsSectionState
 
   @override
   Widget build(BuildContext context) {
+    final previewTheme = _previewTheme;
     final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -444,7 +498,10 @@ class _StorefrontThemeSettingsSectionState
                             if (value == null || value == _storefrontType) {
                               return;
                             }
-                            setState(() => _storefrontType = value);
+                            setState(() {
+                              _storefrontType = value;
+                              _previewThemeId = null;
+                            });
                             _load();
                           },
                   ),
@@ -472,6 +529,10 @@ class _StorefrontThemeSettingsSectionState
           ),
         ],
         const SizedBox(height: 16),
+        if (!_loading && previewTheme != null) ...[
+          StorefrontThemePreview(theme: previewTheme, isUpdating: _busy),
+          const SizedBox(height: 16),
+        ],
         if (_loading)
           const Center(
             child: Padding(
@@ -602,6 +663,19 @@ class _StorefrontThemeSettingsSectionState
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          setState(() => _previewThemeId = theme.id),
+                      icon: Icon(
+                        _previewThemeId == theme.id
+                            ? Icons.visibility_rounded
+                            : Icons.preview_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _previewThemeId == theme.id ? 'Previewing' : 'Preview',
+                      ),
+                    ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _customizeWithPiki(theme),
                       icon: const Icon(Icons.auto_awesome_rounded, size: 18),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/messaging_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/overlay_notice.dart';
 
 class CustomerMessageDialog extends StatefulWidget {
   final String customerName;
@@ -89,13 +90,15 @@ class _CustomerMessageDialogState extends State<CustomerMessageDialog> {
         );
       }
       if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(content: Text(api ? 'Message sent' : 'Message opened')),
       );
+      Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             AppErrorMessage.from(

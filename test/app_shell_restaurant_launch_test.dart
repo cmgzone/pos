@@ -71,6 +71,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
 
       expect(find.text('Floor, kitchen & bills ready'), findsOneWidget);
+      expect(find.byTooltip('Notifications'), findsOneWidget);
       expect(find.textContaining('tools ready'), findsAtLeastNWidgets(1));
 
       await tester.tap(find.text('Restaurant'));
@@ -120,6 +121,7 @@ void main() {
 
       expect(find.byIcon(Icons.menu), findsNothing);
       expect(find.byTooltip('All modules'), findsNothing);
+      expect(find.byTooltip('Notifications'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('pos-header-module-badge')),
         findsNothing,

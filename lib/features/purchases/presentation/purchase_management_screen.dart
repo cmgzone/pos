@@ -10,6 +10,7 @@ import '../../../core/utils/expiry_utils.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../widgets/compact_header_actions.dart';
 import '../../training/widgets/training_anchor.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../products/data/product_repository.dart';
 import '../data/purchase_repository.dart';
 import 'supplier_statement_screen.dart';
@@ -149,7 +150,8 @@ class _PurchaseManagementScreenState
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(
@@ -790,7 +792,8 @@ class _PurchaseManagementScreenState
                           }
                         } catch (e) {
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppOverlayNotice.showSnackBar(
+                              context,
                               SnackBar(
                                 content: Text(
                                   AppErrorMessage.from(
@@ -1516,7 +1519,8 @@ class _PurchaseManagementScreenState
                         }
                       } catch (error) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(

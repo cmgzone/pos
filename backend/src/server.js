@@ -163,6 +163,13 @@ const {
   storefrontThemePresets,
   updateStorefrontTheme,
 } = require('./storefrontThemes');
+const {
+  extractStorefrontAiContent,
+  fallbackStorefrontAiTheme,
+  isUnsupportedJsonModeResponse,
+  parseStorefrontAiThemeResponse,
+  storefrontJsonResponseFormat,
+} = require('./storefrontThemeAi');
 
 const app = express();
 const server = http.createServer(app);
@@ -8000,32 +8007,56 @@ ${JSON.stringify(currentTheme)}
 OWNER REQUEST:
 ${instruction}`;
 
-  const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${aiConfig.api_key}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://pikipos.com',
-      'X-Title': 'Piki Storefront Designer',
-    },
-    body: JSON.stringify({
-      model: aiConfig.model || 'openai/gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1800,
-      temperature: 0.25,
-    }),
-  });
-  const body = await readMaybeJson(response);
+  const baseRequest = {
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Return exactly one valid JSON object matching the requested storefront theme contract. Do not include markdown or prose.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: 1800,
+    temperature: 0.2,
+  };
+  const sendRequest = async (useJsonMode) => {
+    const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${aiConfig.api_key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://pikipos.com',
+        'X-Title': 'Piki Storefront Designer',
+      },
+      body: JSON.stringify({
+        ...baseRequest,
+        ...(useJsonMode
+          ? { response_format: storefrontJsonResponseFormat() }
+          : {}),
+      }),
+    });
+    return { response, body: await readMaybeJson(response) };
+  };
+  let requestResult = await sendRequest(true);
+  if (
+    isUnsupportedJsonModeResponse(
+      requestResult.response.status,
+      requestResult.body,
+    )
+  ) {
+    requestResult = await sendRequest(false);
+  }
+  const { response, body } = requestResult;
   if (!response.ok) {
     throw createHttpError(
       response.status === 401 ? 502 : response.status,
       body?.error?.message || body?.message || 'Piki storefront customization failed',
     );
   }
-  const parsed = parseJsonObjectFromText(extractOpenRouterTextContent(body));
-  if (!parsed || typeof parsed !== 'object') {
-    throw createHttpError(502, 'Piki did not return a valid storefront theme.');
-  }
+  const parsed =
+    parseStorefrontAiThemeResponse(extractStorefrontAiContent(body), theme) ??
+    fallbackStorefrontAiTheme(theme, instruction);
   return {
     name: limitText(parsed.name, 80) || theme.name,
     summary:

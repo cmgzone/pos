@@ -11,6 +11,7 @@ import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../data/expense_import_service.dart';
 import '../data/expense_repository.dart';
 
@@ -186,7 +187,8 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(
@@ -361,7 +363,8 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppOverlayNotice.showSnackBar(
+                            context,
                             SnackBar(
                               content: Text(
                                 AppErrorMessage.from(
@@ -610,7 +613,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? AppSpacing.lg : AppSpacing.xxl),
+              padding: EdgeInsets.all(
+                isMobile ? AppSpacing.lg : AppSpacing.xxl,
+              ),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1100),
@@ -768,7 +773,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                       style: TextStyle(
                                         color: AppColors.error,
                                         fontWeight: FontWeight.bold,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -963,7 +970,9 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
                                             style: TextStyle(
                                               color: AppColors.error,
                                               fontWeight: FontWeight.bold,
-                                              fontFeatures: const [FontFeature.tabularFigures()],
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
                                             ),
                                           ),
                                         ],
@@ -1001,7 +1010,10 @@ class _PeriodChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
           child: Text(
             label,
             style: TextStyle(
@@ -1088,7 +1100,9 @@ class _DailyExpenseReportList extends StatelessWidget {
                       .toDouble();
                   final count = ((row['expense_count'] as num?) ?? 0).toInt();
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.xs,
+                    ),
                     child: Row(
                       children: [
                         Expanded(

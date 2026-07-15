@@ -6,6 +6,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/overlay_notice.dart';
 import '../../customers/data/customer_repository.dart';
 import '../../customers/presentation/customer_account_screen.dart';
 import '../../settings/data/payment_method_provider.dart';
@@ -86,7 +87,8 @@ class _CustomerCheckoutDialogState
   Future<void> _createCustomer() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         const SnackBar(
           content: Text('Customer name is required for Kopesha'),
           backgroundColor: AppColors.error,
@@ -116,7 +118,8 @@ class _CustomerCheckoutDialogState
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppOverlayNotice.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             AppErrorMessage.withContext(
@@ -712,7 +715,8 @@ class _CustomerCheckoutDialogState
             final isKopesha =
                 _selectedPaymentMethod?['name']?.toLowerCase() == 'kopesha';
             if (isKopesha && _selectedCustomer == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppOverlayNotice.showSnackBar(
+                context,
                 const SnackBar(
                   content: Text('Customer is required for Kopesha'),
                   backgroundColor: AppColors.warning,
@@ -721,7 +725,8 @@ class _CustomerCheckoutDialogState
               return;
             }
             if (_selectedPaymentMethod == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppOverlayNotice.showSnackBar(
+                context,
                 const SnackBar(
                   content: Text('Please select a payment method'),
                   backgroundColor: AppColors.warning,
