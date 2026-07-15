@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   CustomerPortalPayment,
   CustomerPortalStatement,
@@ -125,7 +126,7 @@ export default function CustomerPortalPage() {
   return (
     <main className="min-h-screen bg-background px-4 py-10 sm:px-6">
       <div className="mx-auto w-full max-w-3xl">
-        <a href="/" className="text-sm text-muted-strong transition hover:text-foreground">← Back to shop</a>
+        <Link href="/" className="text-sm text-muted-strong transition hover:text-foreground">← Back to shop</Link>
         <div className="mt-6 rounded-2xl border border-border-subtle bg-surface p-6 shadow-2xl sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Customer self-service</p>
           <h1 className="mt-2 font-display text-4xl tracking-tight">Your account</h1>
