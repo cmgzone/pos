@@ -379,7 +379,14 @@ async function ensureBusinessStorefronts(
       `INSERT INTO storefronts
         (id, business_id, type, subdomain, is_primary, status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, 'active', $6, $6)`,
-      [id, cleanBusinessId, normalizedType, subdomain, normalizedType === 'retail', now, now],
+      [
+        id,
+        cleanBusinessId,
+        normalizedType,
+        subdomain,
+        normalizedType === 'retail',
+        now,
+      ],
     );
     created.push({
       storefrontId: id,

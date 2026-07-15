@@ -7,6 +7,7 @@ const {
   buildCatalogSubdomainCandidates,
   catalogSubdomainBase,
   ensureBusinessCatalogSubdomain,
+  ensureBusinessStorefronts,
   extractCatalogSubdomain,
   findBusinessCatalogStorefrontBySubdomain,
   findBusinessIdByCatalogSubdomain,
@@ -73,6 +74,48 @@ test('catalog storefront subdomains keep a business name and module type', () =>
     parseCatalogStorefrontSubdomain('my-shop-restaurant'),
     { businessSubdomain: 'my-shop', storefrontType: 'restaurant' },
   );
+});
+
+test('creating a module storefront binds one value per SQL placeholder', async () => {
+  let insertCall;
+  const target = async (sql, params = []) => {
+    if (
+      /ALTER TABLE|CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX|DO\s+\$\$/i.test(
+        sql,
+      )
+    ) {
+      return { rows: [] };
+    }
+    if (/SELECT id, subdomain, type\s+FROM storefronts/i.test(sql)) {
+      return { rows: [] };
+    }
+    if (/SELECT 1 FROM (businesses|storefronts)/i.test(sql)) {
+      return { rows: [] };
+    }
+    if (/INSERT INTO storefronts/i.test(sql)) {
+      insertCall = { sql, params };
+      return { rows: [] };
+    }
+    throw new Error(`Unexpected SQL in test: ${sql}`);
+  };
+
+  const storefronts = await ensureBusinessStorefronts(target, {
+    businessId: 'business-1',
+    businessSubdomain: 'my-shop',
+    types: ['retail'],
+  });
+
+  assert.equal(insertCall.params.length, 6);
+  assert.equal(
+    Math.max(
+      ...[...insertCall.sql.matchAll(/\$(\d+)/g)].map((match) =>
+        Number(match[1]),
+      ),
+    ),
+    6,
+  );
+  assert.equal(storefronts.length, 1);
+  assert.equal(storefronts[0].subdomain, 'my-shop-retail');
 });
 
 test('catalog storefront origin accepts secure shop subdomains only', () => {
