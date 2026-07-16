@@ -13,6 +13,17 @@ class StorefrontComponentSelection {
   final String? parentSelector;
   final String label;
   final String? text;
+  final String? element;
+  final String? role;
+  final String? scope;
+  final String? hierarchy;
+  final String? classes;
+  final String? attributes;
+  final String? dimensions;
+  final String? styles;
+  final String? siteBuildId;
+  final String? siteMode;
+  final String? selectedProductId;
 
   const StorefrontComponentSelection({
     required this.component,
@@ -21,6 +32,17 @@ class StorefrontComponentSelection {
     required this.parentSelector,
     required this.label,
     required this.text,
+    this.element,
+    this.role,
+    this.scope,
+    this.hierarchy,
+    this.classes,
+    this.attributes,
+    this.dimensions,
+    this.styles,
+    this.siteBuildId,
+    this.siteMode,
+    this.selectedProductId,
   });
 
   factory StorefrontComponentSelection.fromJson(Map<String, dynamic> json) {
@@ -34,8 +56,19 @@ class StorefrontComponentSelection {
       binding: optional('binding'),
       selector: optional('selector') ?? '',
       parentSelector: optional('parentSelector'),
-      label: optional('label') ?? optional('component') ?? 'Selected section',
+      label: optional('label') ?? optional('component') ?? 'Selected element',
       text: optional('text'),
+      element: optional('element'),
+      role: optional('role'),
+      scope: optional('scope'),
+      hierarchy: optional('hierarchy'),
+      classes: optional('classes'),
+      attributes: optional('attributes'),
+      dimensions: optional('dimensions'),
+      styles: optional('styles'),
+      siteBuildId: optional('siteBuildId'),
+      siteMode: optional('siteMode'),
+      selectedProductId: optional('selectedProductId'),
     );
   }
 
@@ -46,6 +79,17 @@ class StorefrontComponentSelection {
     if (parentSelector != null) 'parentSelector': parentSelector,
     'label': label,
     if (text != null) 'text': text,
+    if (element != null) 'element': element,
+    if (role != null) 'role': role,
+    if (scope != null) 'scope': scope,
+    if (hierarchy != null) 'hierarchy': hierarchy,
+    if (classes != null) 'classes': classes,
+    if (attributes != null) 'attributes': attributes,
+    if (dimensions != null) 'dimensions': dimensions,
+    if (styles != null) 'styles': styles,
+    if (siteBuildId != null) 'siteBuildId': siteBuildId,
+    if (siteMode != null) 'siteMode': siteMode,
+    if (selectedProductId != null) 'selectedProductId': selectedProductId,
   };
 }
 
@@ -90,6 +134,7 @@ class _StorefrontInAppPreviewDialogState
   bool _initializing = true;
   bool _loading = true;
   bool _inspectorReady = false;
+  bool _inspecting = true;
   String? _error;
 
   Uri get _loadUri => widget.enablePointAndEdit
@@ -119,6 +164,10 @@ class _StorefrontInAppPreviewDialogState
         _controller.loadingState.listen((state) {
           if (!mounted) return;
           setState(() => _loading = state == LoadingState.loading);
+          if (state == LoadingState.navigationCompleted &&
+              widget.enablePointAndEdit) {
+            unawaited(_sendInspectorMode());
+          }
         }),
       );
       await _controller.loadUrl(_loadUri.toString());
@@ -155,6 +204,30 @@ class _StorefrontInAppPreviewDialogState
     );
     if (!mounted) return;
     setState(() => _selection = selected);
+  }
+
+  Future<void> _sendInspectorMode() async {
+    if (!_controller.value.isInitialized) return;
+    try {
+      await _controller.postWebMessage(
+        jsonEncode({
+          'channel': 'piki-storefront-studio',
+          'type': 'set-inspector-mode',
+          'enabled': _inspecting,
+        }),
+      );
+    } catch (_) {
+      // The page may still be replacing its document during navigation.
+    }
+  }
+
+  Future<void> _setInspecting(bool value) async {
+    if (_inspecting == value) return;
+    setState(() {
+      _inspecting = value;
+      if (!value) _inspectorReady = false;
+    });
+    await _sendInspectorMode();
   }
 
   double? _viewportWidth(double availableWidth) {
@@ -362,155 +435,234 @@ class _StorefrontInAppPreviewDialogState
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: colors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        color: colors.primary,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.auto_awesome_rounded,
-                      color: colors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Point & edit with Piki',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _inspectorReady
-                              ? 'Inspector connected · click a website section'
-                              : 'Connecting to the website inspector…',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: selected == null
-                    ? Container(
-                        key: const ValueKey('empty'),
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceContainerLowest,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: colors.outlineVariant),
-                        ),
-                        child: const Column(
-                          children: [
-                            Icon(Icons.ads_click_rounded, size: 30),
-                            SizedBox(height: 10),
-                            Text(
-                              'Select the exact component you want Piki to change.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Container(
-                        key: ValueKey(selected.selector),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colors.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: colors.primary.withValues(alpha: 0.35),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Point & edit with Piki',
+                            style: TextStyle(fontWeight: FontWeight.w900),
                           ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle_rounded,
-                                  size: 18,
-                                  color: colors.primary,
+                          const SizedBox(height: 2),
+                          Text(
+                            !_inspecting
+                                ? 'Browse mode · links and checkout work normally'
+                                : _inspectorReady
+                                ? 'Inspector connected · select any visible element'
+                                : 'Connecting to the website inspector…',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment<bool>(
+                      value: true,
+                      icon: Icon(Icons.ads_click_rounded, size: 17),
+                      label: Text('Inspect'),
+                    ),
+                    ButtonSegment<bool>(
+                      value: false,
+                      icon: Icon(Icons.open_in_browser_rounded, size: 17),
+                      label: Text('Browse'),
+                    ),
+                  ],
+                  selected: {_inspecting},
+                  onSelectionChanged: (value) => _setInspecting(value.first),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _inspecting
+                      ? 'Inspect headings, images, buttons, cards, navigation, forms, or complete sections.'
+                      : 'Open the cart, checkout, account, or another page. Switch back to Inspect when the target is visible.',
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: selected == null
+                      ? Container(
+                          key: const ValueKey('empty'),
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceContainerLowest,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: colors.outlineVariant),
+                          ),
+                          child: const Column(
+                            children: [
+                              Icon(Icons.ads_click_rounded, size: 30),
+                              SizedBox(height: 10),
+                              Text(
+                                'Select the exact element you want Piki to change.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Container(
+                          key: ValueKey(selected.selector),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: colors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: colors.primary.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 18,
+                                    color: colors.primary,
+                                  ),
+                                  const SizedBox(width: 7),
+                                  const Text(
+                                    'Selected element',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                selected.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
                                 ),
-                                const SizedBox(width: 7),
-                                const Text(
-                                  'Selected component',
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                selected.binding == null
+                                    ? selected.component
+                                    : 'Live ${selected.binding} binding',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              if (selected.scope != null ||
+                                  selected.dimensions != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  [
+                                    if (selected.scope != null)
+                                      'Inside ${selected.scope}',
+                                    if (selected.dimensions != null)
+                                      selected.dimensions!,
+                                  ].join(' · '),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
+                                    color: colors.onSurfaceVariant,
+                                    fontSize: 10,
                                   ),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              selected.label,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              selected.binding == null
-                                  ? selected.component
-                                  : 'Live ${selected.binding} binding',
-                              style: TextStyle(
-                                color: colors.onSurfaceVariant,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-              ),
-              const SizedBox(height: 18),
-              TextField(
-                controller: _instruction,
-                enabled: selected != null,
-                minLines: 5,
-                maxLines: 9,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Tell Piki what to change',
-                  alignLabelWithHint: true,
-                  hintText:
-                      'Example: Move this section above the hero, use a two-column layout, and make its heading more elegant on mobile.',
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Piki receives the selected component path and the current site code. Unrelated sections are preserved.',
-                style: TextStyle(
-                  color: colors.onSurfaceVariant,
-                  fontSize: 11,
-                  height: 1.4,
+                const SizedBox(height: 18),
+                if (selected != null) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children:
+                        [
+                              'Change this style',
+                              'Move this element',
+                              'Improve mobile layout',
+                              'Rewrite this text',
+                            ]
+                            .map(
+                              (prompt) => ActionChip(
+                                label: Text(prompt),
+                                onPressed: () {
+                                  _instruction.text = prompt;
+                                  _instruction.selection =
+                                      TextSelection.collapsed(
+                                        offset: _instruction.text.length,
+                                      );
+                                  setState(() {});
+                                },
+                              ),
+                            )
+                            .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: _instruction,
+                  enabled: selected != null,
+                  minLines: 5,
+                  maxLines: 9,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Tell Piki what to change',
+                    alignLabelWithHint: true,
+                    hintText:
+                        'Example: Move this card above the hero, use two columns, and make its heading more elegant on mobile.',
+                  ),
                 ),
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed:
-                    selected != null && _instruction.text.trim().length >= 4
-                    ? _submit
-                    : null,
-                icon: const Icon(Icons.auto_fix_high_rounded),
-                label: const Text('Edit selected section'),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Text(
+                  'Piki receives this element path, layout context, computed style, and current site build. Unrelated elements are preserved.',
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed:
+                      selected != null && _instruction.text.trim().length >= 4
+                      ? _submit
+                      : null,
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('Edit selected element'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

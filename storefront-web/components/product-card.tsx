@@ -85,11 +85,18 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
   return (
     <StaggerItem>
-      <div className="theme-product-card group flex h-full flex-col overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface shadow-[0_18px_50px_-34px_rgba(0,0,0,0.85)] transition duration-300 hover:-translate-y-1 hover:border-border-strong hover:shadow-[0_24px_60px_-30px_rgba(0,0,0,0.9)]">
+      <div
+        className="theme-product-card group flex h-full flex-col overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface shadow-[0_18px_50px_-34px_rgba(0,0,0,0.85)] transition duration-300 hover:-translate-y-1 hover:border-border-strong hover:shadow-[0_24px_60px_-30px_rgba(0,0,0,0.9)]"
+        data-piki-component="product-card"
+        data-piki-label={item.name}
+        data-product-id={item.id}
+      >
         <button
           type="button"
           onClick={openDetails}
           className="theme-product-image relative aspect-[4/5] overflow-hidden bg-surface-elevated text-left"
+          data-piki-component="product-image"
+          data-piki-label={`${item.name} image`}
         >
           {hasImage ? (
             <img
@@ -149,6 +156,8 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             type="button"
             onClick={openDetails}
             className="text-left"
+            data-piki-component="product-title"
+            data-piki-label={item.name}
           >
             <h3 className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground sm:text-[15px]">
               {item.name}
@@ -184,6 +193,9 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
             onClick={handleAdd}
             disabled={isOutOfStock || (isExternal && !item.externalCheckoutUrl)}
             className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-accent hover:bg-accent hover:text-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border-subtle disabled:hover:bg-surface-elevated disabled:hover:text-foreground"
+            data-piki-component="product-action"
+            data-piki-action={isExternal ? "external-product" : "add-product"}
+            data-product-id={item.id}
           >
             <motion.span
               key={added ? "check" : "plus"}

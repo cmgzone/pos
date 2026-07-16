@@ -44,6 +44,18 @@ test('site compiler creates a complete safe starter from live business context',
   assert.equal(compiled.slots.includes('piki-cover'), true);
 });
 
+test('site compiler creates a recoverable one-product starter', () => {
+  const compiled = defaultStorefrontSitePackage({
+    businessName: 'Piki Launch',
+    singleProductId: 'product-1',
+  });
+  assert.match(compiled.name, /Piki Launch/);
+  assert.match(compiled.html, /piki-single-product/);
+  assert.equal(compiled.singleProductId, 'product-1');
+  assert.equal(compiled.slots.includes('piki-products'), false);
+  assert.equal(compiled.pageSlots.includes('piki-page-content'), true);
+});
+
 test('site compiler rejects executable, document-level, form, and network code', async (t) => {
   const unsafePackages = [
     ['script', '<script>alert(1)</script>', '.shop{}'],

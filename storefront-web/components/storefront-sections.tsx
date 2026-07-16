@@ -1,5 +1,6 @@
 "use client";
 
+import { createElement } from "react";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import {
   ArrowRight,
@@ -535,7 +536,7 @@ function SectionHeading({ section }: { section: StorefrontSection }) {
     <div className="max-w-2xl">
       {Icon && (
         <span className="theme-section-icon mb-4 inline-flex h-10 w-10 items-center justify-center text-accent">
-          <Icon className="h-5 w-5" />
+          {createElement(Icon, { className: "h-5 w-5" })}
         </span>
       )}
       {section.eyebrow && (

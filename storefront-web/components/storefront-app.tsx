@@ -43,6 +43,253 @@ import type {
 
 const APPEARANCE_STORAGE_KEY = "piki-storefront-appearance";
 
+const INSPECTOR_INTERACTIVE_SELECTOR = [
+  "button",
+  "a[href]",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  '[role="button"]',
+  '[role="link"]',
+  '[role="navigation"]',
+].join(",");
+
+const INSPECTOR_CONTENT_SELECTOR = [
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "p",
+  "img",
+  "picture",
+  "svg",
+  "li",
+  "blockquote",
+  "figcaption",
+  "article",
+  "nav",
+  "aside",
+  "section",
+  "header",
+  "footer",
+  "main",
+  "[data-piki-inspectable]",
+  "[data-piki-component]",
+  ".theme-product-card",
+].join(",");
+
+function inspectorElementFor(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
+  if (target.closest("[data-piki-inspector-ignore]")) return null;
+  const interactive = target.closest<HTMLElement>(INSPECTOR_INTERACTIVE_SELECTOR);
+  const element =
+    interactive || target.closest<HTMLElement>(INSPECTOR_CONTENT_SELECTOR);
+  if (
+    !element ||
+    element === document.body ||
+    element === document.documentElement ||
+    element.tagName === "IFRAME"
+  ) {
+    return null;
+  }
+  return element;
+}
+
+function compactElementLabel(element: HTMLElement): string {
+  const direct =
+    element.dataset.pikiLabel ||
+    element.getAttribute("aria-label") ||
+    element.getAttribute("alt") ||
+    element.getAttribute("placeholder") ||
+    element.getAttribute("title");
+  if (direct?.trim()) return direct.trim().slice(0, 160);
+  const ownText = element.textContent?.replace(/\s+/g, " ").trim();
+  if (ownText) return ownText.slice(0, 160);
+  return inspectorComponentName(element).replaceAll("-", " ");
+}
+
+function inspectorComponentName(element: HTMLElement): string {
+  if (element.dataset.pikiComponent) return element.dataset.pikiComponent;
+  if (element.classList.contains("theme-product-card")) return "product-card";
+  const tag = element.tagName.toLowerCase();
+  if (/^h[1-6]$/.test(tag)) return "heading";
+  if (tag === "p" || tag === "blockquote" || tag === "figcaption") {
+    return "text";
+  }
+  if (tag === "img" || tag === "picture") return "image";
+  if (tag === "svg") return "icon";
+  if (tag === "a") return "link";
+  if (tag === "button" || element.getAttribute("role") === "button") {
+    return element.dataset.pikiAction || "button";
+  }
+  if (["input", "select", "textarea"].includes(tag)) return "form-control";
+  if (tag === "li") return "list-item";
+  return tag;
+}
+
+function inspectorSelectorFor(element: HTMLElement): string {
+  if (element.dataset.pikiSectionId) {
+    return `[data-piki-section-id="${CSS.escape(element.dataset.pikiSectionId)}"]`;
+  }
+  if (element.id) return `#${CSS.escape(element.id)}`;
+  const parts: string[] = [];
+  let current: HTMLElement | null = element;
+  while (current && current !== document.body && parts.length < 7) {
+    let part = current.tagName.toLowerCase();
+    const stableClasses = Array.from(current.classList)
+      .filter(
+        (name) =>
+          !name.startsWith("piki-inspect") &&
+          !name.includes(":") &&
+          !name.includes("[") &&
+          !name.includes("/") &&
+          name.length < 70,
+      )
+      .slice(0, 2);
+    if (current.dataset.pikiComponent) {
+      part += `[data-piki-component="${CSS.escape(
+        current.dataset.pikiComponent,
+      )}"]`;
+    } else if (stableClasses.length) {
+      part += `.${stableClasses.map((name) => CSS.escape(name)).join(".")}`;
+    }
+    const siblings = current.parentElement
+      ? Array.from(current.parentElement.children).filter(
+          (item) => item.tagName === current?.tagName,
+        )
+      : [];
+    if (siblings.length > 1) {
+      part += `:nth-of-type(${siblings.indexOf(current) + 1})`;
+    }
+    parts.unshift(part);
+    const candidate = parts.join(" > ");
+    try {
+      if (document.querySelectorAll(candidate).length === 1) return candidate;
+    } catch {
+      // Continue building a conservative selector from stable DOM details.
+    }
+    current = current.parentElement;
+  }
+  return parts.join(" > ");
+}
+
+function describeInspectorElement(element: HTMLElement): PikiComponentSelection {
+  const scopeElement = element.closest<HTMLElement>(
+    "[data-piki-component], [data-piki-section-id], .storefront-section, article, nav, aside, header, footer, main, section",
+  );
+  const bindingElement = element.closest<HTMLElement>(
+    "[data-piki-binding], [data-piki-section-id]",
+  );
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  const hierarchy = Array.from(
+    (function* () {
+      let current: HTMLElement | null = element;
+      let depth = 0;
+      while (current && current !== document.body && depth < 6) {
+        yield `${inspectorComponentName(current)}:${compactElementLabel(current)}`;
+        current = current.parentElement;
+        depth += 1;
+      }
+    })(),
+  )
+    .reverse()
+    .join(" > ")
+    .slice(0, 700);
+  return {
+    component: inspectorComponentName(element),
+    binding:
+      bindingElement?.dataset.pikiBinding ||
+      bindingElement?.dataset.pikiSectionId,
+    selector: inspectorSelectorFor(element),
+    parentSelector: element.parentElement
+      ? inspectorSelectorFor(element.parentElement)
+      : undefined,
+    label: compactElementLabel(element),
+    text: element.textContent?.replace(/\s+/g, " ").trim().slice(0, 500),
+    element: element.tagName.toLowerCase(),
+    role: element.getAttribute("role") || undefined,
+    scope: scopeElement
+      ? `${inspectorComponentName(scopeElement)}:${compactElementLabel(scopeElement)}`.slice(
+          0,
+          220,
+        )
+      : undefined,
+    hierarchy,
+    classes: Array.from(element.classList).slice(0, 8).join(" ").slice(0, 500),
+    attributes: [
+      element.dataset.pikiAction
+        ? `action=${element.dataset.pikiAction}`
+        : "",
+      element.dataset.productId
+        ? `productId=${element.dataset.productId}`
+        : "",
+      element.dataset.pikiSectionId
+        ? `sectionId=${element.dataset.pikiSectionId}`
+        : "",
+      element.getAttribute("type")
+        ? `type=${element.getAttribute("type")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("; "),
+    dimensions: `${Math.round(rect.width)} × ${Math.round(rect.height)} px`,
+    styles: [
+      `display:${style.display}`,
+      `position:${style.position}`,
+      `font-size:${style.fontSize}`,
+      `font-weight:${style.fontWeight}`,
+      `text-align:${style.textAlign}`,
+      `color:${style.color}`,
+      `background:${style.backgroundColor}`,
+      style.gap !== "normal" ? `gap:${style.gap}` : "",
+      style.gridTemplateColumns !== "none"
+        ? `grid-columns:${style.gridTemplateColumns}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("; ")
+      .slice(0, 700),
+  };
+}
+
+function createInspectorOverlay() {
+  const box = document.createElement("div");
+  box.className = "piki-inspector-box";
+  box.dataset.pikiInspectorIgnore = "true";
+  const badge = document.createElement("div");
+  badge.className = "piki-inspector-badge";
+  box.appendChild(badge);
+  document.body.appendChild(box);
+  return { box, badge };
+}
+
+function drawInspectorOverlay(
+  overlay: ReturnType<typeof createInspectorOverlay>,
+  element: HTMLElement | null,
+  selected = false,
+) {
+  if (!element || !element.isConnected) {
+    overlay.box.hidden = true;
+    return;
+  }
+  const rect = element.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) {
+    overlay.box.hidden = true;
+    return;
+  }
+  overlay.box.hidden = false;
+  overlay.box.dataset.selected = String(selected);
+  overlay.box.style.left = `${Math.max(0, rect.left)}px`;
+  overlay.box.style.top = `${Math.max(0, rect.top)}px`;
+  overlay.box.style.width = `${Math.min(rect.width, window.innerWidth - Math.max(0, rect.left))}px`;
+  overlay.box.style.height = `${Math.min(rect.height, window.innerHeight - Math.max(0, rect.top))}px`;
+  overlay.badge.textContent = `${inspectorComponentName(element).replaceAll("-", " ")} · ${compactElementLabel(element)}`;
+}
+
 function StorefrontInner() {
   const {
     catalog,
@@ -66,6 +313,31 @@ function StorefrontInner() {
     );
   }, []);
 
+  useEffect(() => {
+    const host = window.chrome?.webview;
+    if (!host?.addEventListener) return;
+    const onHostMessage = (event: MessageEvent) => {
+      let data = event.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
+        }
+      }
+      if (
+        !data ||
+        data.channel !== "piki-storefront-studio" ||
+        data.type !== "set-inspector-mode"
+      ) {
+        return;
+      }
+      setInspectMode(data.enabled !== false);
+    };
+    host.addEventListener("message", onHostMessage);
+    return () => host.removeEventListener?.("message", onHostMessage);
+  }, []);
+
   const handlePikiComponentSelected = useCallback(
     (selection: PikiComponentSelection) => {
       window.chrome?.webview?.postMessage(JSON.stringify({
@@ -78,34 +350,32 @@ function StorefrontInner() {
   );
 
   useEffect(() => {
-    if (!inspectMode || !catalog || catalog.siteBuild) return;
+    if (!inspectMode || !catalog) return;
     const root = document.documentElement;
     root.classList.add("piki-inspect-mode");
-    const componentFor = (target: EventTarget | null) =>
-      target instanceof Element
-        ? target.closest<HTMLElement>(
-            "[data-piki-component], .storefront-section, header, footer",
-          )
-        : null;
-    const selectorFor = (element: HTMLElement) => {
-      if (element.dataset.pikiSectionId) {
-        return `[data-piki-section-id="${element.dataset.pikiSectionId}"]`;
-      }
-      if (element.dataset.pikiComponent) {
-        return `[data-piki-component="${element.dataset.pikiComponent}"]`;
-      }
-      return element.tagName.toLowerCase();
-    };
+    const overlay = createInspectorOverlay();
+    let hoveredElement: HTMLElement | null = null;
+    let selectedElement: HTMLElement | null = null;
     const onPointerOver = (event: PointerEvent) => {
-      const element = componentFor(event.target);
-      if (element) element.dataset.pikiInspectHover = "true";
+      const element = inspectorElementFor(event.target);
+      if (!element) return;
+      if (hoveredElement && hoveredElement !== element) {
+        delete hoveredElement.dataset.pikiInspectHover;
+      }
+      hoveredElement = element;
+      element.dataset.pikiInspectHover = "true";
+      drawInspectorOverlay(overlay, element, element === selectedElement);
     };
     const onPointerOut = (event: PointerEvent) => {
-      const element = componentFor(event.target);
-      if (element) delete element.dataset.pikiInspectHover;
+      const element = inspectorElementFor(event.target);
+      if (element && element !== selectedElement) {
+        delete element.dataset.pikiInspectHover;
+      }
+      if (hoveredElement === element) hoveredElement = null;
+      drawInspectorOverlay(overlay, selectedElement, true);
     };
     const onClick = (event: MouseEvent) => {
-      const element = componentFor(event.target);
+      const element = inspectorElementFor(event.target);
       if (!element) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -113,36 +383,41 @@ function StorefrontInner() {
         .querySelectorAll<HTMLElement>("[data-piki-inspect-selected]")
         .forEach((item) => delete item.dataset.pikiInspectSelected);
       element.dataset.pikiInspectSelected = "true";
-      const heading = element.querySelector("h1,h2,h3,[aria-label]");
-      handlePikiComponentSelected({
-        component:
-          element.dataset.pikiComponent ||
-          element.dataset.pikiSectionType ||
-          element.tagName.toLowerCase(),
-        binding: element.dataset.pikiSectionId,
-        selector: selectorFor(element),
-        parentSelector: element.parentElement
-          ? selectorFor(element.parentElement)
-          : undefined,
-        label:
-          element.dataset.pikiLabel ||
-          heading?.textContent?.trim() ||
-          "Selected website section",
-        text: element.textContent?.replace(/\s+/g, " ").trim().slice(0, 500),
-      });
+      selectedElement = element;
+      drawInspectorOverlay(overlay, element, true);
+      handlePikiComponentSelected(describeInspectorElement(element));
     };
+    const redraw = () =>
+      drawInspectorOverlay(
+        overlay,
+        hoveredElement || selectedElement,
+        !hoveredElement || hoveredElement === selectedElement,
+      );
     document.addEventListener("pointerover", onPointerOver, true);
     document.addEventListener("pointerout", onPointerOut, true);
     document.addEventListener("click", onClick, true);
+    window.addEventListener("scroll", redraw, true);
+    window.addEventListener("resize", redraw);
     window.chrome?.webview?.postMessage(JSON.stringify({
       channel: "piki-storefront-studio",
       type: "inspector-ready",
     }));
     return () => {
       root.classList.remove("piki-inspect-mode");
+      overlay.box.remove();
+      document
+        .querySelectorAll<HTMLElement>(
+          "[data-piki-inspect-hover], [data-piki-inspect-selected]",
+        )
+        .forEach((item) => {
+          delete item.dataset.pikiInspectHover;
+          delete item.dataset.pikiInspectSelected;
+        });
       document.removeEventListener("pointerover", onPointerOver, true);
       document.removeEventListener("pointerout", onPointerOut, true);
       document.removeEventListener("click", onClick, true);
+      window.removeEventListener("scroll", redraw, true);
+      window.removeEventListener("resize", redraw);
     };
   }, [catalog, handlePikiComponentSelected, inspectMode]);
 
@@ -327,7 +602,10 @@ function StorefrontInner() {
   return (
     <>
       {catalog?.preview && (
-        <div className="sticky top-0 z-[80] border-b border-amber-300/30 bg-amber-300 px-4 py-2 text-center text-[12px] font-bold text-black shadow-sm">
+        <div
+          data-piki-inspector-ignore
+          className="sticky top-0 z-[80] border-b border-amber-300/30 bg-amber-300 px-4 py-2 text-center text-[12px] font-bold text-black shadow-sm"
+        >
           Draft website preview · Updates automatically · Customers cannot see
           this website until you publish
         </div>
@@ -355,10 +633,13 @@ function StorefrontInner() {
           pages={catalog?.pages || []}
         />
       )}
-      {inspectMode && usesGeneratedSite && (
-        <div className="sticky top-0 z-[90] flex items-center justify-center gap-2 border-b border-rose-300 bg-rose-50 px-4 py-2 text-center text-[12px] font-bold text-rose-900 shadow-sm">
+      {inspectMode && (
+        <div
+          data-piki-inspector-ignore
+          className="sticky top-0 z-[90] flex items-center justify-center gap-2 border-b border-rose-300 bg-rose-50 px-4 py-2 text-center text-[12px] font-bold text-rose-900 shadow-sm"
+        >
           <span aria-hidden="true">✦</span>
-          Select a visible section, then tell Piki what to change in the editor
+          Select any visible element, then tell Piki exactly what to change
         </div>
       )}
 

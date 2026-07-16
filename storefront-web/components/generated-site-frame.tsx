@@ -54,6 +54,9 @@ const PLATFORM_BINDING_CSS = `
 .piki-binding-missing { padding:64px 24px; border:1px dashed var(--piki-binding-line,rgba(127,127,127,.25)); border-radius:20px; text-align:center; }
 .piki-inspect-mode [data-piki-inspect-hover="true"] { outline:3px solid #f04b5a !important; outline-offset:4px; cursor:crosshair !important; }
 .piki-inspect-mode [data-piki-inspect-selected="true"] { outline:4px solid #d14343 !important; outline-offset:5px; box-shadow:0 0 0 9px rgba(209,67,67,.14) !important; }
+.piki-inspector-box { position:fixed; z-index:2147483646; pointer-events:none; border:2px solid #f04b5a; border-radius:4px; box-shadow:0 0 0 3px rgba(240,75,90,.16); }
+.piki-inspector-box[data-selected="true"] { border-width:3px; border-color:#d14343; box-shadow:0 0 0 5px rgba(209,67,67,.18); }
+.piki-inspector-badge { position:absolute; left:-2px; top:0; max-width:min(360px,90vw); transform:translateY(calc(-100% - 7px)); overflow:hidden; padding:5px 8px; border-radius:6px; background:#17171a; color:#fff; font:700 11px/1.25 Inter,system-ui,sans-serif; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 5px 18px rgba(0,0,0,.28); }
 @media (max-width:820px) { .piki-binding-single-product { grid-template-columns:1fr; } .piki-binding-single-info { position:static; } }
 .piki-binding-page { min-height:70vh; }
 .piki-binding-page-heading { padding:clamp(64px,9vw,130px) clamp(20px,8vw,120px); background:var(--piki-binding-surface,rgba(127,127,127,.08)); }
@@ -121,7 +124,12 @@ export function GeneratedSiteFrame({
         return;
       }
       if (data.type === "section-selected" && data.selection) {
-        onComponentSelected?.(data.selection as PikiComponentSelection);
+        onComponentSelected?.({
+          ...(data.selection as PikiComponentSelection),
+          siteBuildId: build.id,
+          siteMode: build.singleProductId ? "single_product" : "catalog",
+          selectedProductId: build.singleProductId || undefined,
+        });
         return;
       }
       if (data.type === "open-cart") {
@@ -158,7 +166,17 @@ export function GeneratedSiteFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [addToCart, catalog.business.whatsappNumber, catalog.products, onComponentSelected, onTrackOrder, scope, setIsCartOpen]);
+  }, [
+    addToCart,
+    build.id,
+    build.singleProductId,
+    catalog.business.whatsappNumber,
+    catalog.products,
+    onComponentSelected,
+    onTrackOrder,
+    scope,
+    setIsCartOpen,
+  ]);
 
   return (
     <>
@@ -195,6 +213,17 @@ export interface PikiComponentSelection {
   parentSelector?: string;
   label: string;
   text?: string;
+  element?: string;
+  role?: string;
+  scope?: string;
+  hierarchy?: string;
+  classes?: string;
+  attributes?: string;
+  dimensions?: string;
+  styles?: string;
+  siteBuildId?: string;
+  siteMode?: "catalog" | "single_product";
+  selectedProductId?: string;
 }
 
 function buildSiteDocument(
@@ -243,33 +272,79 @@ function buildSiteDocument(
       });
       document.querySelectorAll('[data-piki-category]').forEach((button)=>button.setAttribute('aria-current',String(button.dataset.pikiCategory===category)));
     };
-    const componentFor=(target)=>target.closest('[data-piki-component],section,header,footer,aside,nav,main,article');
+    const interactiveSelector='button,a,input,select,textarea,label,[role="button"],[role="link"],[role="tab"],[role="menuitem"]';
+    const contentSelector='h1,h2,h3,h4,h5,h6,p,img,picture,figure,figcaption,blockquote,li,article,nav,aside,section,header,footer,main,[data-piki-component],[data-piki-binding]';
+    const componentFor=(target)=>{
+      if(!(target instanceof Element)||target.closest('[data-piki-inspector-ignore]'))return null;
+      return target.closest(interactiveSelector)||target.closest(contentSelector)||target.closest('div,span');
+    };
     const selectorFor=(element)=>{
       if(!element)return '';
       const parts=[]; let current=element;
       while(current&&current!==document.body&&parts.length<6){
         let part=current.tagName.toLowerCase();
-        if(current.id)part+='#'+current.id.replace(/[^a-z0-9_-]/gi,'');
+        if(current.id)part+='#'+CSS.escape(current.id);
         else {
           const classes=Array.from(current.classList).filter((name)=>!name.startsWith('piki-inspect')).slice(0,2);
-          if(classes.length)part+='.'+classes.join('.');
+          if(classes.length)part+='.'+classes.map((name)=>CSS.escape(name)).join('.');
           const siblings=current.parentElement?Array.from(current.parentElement.children).filter((item)=>item.tagName===current.tagName):[];
           if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(current)+1)+')';
         }
-        parts.unshift(part); current=current.parentElement;
+        parts.unshift(part);
+        const candidate=parts.join(' > ');
+        try{if(document.querySelectorAll(candidate).length===1)return candidate;}catch(_error){}
+        current=current.parentElement;
       }
       return parts.join(' > ');
     };
+    const componentName=(element)=>{
+      const explicit=element.dataset.pikiComponent||element.dataset.pikiBinding;
+      if(explicit)return explicit;
+      if(element.matches('h1,h2,h3,h4,h5,h6'))return 'heading';
+      if(element.matches('p,blockquote,figcaption'))return 'text';
+      if(element.matches('img,picture,figure'))return 'image';
+      if(element.matches('button,[role="button"]'))return 'button';
+      if(element.matches('a,[role="link"]'))return 'link';
+      if(element.matches('input,select,textarea'))return 'form-control';
+      return element.tagName.toLowerCase();
+    };
+    const compactLabel=(element)=>{
+      const ownText=Array.from(element.childNodes).filter((node)=>node.nodeType===Node.TEXT_NODE).map((node)=>node.textContent||'').join(' ').replace(/\\s+/g,' ').trim();
+      const labelled=element.dataset.pikiLabel||element.getAttribute('aria-label')||element.getAttribute('alt')||element.getAttribute('title')||element.getAttribute('placeholder')||ownText;
+      const heading=element.querySelector('h1,h2,h3,[aria-label]');
+      return String(labelled||heading?.textContent?.trim()||componentName(element)).slice(0,160);
+    };
     const describe=(element)=>{
       const binding=element.dataset.pikiBinding||'';
-      const heading=element.querySelector('h1,h2,h3,[aria-label]');
-      const label=element.dataset.pikiLabel||heading?.textContent?.trim()||element.getAttribute('aria-label')||binding||element.tagName.toLowerCase();
-      return {component:element.dataset.pikiComponent||binding||element.tagName.toLowerCase(),binding:binding||undefined,selector:selectorFor(element),parentSelector:selectorFor(element.parentElement),label:String(label).slice(0,160),text:String(element.textContent||'').replace(/\\s+/g,' ').trim().slice(0,500)};
+      const scopeElement=element.closest('[data-piki-component],[data-piki-section-id],article,nav,aside,header,footer,main,section');
+      const computed=getComputedStyle(element); const rect=element.getBoundingClientRect();
+      const hierarchy=[]; let current=element;
+      while(current&&current!==document.body&&hierarchy.length<6){hierarchy.unshift(componentName(current));current=current.parentElement;}
+      const attributes=Array.from(element.attributes).filter((attribute)=>['id','href','src','type','name','aria-label','data-piki-action','data-product-id','data-piki-section-id'].includes(attribute.name)).map((attribute)=>attribute.name+'='+attribute.value).join('; ');
+      return {
+        component:componentName(element),binding:binding||scopeElement?.dataset.pikiBinding||undefined,
+        selector:selectorFor(element),parentSelector:selectorFor(element.parentElement),label:compactLabel(element),
+        text:String(element.textContent||'').replace(/\\s+/g,' ').trim().slice(0,500),element:element.tagName.toLowerCase(),
+        role:element.getAttribute('role')||undefined,scope:scopeElement?compactLabel(scopeElement):undefined,
+        hierarchy:hierarchy.join(' > '),classes:Array.from(element.classList).filter((name)=>!name.startsWith('piki-inspect')).join(' ').slice(0,500),
+        attributes:attributes.slice(0,500),dimensions:Math.round(rect.width)+' × '+Math.round(rect.height)+' px',
+        styles:['display:'+computed.display,'position:'+computed.position,'font:'+computed.fontFamily+' '+computed.fontSize,'color:'+computed.color,'background:'+computed.backgroundColor,'spacing:'+computed.margin+'/'+computed.padding].join('; ').slice(0,700)
+      };
     };
+    const overlay=document.createElement('div');overlay.className='piki-inspector-box';overlay.hidden=true;overlay.innerHTML='<div class="piki-inspector-badge"></div>';document.body.appendChild(overlay);
+    const draw=(element,selectedState)=>{
+      if(!element){overlay.hidden=true;return;}
+      const rect=element.getBoundingClientRect();
+      if(rect.width<=0||rect.height<=0){overlay.hidden=true;return;}
+      overlay.hidden=false;overlay.dataset.selected=String(Boolean(selectedState));overlay.style.left=rect.left+'px';overlay.style.top=rect.top+'px';overlay.style.width=rect.width+'px';overlay.style.height=rect.height+'px';
+      const badge=overlay.firstElementChild;if(badge)badge.textContent=componentName(element)+' · '+compactLabel(element);
+    };
+    let hovered=null;let selected=null;
     if(inspectMode){
       document.body.classList.add('piki-inspect-mode');
-      document.addEventListener('pointerover',(event)=>{const element=componentFor(event.target);if(element)element.dataset.pikiInspectHover='true';});
-      document.addEventListener('pointerout',(event)=>{const element=componentFor(event.target);if(element)delete element.dataset.pikiInspectHover;});
+      document.addEventListener('pointerover',(event)=>{const element=componentFor(event.target);if(!element)return;if(hovered&&hovered!==element)delete hovered.dataset.pikiInspectHover;hovered=element;element.dataset.pikiInspectHover='true';draw(element,element===selected);},true);
+      document.addEventListener('pointerout',(event)=>{const element=componentFor(event.target);if(element&&element!==selected)delete element.dataset.pikiInspectHover;if(hovered===element)hovered=null;if(selected)draw(selected,true);else draw(null,false);},true);
+      const redraw=()=>draw(selected||hovered,Boolean(selected));window.addEventListener('scroll',redraw,true);window.addEventListener('resize',redraw);
       send('inspector-ready');
     }
     document.addEventListener('click',(event)=>{
@@ -278,7 +353,7 @@ function buildSiteDocument(
         if(component){
           event.preventDefault();event.stopImmediatePropagation();
           document.querySelectorAll('[data-piki-inspect-selected]').forEach((item)=>delete item.dataset.pikiInspectSelected);
-          component.dataset.pikiInspectSelected='true';
+          selected=component;component.dataset.pikiInspectSelected='true';draw(component,true);
           send('section-selected',{selection:describe(component)});
         }
         return;
@@ -371,7 +446,7 @@ function productMarkup(item: CatalogItem, catalog: Catalog): string {
       : hasVariants
         ? "Choose options"
         : "Add to cart";
-  return `<article class="piki-binding-product" data-piki-product data-piki-component="product-card" data-piki-label="${escapeAttr(item.name)}" data-category="${escapeAttr(category)}" data-search="${escapeAttr(search)}"><div class="piki-binding-product-image">${image ? `<img src="${escapeAttr(image)}" alt="${escapeAttr(item.name)}" loading="lazy">` : '<div class="piki-binding-product-placeholder">No image</div>'}${item.discountPercent ? `<span class="piki-binding-product-badge">-${Math.round(item.discountPercent)}%</span>` : ""}</div><div class="piki-binding-product-body">${category ? `<p class="piki-binding-product-category">${escapeHtml(category)}</p>` : ""}<h3>${escapeHtml(item.name)}</h3><div class="piki-binding-price"><span>${escapeHtml(price)}</span>${compare ? `<del>${escapeHtml(compare)}</del>` : ""}</div><div class="piki-binding-product-meta"><span>${hasVariants ? "Variants available" : escapeHtml(item.unit || item.saleUnit || "Product")}</span><span class="piki-binding-stock" data-low="${String(!outOfStock && !hasVariants && item.trackStock !== false && item.stock <= 5)}">${escapeHtml(stockLabel)}</span></div><button type="button" class="piki-binding-add" data-piki-action="add-product" data-product-id="${escapeAttr(item.id)}" ${outOfStock ? "disabled" : ""}>${buttonLabel}</button></div></article>`;
+  return `<article class="piki-binding-product" data-piki-product data-piki-component="product-card" data-piki-label="${escapeAttr(item.name)}" data-product-id="${escapeAttr(item.id)}" data-category="${escapeAttr(category)}" data-search="${escapeAttr(search)}"><div class="piki-binding-product-image" data-piki-component="product-image">${image ? `<img src="${escapeAttr(image)}" alt="${escapeAttr(item.name)}" loading="lazy">` : '<div class="piki-binding-product-placeholder">No image</div>'}${item.discountPercent ? `<span class="piki-binding-product-badge">-${Math.round(item.discountPercent)}%</span>` : ""}</div><div class="piki-binding-product-body">${category ? `<p class="piki-binding-product-category">${escapeHtml(category)}</p>` : ""}<h3 data-piki-component="product-title">${escapeHtml(item.name)}</h3><div class="piki-binding-price" data-piki-component="product-price"><span>${escapeHtml(price)}</span>${compare ? `<del>${escapeHtml(compare)}</del>` : ""}</div><div class="piki-binding-product-meta" data-piki-component="product-availability"><span>${hasVariants ? "Variants available" : escapeHtml(item.unit || item.saleUnit || "Product")}</span><span class="piki-binding-stock" data-low="${String(!outOfStock && !hasVariants && item.trackStock !== false && item.stock <= 5)}">${escapeHtml(stockLabel)}</span></div><button type="button" class="piki-binding-add" data-piki-component="product-action" data-piki-action="add-product" data-product-id="${escapeAttr(item.id)}" ${outOfStock ? "disabled" : ""}>${buttonLabel}</button></div></article>`;
 }
 
 function singleProductMarkup(catalog: Catalog, productId?: string | null): string {
@@ -468,7 +543,7 @@ function pageSectionMarkup(section: StorefrontSection): string {
   }).join("");
   const copy = section.content || section.body || section.text || "";
   const action = pageActionMarkup(section.buttonAction, section.buttonLabel);
-  return `<section class="piki-binding-page-section" data-style="${escapeAttr(section.style || "default")}" data-width="${escapeAttr(section.width || "contained")}" data-align="${escapeAttr(section.alignment || "left")}"><div class="piki-binding-page-inner">${section.eyebrow ? `<p class="piki-binding-page-eyebrow">${escapeHtml(section.eyebrow)}</p>` : ""}${section.title ? `<h2>${escapeHtml(section.title)}</h2>` : ""}${copy ? `<p class="piki-binding-page-copy">${escapeHtml(copy)}</p>` : ""}${items ? `<div class="piki-binding-page-items">${items}</div>` : ""}${action}</div></section>`;
+  return `<section class="piki-binding-page-section" data-piki-component="page-section" data-piki-section-id="${escapeAttr(section.id)}" data-piki-label="${escapeAttr(section.title || section.type)}" data-style="${escapeAttr(section.style || "default")}" data-width="${escapeAttr(section.width || "contained")}" data-align="${escapeAttr(section.alignment || "left")}"><div class="piki-binding-page-inner">${section.eyebrow ? `<p class="piki-binding-page-eyebrow">${escapeHtml(section.eyebrow)}</p>` : ""}${section.title ? `<h2>${escapeHtml(section.title)}</h2>` : ""}${copy ? `<p class="piki-binding-page-copy">${escapeHtml(copy)}</p>` : ""}${items ? `<div class="piki-binding-page-items">${items}</div>` : ""}${action}</div></section>`;
 }
 
 function pageActionMarkup(action: string | undefined, label: string | undefined): string {

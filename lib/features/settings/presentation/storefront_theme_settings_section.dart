@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/license_service.dart';
 import '../../../core/services/piki_ai_job_service.dart';
+import '../../../core/services/storefront_page_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/piki_activity_panel.dart';
@@ -543,6 +544,53 @@ class _StorefrontThemeSettingsSectionState
     }
   }
 
+  Future<void> _startGeneratedSiteEdit(
+    StorefrontPreviewEditRequest edit,
+  ) async {
+    final selection = edit.selection;
+    final buildId = selection.siteBuildId;
+    if (buildId == null || _pikiJob?.isRunning == true) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _errorRetry = null;
+    });
+    try {
+      final job = await PikiAiJobService.createStorefrontSiteJob(
+        edit.instruction,
+        branchId: _branchId,
+        storefrontType: _storefrontType,
+        parentBuildId: buildId,
+        siteMode: selection.siteMode,
+        selectedProductId: selection.selectedProductId,
+        selectionContext: selection.toJson(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pikiJob = job;
+        _pikiEvents = const [];
+      });
+      _syncPikiPolling();
+      unawaited(_refreshPikiJob());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Piki is editing the selected element in the saved site build. You can close the app while it works.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = _message(error);
+          _errorRetry = _previewPikiDraft;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   StorefrontTheme? _pikiResultTheme(PikiAiJob job) {
     final value = job.result?['theme'];
     if (value is Map) {
@@ -555,6 +603,49 @@ class _StorefrontThemeSettingsSectionState
   Future<void> _previewPikiDraft() async {
     final job = _pikiJob;
     if (job == null || job.status != 'completed') return;
+    if (job.jobType == 'storefront_site') {
+      final value = job.result?['build'];
+      if (value is! Map) {
+        setState(() {
+          _error = 'Piki finished, but the generated site build is missing.';
+          _errorRetry = _previewPikiDraft;
+        });
+        return;
+      }
+      final build = StorefrontSiteBuild.fromJson(
+        Map<String, dynamic>.from(value),
+      );
+      StorefrontPreviewEditRequest? edit;
+      await _run(
+        () async {
+          final uri = await StorefrontPageService.siteBuildPreviewUrl(build.id);
+          if (!mounted) return;
+          if (!Platform.isWindows) {
+            final opened = await launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+            );
+            if (!opened) {
+              throw Exception('Could not open the generated-site preview.');
+            }
+            return;
+          }
+          edit = await showDialog<StorefrontPreviewEditRequest>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => StorefrontInAppPreviewDialog(
+              previewUri: uri,
+              buildVersion: build.version,
+              buildName: build.name,
+            ),
+          );
+        },
+        reloadAfter: false,
+        retry: _previewPikiDraft,
+      );
+      if (edit != null && mounted) await _startGeneratedSiteEdit(edit!);
+      return;
+    }
     final theme = _pikiResultTheme(job);
     if (theme == null) {
       await _load(showLoading: false);
@@ -617,6 +708,10 @@ class _StorefrontThemeSettingsSectionState
       );
       if (edit != null && mounted) {
         final selection = edit.selection;
+        if (selection.siteBuildId != null) {
+          await _startGeneratedSiteEdit(edit);
+          return;
+        }
         final instruction =
             '''
 Edit the selected ${selection.label} component to satisfy this request: ${edit.instruction}

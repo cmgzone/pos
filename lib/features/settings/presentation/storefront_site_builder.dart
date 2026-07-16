@@ -612,17 +612,26 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
               job: job,
               events: _siteEvents,
               title: job.payload?['selectionContext'] is Map
-                  ? 'Piki is editing the selected section'
+                  ? 'Piki is editing the selected element'
                   : 'Piki is coding your storefront',
             ),
             if (job.isFailed) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Your brief is saved. Recovery retries another AI response and can finish with a validated editable starter instead of remaining stuck.',
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
               const SizedBox(height: 10),
               Align(
                 alignment: Alignment.centerLeft,
                 child: FilledButton.icon(
                   onPressed: _busy ? null : _retrySiteCompilerJob,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Retry saved request'),
+                  icon: const Icon(Icons.settings_backup_restore_rounded),
+                  label: const Text('Recover saved request'),
                 ),
               ),
             ],

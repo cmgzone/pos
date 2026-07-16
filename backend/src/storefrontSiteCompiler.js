@@ -142,7 +142,48 @@ function compileStorefrontSitePackage(input = {}) {
   };
 }
 
-function defaultStorefrontSitePackage({ businessName = 'Your store' } = {}) {
+function defaultStorefrontSitePackage({
+  businessName = 'Your store',
+  singleProductId = null,
+} = {}) {
+  if (singleProductId) {
+    return compileStorefrontSitePackage({
+      name: `${businessName} product storefront`,
+      summary:
+        'A resilient one-product storefront with a focused live purchase journey.',
+      singleProductId,
+      html: `
+<div class="site-shell product-site">
+  <header class="site-header">
+    <piki-brand></piki-brand>
+    <piki-navigation></piki-navigation>
+    <piki-cart-button></piki-cart-button>
+  </header>
+  <main>
+    <section class="product-hero">
+      <piki-single-product></piki-single-product>
+    </section>
+    <section class="product-support">
+      <p>Questions before ordering?</p>
+      <piki-whatsapp></piki-whatsapp>
+    </section>
+  </main>
+  <piki-footer></piki-footer>
+</div>`,
+      pageHtml: defaultPageShell(),
+      css: `
+:root { color-scheme: light; --ink: #161616; --paper: #fbfaf7; --accent: #d14343; --line: rgba(22,22,22,.12); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.site-shell { min-height: 100vh; }
+.site-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 24px; padding: 18px clamp(20px,5vw,72px); border-bottom: 1px solid var(--line); background: rgba(251,250,247,.94); backdrop-filter: blur(18px); }
+.product-hero { padding: clamp(36px,7vw,100px) clamp(20px,7vw,110px); }
+.product-support { display:flex; align-items:center; justify-content:center; gap:18px; flex-wrap:wrap; padding:34px 20px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:#f1eee8; }
+.product-support p { margin:0; font-weight:800; }
+@media (max-width: 760px) { .site-header { grid-template-columns: 1fr auto; } .site-header piki-navigation { display: none; } .product-hero { padding-inline: 14px; } }
+`,
+    });
+  }
   return compileStorefrontSitePackage({
     name: `${businessName} custom storefront`,
     summary: 'A responsive, image-first storefront with category navigation.',
