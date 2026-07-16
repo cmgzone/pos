@@ -15,7 +15,10 @@ import { Footer } from "./footer";
 import { FloatingCart } from "./floating-cart";
 import { SkeletonGrid } from "./skeleton-grid";
 import { ErrorState } from "./error-state";
-import { GeneratedSiteFrame } from "./generated-site-frame";
+import {
+  GeneratedSiteFrame,
+  type PikiComponentSelection,
+} from "./generated-site-frame";
 import {
   getBootstrap,
   getBranchIdFromQuery,
@@ -55,6 +58,24 @@ function StorefrontInner() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [showTracker, setShowTracker] = useState(false);
   const [appearance, setAppearance] = useState<StorefrontAppearance>("light");
+  const [inspectMode, setInspectMode] = useState(false);
+
+  useEffect(() => {
+    setInspectMode(
+      new URLSearchParams(window.location.search).get("pikiInspect") === "1",
+    );
+  }, []);
+
+  const handlePikiComponentSelected = useCallback(
+    (selection: PikiComponentSelection) => {
+      window.chrome?.webview?.postMessage({
+        channel: "piki-storefront-studio",
+        type: "section-selected",
+        selection,
+      });
+    },
+    [],
+  );
 
   const loadCatalog = useCallback(
     async (
@@ -265,6 +286,12 @@ function StorefrontInner() {
           pages={catalog?.pages || []}
         />
       )}
+      {inspectMode && usesGeneratedSite && (
+        <div className="sticky top-0 z-[90] flex items-center justify-center gap-2 border-b border-rose-300 bg-rose-50 px-4 py-2 text-center text-[12px] font-bold text-rose-900 shadow-sm">
+          <span aria-hidden="true">✦</span>
+          Select a visible section, then tell Piki what to change in the editor
+        </div>
+      )}
 
       {isLoading || !catalog ? (
         <main className="flex-1 px-4 py-16 sm:px-6 lg:px-10">
@@ -274,6 +301,8 @@ function StorefrontInner() {
         <GeneratedSiteFrame
           catalog={catalog}
           onTrackOrder={() => setShowTracker(true)}
+          inspectMode={inspectMode}
+          onComponentSelected={handlePikiComponentSelected}
         />
       ) : (
         <StorefrontSections

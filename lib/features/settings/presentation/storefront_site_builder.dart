@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,7 @@ import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/piki_activity_panel.dart';
 import 'storefront_section_editor.dart';
+import 'storefront_in_app_preview.dart';
 
 class StorefrontSiteBuilder extends StatefulWidget {
   final String storefrontType;
@@ -27,6 +29,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
   List<StorefrontPage> _pages = const [];
   StorefrontConnection? _connection;
   List<StorefrontSiteBuild> _siteBuilds = const [];
+  List<StorefrontBuilderItem> _siteBuilderItems = const [];
   PikiAiJob? _siteJob;
   List<PikiAiJobEvent> _siteEvents = const [];
   String? _watchingSiteJobId;
@@ -60,6 +63,10 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
           storefrontType: widget.storefrontType,
         ),
         PikiAiJobService.listStorefrontSiteJobs(),
+        StorefrontPageService.listSiteBuilderItems(
+          branchId: _branchId,
+          storefrontType: widget.storefrontType,
+        ).catchError((_) => <StorefrontBuilderItem>[]),
       ]);
       if (!mounted) return;
       setState(() {
@@ -68,6 +75,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
         _siteBuilds = results[2] as List<StorefrontSiteBuild>;
         final jobs = results[3] as List<PikiAiJob>;
         _siteJob = _latestRelevantSiteJob(jobs);
+        _siteBuilderItems = results[4] as List<StorefrontBuilderItem>;
       });
       if (_siteJob != null) unawaited(_watchSiteJob(_siteJob!.id));
     } catch (error) {
@@ -109,15 +117,25 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
     final request = await showDialog<_SiteCompilerRequest>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _SiteCompilerDialog(baseBuild: selectedBase),
+      builder: (context) => _SiteCompilerDialog(
+        baseBuild: selectedBase,
+        items: _siteBuilderItems,
+      ),
     );
     if (request == null) return;
+    await _startSiteCompilerRequest(request);
+  }
+
+  Future<void> _startSiteCompilerRequest(_SiteCompilerRequest request) async {
     await _run(() async {
       final job = await PikiAiJobService.createStorefrontSiteJob(
         request.instruction,
         branchId: _branchId,
         storefrontType: widget.storefrontType,
         parentBuildId: request.parentBuildId,
+        siteMode: request.siteMode,
+        selectedProductId: request.selectedProductId,
+        selectionContext: request.selectionContext,
       );
       if (!mounted) return;
       setState(() {
@@ -158,12 +176,40 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
   }
 
   Future<void> _previewSiteBuild(StorefrontSiteBuild build) async {
+    Uri? uri;
     await _run(() async {
-      final uri = await StorefrontPageService.siteBuildPreviewUrl(build.id);
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        throw Exception('Could not open the exact generated-site preview.');
-      }
+      uri = await StorefrontPageService.siteBuildPreviewUrl(build.id);
     });
+    if (!mounted || uri == null) return;
+    if (!Platform.isWindows) {
+      if (!await launchUrl(uri!, mode: LaunchMode.externalApplication)) {
+        if (mounted) {
+          setState(
+            () => _error = 'Could not open the exact generated-site preview.',
+          );
+        }
+      }
+      return;
+    }
+    final edit = await showDialog<StorefrontPreviewEditRequest>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StorefrontInAppPreviewDialog(
+        previewUri: uri!,
+        buildVersion: build.version,
+        buildName: build.name,
+      ),
+    );
+    if (edit == null || !mounted) return;
+    await _startSiteCompilerRequest(
+      _SiteCompilerRequest(
+        edit.instruction,
+        build.id,
+        siteMode: build.singleProductId == null ? 'catalog' : 'single_product',
+        selectedProductId: build.singleProductId,
+        selectionContext: edit.selection.toJson(),
+      ),
+    );
   }
 
   Future<void> _publishSiteBuild(StorefrontSiteBuild build) async {
@@ -556,6 +602,10 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                 label: 'Live catalogue bindings',
               ),
               _CompilerCapability(
+                icon: Icons.filter_1_rounded,
+                label: 'One-product websites',
+              ),
+              _CompilerCapability(
                 icon: Icons.history_rounded,
                 label: 'Version history & rollback',
               ),
@@ -566,7 +616,9 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
             PikiActivityPanel(
               job: job,
               events: _siteEvents,
-              title: 'Piki is coding your storefront',
+              title: job.payload?['selectionContext'] is Map
+                  ? 'Piki is editing the selected section'
+                  : 'Piki is coding your storefront',
             ),
           ],
           const SizedBox(height: 18),
@@ -707,7 +759,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
           ),
           const SizedBox(height: 10),
           Text(
-            '${build.slots.length} live bindings · ${build.compilerVersion} · $shortHash',
+            '${build.singleProductId == null ? '${build.slots.length} live bindings' : 'One-product website'} · ${build.compilerVersion} · $shortHash',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
@@ -992,14 +1044,24 @@ class _CompilerCapability extends StatelessWidget {
 class _SiteCompilerRequest {
   final String instruction;
   final String? parentBuildId;
+  final String siteMode;
+  final String? selectedProductId;
+  final Map<String, dynamic>? selectionContext;
 
-  const _SiteCompilerRequest(this.instruction, this.parentBuildId);
+  const _SiteCompilerRequest(
+    this.instruction,
+    this.parentBuildId, {
+    this.siteMode = 'catalog',
+    this.selectedProductId,
+    this.selectionContext,
+  });
 }
 
 class _SiteCompilerDialog extends StatefulWidget {
   final StorefrontSiteBuild? baseBuild;
+  final List<StorefrontBuilderItem> items;
 
-  const _SiteCompilerDialog({required this.baseBuild});
+  const _SiteCompilerDialog({required this.baseBuild, required this.items});
 
   @override
   State<_SiteCompilerDialog> createState() => _SiteCompilerDialogState();
@@ -1008,12 +1070,20 @@ class _SiteCompilerDialog extends StatefulWidget {
 class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
   late final TextEditingController _brief = TextEditingController();
   late bool _refineBase = widget.baseBuild != null;
+  late String _siteMode = widget.baseBuild?.singleProductId == null
+      ? 'catalog'
+      : 'single_product';
+  late String? _selectedProductId =
+      widget.items.any((item) => item.id == widget.baseBuild?.singleProductId)
+      ? widget.baseBuild?.singleProductId
+      : null;
 
   static const _examples = [
     'Luxury editorial shop',
     'Categories in a left sidebar',
     'Bold mobile-first streetwear store',
     'Minimal catalogue with large photography',
+    'One-product launch site',
   ];
 
   @override
@@ -1031,6 +1101,8 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
           'Code a desktop catalogue with categories in a real sticky left sidebar, search and products on the right, then transform the sidebar into a horizontal category rail on mobile.',
         'Bold mobile-first streetwear store' =>
           'Create a bold mobile-first streetwear storefront with oversized typography, a compact sticky header, strong product imagery, high contrast, and an energetic editorial layout.',
+        'One-product launch site' =>
+          'Create a premium one-product launch website with a cinematic opening, an image-led product story, clear live pricing and options, strong mobile hierarchy, and a focused purchase journey.',
         _ =>
           'Create a minimal catalogue with large product photography, clean typography, subtle borders, a calm neutral palette, clear search, and an elegant responsive grid.',
       };
@@ -1114,6 +1186,69 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
                       ),
                       const SizedBox(height: 18),
                     ],
+                    Text(
+                      'Website focus',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 'catalog',
+                          icon: Icon(Icons.grid_view_rounded),
+                          label: Text('Full catalogue'),
+                        ),
+                        ButtonSegment(
+                          value: 'single_product',
+                          icon: Icon(Icons.filter_1_rounded),
+                          label: Text('One product'),
+                        ),
+                      ],
+                      selected: {_siteMode},
+                      onSelectionChanged: (selection) {
+                        setState(() => _siteMode = selection.first);
+                      },
+                    ),
+                    if (_siteMode == 'single_product') ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedProductId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Live product',
+                          helperText:
+                              'Price, images, stock, variants and checkout stay connected.',
+                        ),
+                        hint: Text(
+                          widget.items.isEmpty
+                              ? 'No live products are available'
+                              : 'Choose the product for this website',
+                        ),
+                        items: widget.items.map((item) {
+                          final detail = [
+                            if (item.category?.isNotEmpty == true)
+                              item.category!,
+                            item.isConnected ? 'Connected API' : 'Piki POS',
+                          ].join(' · ');
+                          return DropdownMenuItem(
+                            value: item.id,
+                            child: Text(
+                              '${item.name}  —  $detail',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: widget.items.isEmpty
+                            ? null
+                            : (value) {
+                                setState(() => _selectedProductId = value);
+                              },
+                      ),
+                    ],
+                    const SizedBox(height: 18),
                     TextField(
                       controller: _brief,
                       minLines: 6,
@@ -1216,11 +1351,26 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
                     onPressed: () {
                       final instruction = _brief.text.trim();
                       if (instruction.length < 10) return;
+                      if (_siteMode == 'single_product' &&
+                          _selectedProductId == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Choose the live product for this website.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
                       Navigator.pop(
                         context,
                         _SiteCompilerRequest(
                           instruction,
                           _refineBase ? widget.baseBuild?.id : null,
+                          siteMode: _siteMode,
+                          selectedProductId: _siteMode == 'single_product'
+                              ? _selectedProductId
+                              : null,
                         ),
                       );
                     },

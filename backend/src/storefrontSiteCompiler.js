@@ -4,6 +4,7 @@ const SITE_COMPILER_VERSION = 'piki-site-1';
 const MAX_HTML_LENGTH = 120_000;
 const MAX_CSS_LENGTH = 80_000;
 const REQUIRED_SLOT = 'piki-products';
+const SINGLE_PRODUCT_SLOT = 'piki-single-product';
 const REQUIRED_PAGE_SLOT = 'piki-page-content';
 const SUPPORTED_SLOTS = Object.freeze([
   'piki-brand',
@@ -13,6 +14,7 @@ const SUPPORTED_SLOTS = Object.freeze([
   'piki-categories',
   'piki-search',
   'piki-products',
+  'piki-single-product',
   'piki-cart-button',
   'piki-whatsapp',
   'piki-page-content',
@@ -67,11 +69,29 @@ function compileStorefrontSitePackage(input = {}) {
   const slotCounts = countSlots(html);
   validateBindingMarkup(html, slotCounts);
   const slots = SUPPORTED_SLOTS.filter((slot) => slotCounts[slot] > 0);
-  if (slotCounts[REQUIRED_SLOT] !== 1) {
+  const productBindingCount =
+    slotCounts[REQUIRED_SLOT] + slotCounts[SINGLE_PRODUCT_SLOT];
+  if (productBindingCount !== 1) {
     throw createError(
       400,
-      'Generated storefront must include exactly one <piki-products></piki-products> binding.',
+      'Generated storefront must include exactly one product binding: <piki-products></piki-products> or <piki-single-product></piki-single-product>.',
     );
+  }
+  const singleProductId = slotCounts[SINGLE_PRODUCT_SLOT]
+    ? limitText(raw.singleProductId, 180) ||
+      readBindingAttribute(html, SINGLE_PRODUCT_SLOT, 'product-id')
+    : null;
+  if (slotCounts[SINGLE_PRODUCT_SLOT] && !singleProductId) {
+    throw createError(
+      400,
+      'The <piki-single-product> binding requires a selected live product ID.',
+    );
+  }
+  if (
+    singleProductId &&
+    !/^[^\u0000-\u001f]{1,180}$/.test(singleProductId)
+  ) {
+    throw createError(400, 'The single-product binding contains an invalid product ID.');
   }
   const pageSlotCounts = countSlots(pageHtml);
   validateBindingMarkup(pageHtml, pageSlotCounts);
@@ -94,7 +114,14 @@ function compileStorefrontSitePackage(input = {}) {
     );
   }
 
-  const source = { name, summary, html, pageHtml, css };
+  const source = {
+    name,
+    summary,
+    html,
+    pageHtml,
+    css,
+    ...(singleProductId ? { singleProductId } : {}),
+  };
   const codeHash = crypto
     .createHash('sha256')
     .update(JSON.stringify(source))
@@ -105,6 +132,7 @@ function compileStorefrontSitePackage(input = {}) {
     codeHash,
     slots,
     pageSlots,
+    singleProductId,
     security: {
       passed: true,
       scriptPolicy: 'platform-only',
@@ -225,6 +253,16 @@ function validateSafeLinks(html) {
   if (/\shref\s*=\s*[^\s"'][^\s>]*/i.test(html)) {
     throw createError(400, 'Generated links must use a quoted local page anchor.');
   }
+}
+
+function readBindingAttribute(html, slot, attribute) {
+  const opening = html.match(new RegExp(`<\\s*${slot}\\b([^>]*)>`, 'i'));
+  if (!opening) return null;
+  const attributes = opening[1] || '';
+  const match = attributes.match(
+    new RegExp(`(?:^|\\s)${attribute}\\s*=\\s*(["'])(.*?)\\1`, 'i'),
+  );
+  return match?.[2]?.trim() || null;
 }
 
 function normalizeSource(value, maxLength, label) {

@@ -143,6 +143,7 @@ class StorefrontSiteBuild {
   final String compilerVersion;
   final String codeHash;
   final List<String> slots;
+  final String? singleProductId;
   final bool securityPassed;
   final DateTime? updatedAt;
 
@@ -157,6 +158,7 @@ class StorefrontSiteBuild {
     required this.compilerVersion,
     required this.codeHash,
     required this.slots,
+    required this.singleProductId,
     required this.securityPassed,
     required this.updatedAt,
   });
@@ -181,8 +183,37 @@ class StorefrontSiteBuild {
       slots: (json['slots'] as List? ?? const [])
           .map((item) => item.toString())
           .toList(),
+      singleProductId: json['singleProductId']?.toString(),
       securityPassed: security['passed'] == true,
       updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
+    );
+  }
+}
+
+class StorefrontBuilderItem {
+  final String id;
+  final String name;
+  final String? category;
+  final String source;
+  final Uri? imageUrl;
+
+  const StorefrontBuilderItem({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.source,
+    required this.imageUrl,
+  });
+
+  bool get isConnected => source == 'connected_store_api';
+
+  factory StorefrontBuilderItem.fromJson(Map<String, dynamic> json) {
+    return StorefrontBuilderItem(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Untitled item',
+      category: json['category']?.toString(),
+      source: json['source']?.toString() ?? 'piki_pos',
+      imageUrl: Uri.tryParse(json['imageUrl']?.toString() ?? ''),
     );
   }
 }
@@ -238,6 +269,31 @@ class StorefrontPageService {
           (item) =>
               StorefrontSiteBuild.fromJson(Map<String, dynamic>.from(item)),
         )
+        .toList();
+  }
+
+  static Future<List<StorefrontBuilderItem>> listSiteBuilderItems({
+    required String branchId,
+    required String storefrontType,
+  }) async {
+    final context = await _requestContext();
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('catalog/site-builder/items'),
+      queryParameters: {
+        'deviceId': context.deviceId,
+        'branchId': branchId,
+        'storefrontType': storefrontType,
+      },
+      options: Options(headers: context.headers),
+    );
+    final data = _requireOk(response)['data'] as List? ?? const [];
+    return data
+        .whereType<Map>()
+        .map(
+          (item) =>
+              StorefrontBuilderItem.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where((item) => item.id.isNotEmpty)
         .toList();
   }
 

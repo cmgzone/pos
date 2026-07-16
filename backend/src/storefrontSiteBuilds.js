@@ -186,6 +186,9 @@ function normalizeStorefrontSiteBuildRow(row) {
     compilerVersion: row.compiler_version ?? compiled.compilerVersion,
     codeHash: row.code_hash ?? compiled.codeHash,
     slots: Array.isArray(compiled.slots) ? compiled.slots.map(String) : [],
+    singleProductId: compiled.singleProductId
+      ? String(compiled.singleProductId)
+      : null,
     pageSlots: Array.isArray(compiled.pageSlots)
       ? compiled.pageSlots.map(String)
       : [],
@@ -213,6 +216,7 @@ function publicStorefrontSiteBuild(build) {
     compilerVersion: build.compilerVersion,
     codeHash: build.codeHash,
     slots: build.slots,
+    singleProductId: build.singleProductId,
     pageSlots: build.pageSlots,
     security: build.security,
     status: build.status,

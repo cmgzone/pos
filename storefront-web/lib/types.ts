@@ -178,6 +178,7 @@ export interface StorefrontSiteBuild {
   compilerVersion: string;
   codeHash: string;
   slots: string[];
+  singleProductId?: string | null;
   pageSlots?: string[];
   security: {
     passed?: boolean;
@@ -350,5 +351,10 @@ declare global {
   interface Window {
     __STOREFRONT__?: StorefrontBootstrap;
     __STOREFRONT_CATALOG__?: Catalog;
+    chrome?: {
+      webview?: {
+        postMessage: (message: unknown) => void;
+      };
+    };
   }
 }

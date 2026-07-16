@@ -57,6 +57,60 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# webview_windows 0.4.0 otherwise consumes the C++/WinRT headers bundled with
+# older Windows SDKs. Those headers do not compile cleanly in C++20 mode on
+# current Visual Studio toolchains. Pin Microsoft's maintained projection and
+# import its MSBuild targets into the plugin so release builds remain portable.
+if(TARGET webview_windows_plugin)
+  # 2.0.210503.1 is a projection line compatible with the Visual Studio 2019
+  # toolchain still supported by this desktop application's CI.
+  set(PIKI_CPPWINRT_VERSION "2.0.210503.1")
+  find_program(PIKI_NUGET nuget)
+  if(NOT PIKI_NUGET)
+    set(PIKI_NUGET "${CMAKE_BINARY_DIR}/piki_nuget.exe")
+    if(NOT EXISTS "${PIKI_NUGET}")
+      file(DOWNLOAD
+        "https://dist.nuget.org/win-x86-commandline/v5.10.0/nuget.exe"
+        "${PIKI_NUGET}"
+        EXPECTED_HASH SHA256=852b71cc8c8c2d40d09ea49d321ff56fd2397b9d6ea9f96e532530307bbbafd3
+      )
+    endif()
+  endif()
+
+  add_custom_target(piki_cppwinrt_dependencies ALL)
+  add_custom_command(
+    TARGET piki_cppwinrt_dependencies PRE_BUILD
+    COMMAND "${PIKI_NUGET}" install Microsoft.Windows.CppWinRT
+      -Version "${PIKI_CPPWINRT_VERSION}"
+      -ExcludeVersion
+      -OutputDirectory "${CMAKE_BINARY_DIR}/packages"
+    DEPENDS "${PIKI_NUGET}"
+  )
+  add_dependencies(webview_windows_plugin piki_cppwinrt_dependencies)
+  get_target_property(PIKI_WEBVIEW_COMPILE_OPTIONS
+    webview_windows_plugin COMPILE_OPTIONS)
+  if(PIKI_WEBVIEW_COMPILE_OPTIONS)
+    list(FILTER PIKI_WEBVIEW_COMPILE_OPTIONS EXCLUDE REGEX "^/await$")
+    set_property(TARGET webview_windows_plugin PROPERTY
+      COMPILE_OPTIONS "${PIKI_WEBVIEW_COMPILE_OPTIONS}")
+  endif()
+  get_target_property(PIKI_WEBVIEW_COMPILE_DEFINITIONS
+    webview_windows_plugin COMPILE_DEFINITIONS)
+  if(PIKI_WEBVIEW_COMPILE_DEFINITIONS)
+    list(FILTER PIKI_WEBVIEW_COMPILE_DEFINITIONS
+      EXCLUDE REGEX "^_HAS_EXCEPTIONS=0$")
+    set_property(TARGET webview_windows_plugin PROPERTY
+      COMPILE_DEFINITIONS "${PIKI_WEBVIEW_COMPILE_DEFINITIONS}")
+  endif()
+  set_target_properties(webview_windows_plugin PROPERTIES
+    VS_GLOBAL_CppWinRTPackage "true"
+    VS_GLOBAL_CppWinRTPackageDir "${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.CppWinRT/"
+  )
+  target_link_libraries(webview_windows_plugin PRIVATE
+    "${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.CppWinRT/build/native/Microsoft.Windows.CppWinRT.targets"
+  )
+endif()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

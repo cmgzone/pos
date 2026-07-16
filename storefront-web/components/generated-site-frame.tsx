@@ -38,6 +38,23 @@ const PLATFORM_BINDING_CSS = `
 .piki-binding-add { width:100%; padding:11px 13px; border:0; border-radius:10px; background:var(--piki-accent,#d14343); color:var(--piki-accent-contrast,#fff); cursor:pointer; font:inherit; font-size:12px; font-weight:900; }
 .piki-binding-add:disabled { cursor:not-allowed; opacity:.45; }
 .piki-binding-empty { grid-column:1/-1; padding:60px 20px; text-align:center; opacity:.62; }
+.piki-binding-single-product { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:clamp(28px,6vw,88px); align-items:start; }
+.piki-binding-single-gallery { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.piki-binding-single-image { position:relative; overflow:hidden; min-height:180px; aspect-ratio:1/1; border-radius:18px; background:var(--piki-binding-surface,rgba(127,127,127,.1)); }
+.piki-binding-single-image:first-child { grid-column:1/-1; aspect-ratio:4/3; }
+.piki-binding-single-image img { width:100%; height:100%; object-fit:cover; }
+.piki-binding-single-info { position:sticky; top:110px; padding:clamp(22px,4vw,42px); border:1px solid var(--piki-binding-line,rgba(127,127,127,.18)); border-radius:22px; background:var(--piki-binding-card,rgba(255,255,255,.72)); }
+.piki-binding-single-info h1 { margin:8px 0 0; font-size:clamp(34px,5vw,64px); line-height:1; letter-spacing:-.04em; }
+.piki-binding-single-description { margin:20px 0; white-space:pre-line; font-size:15px; line-height:1.75; opacity:.72; }
+.piki-binding-single-options { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0; }
+.piki-binding-single-option { padding:8px 11px; border:1px solid var(--piki-binding-line,rgba(127,127,127,.2)); border-radius:999px; font-size:11px; font-weight:800; }
+.piki-binding-single-buy { display:grid; gap:12px; margin-top:22px; }
+.piki-binding-single-buy .piki-binding-add { min-height:52px; font-size:14px; }
+.piki-binding-single-trust { margin:0; font-size:11px; line-height:1.55; opacity:.6; }
+.piki-binding-missing { padding:64px 24px; border:1px dashed var(--piki-binding-line,rgba(127,127,127,.25)); border-radius:20px; text-align:center; }
+.piki-inspect-mode [data-piki-inspect-hover="true"] { outline:3px solid #f04b5a !important; outline-offset:4px; cursor:crosshair !important; }
+.piki-inspect-mode [data-piki-inspect-selected="true"] { outline:4px solid #d14343 !important; outline-offset:5px; box-shadow:0 0 0 9px rgba(209,67,67,.14) !important; }
+@media (max-width:820px) { .piki-binding-single-product { grid-template-columns:1fr; } .piki-binding-single-info { position:static; } }
 .piki-binding-page { min-height:70vh; }
 .piki-binding-page-heading { padding:clamp(64px,9vw,130px) clamp(20px,8vw,120px); background:var(--piki-binding-surface,rgba(127,127,127,.08)); }
 .piki-binding-page-heading h1 { max-width:900px; margin:8px 0 0; font-size:clamp(42px,7vw,88px); line-height:.98; letter-spacing:-.045em; }
@@ -66,9 +83,13 @@ const PLATFORM_BINDING_CSS = `
 export function GeneratedSiteFrame({
   catalog,
   onTrackOrder,
+  inspectMode = false,
+  onComponentSelected,
 }: {
   catalog: Catalog;
   onTrackOrder: () => void;
+  inspectMode?: boolean;
+  onComponentSelected?: (selection: PikiComponentSelection) => void;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const { addToCart, setIsCartOpen } = useStore();
@@ -77,7 +98,10 @@ export function GeneratedSiteFrame({
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant>();
   const build = catalog.siteBuild!;
   const scope = `${build.id}:${build.codeHash}`;
-  const srcDoc = useMemo(() => buildSiteDocument(catalog, scope), [catalog, scope]);
+  const srcDoc = useMemo(
+    () => buildSiteDocument(catalog, scope, inspectMode),
+    [catalog, inspectMode, scope],
+  );
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -87,6 +111,10 @@ export function GeneratedSiteFrame({
       if (data.type === "resize") {
         const next = Number(data.height);
         if (Number.isFinite(next)) setHeight(Math.max(500, Math.min(20_000, next)));
+        return;
+      }
+      if (data.type === "section-selected" && data.selection) {
+        onComponentSelected?.(data.selection as PikiComponentSelection);
         return;
       }
       if (data.type === "open-cart") {
@@ -123,7 +151,7 @@ export function GeneratedSiteFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [addToCart, catalog.business.whatsappNumber, catalog.products, onTrackOrder, scope, setIsCartOpen]);
+  }, [addToCart, catalog.business.whatsappNumber, catalog.products, onComponentSelected, onTrackOrder, scope, setIsCartOpen]);
 
   return (
     <>
@@ -153,12 +181,28 @@ export function GeneratedSiteFrame({
   );
 }
 
-function buildSiteDocument(catalog: Catalog, scope: string): string {
+export interface PikiComponentSelection {
+  component: string;
+  binding?: string;
+  selector: string;
+  parentSelector?: string;
+  label: string;
+  text?: string;
+}
+
+function buildSiteDocument(
+  catalog: Catalog,
+  scope: string,
+  inspectMode: boolean,
+): string {
   const build = catalog.siteBuild!;
   const accent = catalog.theme.design.accentColor || catalog.business.brand.primaryColor || "#d14343";
   let markup = catalog.page || catalog.campaign
     ? build.pageHtml || build.html
     : build.html;
+  const singleProductId =
+    build.singleProductId ||
+    bindingAttribute(markup, "piki-single-product", "product-id");
   markup = replaceSlot(markup, "piki-brand", brandMarkup(catalog));
   markup = replaceSlot(markup, "piki-store-intro", storeIntroMarkup(catalog));
   markup = replaceSlot(markup, "piki-cover", coverMarkup(catalog));
@@ -166,14 +210,21 @@ function buildSiteDocument(catalog: Catalog, scope: string): string {
   markup = replaceSlot(markup, "piki-categories", categoriesMarkup(catalog));
   markup = replaceSlot(markup, "piki-search", searchMarkup());
   markup = replaceSlot(markup, "piki-products", productsMarkup(catalog));
-  markup = replaceSlot(markup, "piki-cart-button", '<button type="button" class="piki-binding-cart" data-piki-action="open-cart">Cart</button>');
-  markup = replaceSlot(markup, "piki-whatsapp", '<button type="button" class="piki-binding-whatsapp" data-piki-action="whatsapp">WhatsApp</button>');
+  markup = replaceSlot(
+    markup,
+    "piki-single-product",
+    singleProductMarkup(catalog, singleProductId),
+  );
+  markup = replaceSlot(markup, "piki-cart-button", '<button type="button" class="piki-binding-cart" data-piki-binding="cart" data-piki-component="cart-button" data-piki-action="open-cart">Cart</button>');
+  markup = replaceSlot(markup, "piki-whatsapp", '<button type="button" class="piki-binding-whatsapp" data-piki-binding="whatsapp" data-piki-component="whatsapp-button" data-piki-action="whatsapp">WhatsApp</button>');
   markup = replaceSlot(markup, "piki-page-content", pageMarkup(catalog));
   markup = replaceSlot(markup, "piki-footer", footerMarkup(catalog));
 
   const safeScope = jsonForScript(scope);
+  const safeInspectMode = jsonForScript(inspectMode);
   const platformScript = `(function(){
     const scope=${safeScope};
+    const inspectMode=${safeInspectMode};
     const send=(type,data={})=>parent.postMessage({channel:'piki-generated-site',scope,type,...data},'*');
     const normalize=(value)=>String(value||'').toLowerCase();
     let category='all'; let query='';
@@ -185,7 +236,45 @@ function buildSiteDocument(catalog: Catalog, scope: string): string {
       });
       document.querySelectorAll('[data-piki-category]').forEach((button)=>button.setAttribute('aria-current',String(button.dataset.pikiCategory===category)));
     };
+    const componentFor=(target)=>target.closest('[data-piki-component],section,header,footer,aside,nav,main,article');
+    const selectorFor=(element)=>{
+      if(!element)return '';
+      const parts=[]; let current=element;
+      while(current&&current!==document.body&&parts.length<6){
+        let part=current.tagName.toLowerCase();
+        if(current.id)part+='#'+current.id.replace(/[^a-z0-9_-]/gi,'');
+        else {
+          const classes=Array.from(current.classList).filter((name)=>!name.startsWith('piki-inspect')).slice(0,2);
+          if(classes.length)part+='.'+classes.join('.');
+          const siblings=current.parentElement?Array.from(current.parentElement.children).filter((item)=>item.tagName===current.tagName):[];
+          if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(current)+1)+')';
+        }
+        parts.unshift(part); current=current.parentElement;
+      }
+      return parts.join(' > ');
+    };
+    const describe=(element)=>{
+      const binding=element.dataset.pikiBinding||'';
+      const heading=element.querySelector('h1,h2,h3,[aria-label]');
+      const label=element.dataset.pikiLabel||heading?.textContent?.trim()||element.getAttribute('aria-label')||binding||element.tagName.toLowerCase();
+      return {component:element.dataset.pikiComponent||binding||element.tagName.toLowerCase(),binding:binding||undefined,selector:selectorFor(element),parentSelector:selectorFor(element.parentElement),label:String(label).slice(0,160),text:String(element.textContent||'').replace(/\\s+/g,' ').trim().slice(0,500)};
+    };
+    if(inspectMode){
+      document.body.classList.add('piki-inspect-mode');
+      document.addEventListener('pointerover',(event)=>{const element=componentFor(event.target);if(element)element.dataset.pikiInspectHover='true';});
+      document.addEventListener('pointerout',(event)=>{const element=componentFor(event.target);if(element)delete element.dataset.pikiInspectHover;});
+    }
     document.addEventListener('click',(event)=>{
+      if(inspectMode){
+        const component=componentFor(event.target);
+        if(component){
+          event.preventDefault();event.stopImmediatePropagation();
+          document.querySelectorAll('[data-piki-inspect-selected]').forEach((item)=>delete item.dataset.pikiInspectSelected);
+          component.dataset.pikiInspectSelected='true';
+          send('section-selected',{selection:describe(component)});
+        }
+        return;
+      }
       const target=event.target.closest('[data-piki-action],[data-piki-category],[data-piki-path]');
       if(!target)return;
       if(target.dataset.pikiCategory){category=target.dataset.pikiCategory;filter();return;}
@@ -204,12 +293,12 @@ function buildSiteDocument(catalog: Catalog, scope: string): string {
 
 function brandMarkup(catalog: Catalog): string {
   const logo = catalog.business.brand.logoUrl;
-  return `<div class="piki-binding-brand">${logo ? `<img src="${escapeAttr(logo)}" alt="">` : ""}<span>${escapeHtml(catalog.business.name)}</span></div>`;
+  return `<div class="piki-binding-brand" data-piki-binding="brand" data-piki-component="brand">${logo ? `<img src="${escapeAttr(logo)}" alt="">` : ""}<span>${escapeHtml(catalog.business.name)}</span></div>`;
 }
 
 function storeIntroMarkup(catalog: Catalog): string {
   const brand = catalog.business.brand;
-  return `<div class="piki-binding-store-intro"><h1>${escapeHtml(catalog.business.name)}</h1>${brand.tagline ? `<p class="piki-binding-store-tagline">${escapeHtml(brand.tagline)}</p>` : ""}${brand.description ? `<p>${escapeHtml(brand.description)}</p>` : ""}</div>`;
+  return `<div class="piki-binding-store-intro" data-piki-binding="store-intro" data-piki-component="store-intro"><h1>${escapeHtml(catalog.business.name)}</h1>${brand.tagline ? `<p class="piki-binding-store-tagline">${escapeHtml(brand.tagline)}</p>` : ""}${brand.description ? `<p>${escapeHtml(brand.description)}</p>` : ""}</div>`;
 }
 
 function coverMarkup(catalog: Catalog): string {
@@ -217,27 +306,27 @@ function coverMarkup(catalog: Catalog): string {
     catalog.business.brand.coverUrl || catalog.business.brand.coverUrls?.[0],
   );
   return image
-    ? `<img class="piki-binding-cover" src="${escapeAttr(image)}" alt="" loading="eager">`
-    : '<div class="piki-binding-cover" aria-hidden="true"></div>';
+    ? `<img class="piki-binding-cover" data-piki-binding="cover" data-piki-component="cover-image" src="${escapeAttr(image)}" alt="" loading="eager">`
+    : '<div class="piki-binding-cover" data-piki-binding="cover" data-piki-component="cover-image" aria-hidden="true"></div>';
 }
 
 function navigationMarkup(catalog: Catalog): string {
   const pages = (catalog.pages || []).map((page) => `<button type="button" data-piki-path="/page/${escapeAttr(page.slug)}">${escapeHtml(page.label || page.title)}</button>`).join("");
-  return `<nav class="piki-binding-navigation" aria-label="Store navigation"><button type="button" data-piki-path="/">Shop</button>${pages}</nav>`;
+  return `<nav class="piki-binding-navigation" data-piki-binding="navigation" data-piki-component="navigation" aria-label="Store navigation"><button type="button" data-piki-path="/">Shop</button>${pages}</nav>`;
 }
 
 function categoriesMarkup(catalog: Catalog): string {
   const count = (name: string) => catalog.products.filter((item) => item.category === name).length;
-  return `<nav class="piki-binding-categories" aria-label="Product categories"><button type="button" class="piki-binding-category" data-piki-category="all" aria-current="true"><span>All products</span><span>${catalog.products.length}</span></button>${catalog.categories.map((name) => `<button type="button" class="piki-binding-category" data-piki-category="${escapeAttr(name)}" aria-current="false"><span>${escapeHtml(name)}</span><span>${count(name)}</span></button>`).join("")}</nav>`;
+  return `<nav class="piki-binding-categories" data-piki-binding="categories" data-piki-component="category-navigation" aria-label="Product categories"><button type="button" class="piki-binding-category" data-piki-category="all" aria-current="true"><span>All products</span><span>${catalog.products.length}</span></button>${catalog.categories.map((name) => `<button type="button" class="piki-binding-category" data-piki-category="${escapeAttr(name)}" aria-current="false"><span>${escapeHtml(name)}</span><span>${count(name)}</span></button>`).join("")}</nav>`;
 }
 
 function searchMarkup(): string {
-  return '<input class="piki-binding-search" type="search" data-piki-search placeholder="Search products" aria-label="Search products">';
+  return '<input class="piki-binding-search" type="search" data-piki-binding="search" data-piki-component="product-search" data-piki-search placeholder="Search products" aria-label="Search products">';
 }
 
 function productsMarkup(catalog: Catalog): string {
-  if (!catalog.products.length) return '<div class="piki-binding-products"><p class="piki-binding-empty">No products are available yet.</p></div>';
-  return `<div class="piki-binding-products">${catalog.products.map((item) => productMarkup(item, catalog)).join("")}</div>`;
+  if (!catalog.products.length) return '<div class="piki-binding-products" data-piki-binding="products" data-piki-component="product-catalogue"><p class="piki-binding-empty">No products are available yet.</p></div>';
+  return `<div class="piki-binding-products" data-piki-binding="products" data-piki-component="product-catalogue">${catalog.products.map((item) => productMarkup(item, catalog)).join("")}</div>`;
 }
 
 function productMarkup(item: CatalogItem, catalog: Catalog): string {
@@ -273,11 +362,63 @@ function productMarkup(item: CatalogItem, catalog: Catalog): string {
       : hasVariants
         ? "Choose options"
         : "Add to cart";
-  return `<article class="piki-binding-product" data-piki-product data-category="${escapeAttr(category)}" data-search="${escapeAttr(search)}"><div class="piki-binding-product-image">${image ? `<img src="${escapeAttr(image)}" alt="${escapeAttr(item.name)}" loading="lazy">` : '<div class="piki-binding-product-placeholder">No image</div>'}${item.discountPercent ? `<span class="piki-binding-product-badge">-${Math.round(item.discountPercent)}%</span>` : ""}</div><div class="piki-binding-product-body">${category ? `<p class="piki-binding-product-category">${escapeHtml(category)}</p>` : ""}<h3>${escapeHtml(item.name)}</h3><div class="piki-binding-price"><span>${escapeHtml(price)}</span>${compare ? `<del>${escapeHtml(compare)}</del>` : ""}</div><div class="piki-binding-product-meta"><span>${hasVariants ? "Variants available" : escapeHtml(item.unit || item.saleUnit || "Product")}</span><span class="piki-binding-stock" data-low="${String(!outOfStock && !hasVariants && item.trackStock !== false && item.stock <= 5)}">${escapeHtml(stockLabel)}</span></div><button type="button" class="piki-binding-add" data-piki-action="add-product" data-product-id="${escapeAttr(item.id)}" ${outOfStock ? "disabled" : ""}>${buttonLabel}</button></div></article>`;
+  return `<article class="piki-binding-product" data-piki-product data-piki-component="product-card" data-piki-label="${escapeAttr(item.name)}" data-category="${escapeAttr(category)}" data-search="${escapeAttr(search)}"><div class="piki-binding-product-image">${image ? `<img src="${escapeAttr(image)}" alt="${escapeAttr(item.name)}" loading="lazy">` : '<div class="piki-binding-product-placeholder">No image</div>'}${item.discountPercent ? `<span class="piki-binding-product-badge">-${Math.round(item.discountPercent)}%</span>` : ""}</div><div class="piki-binding-product-body">${category ? `<p class="piki-binding-product-category">${escapeHtml(category)}</p>` : ""}<h3>${escapeHtml(item.name)}</h3><div class="piki-binding-price"><span>${escapeHtml(price)}</span>${compare ? `<del>${escapeHtml(compare)}</del>` : ""}</div><div class="piki-binding-product-meta"><span>${hasVariants ? "Variants available" : escapeHtml(item.unit || item.saleUnit || "Product")}</span><span class="piki-binding-stock" data-low="${String(!outOfStock && !hasVariants && item.trackStock !== false && item.stock <= 5)}">${escapeHtml(stockLabel)}</span></div><button type="button" class="piki-binding-add" data-piki-action="add-product" data-product-id="${escapeAttr(item.id)}" ${outOfStock ? "disabled" : ""}>${buttonLabel}</button></div></article>`;
+}
+
+function singleProductMarkup(catalog: Catalog, productId?: string | null): string {
+  const item = catalog.products.find((candidate) => candidate.id === productId);
+  if (!item) {
+    return '<section class="piki-binding-missing" data-piki-binding="single-product" data-piki-component="single-product"><h2>Product unavailable</h2><p>The selected product is no longer available in this store.</p></section>';
+  }
+  const images = (item.imageUrls?.length ? item.imageUrls : [item.imageUrl])
+    .map((image) => safeTrustedImageUrl(image))
+    .filter(Boolean)
+    .slice(0, 5);
+  const variants = item.variants || [];
+  const availableVariants = variants.filter((variant) => variant.available !== false);
+  const hasVariants = Boolean(item.hasVariants && variants.length);
+  const externalUnavailable = item.source === "external_api" && !item.externalCheckoutUrl;
+  const outOfStock = externalUnavailable || (hasVariants
+    ? availableVariants.length === 0
+    : item.trackStock !== false && item.stock <= 0);
+  const variantPrices = (availableVariants.length ? availableVariants : variants)
+    .map((variant) => variant.price);
+  const displayPrice = hasVariants && variantPrices.length
+    ? Math.min(...variantPrices)
+    : item.price;
+  const price = `${hasVariants ? "From " : ""}${catalog.currencySymbol}${Number(displayPrice || 0).toLocaleString()}`;
+  const compare = item.compareAtPrice && item.compareAtPrice > displayPrice
+    ? `${catalog.currencySymbol}${Number(item.compareAtPrice).toLocaleString()}`
+    : "";
+  const stockLabel = externalUnavailable
+    ? "Unavailable"
+    : outOfStock
+      ? "Sold out"
+      : hasVariants
+        ? `${availableVariants.length} ${availableVariants.length === 1 ? "option" : "options"} available`
+        : item.trackStock !== false && item.stock <= 5
+          ? `Only ${Math.max(0, item.stock)} left`
+          : "In stock";
+  const buttonLabel = externalUnavailable
+    ? "Unavailable"
+    : outOfStock
+      ? "Sold out"
+      : item.externalCheckoutUrl
+        ? "View product"
+        : hasVariants
+          ? "Choose options"
+          : "Add to cart";
+  const gallery = images.length
+    ? images.map((image, index) => `<figure class="piki-binding-single-image"><img src="${escapeAttr(image)}" alt="${escapeAttr(index === 0 ? item.name : `${item.name} view ${index + 1}`)}" loading="${index === 0 ? "eager" : "lazy"}">${index === 0 && item.discountPercent ? `<span class="piki-binding-product-badge">-${Math.round(item.discountPercent)}%</span>` : ""}</figure>`).join("")
+    : '<div class="piki-binding-single-image"><div class="piki-binding-product-placeholder">Add product photography in Piki POS</div></div>';
+  const options = hasVariants
+    ? `<div class="piki-binding-single-options" aria-label="Available options">${availableVariants.map((variant) => `<span class="piki-binding-single-option">${escapeHtml(variant.name)}</span>`).join("")}</div>`
+    : "";
+  return `<section class="piki-binding-single-product" data-piki-binding="single-product" data-piki-component="single-product" data-piki-label="${escapeAttr(item.name)}"><div class="piki-binding-single-gallery" data-piki-component="product-gallery" data-piki-label="${escapeAttr(`${item.name} gallery`)}">${gallery}</div><div class="piki-binding-single-info" data-piki-component="product-information" data-piki-label="${escapeAttr(`${item.name} information`)}">${item.category ? `<p class="piki-binding-product-category">${escapeHtml(item.category)}</p>` : ""}<h1>${escapeHtml(item.name)}</h1>${item.brand ? `<p>${escapeHtml(item.brand)}</p>` : ""}<div class="piki-binding-price"><span>${escapeHtml(price)}</span>${compare ? `<del>${escapeHtml(compare)}</del>` : ""}</div>${item.description ? `<p class="piki-binding-single-description">${escapeHtml(item.description)}</p>` : ""}${options}<div class="piki-binding-product-meta"><span>${escapeHtml(item.unit || item.saleUnit || "Product")}</span><span class="piki-binding-stock" data-low="${String(!outOfStock && !hasVariants && item.trackStock !== false && item.stock <= 5)}">${escapeHtml(stockLabel)}</span></div><div class="piki-binding-single-buy" data-piki-component="product-purchase"><button type="button" class="piki-binding-add" data-piki-action="add-product" data-product-id="${escapeAttr(item.id)}" ${outOfStock ? "disabled" : ""}>${buttonLabel}</button><p class="piki-binding-single-trust">Live pricing and availability are verified by the store at checkout.</p></div></div></section>`;
 }
 
 function footerMarkup(catalog: Catalog): string {
-  return `<footer class="piki-binding-footer"><span>© ${new Date().getFullYear()} ${escapeHtml(catalog.business.name)}</span><span>Secure ordering powered by Piki</span></footer>`;
+  return `<footer class="piki-binding-footer" data-piki-binding="footer" data-piki-component="footer"><span>© ${new Date().getFullYear()} ${escapeHtml(catalog.business.name)}</span><span>Secure ordering powered by Piki</span></footer>`;
 }
 
 function pageMarkup(catalog: Catalog): string {
@@ -342,6 +483,19 @@ function replaceSlot(markup: string, slot: string, replacement: string): string 
   const paired = new RegExp(`<${slot}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${slot}\\s*>`, "gi");
   const selfClosing = new RegExp(`<${slot}(?:\\s[^>]*)?\\s*\\/>`, "gi");
   return markup.replace(paired, replacement).replace(selfClosing, replacement);
+}
+
+function bindingAttribute(
+  markup: string,
+  slot: string,
+  attribute: string,
+): string | null {
+  const opening = markup.match(new RegExp(`<${slot}\\b([^>]*)>`, "i"));
+  if (!opening) return null;
+  const match = (opening[1] || "").match(
+    new RegExp(`(?:^|\\s)${attribute}\\s*=\\s*(["'])(.*?)\\1`, "i"),
+  );
+  return match?.[2]?.trim() || null;
 }
 
 function escapeHtml(value: unknown): string {

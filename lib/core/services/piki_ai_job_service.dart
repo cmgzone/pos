@@ -264,6 +264,9 @@ class PikiAiJobService {
     String branchId = 'main_branch',
     String storefrontType = 'retail',
     String? parentBuildId,
+    String? siteMode,
+    String? selectedProductId,
+    Map<String, dynamic>? selectionContext,
   }) async {
     final backendUrl = SyncSettingsService.backendUrl;
     if (backendUrl.isEmpty) throw Exception('Cloud sync is not configured');
@@ -283,6 +286,12 @@ class PikiAiJobService {
             'storefrontType': storefrontType,
             if (parentBuildId?.trim().isNotEmpty == true)
               'parentBuildId': parentBuildId!.trim(),
+            if (siteMode?.trim().isNotEmpty == true)
+              'siteMode': siteMode!.trim(),
+            if (selectedProductId?.trim().isNotEmpty == true)
+              'selectedProductId': selectedProductId!.trim(),
+            if (selectionContext?.isNotEmpty == true)
+              'selectionContext': selectionContext,
           }),
         )
         .timeout(_timeout);

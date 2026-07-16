@@ -89,6 +89,32 @@ test('site compiler requires exactly one trusted product catalogue binding', () 
   );
 });
 
+test('site compiler accepts one selected live product instead of a catalogue', () => {
+  const compiled = compileStorefrontSitePackage({
+    html: '<main><piki-single-product></piki-single-product></main>',
+    css: 'main{display:grid}',
+    singleProductId: 'product-42',
+  });
+  assert.equal(compiled.singleProductId, 'product-42');
+  assert.equal(compiled.slots.includes('piki-single-product'), true);
+  assert.equal(compiled.slots.includes('piki-products'), false);
+
+  assert.throws(
+    () => compileStorefrontSitePackage({
+      html: '<piki-single-product></piki-single-product>',
+      css: 'main{}',
+    }),
+    /requires a selected live product ID/i,
+  );
+  assert.throws(
+    () => compileStorefrontSitePackage({
+      html: '<piki-products></piki-products><piki-single-product product-id="product-42"></piki-single-product>',
+      css: 'main{}',
+    }),
+    /exactly one product binding/i,
+  );
+});
+
 test('site compiler rejects unsupported bindings but permits local page anchors', () => {
   const compiled = compileStorefrontSitePackage({
     html: '<a href="#catalog">Shop</a><section id="catalog"><piki-products></piki-products></section>',
