@@ -30,4 +30,57 @@ void main() {
     expect(find.text('QR Poster'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('online store navigation remains responsive on a phone', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: const OnlineStoreScreen(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Online Store'), findsWidgets);
+    expect(find.byType(ChoiceChip), findsWidgets);
+    expect(find.text('Share Store Link'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('website and checkout workspace fits a phone width', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: const OnlineStoreScreen(
+          initialSection: OnlineStoreSection.website,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Website studio'), findsOneWidget);
+    expect(find.text('Build'), findsOneWidget);
+    expect(find.text('Manage'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Manage'));
+    await tester.pump();
+
+    expect(find.text('Homepage themes'), findsOneWidget);
+    expect(find.text('Storefront type'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

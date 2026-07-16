@@ -68,14 +68,83 @@ function StorefrontInner() {
 
   const handlePikiComponentSelected = useCallback(
     (selection: PikiComponentSelection) => {
-      window.chrome?.webview?.postMessage({
+      window.chrome?.webview?.postMessage(JSON.stringify({
         channel: "piki-storefront-studio",
         type: "section-selected",
         selection,
-      });
+      }));
     },
     [],
   );
+
+  useEffect(() => {
+    if (!inspectMode || !catalog || catalog.siteBuild) return;
+    const root = document.documentElement;
+    root.classList.add("piki-inspect-mode");
+    const componentFor = (target: EventTarget | null) =>
+      target instanceof Element
+        ? target.closest<HTMLElement>(
+            "[data-piki-component], .storefront-section, header, footer",
+          )
+        : null;
+    const selectorFor = (element: HTMLElement) => {
+      if (element.dataset.pikiSectionId) {
+        return `[data-piki-section-id="${element.dataset.pikiSectionId}"]`;
+      }
+      if (element.dataset.pikiComponent) {
+        return `[data-piki-component="${element.dataset.pikiComponent}"]`;
+      }
+      return element.tagName.toLowerCase();
+    };
+    const onPointerOver = (event: PointerEvent) => {
+      const element = componentFor(event.target);
+      if (element) element.dataset.pikiInspectHover = "true";
+    };
+    const onPointerOut = (event: PointerEvent) => {
+      const element = componentFor(event.target);
+      if (element) delete element.dataset.pikiInspectHover;
+    };
+    const onClick = (event: MouseEvent) => {
+      const element = componentFor(event.target);
+      if (!element) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      document
+        .querySelectorAll<HTMLElement>("[data-piki-inspect-selected]")
+        .forEach((item) => delete item.dataset.pikiInspectSelected);
+      element.dataset.pikiInspectSelected = "true";
+      const heading = element.querySelector("h1,h2,h3,[aria-label]");
+      handlePikiComponentSelected({
+        component:
+          element.dataset.pikiComponent ||
+          element.dataset.pikiSectionType ||
+          element.tagName.toLowerCase(),
+        binding: element.dataset.pikiSectionId,
+        selector: selectorFor(element),
+        parentSelector: element.parentElement
+          ? selectorFor(element.parentElement)
+          : undefined,
+        label:
+          element.dataset.pikiLabel ||
+          heading?.textContent?.trim() ||
+          "Selected website section",
+        text: element.textContent?.replace(/\s+/g, " ").trim().slice(0, 500),
+      });
+    };
+    document.addEventListener("pointerover", onPointerOver, true);
+    document.addEventListener("pointerout", onPointerOut, true);
+    document.addEventListener("click", onClick, true);
+    window.chrome?.webview?.postMessage(JSON.stringify({
+      channel: "piki-storefront-studio",
+      type: "inspector-ready",
+    }));
+    return () => {
+      root.classList.remove("piki-inspect-mode");
+      document.removeEventListener("pointerover", onPointerOver, true);
+      document.removeEventListener("pointerout", onPointerOut, true);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [catalog, handlePikiComponentSelected, inspectMode]);
 
   const loadCatalog = useCallback(
     async (

@@ -402,53 +402,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Icon(
-                      Icons.dashboard_customize_rounded,
-                      color: colors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Storefront Studio',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Build the homepage, custom pages, navigation, and connected catalogue from one professional workspace.',
-                          style: TextStyle(color: colors.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.onPreviewCurrentStore != null) ...[
-                    OutlinedButton.icon(
-                      onPressed: _busy ? null : widget.onPreviewCurrentStore,
-                      icon: const Icon(Icons.web_asset_rounded),
-                      label: const Text('Preview store'),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  FilledButton.icon(
-                    onPressed: _busy ? null : _createPage,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('New page'),
-                  ),
-                ],
-              ),
+              _studioHeader(colors),
               const SizedBox(height: 20),
               Wrap(
                 spacing: 8,
@@ -533,6 +487,76 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
     );
   }
 
+  Widget _studioHeader(ColorScheme colors) {
+    final identity = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(Icons.dashboard_customize_rounded, color: colors.primary),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Storefront Studio',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Build pages, navigation, and the connected catalogue in one workspace.',
+                style: TextStyle(color: colors.onSurfaceVariant, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (widget.onPreviewCurrentStore != null)
+          OutlinedButton.icon(
+            onPressed: _busy ? null : widget.onPreviewCurrentStore,
+            icon: const Icon(Icons.web_asset_rounded),
+            label: const Text('Preview store'),
+          ),
+        FilledButton.icon(
+          onPressed: _busy ? null : _createPage,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('New page'),
+        ),
+      ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 680) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [identity, const SizedBox(height: 16), actions],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: identity),
+            const SizedBox(width: 18),
+            actions,
+          ],
+        );
+      },
+    );
+  }
+
   Widget _siteCompilerCard(ColorScheme colors) {
     final live = _publishedSiteBuild;
     final job = _siteJob;
@@ -550,63 +574,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: colors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(Icons.code_rounded, color: colors.primary),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Piki Site Compiler',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        if (live != null) ...[
-                          const SizedBox(width: 8),
-                          Chip(
-                            avatar: const Icon(Icons.public_rounded, size: 15),
-                            label: Text('Version ${live.version} live'),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Piki writes a unique responsive website structure, then safely binds it to live products, categories, pages, cart, and checkout.',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: _busy || isWorking
-                    ? null
-                    : () => _openSiteCompiler(),
-                icon: Icon(
-                  live == null
-                      ? Icons.auto_awesome_rounded
-                      : Icons.draw_outlined,
-                ),
-                label: Text(
-                  live == null ? 'Code new site' : 'Refine with Piki',
-                ),
-              ),
-            ],
-          ),
+          _siteCompilerHeader(colors, live, isWorking),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
@@ -711,6 +679,87 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
     );
   }
 
+  Widget _siteCompilerHeader(
+    ColorScheme colors,
+    StorefrontSiteBuild? live,
+    bool isWorking,
+  ) {
+    final identity = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(Icons.code_rounded, color: colors.primary),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'Piki Site Compiler',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  if (live != null)
+                    Chip(
+                      avatar: const Icon(Icons.public_rounded, size: 15),
+                      label: Text('v${live.version} live'),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Create a responsive site that stays connected to live products, pages, cart, and checkout.',
+                style: TextStyle(color: colors.onSurfaceVariant, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final action = FilledButton.icon(
+      onPressed: _busy || isWorking ? null : () => _openSiteCompiler(),
+      icon: Icon(
+        live == null ? Icons.auto_awesome_rounded : Icons.draw_outlined,
+      ),
+      label: Text(live == null ? 'Code new site' : 'Refine with Piki'),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 680) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              identity,
+              const SizedBox(height: 16),
+              Align(alignment: Alignment.centerLeft, child: action),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: identity),
+            const SizedBox(width: 18),
+            action,
+          ],
+        );
+      },
+    );
+  }
+
   Widget _siteBuildCard(StorefrontSiteBuild build, ColorScheme colors) {
     final isArchived = build.status == 'archived';
     final shortHash = build.codeHash.length > 8
@@ -803,7 +852,10 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
             style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
           ),
           const SizedBox(height: 13),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               OutlinedButton.icon(
                 onPressed: _busy ? null : () => _previewSiteBuild(build),
@@ -812,7 +864,6 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                   Platform.isWindows ? 'Preview & edit' : 'Exact preview',
                 ),
               ),
-              const SizedBox(width: 8),
               if (!build.isPublished)
                 FilledButton.icon(
                   onPressed: _busy ? null : () => _publishSiteBuild(build),
@@ -822,8 +873,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                   ),
                   label: Text(isArchived ? 'Restore' : 'Publish'),
                 ),
-              const Spacer(),
-              IconButton(
+              IconButton.filledTonal(
                 tooltip: 'Refine this version with Piki',
                 onPressed: _busy ? null : () => _openSiteCompiler(build),
                 icon: const Icon(Icons.auto_awesome_outlined),
@@ -872,31 +922,53 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colors.outlineVariant),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.note_add_outlined, size: 34, color: colors.primary),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Add the pages customers expect',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final content = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.note_add_outlined, size: 34, color: colors.primary),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Add the pages customers expect',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Create About, FAQ, Contact, policy, and campaign landing pages.',
+                    ),
+                  ],
                 ),
-                SizedBox(height: 4),
-                Text(
-                  'Create About, FAQ, Contact, policy, and campaign landing pages. Piki can write and arrange each one.',
-                ),
-              ],
-            ),
-          ),
-          OutlinedButton.icon(
+              ),
+            ],
+          );
+          final action = OutlinedButton.icon(
             onPressed: _createPage,
             icon: const Icon(Icons.add_rounded),
             label: const Text('Create first page'),
-          ),
-        ],
+          );
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                content,
+                const SizedBox(height: 16),
+                Align(alignment: Alignment.centerLeft, child: action),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: content),
+              const SizedBox(width: 18),
+              action,
+            ],
+          );
+        },
       ),
     );
   }
@@ -986,56 +1058,78 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colors.outlineVariant),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color:
-                  (connection?.isEnabled == true
-                          ? Colors.green
-                          : colors.primary)
-                      .withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(
-              Icons.hub_outlined,
-              color: connection?.isEnabled == true
-                  ? Colors.green
-                  : colors.primary,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Dynamic product API',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final identity = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color:
+                      (connection?.isEnabled == true
+                              ? Colors.green
+                              : colors.primary)
+                          .withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  connection == null
-                      ? 'Optionally show a product feed from another platform using encrypted server-side credentials.'
-                      : connection.isEnabled
-                      ? '${connection.name} is connected · ${connection.lastTestMessage ?? 'live product feed'}'
-                      : '${connection.name} is saved but not enabled.',
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
+                child: Icon(
+                  Icons.hub_outlined,
+                  color: connection?.isEnabled == true
+                      ? Colors.green
+                      : colors.primary,
                 ),
-              ],
-            ),
-          ),
-          OutlinedButton.icon(
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Dynamic product API',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      connection == null
+                          ? 'Optionally show a product feed from another platform using encrypted server-side credentials.'
+                          : connection.isEnabled
+                          ? '${connection.name} is connected · ${connection.lastTestMessage ?? 'live product feed'}'
+                          : '${connection.name} is saved but not enabled.',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final action = OutlinedButton.icon(
             onPressed: _busy ? null : _configureConnection,
             icon: const Icon(Icons.settings_ethernet_rounded),
             label: Text(connection == null ? 'Connect API' : 'Manage'),
-          ),
-        ],
+          );
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                identity,
+                const SizedBox(height: 16),
+                Align(alignment: Alignment.centerLeft, child: action),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: identity),
+              const SizedBox(width: 18),
+              action,
+            ],
+          );
+        },
       ),
     );
   }
@@ -1207,6 +1301,7 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
                   children: [
                     if (widget.baseBuild != null) ...[
                       SegmentedButton<bool>(
+                        expandedInsets: EdgeInsets.zero,
                         segments: [
                           ButtonSegment(
                             value: true,
@@ -1234,6 +1329,7 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
                     ),
                     const SizedBox(height: 8),
                     SegmentedButton<String>(
+                      expandedInsets: EdgeInsets.zero,
                       segments: const [
                         ButtonSegment(
                           value: 'catalog',
@@ -1365,29 +1461,28 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
             Divider(height: 1, color: colors.outlineVariant),
             Padding(
               padding: const EdgeInsets.all(18),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.cloud_outlined,
-                    size: 17,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      'Piki continues securely in the cloud if you close the app.',
-                      style: TextStyle(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final status = Row(
+                    children: [
+                      Icon(
+                        Icons.cloud_outlined,
+                        size: 17,
                         color: colors.onSurfaceVariant,
-                        fontSize: 12,
                       ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          'Piki continues securely in the cloud if you close the app.',
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                  final submit = FilledButton.icon(
                     onPressed: () {
                       final instruction = _brief.text.trim();
                       if (instruction.length < 10) return;
@@ -1418,8 +1513,36 @@ class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
                     label: Text(
                       _refineBase ? 'Create refined draft' : 'Code website',
                     ),
-                  ),
-                ],
+                  );
+                  final actions = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      submit,
+                    ],
+                  );
+                  if (constraints.maxWidth < 620) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        status,
+                        const SizedBox(height: 12),
+                        Align(alignment: Alignment.centerRight, child: actions),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: status),
+                      const SizedBox(width: 16),
+                      actions,
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -1532,67 +1655,78 @@ class _NewPageDialogState extends State<_NewPageDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: const Text('Create a website page'),
       content: SizedBox(
-        width: 650,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Choose a professional starting structure. Every section can be reordered, restyled, or rebuilt by Piki.',
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _templates.map((item) {
-                final selected = _type == item.$1;
-                return ChoiceChip(
-                  selected: selected,
-                  avatar: Icon(item.$3, size: 17),
-                  label: Text(item.$2),
-                  onSelected: (_) {
-                    setState(() {
-                      _type = item.$1;
-                      _title.text = item.$2 == 'Blank page'
-                          ? 'New page'
-                          : item.$2;
-                      _slug.text = _slugify(_title.text);
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _templates.firstWhere((item) => item.$1 == _type).$4,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
+        width: (screen.width - 96).clamp(260.0, 650.0),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Choose a professional starting structure. Every section can be reordered, restyled, or rebuilt by Piki.',
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _templates.map((item) {
+                  final selected = _type == item.$1;
+                  return ChoiceChip(
+                    selected: selected,
+                    avatar: Icon(item.$3, size: 17),
+                    label: Text(item.$2),
+                    onSelected: (_) {
+                      setState(() {
+                        _type = item.$1;
+                        _title.text = item.$2 == 'Blank page'
+                            ? 'New page'
+                            : item.$2;
+                        _slug.text = _slugify(_title.text);
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _templates.firstWhere((item) => item.$1 == _type).$4,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final title = TextField(
                     controller: _title,
                     decoration: const InputDecoration(labelText: 'Page title'),
                     onChanged: (value) => _slug.text = _slugify(value),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
+                  );
+                  final slug = TextField(
                     controller: _slug,
                     decoration: const InputDecoration(
                       prefixText: '/page/',
                       labelText: 'Page URL',
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+                  );
+                  if (constraints.maxWidth < 480) {
+                    return Column(
+                      children: [title, const SizedBox(height: 12), slug],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: title),
+                      const SizedBox(width: 12),
+                      Expanded(child: slug),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1809,8 +1943,9 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final compact = MediaQuery.sizeOf(context).width < 760;
     return Dialog(
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: EdgeInsets.all(compact ? 10 : 24),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1180, maxHeight: 780),
         child: Column(
@@ -1822,117 +1957,200 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
                   bottom: BorderSide(color: colors.outlineVariant),
                 ),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.web_stories_outlined,
-                      color: colors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _page.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 17,
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: colors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.web_stories_outlined,
+                          color: colors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _page.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 17,
+                              ),
+                            ),
+                            Text(
+                              '/page/${_page.slug} · ${_page.isPublished ? 'Live' : 'Draft'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!compact) ...[
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _preview,
+                          icon: const Icon(Icons.visibility_outlined),
+                          label: Text(
+                            Platform.isWindows
+                                ? 'Preview in app'
+                                : 'Exact preview',
                           ),
                         ),
-                        Text(
-                          'Page Studio · /page/${_page.slug} · ${_page.isPublished ? 'Live' : 'Draft'}',
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-                            fontSize: 12,
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: _busy ? null : _togglePublish,
+                          icon: Icon(
+                            _page.isPublished
+                                ? Icons.public_off_outlined
+                                : Icons.publish_rounded,
+                          ),
+                          label: Text(
+                            _page.isPublished ? 'Unpublish' : 'Publish',
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      IconButton(
+                        tooltip: 'Close page studio',
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.pop(context, _page),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  if (compact) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _busy ? null : _preview,
+                            icon: const Icon(Icons.visibility_outlined),
+                            label: const Text('Preview'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _busy ? null : _togglePublish,
+                            icon: Icon(
+                              _page.isPublished
+                                  ? Icons.public_off_outlined
+                                  : Icons.publish_rounded,
+                            ),
+                            label: Text(
+                              _page.isPublished ? 'Unpublish' : 'Publish',
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _preview,
-                    icon: const Icon(Icons.visibility_outlined),
-                    label: Text(
-                      Platform.isWindows ? 'Preview in app' : 'Exact preview',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: _busy ? null : _togglePublish,
-                    icon: Icon(
-                      _page.isPublished
-                          ? Icons.public_off_outlined
-                          : Icons.publish_rounded,
-                    ),
-                    label: Text(_page.isPublished ? 'Unpublish' : 'Publish'),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.pop(context, _page),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
+                  ],
                 ],
               ),
             ),
             Expanded(
-              child: Row(
-                children: [
-                  Container(
-                    width: 210,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerLowest,
-                      border: Border(
-                        right: BorderSide(color: colors.outlineVariant),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: compact
+                  ? Column(
                       children: [
-                        _studioNav(
-                          0,
-                          Icons.view_quilt_outlined,
-                          'Page layout',
-                          '${_sections.length} sections',
-                        ),
-                        _studioNav(
-                          1,
-                          Icons.tune_rounded,
-                          'Page settings',
-                          'URL, navigation, SEO',
-                        ),
-                        _studioNav(
-                          2,
-                          Icons.auto_awesome_rounded,
-                          'Design with Piki',
-                          'Describe any page',
-                        ),
-                        const Spacer(),
-                        Text(
-                          'Changes remain a draft until you publish. Preview uses the exact customer website.',
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-                            fontSize: 11,
-                            height: 1.4,
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceContainerLowest,
+                            border: Border(
+                              bottom: BorderSide(color: colors.outlineVariant),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _studioCompactNav(
+                                  0,
+                                  Icons.view_quilt_outlined,
+                                  'Layout',
+                                ),
+                              ),
+                              Expanded(
+                                child: _studioCompactNav(
+                                  1,
+                                  Icons.tune_rounded,
+                                  'Settings',
+                                ),
+                              ),
+                              Expanded(
+                                child: _studioCompactNav(
+                                  2,
+                                  Icons.auto_awesome_rounded,
+                                  'Piki',
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        Expanded(child: _panelBody(colors)),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Container(
+                          width: 210,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceContainerLowest,
+                            border: Border(
+                              right: BorderSide(color: colors.outlineVariant),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _studioNav(
+                                0,
+                                Icons.view_quilt_outlined,
+                                'Page layout',
+                                '${_sections.length} sections',
+                              ),
+                              _studioNav(
+                                1,
+                                Icons.tune_rounded,
+                                'Page settings',
+                                'URL, navigation, SEO',
+                              ),
+                              _studioNav(
+                                2,
+                                Icons.auto_awesome_rounded,
+                                'Design with Piki',
+                                'Describe any page',
+                              ),
+                              const Spacer(),
+                              Text(
+                                'Changes remain a draft until you publish. Preview uses the exact customer website.',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                  fontSize: 11,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(child: _panelBody(colors)),
                       ],
                     ),
-                  ),
-                  Expanded(child: _panelBody(colors)),
-                ],
-              ),
             ),
             if (_error != null)
               Container(
@@ -1954,16 +2172,22 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
               ),
               child: Row(
                 children: [
-                  if (_busy) ...[
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text('Saving…'),
-                  ],
-                  const Spacer(),
+                  if (_busy)
+                    const Expanded(
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 10),
+                          Text('Saving…'),
+                        ],
+                      ),
+                    )
+                  else
+                    const Spacer(),
                   TextButton(
                     onPressed: _busy
                         ? null
@@ -1974,7 +2198,7 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
                   FilledButton.icon(
                     onPressed: _busy ? null : _save,
                     icon: const Icon(Icons.cloud_done_outlined),
-                    label: const Text('Save draft'),
+                    label: Text(compact ? 'Save' : 'Save draft'),
                   ),
                 ],
               ),
@@ -2040,6 +2264,43 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
     );
   }
 
+  Widget _studioCompactNav(int index, IconData icon, String title) {
+    final selected = _panel == index;
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? colors.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() => _panel = index),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? colors.onPrimary : colors.onSurfaceVariant,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? colors.onPrimary : colors.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _panelBody(ColorScheme colors) {
     if (_panel == 1) return _settingsPanel();
     if (_panel == 2) return _pikiPanel(colors);
@@ -2048,36 +2309,47 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
 
   Widget _layoutPanel(ColorScheme colors) {
     return Padding(
-      padding: const EdgeInsets.all(22),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 14 : 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Customer journey',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final copy = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Customer journey',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Sections render in this exact order on the website.',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              FilledButton.tonalIcon(
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Sections render in this exact order on the website.',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                ],
+              );
+              final action = FilledButton.tonalIcon(
                 onPressed: _busy ? null : _editSections,
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit sections'),
-              ),
-            ],
+              );
+              if (constraints.maxWidth < 480) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [copy, const SizedBox(height: 12), action],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: copy),
+                  const SizedBox(width: 16),
+                  action,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -2128,7 +2400,7 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
 
   Widget _settingsPanel() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2139,25 +2411,32 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _title,
-                  decoration: const InputDecoration(labelText: 'Page title'),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final title = TextField(
+                controller: _title,
+                decoration: const InputDecoration(labelText: 'Page title'),
+              );
+              final slug = TextField(
+                controller: _slug,
+                decoration: const InputDecoration(
+                  prefixText: '/page/',
+                  labelText: 'URL',
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _slug,
-                  decoration: const InputDecoration(
-                    prefixText: '/page/',
-                    labelText: 'URL',
-                  ),
-                ),
-              ),
-            ],
+              );
+              if (constraints.maxWidth < 480) {
+                return Column(
+                  children: [title, const SizedBox(height: 12), slug],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: title),
+                  const SizedBox(width: 12),
+                  Expanded(child: slug),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 14),
           TextField(
@@ -2204,7 +2483,7 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
 
   Widget _pikiPanel(ColorScheme colors) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2427,10 +2706,37 @@ class _StoreApiDialogState extends State<_StoreApiDialog> {
 
   @override
   Widget build(BuildContext context) {
+    Widget responsiveFields(List<Widget> fields) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 560) {
+            return Column(
+              children: [
+                for (var index = 0; index < fields.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 10),
+                  fields[index],
+                ],
+              ],
+            );
+          }
+          return Row(
+            children: [
+              for (var index = 0; index < fields.length; index++) ...[
+                if (index > 0) const SizedBox(width: 10),
+                Expanded(child: fields[index]),
+              ],
+            ],
+          );
+        },
+      );
+    }
+
+    final screen = MediaQuery.sizeOf(context);
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: const Text('Dynamic product API'),
       content: SizedBox(
-        width: 620,
+        width: (screen.width - 96).clamp(260.0, 620.0),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2452,45 +2758,37 @@ class _StoreApiDialogState extends State<_StoreApiDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _authType,
-                      decoration: const InputDecoration(
-                        labelText: 'Authentication',
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'none',
-                          child: Text('No authentication'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'bearer',
-                          child: Text('Bearer token'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'apiKey',
-                          child: Text('API key header'),
-                        ),
-                      ],
-                      onChanged: (value) =>
-                          setState(() => _authType = value ?? _authType),
-                    ),
+              responsiveFields([
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _authType,
+                  decoration: const InputDecoration(
+                    labelText: 'Authentication',
                   ),
-                  if (_authType == 'apiKey') ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _header,
-                        decoration: const InputDecoration(
-                          labelText: 'Header name',
-                        ),
-                      ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'none',
+                      child: Text('No authentication'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'bearer',
+                      child: Text('Bearer token'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'apiKey',
+                      child: Text('API key header'),
                     ),
                   ],
+                  onChanged: (value) =>
+                      setState(() => _authType = value ?? _authType),
+                ),
+                if (_authType == 'apiKey') ...[
+                  TextField(
+                    controller: _header,
+                    decoration: const InputDecoration(labelText: 'Header name'),
+                  ),
                 ],
-              ),
+              ]),
               if (_authType != 'none') ...[
                 const SizedBox(height: 12),
                 TextField(
@@ -2530,67 +2828,45 @@ class _StoreApiDialogState extends State<_StoreApiDialog> {
                   'Match your API field names to storefront product fields.',
                 ),
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _idPath,
-                          decoration: const InputDecoration(
-                            labelText: 'Product ID path',
-                          ),
-                        ),
+                  responsiveFields([
+                    TextField(
+                      controller: _idPath,
+                      decoration: const InputDecoration(
+                        labelText: 'Product ID path',
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _namePath,
-                          decoration: const InputDecoration(
-                            labelText: 'Name path',
-                          ),
-                        ),
+                    ),
+                    TextField(
+                      controller: _namePath,
+                      decoration: const InputDecoration(labelText: 'Name path'),
+                    ),
+                    TextField(
+                      controller: _pricePath,
+                      decoration: const InputDecoration(
+                        labelText: 'Price path',
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _pricePath,
-                          decoration: const InputDecoration(
-                            labelText: 'Price path',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ]),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _stockPath,
-                          decoration: const InputDecoration(
-                            labelText: 'Stock path',
-                          ),
-                        ),
+                  responsiveFields([
+                    TextField(
+                      controller: _stockPath,
+                      decoration: const InputDecoration(
+                        labelText: 'Stock path',
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _imagePath,
-                          decoration: const InputDecoration(
-                            labelText: 'Image URL path',
-                          ),
-                        ),
+                    ),
+                    TextField(
+                      controller: _imagePath,
+                      decoration: const InputDecoration(
+                        labelText: 'Image URL path',
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _checkoutPath,
-                          decoration: const InputDecoration(
-                            labelText: 'Product URL path',
-                          ),
-                        ),
+                    ),
+                    TextField(
+                      controller: _checkoutPath,
+                      decoration: const InputDecoration(
+                        labelText: 'Product URL path',
                       ),
-                    ],
-                  ),
+                    ),
+                  ]),
                 ],
               ),
               SwitchListTile(
@@ -2616,6 +2892,7 @@ class _StoreApiDialogState extends State<_StoreApiDialog> {
           ),
         ),
       ),
+      actionsOverflowDirection: VerticalDirection.up,
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.pop(context, false),

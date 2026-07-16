@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,20 @@ import '../../../widgets/piki_activity_panel.dart';
 import 'storefront_in_app_preview.dart';
 import 'storefront_section_editor.dart';
 import 'storefront_site_builder.dart';
+
+enum _WebsiteWorkspaceView { studio, themes }
+
+double _responsiveDialogWidth(BuildContext context, double maxWidth) {
+  return (MediaQuery.sizeOf(context).width - 48)
+      .clamp(240, maxWidth)
+      .toDouble();
+}
+
+double _responsiveDialogHeight(BuildContext context, double maxHeight) {
+  return (MediaQuery.sizeOf(context).height - 180)
+      .clamp(280, maxHeight)
+      .toDouble();
+}
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -36,6 +51,7 @@ class _StorefrontThemeSettingsSectionState
   List<PikiAiJobEvent> _pikiEvents = const [];
   Timer? _pikiPollTimer;
   bool _pikiRefreshing = false;
+  _WebsiteWorkspaceView _workspaceView = _WebsiteWorkspaceView.studio;
 
   @override
   void initState() {
@@ -245,7 +261,7 @@ class _StorefrontThemeSettingsSectionState
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Add storefront theme'),
           content: SizedBox(
-            width: 440,
+            width: _responsiveDialogWidth(context, 440),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -351,7 +367,7 @@ class _StorefrontThemeSettingsSectionState
         ),
         content: StatefulBuilder(
           builder: (context, setDialogState) => SizedBox(
-            width: 720,
+            width: _responsiveDialogWidth(context, 720),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -379,6 +395,7 @@ class _StorefrontThemeSettingsSectionState
                 ),
                 const SizedBox(height: 16),
                 SegmentedButton<bool>(
+                  expandedInsets: EdgeInsets.zero,
                   segments: const [
                     ButtonSegment<bool>(
                       value: true,
@@ -467,6 +484,20 @@ class _StorefrontThemeSettingsSectionState
     controller.dispose();
     if (!mounted) return;
     if (request == null || request.instruction.length < 5) return;
+    await _startPikiThemeJob(
+      theme,
+      request.instruction,
+      fromScratch: request.fromScratch,
+      retry: () => _customizeWithPiki(theme),
+    );
+  }
+
+  Future<void> _startPikiThemeJob(
+    StorefrontTheme theme,
+    String instruction, {
+    required bool fromScratch,
+    required VoidCallback retry,
+  }) async {
     if (_pikiJob?.isRunning == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -483,8 +514,8 @@ class _StorefrontThemeSettingsSectionState
     try {
       final job = await PikiAiJobService.createStorefrontThemeJob(
         theme.id,
-        request.instruction,
-        fromScratch: request.fromScratch,
+        instruction,
+        fromScratch: fromScratch,
       );
       if (!mounted) return;
       setState(() {
@@ -504,7 +535,7 @@ class _StorefrontThemeSettingsSectionState
       if (mounted) {
         setState(() {
           _error = _message(error);
-          _errorRetry = () => _customizeWithPiki(theme);
+          _errorRetry = retry;
         });
       }
     } finally {
@@ -575,15 +606,31 @@ class _StorefrontThemeSettingsSectionState
   Future<void> _openWebsitePreview(StorefrontTheme theme) async {
     final uri = await StorefrontThemeService.previewUrl(theme);
     if (Platform.isWindows && mounted) {
-      await showDialog<void>(
+      final edit = await showDialog<StorefrontPreviewEditRequest>(
         context: context,
         barrierDismissible: false,
         builder: (context) => StorefrontInAppPreviewDialog(
           previewUri: uri,
           buildName: theme.name,
-          enablePointAndEdit: false,
+          enablePointAndEdit: true,
         ),
       );
+      if (edit != null && mounted) {
+        final selection = edit.selection;
+        final instruction =
+            '''
+Edit the selected ${selection.label} component to satisfy this request: ${edit.instruction}
+
+Selected component metadata: ${jsonEncode(selection.toJson())}
+Preserve every unrelated website section, existing brand choice, checkout setting, and live catalogue behavior.
+''';
+        await _startPikiThemeJob(
+          theme,
+          instruction,
+          fromScratch: false,
+          retry: () => _preview(theme),
+        );
+      }
       return;
     }
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -619,7 +666,7 @@ class _StorefrontThemeSettingsSectionState
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Customize checkout'),
           content: SizedBox(
-            width: 520,
+            width: _responsiveDialogWidth(context, 520),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -811,6 +858,7 @@ class _StorefrontThemeSettingsSectionState
             required ValueChanged<String> onChanged,
           }) {
             return DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: value,
               decoration: InputDecoration(labelText: label),
               items: options
@@ -834,8 +882,8 @@ class _StorefrontThemeSettingsSectionState
               ],
             ),
             content: SizedBox(
-              width: 760,
-              height: 590,
+              width: _responsiveDialogWidth(context, 760),
+              height: _responsiveDialogHeight(context, 590),
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1318,153 +1366,321 @@ class _StorefrontThemeSettingsSectionState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        StorefrontSiteBuilder(
-          key: ValueKey('site-builder-$_storefrontType'),
-          storefrontType: _storefrontType,
-          onPreviewCurrentStore: previewTheme == null
-              ? null
-              : () => unawaited(_preview(previewTheme)),
-        ),
-        const SizedBox(height: 22),
-        Row(
-          children: [
-            Icon(Icons.home_work_outlined, color: colors.primary, size: 20),
-            const SizedBox(width: 8),
-            const Text(
-              'Homepage themes',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Control the global design system, homepage structure, and checkout.',
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: 250,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _storefrontType,
-                    decoration: const InputDecoration(
-                      labelText: 'Storefront type',
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'retail',
-                        child: Text('Products'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'services',
-                        child: Text('Services'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'restaurant',
-                        child: Text('Restaurant'),
-                      ),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (value) {
-                            if (value == null || value == _storefrontType) {
-                              return;
-                            }
-                            _pikiPollTimer?.cancel();
-                            setState(() => _storefrontType = value);
-                            _load();
-                            unawaited(_loadPikiJob());
-                          },
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: _busy ? null : _createTheme,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add theme'),
-                ),
-                Text(
-                  '${_themes.length} saved · unlimited drafts',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  'Preview opens the real customer website.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          _buildErrorNotice(),
-        ],
-        if (_pikiJob != null) ...[
-          const SizedBox(height: 12),
-          _buildPikiJobNotice(),
-        ],
-        const SizedBox(height: 16),
-        if (_loading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: CircularProgressIndicator(),
-            ),
+        _websiteWorkspaceHeader(colors, previewTheme),
+        const SizedBox(height: 18),
+        if (_workspaceView == _WebsiteWorkspaceView.studio)
+          StorefrontSiteBuilder(
+            key: ValueKey('site-builder-$_storefrontType'),
+            storefrontType: _storefrontType,
+            onPreviewCurrentStore: previewTheme == null
+                ? null
+                : () => unawaited(_preview(previewTheme)),
           )
-        else if (_themes.isEmpty)
+        else ...[
+          Row(
+            children: [
+              Icon(Icons.home_work_outlined, color: colors.primary, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Homepage themes',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Control the global design system, homepage structure, and checkout.',
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
+              padding: const EdgeInsets.all(20),
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Icon(
-                    Icons.web_asset_off_outlined,
-                    size: 42,
-                    color: colors.primary,
+                  SizedBox(
+                    width: 250,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _storefrontType,
+                      decoration: const InputDecoration(
+                        labelText: 'Storefront type',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'retail',
+                          child: Text('Products'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'services',
+                          child: Text('Services'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'restaurant',
+                          child: Text('Restaurant'),
+                        ),
+                      ],
+                      onChanged: _busy
+                          ? null
+                          : (value) {
+                              if (value == null || value == _storefrontType) {
+                                return;
+                              }
+                              _pikiPollTimer?.cancel();
+                              setState(() => _storefrontType = value);
+                              _load();
+                              unawaited(_loadPikiJob());
+                            },
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text('No saved themes yet'),
-                  const SizedBox(height: 6),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : _createTheme,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add theme'),
+                  ),
                   Text(
-                    'Create as many themes as you need, then publish one when it is ready.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: colors.onSurfaceVariant),
+                    '${_themes.length} saved · unlimited drafts',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    'Preview opens the real customer website.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
             ),
-          )
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth >= 760
-                  ? (constraints.maxWidth - 12) / 2
-                  : constraints.maxWidth;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: _themes
-                    .map(
-                      (theme) =>
-                          SizedBox(width: width, child: _themeCard(theme)),
-                    )
-                    .toList(),
-              );
-            },
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            _buildErrorNotice(),
+          ],
+          if (_pikiJob != null) ...[
+            const SizedBox(height: 12),
+            _buildPikiJobNotice(),
+          ],
+          const SizedBox(height: 16),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_themes.isEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.web_asset_off_outlined,
+                      size: 42,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('No saved themes yet'),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Create as many themes as you need, then publish one when it is ready.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth >= 760
+                    ? (constraints.maxWidth - 12) / 2
+                    : constraints.maxWidth;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: _themes
+                      .map(
+                        (theme) =>
+                            SizedBox(width: width, child: _themeCard(theme)),
+                      )
+                      .toList(),
+                );
+              },
+            ),
+        ],
       ],
+    );
+  }
+
+  Widget _websiteWorkspaceHeader(
+    ColorScheme colors,
+    StorefrontTheme? previewTheme,
+  ) {
+    final liveTheme = _themes.where((theme) => theme.isPublished).firstOrNull;
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [colors.primary.withValues(alpha: 0.11), colors.surface],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.22)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 700;
+          final intro = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colors.primary,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(Icons.language_rounded, color: colors.onPrimary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Website studio',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      liveTheme == null
+                          ? 'Build the customer website, configure checkout, preview every change, then publish.'
+                          : '${liveTheme.name} is live. Drafts stay private until you publish them.',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final preview = FilledButton.tonalIcon(
+            onPressed: previewTheme == null || _busy
+                ? null
+                : () => unawaited(_preview(previewTheme)),
+            icon: const Icon(Icons.visibility_outlined),
+            label: Text(
+              Platform.isWindows ? 'Preview & inspect' : 'Preview website',
+            ),
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (compact) ...[
+                intro,
+                const SizedBox(height: 16),
+                Align(alignment: Alignment.centerLeft, child: preview),
+              ] else
+                Row(
+                  children: [
+                    Expanded(child: intro),
+                    const SizedBox(width: 18),
+                    preview,
+                  ],
+                ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: 0.86),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: colors.outlineVariant),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _websiteWorkspaceTab(
+                        colors: colors,
+                        value: _WebsiteWorkspaceView.studio,
+                        icon: Icons.auto_awesome_rounded,
+                        label: compact ? 'Build' : 'Build website',
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: _websiteWorkspaceTab(
+                        colors: colors,
+                        value: _WebsiteWorkspaceView.themes,
+                        icon: Icons.tune_rounded,
+                        label: compact ? 'Manage' : 'Themes & checkout',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _websiteWorkspaceTab({
+    required ColorScheme colors,
+    required _WebsiteWorkspaceView value,
+    required IconData icon,
+    required String label,
+  }) {
+    final selected = _workspaceView == value;
+    return Material(
+      color: selected ? colors.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: () => setState(() => _workspaceView = value),
+        borderRadius: BorderRadius.circular(11),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? colors.onPrimary : colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

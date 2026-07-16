@@ -13,6 +13,7 @@ import {
 } from '@/lib/api';
 
 const inputClass = 'w-full rounded-lg border border-border-strong bg-background px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted focus:border-accent';
+const PORTAL_SESSION_PREFIX = 'piki-customer-portal:';
 
 function money(value: number) {
   return new Intl.NumberFormat('en-KE', {
@@ -24,6 +25,7 @@ function money(value: number) {
 
 export default function CustomerPortalPage() {
   const [businessId, setBusinessId] = useState('');
+  const [hasStoreContext, setHasStoreContext] = useState(false);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
@@ -44,8 +46,22 @@ export default function CustomerPortalPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setBusinessId(params.get('businessId') || '');
-  }, []);
+    const nextBusinessId = params.get('businessId')?.trim() || '';
+    setBusinessId(nextBusinessId);
+    setHasStoreContext(Boolean(nextBusinessId));
+    if (!nextBusinessId) return;
+    const savedToken = window.sessionStorage.getItem(
+      `${PORTAL_SESSION_PREFIX}${nextBusinessId}`,
+    );
+    if (!savedToken) return;
+    setToken(savedToken);
+    loadStatement(savedToken).catch(() => {
+      window.sessionStorage.removeItem(
+        `${PORTAL_SESSION_PREFIX}${nextBusinessId}`,
+      );
+      setToken('');
+    });
+  }, [loadStatement]);
 
   useEffect(() => {
     if (!token || !payment || !['pending', 'processing'].includes(payment.status)) return;
@@ -86,6 +102,10 @@ export default function CustomerPortalPage() {
     try {
       const result = await signInCustomerPortal(businessId.trim(), email.trim(), code.trim());
       setToken(result.token);
+      window.sessionStorage.setItem(
+        `${PORTAL_SESSION_PREFIX}${businessId.trim()}`,
+        result.token,
+      );
       await loadStatement(result.token);
       setMessage(null);
     } catch (reason) {
@@ -113,6 +133,9 @@ export default function CustomerPortalPage() {
   }
 
   function signOut() {
+    window.sessionStorage.removeItem(
+      `${PORTAL_SESSION_PREFIX}${businessId.trim()}`,
+    );
     setToken('');
     setStatement(null);
     setPayment(null);
@@ -139,7 +162,7 @@ export default function CustomerPortalPage() {
             <div className="mt-8 max-w-md">
               {!codeSent ? (
                 <form onSubmit={requestCode} className="space-y-4">
-                  <label className="block text-sm font-medium text-muted-strong">Business ID<input required value={businessId} onChange={(event) => setBusinessId(event.target.value)} placeholder="Your store's business ID" className={`mt-1.5 ${inputClass}`} /></label>
+                  {!hasStoreContext && <label className="block text-sm font-medium text-muted-strong">Business ID<input required value={businessId} onChange={(event) => setBusinessId(event.target.value)} placeholder="Your store's business ID" className={`mt-1.5 ${inputClass}`} /></label>}
                   <label className="block text-sm font-medium text-muted-strong">Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className={`mt-1.5 ${inputClass}`} /></label>
                   <button disabled={busy} className="w-full rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background disabled:opacity-60">{busy ? 'Sending…' : 'Email me a code'}</button>
                 </form>

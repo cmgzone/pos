@@ -108,6 +108,13 @@ export function GeneratedSiteFrame({
       if (event.source !== frameRef.current?.contentWindow) return;
       const data = event.data;
       if (!data || data.scope !== scope || data.channel !== "piki-generated-site") return;
+      if (data.type === "inspector-ready") {
+        window.chrome?.webview?.postMessage(JSON.stringify({
+          channel: "piki-storefront-studio",
+          type: "inspector-ready",
+        }));
+        return;
+      }
       if (data.type === "resize") {
         const next = Number(data.height);
         if (Number.isFinite(next)) setHeight(Math.max(500, Math.min(20_000, next)));
@@ -263,6 +270,7 @@ function buildSiteDocument(
       document.body.classList.add('piki-inspect-mode');
       document.addEventListener('pointerover',(event)=>{const element=componentFor(event.target);if(element)element.dataset.pikiInspectHover='true';});
       document.addEventListener('pointerout',(event)=>{const element=componentFor(event.target);if(element)delete element.dataset.pikiInspectHover;});
+      send('inspector-ready');
     }
     document.addEventListener('click',(event)=>{
       if(inspectMode){
@@ -312,7 +320,8 @@ function coverMarkup(catalog: Catalog): string {
 
 function navigationMarkup(catalog: Catalog): string {
   const pages = (catalog.pages || []).map((page) => `<button type="button" data-piki-path="/page/${escapeAttr(page.slug)}">${escapeHtml(page.label || page.title)}</button>`).join("");
-  return `<nav class="piki-binding-navigation" data-piki-binding="navigation" data-piki-component="navigation" aria-label="Store navigation"><button type="button" data-piki-path="/">Shop</button>${pages}</nav>`;
+  const portalPath = `/portal?businessId=${encodeURIComponent(catalog.business.id)}`;
+  return `<nav class="piki-binding-navigation" data-piki-binding="navigation" data-piki-component="navigation" aria-label="Store navigation"><button type="button" data-piki-path="/">Shop</button>${pages}<button type="button" data-piki-path="${escapeAttr(portalPath)}">My account</button></nav>`;
 }
 
 function categoriesMarkup(catalog: Catalog): string {

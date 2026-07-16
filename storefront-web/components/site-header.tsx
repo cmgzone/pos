@@ -1,6 +1,6 @@
 "use client";
 
-import { Moon, Search, ShoppingBag, Sun } from "lucide-react";
+import { CircleUserRound, Moon, Search, ShoppingBag, Sun } from "lucide-react";
 import type { Business, Storefront, StorefrontAppearance, StorefrontPageLink } from "@/lib/types";
 import { useStore } from "./store-provider";
 import { getInitials } from "@/lib/utils";
@@ -35,7 +35,7 @@ export function SiteHeader({
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border-subtle bg-background/90 backdrop-blur-md">
+    <header data-piki-component="site-header" data-piki-label="Website header" className="sticky top-0 z-40 border-b border-border-subtle bg-background/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-10">
         <div className="flex min-w-0 items-center gap-3">
           {logoUrl ? (
@@ -90,9 +90,11 @@ export function SiteHeader({
           {business?.id && (
             <a
               href={`/portal?businessId=${encodeURIComponent(business.id)}`}
-              className="hidden rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground md:inline-flex"
+              aria-label="Open my customer account"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-muted-strong transition hover:bg-surface-elevated hover:text-foreground sm:px-3"
             >
-              My account
+              <CircleUserRound className="h-4 w-4" />
+              <span className="hidden xl:inline">My account</span>
             </a>
           )}
           <button

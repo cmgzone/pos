@@ -19,6 +19,95 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width <= 720;
+    final intro = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppColors.primary, Color(0xFFC72DFF)],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.25),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+        ),
+        const SizedBox(width: 14),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Online storefront',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.4,
+                ),
+              ),
+              SizedBox(height: 5),
+              Text(
+                'Share a polished ecommerce catalog where customers browse products, add to cart, and submit orders.',
+                style: TextStyle(
+                  color: Color(0xC9F9F9FB),
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final actions = Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      alignment: isMobile ? WrapAlignment.start : WrapAlignment.end,
+      children: [
+        FilledButton.icon(
+          onPressed: _preparing ? null : _shareCatalog,
+          icon: _preparing
+              ? const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.link_outlined, size: 18),
+          label: const Text('Share Store Link'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 46),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: _preparing ? null : _publishCatalogQr,
+          icon: const Icon(Icons.qr_code_2_outlined, size: 18),
+          label: const Text('QR Poster'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+            minimumSize: const Size(0, 46),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+      ],
+    );
     return Container(
       width: double.infinity,
       margin: EdgeInsets.fromLTRB(
@@ -48,110 +137,19 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
           ),
         ],
       ),
-      child: Flex(
-        direction: isMobile ? Axis.vertical : Axis.horizontal,
-        crossAxisAlignment: isMobile
-            ? CrossAxisAlignment.stretch
-            : CrossAxisAlignment.center,
-        children: [
-          Flexible(
-            fit: isMobile ? FlexFit.loose : FlexFit.tight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: isMobile
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [intro, const SizedBox(height: 16), actions],
+            )
+          : Row(
               children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.primary, Color(0xFFC72DFF)],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.25),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.shopping_bag_outlined,
-                    color: Colors.white,
-                  ),
-                ),
-                SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Online storefront',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        'Share a polished ecommerce catalog where customers browse products, add to cart, and submit orders.',
-                        style: TextStyle(
-                          color: Color(0xC9F9F9FB),
-                          fontSize: 13,
-                          height: 1.4,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                Expanded(child: intro),
+                const SizedBox(width: 18),
+                actions,
               ],
             ),
-          ),
-          SizedBox(width: isMobile ? 0 : 18, height: isMobile ? 16 : 0),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            alignment: isMobile ? WrapAlignment.start : WrapAlignment.end,
-            children: [
-              FilledButton.icon(
-                onPressed: _preparing ? null : _shareCatalog,
-                icon: _preparing
-                    ? SizedBox(
-                        width: 15,
-                        height: 15,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(Icons.link_outlined, size: 18),
-                label: Text('Share Store Link'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(0, 46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: _preparing ? null : _publishCatalogQr,
-                icon: Icon(Icons.qr_code_2_outlined, size: 18),
-                label: Text('QR Poster'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
-                  minimumSize: const Size(0, 46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -195,199 +193,216 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
 
     return showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        title: Text('Share Online Storefront'),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.24),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.storefront_outlined,
-                      color: AppColors.primary,
+      builder: (ctx) {
+        final screen = MediaQuery.sizeOf(ctx);
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          backgroundColor: Theme.of(ctx).colorScheme.surface,
+          title: const Text('Share online storefront'),
+          content: SizedBox(
+            width: (screen.width - 96).clamp(260.0, 520.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.24),
                     ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        info.businessName,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.storefront_outlined, color: AppColors.primary),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          info.businessName,
+                          style: TextStyle(
+                            color: Theme.of(ctx).colorScheme.onSurface,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 14),
-              Text(
-                syncText,
-                style: TextStyle(
-                  color: syncWarning == null
-                      ? Theme.of(context).colorScheme.onSurfaceVariant
-                      : AppColors.warning,
-                ),
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: info.url,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Customer catalog link',
-                  prefixIcon: Icon(Icons.link_outlined),
-                  suffixIcon: IconButton(
-                    tooltip: 'Copy link',
-                    icon: Icon(Icons.copy_outlined),
-                    onPressed: () => _copyLink(ctx, info.url),
+                    ],
                   ),
                 ),
-              ),
-              SizedBox(height: 14),
-              TextFormField(
-                initialValue: message,
-                readOnly: true,
-                minLines: 3,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  labelText: 'Message preview',
-                  alignLabelWithHint: true,
+                SizedBox(height: 14),
+                Text(
+                  syncText,
+                  style: TextStyle(
+                    color: syncWarning == null
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : AppColors.warning,
+                  ),
                 ),
-              ),
-            ],
+                SizedBox(height: 16),
+                TextFormField(
+                  initialValue: info.url,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: 'Customer catalog link',
+                    prefixIcon: Icon(Icons.link_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: 'Copy link',
+                      icon: Icon(Icons.copy_outlined),
+                      onPressed: () => _copyLink(ctx, info.url),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 14),
+                TextFormField(
+                  initialValue: message,
+                  readOnly: true,
+                  minLines: 3,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: 'Message preview',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Close'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _copyLink(ctx, info.url),
-            icon: Icon(Icons.copy_outlined),
-            label: Text('Copy Link'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _openCatalogLink(ctx, info),
-            icon: Icon(Icons.open_in_new_outlined),
-            label: Text('Open'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await _showCatalogQrDialog(info);
-            },
-            icon: Icon(Icons.qr_code_2_outlined),
-            label: Text('QR Poster'),
-          ),
-          FilledButton.icon(
-            onPressed: () => _openCatalogWhatsApp(ctx, info),
-            icon: Icon(Icons.chat_outlined),
-            label: Text('WhatsApp'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-          ),
-        ],
-      ),
+          actionsOverflowDirection: VerticalDirection.up,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Close'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _copyLink(ctx, info.url),
+              icon: Icon(Icons.copy_outlined),
+              label: Text('Copy Link'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _openCatalogLink(ctx, info),
+              icon: Icon(Icons.open_in_new_outlined),
+              label: Text('Open'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await _showCatalogQrDialog(info);
+              },
+              icon: Icon(Icons.qr_code_2_outlined),
+              label: Text('QR Poster'),
+            ),
+            FilledButton.icon(
+              onPressed: () => _openCatalogWhatsApp(ctx, info),
+              icon: Icon(Icons.chat_outlined),
+              label: Text('WhatsApp'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
+          ],
+        );
+      },
     );
   }
 
   Future<void> _showCatalogQrDialog(CatalogShareInfo info) {
     return showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        title: Row(
-          children: [
-            Icon(Icons.qr_code_2_outlined, color: AppColors.primary),
-            SizedBox(width: 10),
-            Expanded(child: Text('Publish Catalog QR')),
-          ],
-        ),
-        content: SizedBox(
-          width: 420,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Customers can scan this poster to open your catalog and place an order.',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-                SizedBox(height: 14),
-                Container(
-                  height: 300,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
+      builder: (ctx) {
+        final screen = MediaQuery.sizeOf(ctx);
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          backgroundColor: Theme.of(ctx).colorScheme.surface,
+          title: Row(
+            children: [
+              Icon(Icons.qr_code_2_outlined, color: AppColors.primary),
+              SizedBox(width: 10),
+              Expanded(child: Text('Publish Catalog QR')),
+            ],
+          ),
+          content: SizedBox(
+            width: (screen.width - 96).clamp(260.0, 420.0),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Customers can scan this poster to open your catalog and place an order.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  child: FutureBuilder(
-                    future: CatalogQrPosterService.buildPreviewPng(info),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      }
-                      final preview = snapshot.data;
-                      if (preview == null) {
-                        return Center(
-                          child: Text('QR poster is ready to share or print.'),
-                        );
-                      }
-                      return Image.memory(preview, fit: BoxFit.contain);
-                    },
+                  SizedBox(height: 14),
+                  Container(
+                    height: (screen.height * 0.34).clamp(190.0, 300.0),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: FutureBuilder(
+                      future: CatalogQrPosterService.buildPreviewPng(info),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        final preview = snapshot.data;
+                        if (preview == null) {
+                          return Center(
+                            child: Text(
+                              'QR poster is ready to share or print.',
+                            ),
+                          );
+                        }
+                        return Image.memory(preview, fit: BoxFit.contain);
+                      },
+                    ),
                   ),
-                ),
-                SizedBox(height: 12),
-                SelectableText(
-                  info.url,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 11,
+                  SizedBox(height: 12),
+                  SelectableText(
+                    info.url,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Close'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _copyLink(ctx, info.url),
-            icon: Icon(Icons.copy_outlined),
-            label: Text('Copy Link'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _printCatalogQrPoster(ctx, info),
-            icon: Icon(Icons.print_outlined),
-            label: Text('Print'),
-          ),
-          FilledButton.icon(
-            onPressed: () => _shareCatalogQrPoster(ctx, info),
-            icon: Icon(Icons.ios_share_outlined),
-            label: Text('Share Poster'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-          ),
-        ],
-      ),
+          actionsOverflowDirection: VerticalDirection.up,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Close'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _copyLink(ctx, info.url),
+              icon: Icon(Icons.copy_outlined),
+              label: Text('Copy Link'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _printCatalogQrPoster(ctx, info),
+              icon: Icon(Icons.print_outlined),
+              label: Text('Print'),
+            ),
+            FilledButton.icon(
+              onPressed: () => _shareCatalogQrPoster(ctx, info),
+              icon: Icon(Icons.ios_share_outlined),
+              label: Text('Share Poster'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
+          ],
+        );
+      },
     );
   }
 

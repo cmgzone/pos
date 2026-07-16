@@ -286,21 +286,9 @@ export function StorefrontSections({
               catalog.theme.design.catalogLayout === "sidebar" && categories.length > 0;
             return (
               <SectionShell key={section.id} section={section}>
-                <CatalogToolbar
-                  categories={categories}
-                  activeCategory={category}
-                  onCategoryChange={onCategoryChange}
-                  search={search}
-                  onSearchChange={onSearchChange}
-                  sortBy={sortBy}
-                  onSortChange={onSortChange}
-                  branches={catalog.business.branches}
-                  selectedBranch={selectedBranch}
-                  onBranchChange={onBranchChange}
-                  categoriesInSidebar={categoriesInSidebar}
-                />
                 <div
-                  className={`mt-10 ${
+                  id="catalog"
+                  className={`${
                     categoriesInSidebar
                       ? "lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-8 xl:grid-cols-[17rem_minmax(0,1fr)] xl:gap-10"
                       : ""
@@ -315,18 +303,33 @@ export function StorefrontSections({
                     />
                   )}
                   <div className="min-w-0">
+                    <CatalogToolbar
+                      categories={categories}
+                      activeCategory={category}
+                      onCategoryChange={onCategoryChange}
+                      search={search}
+                      onSearchChange={onSearchChange}
+                      sortBy={sortBy}
+                      onSortChange={onSortChange}
+                      branches={catalog.business.branches}
+                      selectedBranch={selectedBranch}
+                      onBranchChange={onBranchChange}
+                      categoriesInSidebar={categoriesInSidebar}
+                    />
                     {filteredItems.length === 0 ? (
-                      <CatalogEmptyState
-                        catalog={catalog}
-                        selectedBranch={selectedBranch}
-                        isSearching={isSearching}
-                        onClear={() => {
-                          onSearchChange("");
-                          onCategoryChange("all");
-                        }}
-                      />
+                      <div className="mt-8">
+                        <CatalogEmptyState
+                          catalog={catalog}
+                          selectedBranch={selectedBranch}
+                          isSearching={isSearching}
+                          onClear={() => {
+                            onSearchChange("");
+                            onCategoryChange("all");
+                          }}
+                        />
+                      </div>
                     ) : (
-                      <section>
+                      <section className="mt-8">
                         <FadeIn>
                           <div className="mb-6 flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
                             <SectionHeading
@@ -487,6 +490,10 @@ function SectionShell({
   return (
     <section
       className="storefront-section border-b border-border-subtle px-4 sm:px-6 lg:px-10"
+      data-piki-component="storefront-section"
+      data-piki-section-id={section.id}
+      data-piki-section-type={section.type}
+      data-piki-label={section.title || section.eyebrow || section.type}
       data-section-style={section.style}
       data-section-spacing={section.spacing || "comfortable"}
       data-section-width={section.width || (narrow ? "narrow" : "contained")}

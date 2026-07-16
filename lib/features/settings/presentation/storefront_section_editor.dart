@@ -55,7 +55,13 @@ class _StorefrontSectionEditorDialogState
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final screen = MediaQuery.sizeOf(context);
+    final compact = screen.width < 620;
     return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 32,
+        vertical: compact ? 16 : 24,
+      ),
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 18, 0),
       title: Row(
         children: [
@@ -78,8 +84,8 @@ class _StorefrontSectionEditorDialogState
         ],
       ),
       content: SizedBox(
-        width: 760,
-        height: 610,
+        width: (screen.width - 72).clamp(260.0, 760.0),
+        height: (screen.height - 170).clamp(360.0, 610.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -107,7 +113,11 @@ class _StorefrontSectionEditorDialogState
               ),
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 PopupMenuButton<String>(
                   enabled: _sections.length < 12,
@@ -143,7 +153,6 @@ class _StorefrontSectionEditorDialogState
                     ),
                   ),
                 ),
-                const Spacer(),
                 Text(
                   '${_sections.where((section) => section.enabled).length} visible · ${_sections.length}/12 sections',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -185,73 +194,98 @@ class _StorefrontSectionEditorDialogState
           : colors.surfaceContainerHighest.withValues(alpha: 0.55),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        child: Row(
-          children: [
-            ReorderableDragStartListener(
-              index: index,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(
-                  Icons.drag_indicator_rounded,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-            ),
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: colors.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(details.icon, size: 19, color: colors.primary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    section.title.trim().isEmpty
-                        ? details.label
-                        : section.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    details.label,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 470;
+            final identity = Row(
+              children: [
+                ReorderableDragStartListener(
+                  index: index,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
                       color: colors.onSurfaceVariant,
                     ),
                   ),
+                ),
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(details.icon, size: 19, color: colors.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.title.trim().isEmpty
+                            ? details.label
+                            : section.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        details.label,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+            final controls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Switch.adaptive(
+                  value: section.enabled,
+                  onChanged: section.type == 'catalog' && widget.requireCatalog
+                      ? null
+                      : (value) => setState(() {
+                          _sections[index] = section.copyWith(enabled: value);
+                        }),
+                ),
+                IconButton(
+                  tooltip: 'Edit copy and style',
+                  onPressed: () => _editSection(index),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: section.type == 'catalog' && widget.requireCatalog
+                      ? 'The full catalogue is required'
+                      : 'Remove section',
+                  onPressed: section.type == 'catalog' && widget.requireCatalog
+                      ? null
+                      : () => setState(() => _sections.removeAt(index)),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            );
+            if (compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  identity,
+                  Align(alignment: Alignment.centerRight, child: controls),
                 ],
-              ),
-            ),
-            Switch.adaptive(
-              value: section.enabled,
-              onChanged: section.type == 'catalog' && widget.requireCatalog
-                  ? null
-                  : (value) => setState(() {
-                      _sections[index] = section.copyWith(enabled: value);
-                    }),
-            ),
-            IconButton(
-              tooltip: 'Edit copy and style',
-              onPressed: () => _editSection(index),
-              icon: const Icon(Icons.edit_outlined),
-            ),
-            IconButton(
-              tooltip: section.type == 'catalog' && widget.requireCatalog
-                  ? 'The full catalogue is required'
-                  : 'Remove section',
-              onPressed: section.type == 'catalog' && widget.requireCatalog
-                  ? null
-                  : () => setState(() => _sections.removeAt(index)),
-              icon: const Icon(Icons.delete_outline_rounded),
-            ),
-          ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: identity),
+                controls,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -373,11 +407,15 @@ class _StorefrontSectionEditorDialogState
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
           title: Text(
             'Edit ${_sectionDetails(current.type).label.toLowerCase()}',
           ),
           content: SizedBox(
-            width: 520,
+            width: (MediaQuery.sizeOf(context).width - 96).clamp(260.0, 520.0),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -451,6 +489,7 @@ class _StorefrontSectionEditorDialogState
                   ],
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: style,
                     decoration: const InputDecoration(
                       labelText: 'Section style',
@@ -481,6 +520,7 @@ class _StorefrontSectionEditorDialogState
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: width,
                           decoration: const InputDecoration(
                             labelText: 'Content width',
@@ -510,6 +550,7 @@ class _StorefrontSectionEditorDialogState
                       const SizedBox(width: 10),
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: spacing,
                           decoration: const InputDecoration(
                             labelText: 'Vertical spacing',
@@ -541,6 +582,7 @@ class _StorefrontSectionEditorDialogState
                   if (const {'benefits', 'gallery'}.contains(current.type)) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int>(
+                      isExpanded: true,
                       initialValue: columns,
                       decoration: const InputDecoration(labelText: 'Columns'),
                       items: const [
@@ -560,6 +602,7 @@ class _StorefrontSectionEditorDialogState
                   }.contains(current.type)) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: imagePosition,
                       decoration: const InputDecoration(
                         labelText: 'Image position',
@@ -592,6 +635,7 @@ class _StorefrontSectionEditorDialogState
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: action,
                       decoration: const InputDecoration(
                         labelText: 'Button action',
@@ -621,6 +665,7 @@ class _StorefrontSectionEditorDialogState
                   if (_supportsAlignment(current.type)) ...[
                     const SizedBox(height: 10),
                     SegmentedButton<String>(
+                      expandedInsets: EdgeInsets.zero,
                       segments: const [
                         ButtonSegment(value: 'left', label: Text('Left')),
                         ButtonSegment(value: 'center', label: Text('Centre')),

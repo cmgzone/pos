@@ -35,8 +35,7 @@ export function CatalogToolbar({
   return (
     <FadeIn>
       <div
-        id="catalog"
-        className="sticky top-16 z-30 -mx-4 border-b border-border-subtle bg-background/95 px-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10"
+        className="z-30 overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-background/95 px-3 backdrop-blur-md sm:px-4 lg:sticky lg:top-20"
       >
         <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-1 items-center gap-2.5">
@@ -125,7 +124,7 @@ export function CatalogCategorySidebar({
   totalCount: number;
 }) {
   return (
-    <aside className="sticky top-36 hidden self-start overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface lg:block">
+    <aside className="sticky top-20 hidden self-start overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface lg:block">
       <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
         <span className="flex h-9 w-9 items-center justify-center rounded-[var(--theme-radius)] bg-surface-elevated text-accent">
           <LayoutList className="h-4 w-4" />

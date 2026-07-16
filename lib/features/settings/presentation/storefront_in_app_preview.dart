@@ -89,6 +89,7 @@ class _StorefrontInAppPreviewDialogState
   _PreviewViewport _viewport = _PreviewViewport.desktop;
   bool _initializing = true;
   bool _loading = true;
+  bool _inspectorReady = false;
   String? _error;
 
   Uri get _loadUri => widget.enablePointAndEdit
@@ -132,20 +133,23 @@ class _StorefrontInAppPreviewDialogState
 
   void _handleWebMessage(dynamic message) {
     dynamic decoded = message;
-    if (message is String) {
+    for (var attempt = 0; attempt < 2 && decoded is String; attempt++) {
       try {
-        decoded = jsonDecode(message);
+        decoded = jsonDecode(decoded);
       } catch (_) {
         return;
       }
     }
     if (decoded is! Map) return;
     final data = Map<String, dynamic>.from(decoded);
-    if (data['channel'] != 'piki-storefront-studio' ||
-        data['type'] != 'section-selected' ||
-        data['selection'] is! Map) {
+    if (data['channel'] != 'piki-storefront-studio') {
       return;
     }
+    if (data['type'] == 'inspector-ready') {
+      if (mounted) setState(() => _inspectorReady = true);
+      return;
+    }
+    if (data['type'] != 'section-selected' || data['selection'] is! Map) return;
     final selected = StorefrontComponentSelection.fromJson(
       Map<String, dynamic>.from(data['selection'] as Map),
     );
@@ -376,18 +380,20 @@ class _StorefrontInAppPreviewDialogState
                     ),
                   ),
                   const SizedBox(width: 11),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Point & edit with Piki',
                           style: TextStyle(fontWeight: FontWeight.w900),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          'Click a section in the website',
-                          style: TextStyle(fontSize: 11),
+                          _inspectorReady
+                              ? 'Inspector connected · click a website section'
+                              : 'Connecting to the website inspector…',
+                          style: const TextStyle(fontSize: 11),
                         ),
                       ],
                     ),

@@ -235,6 +235,12 @@ const {
   saveStorefrontConnection,
   testStorefrontConnection,
 } = require('./storefrontConnections');
+const {
+  backendImageAssetUrl,
+  ensureBackendImageAssetSchema,
+  loadBackendImageAsset,
+  saveBackendImageAsset,
+} = require('./backendImageAssets');
 
 const app = express();
 const server = http.createServer(app);
@@ -245,6 +251,11 @@ const landingPageDir = path.resolve(__dirname, '..', '..', 'landing-page');
 const landingIndexPath = path.join(landingPageDir, 'index.html');
 const storefrontWebDistDir = path.resolve(__dirname, '..', '..', 'storefront-web', 'dist');
 const storefrontWebIndexPath = path.join(storefrontWebDistDir, 'index.html');
+const storefrontPortalIndexPath = path.join(
+  storefrontWebDistDir,
+  'portal',
+  'index.html',
+);
 const appReleaseUrlPrefix = '/downloads/app';
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
@@ -9368,6 +9379,90 @@ async function uploadStorefrontImageToBunny({
   };
 }
 
+async function saveImageToBackendFallback({
+  req,
+  businessContext,
+  assetKind,
+  image,
+}) {
+  const saved = await saveBackendImageAsset(query, {
+    businessId: businessContext.businessId,
+    assetKind,
+    contentType: image.mimeType,
+    bytes: image.bytes,
+  });
+  const imageUrl = backendImageAssetUrl(
+    resolvePublicBackendBaseUrl(req),
+    saved.id,
+  );
+  if (!imageUrl) {
+    throw createHttpError(
+      503,
+      'The backend image fallback needs PUBLIC_BASE_URL to return a public image URL.',
+    );
+  }
+  return {
+    imageUrl,
+    storagePath: `backend:${saved.id}`,
+    storageProvider: 'backend',
+    contentType: image.mimeType,
+    size: image.bytes.length,
+  };
+}
+
+async function uploadImageWithBackendFallback({
+  primaryUpload,
+  req,
+  businessContext,
+  assetKind,
+  image,
+}) {
+  try {
+    const uploaded = await primaryUpload();
+    return { ...uploaded, storageProvider: 'bunny' };
+  } catch (primaryError) {
+    console.warn('External image storage unavailable; using backend fallback', {
+      businessId: businessContext.businessId,
+      assetKind,
+      error: primaryError?.message || String(primaryError),
+    });
+    try {
+      return await saveImageToBackendFallback({
+        req,
+        businessContext,
+        assetKind,
+        image,
+      });
+    } catch (fallbackError) {
+      console.error('Backend image fallback failed', {
+        businessId: businessContext.businessId,
+        assetKind,
+        error: fallbackError?.message || String(fallbackError),
+      });
+      throw fallbackError;
+    }
+  }
+}
+
+app.get('/api/files/images/:id', async (req, res, next) => {
+  try {
+    const id = normalizeOptionalText(req.params.id);
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+      throw createHttpError(404, 'Image not found.');
+    }
+    const asset = await loadBackendImageAsset(query, id);
+    if (!asset) throw createHttpError(404, 'Image not found.');
+    res
+      .status(200)
+      .type(asset.content_type)
+      .set('Cache-Control', 'public, max-age=31536000, immutable')
+      .set('Content-Length', String(asset.byte_size))
+      .send(asset.image_bytes);
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.post('/api/files/product-images', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
@@ -9381,12 +9476,18 @@ app.post('/api/files/product-images', async (req, res, next) => {
       req.query?.branchId ?? req.body?.branchId ?? req.headers['x-branch-id'],
     );
     const fetch = (await import('node-fetch')).default;
-    const result = await uploadProductImageToBunny({
-      fetchImpl: fetch,
+    const result = await uploadImageWithBackendFallback({
+      primaryUpload: () => uploadProductImageToBunny({
+        fetchImpl: fetch,
+        businessContext,
+        branchId,
+        productId: req.body?.productId,
+        productName: req.body?.productName,
+        image,
+      }),
+      req,
       businessContext,
-      branchId,
-      productId: req.body?.productId,
-      productName: req.body?.productName,
+      assetKind: 'product',
       image,
     });
 
@@ -9406,12 +9507,20 @@ app.post('/api/files/storefront-images', async (req, res, next) => {
 
     const image = parseImageDataUrlForUpload(req.body?.imageDataUrl);
     const fetch = (await import('node-fetch')).default;
-    const result = await uploadStorefrontImageToBunny({
-      fetchImpl: fetch,
+    const cleanKind = normalizeStorefrontImageKind(req.body?.kind);
+    const result = await uploadImageWithBackendFallback({
+      primaryUpload: () => uploadStorefrontImageToBunny({
+        fetchImpl: fetch,
+        businessContext,
+        kind: cleanKind,
+        image,
+      }),
+      req,
       businessContext,
-      kind: req.body?.kind,
+      assetKind: `storefront_${cleanKind}`,
       image,
     });
+    result.kind = cleanKind;
 
     res.status(201).json({
       ok: true,
@@ -13032,6 +13141,16 @@ app.get(['/', '/catalog', '/retail', '/services', '/restaurant'], async (req, re
   }
 });
 
+app.get(['/portal', '/portal/'], (req, res, next) => {
+  res
+    .status(200)
+    .type('html')
+    .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+    .sendFile(storefrontPortalIndexPath, (error) => {
+      if (error) next(error);
+    });
+});
+
 app.get('/sitemap.xml', (req, res, next) => {
   res.type('application/xml');
   res.sendFile(path.join(landingPageDir, 'sitemap.xml'), (error) => {
@@ -13085,6 +13204,7 @@ server.listen(config.port, () => {
 });
 
 Promise.all([
+  ensureBackendImageAssetSchema(query),
   ensureSubscriptionSchema(),
   initializeCatalogSubdomainSchema(query),
   ensureDeviceUserSchema(),

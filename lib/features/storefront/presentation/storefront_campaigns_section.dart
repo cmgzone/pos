@@ -193,50 +193,73 @@ class _StorefrontCampaignsSectionState
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(22),
-                  child: Wrap(
-                    spacing: 18,
-                    runSpacing: 16,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: colors.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: Icon(
-                          Icons.campaign_outlined,
-                          color: colors.primary,
-                        ),
-                      ),
-                      SizedBox(
-                        width: 520,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Campaign landing pages',
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w900),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxWidth < 680;
+                      final introduction = Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: colors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(15),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Build focused, reusable pages for launches, seasonal collections, and WhatsApp promotions. Every published campaign gets its own customer URL.',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: colors.onSurfaceVariant),
+                            child: Icon(
+                              Icons.campaign_outlined,
+                              color: colors.primary,
                             ),
-                          ],
-                        ),
-                      ),
-                      FilledButton.icon(
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Campaign landing pages',
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w900),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Build reusable pages for launches, collections, and WhatsApp promotions. Every published campaign gets its own customer URL.',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: colors.onSurfaceVariant,
+                                        height: 1.4,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                      final action = FilledButton.icon(
                         onPressed: _busy || _products.isEmpty
                             ? null
                             : () => _edit(),
                         icon: const Icon(Icons.add_rounded),
                         label: const Text('New campaign'),
-                      ),
-                    ],
+                      );
+                      if (compact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            introduction,
+                            const SizedBox(height: 18),
+                            action,
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: introduction),
+                          const SizedBox(width: 24),
+                          action,
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),
@@ -503,13 +526,27 @@ class _CampaignEditorDialogState extends State<_CampaignEditorDialog> {
           product['name']?.toString().toLowerCase().contains(query) == true ||
           product['brand']?.toString().toLowerCase().contains(query) == true;
     }).toList();
+    final screen = MediaQuery.sizeOf(context);
+    final compact = screen.width < 720;
+    final dialogWidth = (screen.width - 64).clamp(280.0, 820.0);
+    final dialogHeight = (screen.height - 170).clamp(420.0, 650.0);
+    final details = _campaignDetailsPane(compact: compact);
+    final products = _productPickerPane(
+      itemsLabel: itemsLabel,
+      filteredProducts: filteredProducts,
+      compact: compact,
+    );
     return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 32,
+        vertical: compact ? 16 : 24,
+      ),
       title: Text(
         widget.campaign == null ? 'Create campaign page' : 'Edit campaign page',
       ),
       content: SizedBox(
-        width: 820,
-        height: 650,
+        width: dialogWidth,
+        height: dialogHeight,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -520,183 +557,52 @@ class _CampaignEditorDialogState extends State<_CampaignEditorDialog> {
               ),
               const SizedBox(height: 10),
             ],
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TextField(
-                            controller: _name,
-                            autofocus: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Internal campaign name',
+            if (compact)
+              Expanded(
+                child: DefaultTabController(
+                  length: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerLowest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TabBar(
+                          tabs: [
+                            const Tab(text: 'Page details'),
+                            Tab(
+                              text: '${_selectedProducts.length} $itemsLabel',
                             ),
-                            onChanged: (value) {
-                              if (_slug.text.trim().isEmpty) {
-                                _slug.text = _slugify(value);
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _slug,
-                            decoration: const InputDecoration(
-                              labelText: 'Share URL ending',
-                              prefixText: '/campaign/',
-                              helperText: 'Lowercase words and hyphens only.',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _eyebrow,
-                            decoration: const InputDecoration(
-                              labelText: 'Small label',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _title,
-                            maxLength: 120,
-                            decoration: const InputDecoration(
-                              labelText: 'Customer headline',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _description,
-                            minLines: 3,
-                            maxLines: 5,
-                            maxLength: 500,
-                            decoration: const InputDecoration(
-                              labelText: 'Campaign description',
-                              alignLabelWithHint: true,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _badge,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Optional badge',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextField(
-                                  controller: _button,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Button label',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _highlights,
-                            minLines: 3,
-                            maxLines: 4,
-                            decoration: const InputDecoration(
-                              labelText: 'Highlights',
-                              helperText:
-                                  'One truthful benefit per line, up to four.',
-                              alignLabelWithHint: true,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _image,
-                            decoration: const InputDecoration(
-                              labelText: 'Optional hero image URL',
-                              helperText:
-                                  'Use a secure https image. Leave blank for a text-led page.',
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Campaign $itemsLabel',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_selectedProducts.length}/24 selected',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            decoration: InputDecoration(
-                              hintText: 'Search $itemsLabel',
-                              prefixIcon: const Icon(Icons.search_rounded),
-                            ),
-                            onChanged: (value) =>
-                                setState(() => _search = value),
-                          ),
-                          const SizedBox(height: 10),
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: filteredProducts.length,
-                              itemBuilder: (context, index) {
-                                final product = filteredProducts[index];
-                                final id = product['id']?.toString() ?? '';
-                                final selected = _selectedProducts.contains(id);
-                                return CheckboxListTile(
-                                  dense: true,
-                                  value: selected,
-                                  title: Text(
-                                    product['name']?.toString() ?? 'Product',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  subtitle: product['brand'] == null
-                                      ? null
-                                      : Text(product['brand'].toString()),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      if (value == true &&
-                                          _selectedProducts.length < 24) {
-                                        _selectedProducts.add(id);
-                                      } else if (value != true) {
-                                        _selectedProducts.remove(id);
-                                      }
-                                    });
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: TabBarView(children: [details, products]),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
+              )
+            else
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: details),
+                    const VerticalDivider(width: 33),
+                    Expanded(child: products),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),
+      actionsOverflowDirection: VerticalDirection.up,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -708,6 +614,195 @@ class _CampaignEditorDialogState extends State<_CampaignEditorDialog> {
           label: const Text('Save draft'),
         ),
       ],
+    );
+  }
+
+  Widget _campaignDetailsPane({required bool compact}) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(right: compact ? 0 : 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _name,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Internal campaign name',
+            ),
+            onChanged: (value) {
+              if (_slug.text.trim().isEmpty) _slug.text = _slugify(value);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _slug,
+            decoration: const InputDecoration(
+              labelText: 'Share URL ending',
+              prefixText: '/campaign/',
+              helperText: 'Lowercase words and hyphens only.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _eyebrow,
+            decoration: const InputDecoration(labelText: 'Small label'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _title,
+            maxLength: 120,
+            decoration: const InputDecoration(labelText: 'Customer headline'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _description,
+            minLines: 3,
+            maxLines: 5,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Campaign description',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final fields = [
+                Expanded(
+                  child: TextField(
+                    controller: _badge,
+                    decoration: const InputDecoration(
+                      labelText: 'Optional badge',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _button,
+                    decoration: const InputDecoration(
+                      labelText: 'Button label',
+                    ),
+                  ),
+                ),
+              ];
+              if (constraints.maxWidth < 440) {
+                return Column(
+                  children: [
+                    TextField(
+                      controller: _badge,
+                      decoration: const InputDecoration(
+                        labelText: 'Optional badge',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _button,
+                      decoration: const InputDecoration(
+                        labelText: 'Button label',
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  fields.first,
+                  const SizedBox(width: 12),
+                  fields.last,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _highlights,
+            minLines: 3,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Highlights',
+              helperText: 'One truthful benefit per line, up to four.',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _image,
+            decoration: const InputDecoration(
+              labelText: 'Optional hero image URL',
+              helperText:
+                  'Use a secure https image. Leave blank for a text-led page.',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _productPickerPane({
+    required String itemsLabel,
+    required List<Map<String, dynamic>> filteredProducts,
+    required bool compact,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(left: compact ? 0 : 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Campaign $itemsLabel',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${_selectedProducts.length}/24 selected',
+            style: TextStyle(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            decoration: InputDecoration(
+              hintText: 'Search $itemsLabel',
+              prefixIcon: const Icon(Icons.search_rounded),
+            ),
+            onChanged: (value) => setState(() => _search = value),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.builder(
+              itemCount: filteredProducts.length,
+              itemBuilder: (context, index) {
+                final product = filteredProducts[index];
+                final id = product['id']?.toString() ?? '';
+                final selected = _selectedProducts.contains(id);
+                return CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: selected,
+                  title: Text(
+                    product['name']?.toString() ?? 'Product',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: product['brand'] == null
+                      ? null
+                      : Text(product['brand'].toString()),
+                  onChanged: (value) {
+                    setState(() {
+                      if (value == true && _selectedProducts.length < 24) {
+                        _selectedProducts.add(id);
+                      } else if (value != true) {
+                        _selectedProducts.remove(id);
+                      }
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
