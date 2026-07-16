@@ -28,6 +28,7 @@ class StorefrontThemeDesign {
   final String navigationStyle;
   final String iconStyle;
   final String motionStyle;
+  final String catalogLayout;
   final int productColumns;
 
   const StorefrontThemeDesign({
@@ -53,6 +54,7 @@ class StorefrontThemeDesign {
     required this.navigationStyle,
     required this.iconStyle,
     required this.motionStyle,
+    required this.catalogLayout,
     required this.productColumns,
   });
 
@@ -87,6 +89,7 @@ class StorefrontThemeDesign {
       navigationStyle: json['navigationStyle']?.toString() ?? 'minimal',
       iconStyle: json['iconStyle']?.toString() ?? 'plain',
       motionStyle: json['motionStyle']?.toString() ?? 'subtle',
+      catalogLayout: json['catalogLayout']?.toString() ?? 'topbar',
       productColumns:
           int.tryParse(json['productColumns']?.toString() ?? '') ?? 4,
     );
@@ -115,6 +118,7 @@ class StorefrontThemeDesign {
     'navigationStyle': navigationStyle,
     'iconStyle': iconStyle,
     'motionStyle': motionStyle,
+    'catalogLayout': catalogLayout,
     'productColumns': productColumns,
   };
 }

@@ -159,6 +159,110 @@ function fallbackStorefrontAiTheme(
   };
 }
 
+const DESIGN_INTENT_RULES = Object.freeze([
+  {
+    keys: [
+      'backgroundColor',
+      'textColor',
+      'mutedColor',
+      'surfaceColor',
+      'surfaceElevatedColor',
+      'borderColor',
+      'accentColor',
+    ],
+    pattern:
+      /\b(colou?r|palette|background|surface|border|accent|dark|light|white|black|warm|earthy|fresh|green|teal|pink|vibrant)\b|#[0-9a-f]{3,8}\b/i,
+  },
+  {
+    keys: ['fontFamily', 'headingFontFamily', 'bodyFontFamily'],
+    pattern:
+      /\b(font|typeface|typography|serif|sans|poppins|playfair|montserrat|nunito|oswald|merriweather)\b/i,
+  },
+  { keys: ['heroStyle'], pattern: /\bhero\b/i },
+  { keys: ['cardStyle'], pattern: /\b(card|cards)\b/i },
+  {
+    keys: ['imageRatio'],
+    pattern: /\b(image|images|photo|photos|square|portrait|landscape|ratio)\b/i,
+  },
+  {
+    keys: ['density'],
+    pattern: /\b(density|compact|comfortable|dense)\b/i,
+  },
+  {
+    keys: ['cornerStyle'],
+    pattern: /\b(corner|corners|radius|rounded|pill|sharp)\b/i,
+  },
+  {
+    keys: ['headingScale'],
+    pattern: /\b(heading|headings|title|titles|display scale)\b/i,
+  },
+  {
+    keys: ['contentWidth'],
+    pattern: /\b(content width|page width|full width|wide canvas|compact width)\b/i,
+  },
+  {
+    keys: ['sectionSpacing'],
+    pattern: /\b(section spacing|spacing|rhythm|airy|tight)\b/i,
+  },
+  { keys: ['buttonStyle'], pattern: /\b(button|buttons|cta)\b/i },
+  {
+    keys: ['navigationStyle'],
+    pattern: /\b(header|main navigation|navbar|nav bar|top navigation)\b/i,
+  },
+  { keys: ['iconStyle'], pattern: /\b(icon|icons)\b/i },
+  {
+    keys: ['motionStyle'],
+    pattern: /\b(animation|animations|motion|transition|transitions)\b/i,
+  },
+  {
+    keys: ['productColumns'],
+    pattern: /\b(product grid|products? columns?|columns? of products?)\b/i,
+  },
+  {
+    keys: ['catalogLayout'],
+    pattern:
+      /\b(side ?bar|side navigation|left (?:hand )?(?:menu|rail|panel|navigation)|vertical (?:menu|navigation|categories)|top ?bar|horizontal (?:menu|navigation|categories))\b/i,
+  },
+]);
+
+function applyStorefrontInstructionRequirements(
+  proposal = {},
+  instruction = '',
+  theme = {},
+  { buildFromScratch = false } = {},
+) {
+  const request = String(instruction || '').trim();
+  const currentDesign = objectValue(theme.design);
+  const design = { ...objectValue(proposal.design) };
+
+  if (!buildFromScratch) {
+    for (const rule of DESIGN_INTENT_RULES) {
+      if (rule.pattern.test(request)) continue;
+      for (const key of rule.keys) {
+        if (currentDesign[key] !== undefined) design[key] = currentDesign[key];
+      }
+    }
+  }
+
+  const categoryMentioned =
+    /\b(categor(?:y|ies)|catalog(?:ue)?|departments?)\b/i.test(request);
+  const sidebarRequested =
+    /\b(side ?bar|side navigation|left (?:hand )?(?:menu|rail|panel|navigation)|vertical (?:menu|navigation|categories))\b/i.test(
+      request,
+    );
+  const topbarRequested =
+    /\b(top ?bar|horizontal (?:menu|navigation|categories)|categories (?:above|on top))\b/i.test(
+      request,
+    );
+  if (categoryMentioned && sidebarRequested) design.catalogLayout = 'sidebar';
+  if (categoryMentioned && topbarRequested) design.catalogLayout = 'topbar';
+
+  return {
+    ...proposal,
+    design: normalizeStorefrontThemeDesign(design, currentDesign),
+  };
+}
+
 function storefrontJsonResponseFormat() {
   return { type: 'json_object' };
 }
@@ -278,6 +382,7 @@ function limitText(value, maxLength) {
 }
 
 module.exports = {
+  applyStorefrontInstructionRequirements,
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
   isUnsupportedJsonModeResponse,

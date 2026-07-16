@@ -26,7 +26,7 @@ import type {
   StorefrontSectionAction,
 } from "@/lib/types";
 import { Hero } from "./hero";
-import { CatalogToolbar } from "./catalog-toolbar";
+import { CatalogCategorySidebar, CatalogToolbar } from "./catalog-toolbar";
 import { ProductGrid } from "./product-grid";
 import { FadeIn } from "./motion";
 
@@ -272,11 +272,22 @@ export function StorefrontSections({
                 {section.caption && <p className="section-muted mt-3 text-[12px]">{section.caption}</p>}
               </SectionShell>
             );
-          case "catalog":
+          case "catalog": {
+            const categories = campaignCategories(catalog);
+            const campaignProductIds = new Set(catalog.campaign?.productIds || []);
+            const catalogProducts = catalog.campaign
+              ? catalog.products.filter((item) => campaignProductIds.has(item.id))
+              : catalog.products;
+            const categoryCounts = categories.map((name) => ({
+              name,
+              count: catalogProducts.filter((item) => item.category === name).length,
+            }));
+            const categoriesInSidebar =
+              catalog.theme.design.catalogLayout === "sidebar" && categories.length > 0;
             return (
               <SectionShell key={section.id} section={section}>
                 <CatalogToolbar
-                  categories={campaignCategories(catalog)}
+                  categories={categories}
                   activeCategory={category}
                   onCategoryChange={onCategoryChange}
                   search={search}
@@ -286,54 +297,72 @@ export function StorefrontSections({
                   branches={catalog.business.branches}
                   selectedBranch={selectedBranch}
                   onBranchChange={onBranchChange}
+                  categoriesInSidebar={categoriesInSidebar}
                 />
-                <div className="mt-10">
-                  {filteredItems.length === 0 ? (
-                    <CatalogEmptyState
-                      catalog={catalog}
-                      selectedBranch={selectedBranch}
-                      isSearching={isSearching}
-                      onClear={() => {
-                        onSearchChange("");
-                        onCategoryChange("all");
-                      }}
+                <div
+                  className={`mt-10 ${
+                    categoriesInSidebar
+                      ? "lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-8 xl:grid-cols-[17rem_minmax(0,1fr)] xl:gap-10"
+                      : ""
+                  }`}
+                >
+                  {categoriesInSidebar && (
+                    <CatalogCategorySidebar
+                      categories={categoryCounts}
+                      activeCategory={category}
+                      onCategoryChange={onCategoryChange}
+                      totalCount={catalogProducts.length}
                     />
-                  ) : (
-                    <section>
-                      <FadeIn>
-                        <div className="mb-6 flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
-                          <SectionHeading
-                            section={{
-                              ...section,
-                              eyebrow: isSearching
-                                ? "Results"
-                                : catalog.campaign
-                                  ? "Campaign collection"
-                                  : section.eyebrow,
-                              title: isSearching
-                                ? "Search results"
-                                : catalog.campaign
-                                  ? campaignCollectionTitle(catalog)
-                                  : section.title,
-                              body: catalog.campaign ? "Selected products for this campaign." : section.body,
-                            }}
-                          />
-                          <p className="hidden text-[13px] text-muted sm:block">
-                            {filteredItems.length} {filteredItems.length === 1 ? "item" : "items"}
-                          </p>
-                        </div>
-                      </FadeIn>
-                      <ProductGrid
-                        items={filteredItems}
-                        currencySymbol={catalog.currencySymbol}
-                        currencyCode={catalog.currencyCode}
-                        storefrontType={catalog.storefront.type}
-                      />
-                    </section>
                   )}
+                  <div className="min-w-0">
+                    {filteredItems.length === 0 ? (
+                      <CatalogEmptyState
+                        catalog={catalog}
+                        selectedBranch={selectedBranch}
+                        isSearching={isSearching}
+                        onClear={() => {
+                          onSearchChange("");
+                          onCategoryChange("all");
+                        }}
+                      />
+                    ) : (
+                      <section>
+                        <FadeIn>
+                          <div className="mb-6 flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
+                            <SectionHeading
+                              section={{
+                                ...section,
+                                eyebrow: isSearching
+                                  ? "Results"
+                                  : catalog.campaign
+                                    ? "Campaign collection"
+                                    : section.eyebrow,
+                                title: isSearching
+                                  ? "Search results"
+                                  : catalog.campaign
+                                    ? campaignCollectionTitle(catalog)
+                                    : section.title,
+                                body: catalog.campaign ? "Selected products for this campaign." : section.body,
+                              }}
+                            />
+                            <p className="hidden text-[13px] text-muted sm:block">
+                              {filteredItems.length} {filteredItems.length === 1 ? "item" : "items"}
+                            </p>
+                          </div>
+                        </FadeIn>
+                        <ProductGrid
+                          items={filteredItems}
+                          currencySymbol={catalog.currencySymbol}
+                          currencyCode={catalog.currencyCode}
+                          storefrontType={catalog.storefront.type}
+                        />
+                      </section>
+                    )}
+                  </div>
                 </div>
               </SectionShell>
             );
+          }
           case "contact":
             return (
               <SectionShell key={section.id} section={section} narrow>

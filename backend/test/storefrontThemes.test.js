@@ -119,6 +119,7 @@ test('theme design rejects unsafe values and keeps the valid fallback', () => {
       heroStyle: '<script>',
       fontFamily: 'remote-font-url',
       cardStyle: 'minimal',
+      catalogLayout: 'sidebar',
     },
     {
       backgroundColor: '#101010',
@@ -134,6 +135,7 @@ test('theme design rejects unsafe values and keeps the valid fallback', () => {
   assert.equal(design.heroStyle, 'cover');
   assert.equal(design.fontFamily, 'inter');
   assert.equal(design.cardStyle, 'minimal');
+  assert.equal(design.catalogLayout, 'sidebar');
 });
 
 test('checkout customization only accepts supported payment and fulfillment values', () => {

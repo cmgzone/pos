@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  applyStorefrontInstructionRequirements,
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
   parseStorefrontAiThemeResponse,
@@ -99,4 +100,28 @@ test('invalid AI prose falls back to a safe requested style', () => {
   assert.equal(fallback.design.cornerStyle, 'pill');
   assert.equal(fallback.design.heroStyle, 'minimal');
   assert.equal(fallback.usedFallback, true);
+});
+
+test('explicit category sidebar request wins without changing unrequested colours', () => {
+  const current = defaultStorefrontTheme({ storefrontType: 'retail' });
+  const proposal = {
+    design: {
+      ...current.design,
+      backgroundColor: '#ff0000',
+      accentColor: '#00ff00',
+      catalogLayout: 'topbar',
+    },
+    sections: current.sections,
+    checkout: current.checkout,
+  };
+
+  const enforced = applyStorefrontInstructionRequirements(
+    proposal,
+    'Add the categories in a sidebar on the left',
+    current,
+  );
+
+  assert.equal(enforced.design.catalogLayout, 'sidebar');
+  assert.equal(enforced.design.backgroundColor, current.design.backgroundColor);
+  assert.equal(enforced.design.accentColor, current.design.accentColor);
 });

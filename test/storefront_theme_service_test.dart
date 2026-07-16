@@ -18,6 +18,7 @@ void main() {
         'heroStyle': 'split',
         'cardStyle': 'minimal',
         'imageRatio': 'square',
+        'catalogLayout': 'sidebar',
       },
       'sections': [
         {
@@ -44,6 +45,7 @@ void main() {
     expect(theme.id, 'theme_1');
     expect(theme.design.accentColor, '#123456');
     expect(theme.design.heroStyle, 'split');
+    expect(theme.design.catalogLayout, 'sidebar');
     expect(theme.sections.map((section) => section.type), ['hero', 'catalog']);
     expect(theme.sections.first.title, 'A complete storefront');
     expect(theme.checkout.paymentMethods, ['manual', 'mpesa']);

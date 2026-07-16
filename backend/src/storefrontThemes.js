@@ -114,6 +114,7 @@ const THEME_ENUMS = Object.freeze({
   navigationStyle: new Set(['minimal', 'centered', 'expanded']),
   iconStyle: new Set(['plain', 'boxed', 'circle']),
   motionStyle: new Set(['none', 'subtle', 'expressive']),
+  catalogLayout: new Set(['topbar', 'sidebar']),
 });
 
 const STOREFRONT_SECTION_TYPES = new Set([
@@ -341,6 +342,12 @@ function normalizeStorefrontThemeDesign(input = {}, fallback = {}) {
     navigationStyle: enumValue('navigationStyle', ['navigation_style', 'navStyle']),
     iconStyle: enumValue('iconStyle', ['icon_style']),
     motionStyle: enumValue('motionStyle', ['motion_style', 'motion']),
+    catalogLayout: enumValue('catalogLayout', [
+      'catalog_layout',
+      'categoryLayout',
+      'category_layout',
+      'catalogNavigation',
+    ]),
     productColumns: clampInteger(raw.productColumns ?? raw.product_columns ?? base.productColumns, 2, 5, 4),
   };
 }

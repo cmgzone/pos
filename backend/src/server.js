@@ -188,6 +188,7 @@ const {
   updateStorefrontPage,
 } = require('./storefrontPages');
 const {
+  applyStorefrontInstructionRequirements,
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
   parseJsonValue,
@@ -8045,6 +8046,7 @@ Return JSON only, with no markdown or commentary:
     "navigationStyle": "minimal|centered|expanded",
     "iconStyle": "plain|boxed|circle",
     "motionStyle": "none|subtle|expressive",
+    "catalogLayout": "topbar|sidebar",
     "productColumns": 4
   },
   "sections": [
@@ -8094,6 +8096,9 @@ Rules:
 - Header, cart, secure checkout, order tracking, and footer are managed by Piki and must not be represented as sections.
 - Use accessible contrast between text, backgrounds, surfaces, and the accent.
 - Treat typography, spacing, content width, image placement, columns, buttons, icons, and motion as one coherent design system.
+- catalogLayout controls the real product-category navigation. Use "sidebar" when the owner requests categories in a sidebar, side menu, left rail, or vertical category navigation; otherwise use "topbar".
+- Explicit structure and placement instructions are mandatory. Never substitute a palette, font, or style change for a requested layout change.
+- When refining, do not change colours, fonts, cards, or other design tokens unless the owner explicitly asks for those changes.
 - Do not output CSS, HTML, JavaScript, URLs, credentials, analytics, pixels, or scripts.
 - Do not add payment providers outside manual and mpesa.
 - Customer name and phone always remain required and cannot be removed.
@@ -8136,10 +8141,16 @@ ${instruction}`;
     ),
   });
   const body = requestResult.body;
-  const parsed =
+  const candidate =
     parseStorefrontAiThemeResponse(extractStorefrontAiContent(body), theme, {
       buildFromScratch,
     }) ?? fallbackStorefrontAiTheme(theme, instruction, { buildFromScratch });
+  const parsed = applyStorefrontInstructionRequirements(
+    candidate,
+    instruction,
+    theme,
+    { buildFromScratch },
+  );
   return {
     name: limitText(parsed.name, 80) || theme.name,
     summary:

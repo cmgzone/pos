@@ -53,6 +53,7 @@ export interface StorefrontThemeDesign {
   navigationStyle: "minimal" | "centered" | "expanded";
   iconStyle: "plain" | "boxed" | "circle";
   motionStyle: "none" | "subtle" | "expressive";
+  catalogLayout: "topbar" | "sidebar";
   productColumns: number;
 }
 

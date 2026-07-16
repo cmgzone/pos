@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Store, ChevronDown } from "lucide-react";
+import { Search, Store, ChevronDown, ChevronRight, LayoutList } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Branch } from "@/lib/types";
 import { FadeIn } from "./motion";
@@ -16,6 +16,7 @@ interface CatalogToolbarProps {
   branches: Branch[];
   selectedBranch: Branch | null;
   onBranchChange: (branchId: string) => void;
+  categoriesInSidebar?: boolean;
 }
 
 export function CatalogToolbar({
@@ -29,6 +30,7 @@ export function CatalogToolbar({
   branches,
   selectedBranch,
   onBranchChange,
+  categoriesInSidebar = false,
 }: CatalogToolbarProps) {
   return (
     <FadeIn>
@@ -86,7 +88,11 @@ export function CatalogToolbar({
         </div>
 
         {categories.length > 0 && (
-          <div className="flex gap-1 overflow-x-auto border-t border-border-subtle py-2.5">
+          <div
+            className={`gap-1 overflow-x-auto border-t border-border-subtle py-2.5 ${
+              categoriesInSidebar ? "flex lg:hidden" : "flex"
+            }`}
+          >
             <CategoryPill
               label="All"
               active={activeCategory === "all"}
@@ -104,6 +110,86 @@ export function CatalogToolbar({
         )}
       </div>
     </FadeIn>
+  );
+}
+
+export function CatalogCategorySidebar({
+  categories,
+  activeCategory,
+  onCategoryChange,
+  totalCount,
+}: {
+  categories: Array<{ name: string; count: number }>;
+  activeCategory: string;
+  onCategoryChange: (category: string) => void;
+  totalCount: number;
+}) {
+  return (
+    <aside className="sticky top-36 hidden self-start overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface lg:block">
+      <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
+        <span className="flex h-9 w-9 items-center justify-center rounded-[var(--theme-radius)] bg-surface-elevated text-accent">
+          <LayoutList className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted">
+            Browse
+          </p>
+          <h2 className="text-[15px] font-bold text-foreground">Categories</h2>
+        </div>
+      </div>
+      <nav className="max-h-[calc(100vh-14rem)] overflow-y-auto p-2" aria-label="Product categories">
+        <SidebarCategoryButton
+          label="All products"
+          count={totalCount}
+          active={activeCategory === "all"}
+          onClick={() => onCategoryChange("all")}
+        />
+        {categories.map((category) => (
+          <SidebarCategoryButton
+            key={category.name}
+            label={category.name}
+            count={category.count}
+            active={activeCategory === category.name}
+            onClick={() => onCategoryChange(category.name)}
+          />
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
+function SidebarCategoryButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`group flex w-full items-center gap-3 rounded-[calc(var(--theme-radius)*0.75)] px-3 py-3 text-left text-[13px] transition ${
+        active
+          ? "bg-accent font-bold text-[var(--accent-contrast)]"
+          : "font-medium text-muted-strong hover:bg-surface-elevated hover:text-foreground"
+      }`}
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span
+        className={`text-[11px] tabular-nums ${
+          active ? "text-current opacity-75" : "text-muted"
+        }`}
+      >
+        {count}
+      </span>
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60 transition group-hover:translate-x-0.5" />
+    </button>
   );
 }
 

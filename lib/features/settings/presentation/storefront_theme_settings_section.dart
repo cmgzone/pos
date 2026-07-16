@@ -369,7 +369,7 @@ class _StorefrontThemeSettingsSectionState
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Piki can direct typography, colours, spacing, content width, image placement, section order, columns, cards, buttons, icons, and motion as one design system.',
+                          'Piki can direct storefront structure, category sidebars, section order, typography, colours, spacing, image placement, columns, cards, buttons, icons, and motion as one design system.',
                         ),
                       ),
                     ],
@@ -403,6 +403,7 @@ class _StorefrontThemeSettingsSectionState
                             'Bright image-first catalogue',
                             'Minimal luxury layout',
                             'Warm local brand story',
+                            'Catalogue with category sidebar',
                           ]
                           .map(
                             (prompt) => ActionChip(
@@ -431,7 +432,7 @@ class _StorefrontThemeSettingsSectionState
                         : 'Describe the changes',
                     hintText: fromScratch
                         ? 'Example: Build a warm modern grocery store with a strong welcome, category shortcuts, featured products, trust benefits, and WhatsApp help.'
-                        : 'Example: Move featured products above categories and make the hero more minimal.',
+                        : 'Example: Put product categories in a left sidebar. Keep my current colours and fonts.',
                     helperText: fromScratch
                         ? 'Piki builds the complete homepage in the cloud. You can close the app while it works.'
                         : 'Piki preserves everything you do not ask to change.',
@@ -778,6 +779,7 @@ class _StorefrontThemeSettingsSectionState
     var navigationStyle = theme.design.navigationStyle;
     var iconStyle = theme.design.iconStyle;
     var motionStyle = theme.design.motionStyle;
+    var catalogLayout = theme.design.catalogLayout;
     var heroStyle = theme.design.heroStyle;
     var cardStyle = theme.design.cardStyle;
     var imageRatio = theme.design.imageRatio;
@@ -825,7 +827,7 @@ class _StorefrontThemeSettingsSectionState
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'These global controls keep every page consistent. Section-level width, spacing, columns, alignment, and image placement are available in Edit sections.',
+                      'These global controls keep every page consistent. Choose whether product categories appear above the catalogue or in a real desktop sidebar. Section-level positioning remains available in Edit sections.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 18),
@@ -894,6 +896,22 @@ class _StorefrontThemeSettingsSectionState
                               ('airy', 'Airy'),
                             ],
                             onChanged: (value) => sectionSpacing = value,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: dropdown(
+                            label: 'Category navigation',
+                            value: catalogLayout,
+                            options: const [
+                              ('topbar', 'Above products'),
+                              ('sidebar', 'Left sidebar'),
+                            ],
+                            onChanged: (value) => catalogLayout = value,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1124,6 +1142,7 @@ class _StorefrontThemeSettingsSectionState
       'navigationStyle': navigationStyle,
       'iconStyle': iconStyle,
       'motionStyle': motionStyle,
+      'catalogLayout': catalogLayout,
       'heroStyle': heroStyle,
       'cardStyle': cardStyle,
       'imageRatio': imageRatio,
