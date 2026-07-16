@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +9,7 @@ import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/piki_activity_panel.dart';
+import 'storefront_in_app_preview.dart';
 import 'storefront_section_editor.dart';
 import 'storefront_site_builder.dart';
 
@@ -572,6 +574,18 @@ class _StorefrontThemeSettingsSectionState
 
   Future<void> _openWebsitePreview(StorefrontTheme theme) async {
     final uri = await StorefrontThemeService.previewUrl(theme);
+    if (Platform.isWindows && mounted) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => StorefrontInAppPreviewDialog(
+          previewUri: uri,
+          buildName: theme.name,
+          enablePointAndEdit: false,
+        ),
+      );
+      return;
+    }
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened) {
       throw Exception('Could not open the exact storefront website preview.');
@@ -1268,7 +1282,9 @@ class _StorefrontThemeSettingsSectionState
               FilledButton.icon(
                 onPressed: _busy ? null : _previewPikiDraft,
                 icon: const Icon(Icons.open_in_browser_rounded, size: 18),
-                label: const Text('Preview draft'),
+                label: Text(
+                  Platform.isWindows ? 'Preview in app' : 'Preview draft',
+                ),
               )
             else if (job.isFailed)
               FilledButton.icon(
@@ -1296,12 +1312,18 @@ class _StorefrontThemeSettingsSectionState
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final previewTheme =
+        _themes.where((theme) => theme.isPublished).firstOrNull ??
+        _themes.firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         StorefrontSiteBuilder(
           key: ValueKey('site-builder-$_storefrontType'),
           storefrontType: _storefrontType,
+          onPreviewCurrentStore: previewTheme == null
+              ? null
+              : () => unawaited(_preview(previewTheme)),
         ),
         const SizedBox(height: 22),
         Row(
@@ -1526,8 +1548,17 @@ class _StorefrontThemeSettingsSectionState
                   children: [
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _preview(theme),
-                      icon: const Icon(Icons.open_in_browser_rounded, size: 18),
-                      label: const Text('Preview website'),
+                      icon: Icon(
+                        Platform.isWindows
+                            ? Icons.web_asset_rounded
+                            : Icons.open_in_browser_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        Platform.isWindows
+                            ? 'Preview in app'
+                            : 'Preview website',
+                      ),
                     ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _customizeWithPiki(theme),

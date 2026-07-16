@@ -14,8 +14,13 @@ import 'storefront_in_app_preview.dart';
 
 class StorefrontSiteBuilder extends StatefulWidget {
   final String storefrontType;
+  final VoidCallback? onPreviewCurrentStore;
 
-  const StorefrontSiteBuilder({super.key, required this.storefrontType});
+  const StorefrontSiteBuilder({
+    super.key,
+    required this.storefrontType,
+    this.onPreviewCurrentStore,
+  });
 
   @override
   State<StorefrontSiteBuilder> createState() => _StorefrontSiteBuilderState();
@@ -429,6 +434,14 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                       ],
                     ),
                   ),
+                  if (widget.onPreviewCurrentStore != null) ...[
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : widget.onPreviewCurrentStore,
+                      icon: const Icon(Icons.web_asset_rounded),
+                      label: const Text('Preview store'),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   FilledButton.icon(
                     onPressed: _busy ? null : _createPage,
                     icon: const Icon(Icons.add_rounded),
@@ -795,7 +808,9 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
               OutlinedButton.icon(
                 onPressed: _busy ? null : () => _previewSiteBuild(build),
                 icon: const Icon(Icons.visibility_outlined, size: 17),
-                label: const Text('Exact preview'),
+                label: Text(
+                  Platform.isWindows ? 'Preview & edit' : 'Exact preview',
+                ),
               ),
               const SizedBox(width: 8),
               if (!build.isPublished)
@@ -1748,6 +1763,18 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
     await _run(() async {
       await _saveDraftWithoutBusy();
       final uri = await StorefrontPageService.previewUrl(_page.id);
+      if (Platform.isWindows && mounted) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => StorefrontInAppPreviewDialog(
+            previewUri: uri,
+            buildName: _page.title,
+            enablePointAndEdit: false,
+          ),
+        );
+        return;
+      }
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         throw Exception('Could not open the exact website preview.');
       }
@@ -1834,7 +1861,9 @@ class _PageStudioDialogState extends State<_PageStudioDialog> {
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _preview,
                     icon: const Icon(Icons.visibility_outlined),
-                    label: const Text('Exact preview'),
+                    label: Text(
+                      Platform.isWindows ? 'Preview in app' : 'Exact preview',
+                    ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(

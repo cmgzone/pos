@@ -63,14 +63,16 @@ enum _PreviewViewport { desktop, tablet, mobile }
 
 class StorefrontInAppPreviewDialog extends StatefulWidget {
   final Uri previewUri;
-  final int buildVersion;
+  final int? buildVersion;
   final String buildName;
+  final bool enablePointAndEdit;
 
   const StorefrontInAppPreviewDialog({
     super.key,
     required this.previewUri,
-    required this.buildVersion,
     required this.buildName,
+    this.buildVersion,
+    this.enablePointAndEdit = true,
   });
 
   @override
@@ -89,9 +91,14 @@ class _StorefrontInAppPreviewDialogState
   bool _loading = true;
   String? _error;
 
-  Uri get _inspectUri => widget.previewUri.replace(
-    queryParameters: {...widget.previewUri.queryParameters, 'pikiInspect': '1'},
-  );
+  Uri get _loadUri => widget.enablePointAndEdit
+      ? widget.previewUri.replace(
+          queryParameters: {
+            ...widget.previewUri.queryParameters,
+            'pikiInspect': '1',
+          },
+        )
+      : widget.previewUri;
 
   @override
   void initState() {
@@ -104,14 +111,16 @@ class _StorefrontInAppPreviewDialogState
       await _controller.initialize();
       await _controller.setBackgroundColor(Colors.white);
       await _controller.setPopupWindowPolicy(WebviewPopupWindowPolicy.deny);
-      _subscriptions.add(_controller.webMessage.listen(_handleWebMessage));
+      if (widget.enablePointAndEdit) {
+        _subscriptions.add(_controller.webMessage.listen(_handleWebMessage));
+      }
       _subscriptions.add(
         _controller.loadingState.listen((state) {
           if (!mounted) return;
           setState(() => _loading = state == LoadingState.loading);
         }),
       );
-      await _controller.loadUrl(_inspectUri.toString());
+      await _controller.loadUrl(_loadUri.toString());
     } on PlatformException catch (error) {
       _error = error.message ?? 'The Windows browser preview could not start.';
     } catch (error) {
@@ -181,7 +190,9 @@ class _StorefrontInAppPreviewDialogState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Exact storefront preview · v${widget.buildVersion}',
+                widget.buildVersion == null
+                    ? 'Exact storefront preview'
+                    : 'Exact storefront preview · v${widget.buildVersion}',
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               Text(
@@ -276,10 +287,11 @@ class _StorefrontInAppPreviewDialogState
                 ),
               ),
             ),
-            SizedBox(
-              width: size.width >= 1280 ? 390 : 340,
-              child: _pikiPanel(colors),
-            ),
+            if (widget.enablePointAndEdit)
+              SizedBox(
+                width: size.width >= 1280 ? 390 : 340,
+                child: _pikiPanel(colors),
+              ),
           ],
         ),
       ),
