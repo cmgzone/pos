@@ -52,6 +52,13 @@ void main() {
         ),
         AppErrorMessage.generic,
       );
+      expect(
+        AppErrorMessage.from(
+          'ReferenceError: businessContext is not defined',
+          fallback: AppErrorMessage.pikiFailed,
+        ),
+        AppErrorMessage.pikiFailed,
+      );
     });
   });
 }

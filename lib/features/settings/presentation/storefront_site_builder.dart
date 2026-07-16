@@ -146,6 +146,20 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
     });
   }
 
+  Future<void> _retrySiteCompilerJob() async {
+    final job = _siteJob;
+    if (job == null || !job.isFailed || _busy) return;
+    await _run(() async {
+      final retried = await PikiAiJobService.retryJob(job.id);
+      if (!mounted) return;
+      setState(() {
+        _siteJob = retried;
+        _siteEvents = const [];
+      });
+      unawaited(_watchSiteJob(retried.id));
+    });
+  }
+
   Future<void> _watchSiteJob(String jobId) async {
     if (_watchingSiteJobId == jobId) return;
     _watchingSiteJobId = jobId;
@@ -620,6 +634,17 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                   ? 'Piki is editing the selected section'
                   : 'Piki is coding your storefront',
             ),
+            if (job.isFailed) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : _retrySiteCompilerJob,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry saved request'),
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 18),
           if (_siteBuilds.isEmpty)

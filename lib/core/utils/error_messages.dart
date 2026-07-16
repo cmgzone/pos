@@ -195,6 +195,12 @@ class AppErrorMessage {
 
   static bool _looksTechnical(String lower, String message) {
     return lower.contains('databaseexception') ||
+        lower.contains('referenceerror') ||
+        lower.contains('typeerror') ||
+        lower.contains(' is not defined') ||
+        lower.contains('provider returned error') ||
+        lower.contains('unexpected character at character') ||
+        lower.contains('<!doctype html') ||
         lower.contains('sqlexception') ||
         lower.contains('sqlite') ||
         lower.contains('sql ') ||

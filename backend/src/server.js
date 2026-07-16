@@ -8288,6 +8288,7 @@ async function requestOpenRouterStorefrontSite({
   selectedProduct = null,
   selectionContext = null,
 }) {
+  const { products: liveProducts = [], ...businessContext } = storeContext;
   const singleProduct = siteMode === 'single_product' && selectedProduct;
   const productBindingRule = singleProduct
     ? `Use exactly one <piki-single-product></piki-single-product> binding and do not use <piki-products>. The trusted compiler will pin it to ${selectedProduct.name}; do not write or guess a product ID in the HTML.`

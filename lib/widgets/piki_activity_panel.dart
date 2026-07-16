@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/services/piki_ai_job_service.dart';
 import '../core/theme/app_colors.dart';
+import '../core/utils/error_messages.dart';
 
 /// A live view of Piki's current backend stage.
 ///
@@ -263,7 +264,11 @@ class _PikiActivityPanelState extends State<PikiActivityPanel>
 
   String _stageMessage(PikiAiJob? job, PikiAiJobEvent? event) {
     if (job?.isFailed == true && job?.errorMessage?.trim().isNotEmpty == true) {
-      return job!.errorMessage!.trim();
+      return AppErrorMessage.from(
+        job!.errorMessage,
+        fallback:
+            'Piki could not finish this request. Your work is saved—please try again.',
+      );
     }
     if (event?.message?.trim().isNotEmpty == true) {
       return event!.message!.trim();
