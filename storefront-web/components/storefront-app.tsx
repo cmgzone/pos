@@ -15,11 +15,13 @@ import { Footer } from "./footer";
 import { FloatingCart } from "./floating-cart";
 import { SkeletonGrid } from "./skeleton-grid";
 import { ErrorState } from "./error-state";
+import { GeneratedSiteFrame } from "./generated-site-frame";
 import {
   getBootstrap,
   getBranchIdFromQuery,
   getPagePreviewTokenFromQuery,
   getPreviewTokenFromQuery,
+  getSitePreviewTokenFromQuery,
 } from "@/lib/utils";
 import {
   campaignSlugFromPath,
@@ -63,6 +65,7 @@ function StorefrontInner() {
       campaignSlug?: string,
       pageSlug?: string,
       pagePreviewToken?: string,
+      sitePreviewToken?: string,
     ) => {
       setError(null);
       try {
@@ -74,6 +77,7 @@ function StorefrontInner() {
           campaignSlug,
           pageSlug,
           pagePreviewToken,
+          sitePreviewToken,
         );
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
@@ -91,6 +95,7 @@ function StorefrontInner() {
     const bootstrap = getBootstrap();
     const previewToken = getPreviewTokenFromQuery();
     const pagePreviewToken = getPagePreviewTokenFromQuery();
+    const sitePreviewToken = getSitePreviewTokenFromQuery();
     const businessId = bootstrap.businessId || bootstrap.catalog?.business.id;
     const branchId =
       bootstrap.branchId ||
@@ -110,12 +115,12 @@ function StorefrontInner() {
       );
       return;
     } else {
-      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken);
+      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken, sitePreviewToken);
     }
 
-    if ((!previewToken && !pagePreviewToken) || !businessId) return;
+    if ((!previewToken && !pagePreviewToken && !sitePreviewToken) || !businessId) return;
     const timer = window.setInterval(() => {
-      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken);
+      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken, sitePreviewToken);
     }, 2000);
     return () => window.clearInterval(timer);
   }, [loadCatalog, setCatalog, setSelectedBranch]);
@@ -158,6 +163,7 @@ function StorefrontInner() {
         catalog.campaign?.slug || campaignSlugFromPath(),
         catalog.page?.slug || pageSlugFromPath(),
         getPagePreviewTokenFromQuery(),
+        getSitePreviewTokenFromQuery(),
       );
     },
     [catalog, loadCatalog, setSelectedBranch],
@@ -226,16 +232,19 @@ function StorefrontInner() {
   const isLoading = catalog === null;
   const isSearching = Boolean(search) || category !== "all";
   const activeSections = catalog?.page?.sections || catalog?.theme.sections || [];
+  const usesGeneratedSite = Boolean(
+    catalog?.siteBuild && !catalog?.campaign,
+  );
 
   return (
     <>
       {catalog?.preview && (
         <div className="sticky top-0 z-[80] border-b border-amber-300/30 bg-amber-300 px-4 py-2 text-center text-[12px] font-bold text-black shadow-sm">
           Draft website preview · Updates automatically · Customers cannot see
-          this theme until you publish
+          this website until you publish
         </div>
       )}
-      {activeSections
+      {!usesGeneratedSite && activeSections
         .filter(
           (section) =>
             section.enabled !== false && section.type === "announcement",
@@ -247,20 +256,27 @@ function StorefrontInner() {
             onAction={handleSectionAction}
           />
         ))}
-      <SiteHeader
-        business={catalog?.business}
-        storefront={catalog?.storefront}
-        onTrackOrder={() => setShowTracker(true)}
-        appearance={appearance}
-        onAppearanceChange={handleAppearanceChange}
-        showTracking={catalog?.checkout.showOrderTracking !== false}
-        pages={catalog?.pages || []}
-      />
+      {!usesGeneratedSite && (
+        <SiteHeader
+          business={catalog?.business}
+          storefront={catalog?.storefront}
+          onTrackOrder={() => setShowTracker(true)}
+          appearance={appearance}
+          onAppearanceChange={handleAppearanceChange}
+          showTracking={catalog?.checkout.showOrderTracking !== false}
+          pages={catalog?.pages || []}
+        />
+      )}
 
       {isLoading || !catalog ? (
         <main className="flex-1 px-4 py-16 sm:px-6 lg:px-10">
           <SkeletonGrid />
         </main>
+      ) : usesGeneratedSite ? (
+        <GeneratedSiteFrame
+          catalog={catalog}
+          onTrackOrder={() => setShowTracker(true)}
+        />
       ) : (
         <StorefrontSections
           catalog={catalog}
@@ -286,12 +302,14 @@ function StorefrontInner() {
         />
       )}
 
-      <Footer
-        business={catalog?.business}
-        onTrackOrder={() => setShowTracker(true)}
-        showTracking={catalog?.checkout.showOrderTracking !== false}
-        pages={catalog?.pages || []}
-      />
+      {!usesGeneratedSite && (
+        <Footer
+          business={catalog?.business}
+          onTrackOrder={() => setShowTracker(true)}
+          showTracking={catalog?.checkout.showOrderTracking !== false}
+          pages={catalog?.pages || []}
+        />
+      )}
       <FloatingCart onOpen={() => setIsCartOpen(true)} />
       <CartDrawer
         onCheckout={() => setShowCheckout(true)}

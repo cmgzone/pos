@@ -132,6 +132,61 @@ class StorefrontConnection {
   }
 }
 
+class StorefrontSiteBuild {
+  final String id;
+  final String branchId;
+  final String storefrontType;
+  final int version;
+  final String name;
+  final String summary;
+  final String status;
+  final String compilerVersion;
+  final String codeHash;
+  final List<String> slots;
+  final bool securityPassed;
+  final DateTime? updatedAt;
+
+  const StorefrontSiteBuild({
+    required this.id,
+    required this.branchId,
+    required this.storefrontType,
+    required this.version,
+    required this.name,
+    required this.summary,
+    required this.status,
+    required this.compilerVersion,
+    required this.codeHash,
+    required this.slots,
+    required this.securityPassed,
+    required this.updatedAt,
+  });
+
+  bool get isPublished => status == 'published';
+  bool get isDraft => status == 'draft';
+
+  factory StorefrontSiteBuild.fromJson(Map<String, dynamic> json) {
+    final security = Map<String, dynamic>.from(
+      json['security'] as Map? ?? const {},
+    );
+    return StorefrontSiteBuild(
+      id: json['id']?.toString() ?? '',
+      branchId: json['branchId']?.toString() ?? 'main_branch',
+      storefrontType: json['storefrontType']?.toString() ?? 'retail',
+      version: int.tryParse(json['version']?.toString() ?? '') ?? 1,
+      name: json['name']?.toString() ?? 'Piki generated storefront',
+      summary: json['summary']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'draft',
+      compilerVersion: json['compilerVersion']?.toString() ?? '',
+      codeHash: json['codeHash']?.toString() ?? '',
+      slots: (json['slots'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      securityPassed: security['passed'] == true,
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
+    );
+  }
+}
+
 class StorefrontPageService {
   static final Dio _dio = Dio(
     BaseOptions(
@@ -160,6 +215,76 @@ class StorefrontPageService {
         .whereType<Map>()
         .map((item) => StorefrontPage.fromJson(Map<String, dynamic>.from(item)))
         .toList();
+  }
+
+  static Future<List<StorefrontSiteBuild>> listSiteBuilds({
+    required String branchId,
+    required String storefrontType,
+  }) async {
+    final context = await _requestContext();
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('catalog/site-builds'),
+      queryParameters: {
+        'deviceId': context.deviceId,
+        'branchId': branchId,
+        'storefrontType': storefrontType,
+      },
+      options: Options(headers: context.headers),
+    );
+    final data = _requireOk(response)['data'] as List? ?? const [];
+    return data
+        .whereType<Map>()
+        .map(
+          (item) =>
+              StorefrontSiteBuild.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  static Future<StorefrontSiteBuild> createStarterSite({
+    required String branchId,
+    required String storefrontType,
+  }) => _siteBuildWrite('POST', 'catalog/site-builds/starter', {
+    'branchId': branchId,
+    'storefrontType': storefrontType,
+  }, 'create a generated storefront starter');
+
+  static Future<StorefrontSiteBuild> publishSiteBuild(String buildId) =>
+      _siteBuildWrite(
+        'POST',
+        'catalog/site-builds/$buildId/publish',
+        const {},
+        'publish generated storefront code',
+      );
+
+  static Future<Uri> siteBuildPreviewUrl(String buildId) async {
+    final context = await _requestContext();
+    final response = await _dio.get<Map<String, dynamic>>(
+      _url('catalog/site-builds/$buildId/preview'),
+      queryParameters: {'deviceId': context.deviceId},
+      options: Options(headers: context.headers),
+    );
+    final data = Map<String, dynamic>.from(
+      _requireOk(response)['data'] as Map? ?? const {},
+    );
+    final uri = Uri.tryParse(data['url']?.toString() ?? '');
+    if (uri == null || !uri.hasScheme) {
+      throw Exception('The generated site preview is unavailable.');
+    }
+    return uri;
+  }
+
+  static Future<void> deleteSiteBuild(String buildId) async {
+    await LicenseService.ensureWriteAccess(
+      action: 'delete a generated storefront build',
+    );
+    final context = await _requestContext();
+    final response = await _dio.delete<Map<String, dynamic>>(
+      _url('catalog/site-builds/$buildId'),
+      queryParameters: {'deviceId': context.deviceId},
+      options: Options(headers: context.headers),
+    );
+    _requireOk(response);
   }
 
   static Future<StorefrontPage> create(Map<String, dynamic> data) =>
@@ -294,6 +419,33 @@ class StorefrontPageService {
             options: Options(headers: context.headers),
           );
     return StorefrontPage.fromJson(
+      Map<String, dynamic>.from(
+        _requireOk(response)['data'] as Map? ?? const {},
+      ),
+    );
+  }
+
+  static Future<StorefrontSiteBuild> _siteBuildWrite(
+    String method,
+    String path,
+    Map<String, dynamic> data,
+    String action,
+  ) async {
+    await LicenseService.ensureWriteAccess(action: action);
+    final context = await _requestContext();
+    final payload = {'deviceId': context.deviceId, ...data};
+    final response = method == 'PUT'
+        ? await _dio.put<Map<String, dynamic>>(
+            _url(path),
+            data: payload,
+            options: Options(headers: context.headers),
+          )
+        : await _dio.post<Map<String, dynamic>>(
+            _url(path),
+            data: payload,
+            options: Options(headers: context.headers),
+          );
+    return StorefrontSiteBuild.fromJson(
       Map<String, dynamic>.from(
         _requireOk(response)['data'] as Map? ?? const {},
       ),

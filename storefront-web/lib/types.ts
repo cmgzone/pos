@@ -167,6 +167,28 @@ export interface StorefrontTheme {
   isPublished: boolean;
 }
 
+export interface StorefrontSiteBuild {
+  id: string;
+  version: number;
+  name: string;
+  summary: string;
+  html: string;
+  pageHtml: string;
+  css: string;
+  compilerVersion: string;
+  codeHash: string;
+  slots: string[];
+  pageSlots?: string[];
+  security: {
+    passed?: boolean;
+    sandbox?: string;
+    scriptPolicy?: string;
+    networkAccess?: string;
+  };
+  status: "draft" | "published" | "archived";
+  updatedAt?: string | null;
+}
+
 export interface Branch {
   id: string;
   name: string;
@@ -251,6 +273,7 @@ export interface Catalog {
   checkout: StorefrontCheckoutSettings;
   campaign?: StorefrontCampaign | null;
   page?: StorefrontPage | null;
+  siteBuild?: StorefrontSiteBuild | null;
   pages?: StorefrontPageLink[];
   currencySymbol: string;
   currencyLabel: string;

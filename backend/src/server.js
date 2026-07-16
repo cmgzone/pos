@@ -205,6 +205,24 @@ const {
   verifyStorefrontPagePreviewToken,
 } = require('./storefrontPagePreview');
 const {
+  createStorefrontSiteBuild,
+  deleteStorefrontSiteBuild,
+  getStorefrontSiteBuild,
+  listStorefrontSiteBuilds,
+  loadPublishedStorefrontSiteBuild,
+  publicStorefrontSiteBuild,
+  publishStorefrontSiteBuild,
+  storefrontSiteBuildSummary,
+} = require('./storefrontSiteBuilds');
+const {
+  compileStorefrontSitePackage,
+  defaultStorefrontSitePackage,
+} = require('./storefrontSiteCompiler');
+const {
+  createStorefrontSitePreviewToken,
+  verifyStorefrontSitePreviewToken,
+} = require('./storefrontSitePreview');
+const {
   getStorefrontConnection,
   hasEnabledStorefrontConnection,
   loadDynamicStorefrontProducts,
@@ -260,8 +278,9 @@ const CATALOG_CACHE_TABLES = new Set([
   'stock_transfers',
   'promotions',
   'promotion_rules',
+  'storefront_site_builds',
 ]);
-const CATALOG_CACHE_CODE_VERSION = '5';
+const CATALOG_CACHE_CODE_VERSION = '6';
 const STOREFRONT_TYPES = Object.freeze({
   retail: Object.freeze({
     type: 'retail',
@@ -8259,6 +8278,95 @@ ${instruction}`;
   return parseCandidate(requestResult.body);
 }
 
+async function requestOpenRouterStorefrontSite({
+  fetchImpl,
+  aiConfig,
+  instruction,
+  storeContext = {},
+  currentBuild = null,
+}) {
+  const prompt = `You are Piki Site Compiler, a senior storefront engineer. Generate a genuinely custom responsive storefront body using HTML and CSS. This is not a theme preset: create the structure requested by the merchant.
+
+Return exactly one JSON object:
+{
+  "name": "short build name",
+  "summary": "one sentence describing the generated structure",
+  "html": "custom semantic homepage HTML body fragment",
+  "pageHtml": "matching custom HTML shell for About, FAQ, Contact, policy and other pages",
+  "css": "complete responsive CSS for that fragment"
+}
+
+Piki data bindings (place these custom elements anywhere in the HTML structure):
+- <piki-brand></piki-brand> — live store logo and name
+- <piki-store-intro></piki-store-intro> — live store name, tagline and description
+- <piki-cover></piki-cover> — live store cover image managed by the owner
+- <piki-navigation></piki-navigation> — published store pages
+- <piki-categories></piki-categories> — live product categories
+- <piki-search></piki-search> — trusted product search
+- <piki-products></piki-products> — live product grid; REQUIRED exactly once
+- <piki-cart-button></piki-cart-button> — trusted cart action
+- <piki-whatsapp></piki-whatsapp> — trusted WhatsApp action
+- <piki-page-content></piki-page-content> — live custom-page content; REQUIRED exactly once in pageHtml
+- <piki-footer></piki-footer> — live store footer
+
+Compiler rules:
+- Generate html and pageHtml fragments only, never html/head/body/meta/link/style tags.
+- Do not output JavaScript, script, iframe, forms, inputs, inline event handlers, SVG, MathML, executable URLs, analytics, trackers, external CSS imports, or unsupported piki-* elements.
+- Do not create payment or customer-data forms. Checkout is supplied by the trusted Piki cart binding.
+- Use semantic sections, CSS Grid/Flexbox, responsive media queries, CSS variables, and original visual composition.
+- Available trusted font families include Inter, Playfair Display, Montserrat, Nunito, Oswald, Merriweather, Georgia, and system fonts.
+- Links may use local #section anchors only. Use Piki bindings for store pages and WhatsApp.
+- The owner request is mandatory. A sidebar request must physically place <piki-categories> in an aside beside <piki-products>; do not substitute a colour change.
+- Use only truthful business context. Do not invent reviews, guarantees, discounts, addresses, hours, product facts, or delivery promises.
+- Make the design usable from 360px mobile through large desktop screens.
+
+BUSINESS CONTEXT:
+${JSON.stringify(storeContext)}
+
+${currentBuild ? `CURRENT GENERATED SITE (refine only what is requested):\n${JSON.stringify({ name: currentBuild.name, html: currentBuild.html, pageHtml: currentBuild.pageHtml, css: currentBuild.css })}` : 'STARTING POINT: Blank custom site.'}
+
+OWNER REQUEST:
+${instruction}`;
+
+  const parseCandidate = (body) => {
+    const parsed = parseJsonValue(extractStorefrontAiContent(body));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    try {
+      return compileStorefrontSitePackage(parsed);
+    } catch (_) {
+      return null;
+    }
+  };
+  const requestResult = await requestOpenRouterJson({
+    fetchImpl,
+    baseUrl: OPENROUTER_BASE_URL,
+    apiKey: aiConfig.api_key,
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+    fallbackModel: config.openRouterFallbackModel,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Return one valid JSON object containing safe HTML and CSS for the Piki Site Compiler. Never return markdown or JavaScript.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    maxTokens: 7000,
+    temperature: 0.28,
+    title: 'Piki Site Compiler',
+    responseFormat: storefrontJsonResponseFormat(),
+    isUsableBody: (body) => Boolean(parseCandidate(body)),
+  });
+  const compiled = parseCandidate(requestResult.body);
+  if (!compiled) {
+    throw createHttpError(
+      502,
+      'Piki could not compile a safe storefront from that request. Try describing the structure again.',
+    );
+  }
+  return compiled;
+}
+
 async function requestOpenRouterMarketingContent({
   fetchImpl,
   aiConfig,
@@ -9207,6 +9315,7 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
 aiJobs.registerHandler('product_import', runProductImportAiJob);
 aiJobs.registerHandler('storefront_theme', runStorefrontThemeAiJob);
 aiJobs.registerHandler('storefront_page', runStorefrontPageAiJob);
+aiJobs.registerHandler('storefront_site', runStorefrontSiteAiJob);
 aiJobs.registerHandler('marketing_content', runMarketingContentAiJob);
 
 async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
@@ -9450,6 +9559,129 @@ async function runStorefrontPageAiJob({ job, updateJob, addEvent }) {
     toolName: 'complete_storefront_page',
     progress: 100,
     metadata: { pageId: updated.id },
+  });
+}
+
+async function runStorefrontSiteAiJob({ job, updateJob, addEvent }) {
+  const totalSteps = 5;
+  const payload = parseJsonObjectFromText(job.payload_json) || {};
+  const instruction = limitText(job.instruction, 1600);
+  const branchId = normalizeOptionalText(job.branch_id || payload.branchId) || 'main_branch';
+  const storefrontType = normalizeStorefrontType(payload.storefrontType);
+  const parentBuildId = normalizeOptionalText(payload.parentBuildId);
+  if (!instruction) throw createHttpError(400, 'The generated site brief is incomplete.');
+
+  const step = async (completedSteps, progress, title, message, eventType) => {
+    await updateJob(job.id, job.business_id, {
+      completedSteps,
+      totalSteps,
+      currentStep: title,
+      progress,
+    });
+    await addEvent({
+      jobId: job.id,
+      businessId: job.business_id,
+      branchId,
+      eventType,
+      title,
+      message,
+      toolName: `storefront_site_${eventType}`,
+      progress,
+    });
+  };
+
+  await step(
+    1,
+    14,
+    'Reading the website brief',
+    'Piki is mapping the requested structure, visual direction, and storefront bindings.',
+    'site_brief',
+  );
+  const currentBuild = parentBuildId
+    ? await getStorefrontSiteBuild(query, job.business_id, parentBuildId)
+    : null;
+  const aiConfig = await loadPlatformAiConfig();
+  if (!aiConfig?.enabled || !aiConfig.api_key) {
+    throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+  }
+  const brand = await loadStorefrontBrand(job.business_id, { branchId });
+
+  await step(
+    2,
+    34,
+    'Coding a new storefront',
+    'Piki is writing a custom semantic HTML structure and responsive CSS from the brief.',
+    'site_coding',
+  );
+  const fetch = (await import('node-fetch')).default;
+  const compiled = await requestOpenRouterStorefrontSite({
+    fetchImpl: fetch,
+    aiConfig,
+    instruction,
+    currentBuild,
+    storeContext: {
+      name: brand.businessName || payload.businessName,
+      tagline: brand.tagline,
+      description: brand.description,
+      primaryColor: brand.primaryColor,
+      storefrontType,
+    },
+  });
+
+  await step(
+    3,
+    66,
+    'Security-checking the generated code',
+    'The compiler is rejecting scripts, forms, trackers, unsafe embeds, and unsupported data access.',
+    'site_security',
+  );
+  const verified = compileStorefrontSitePackage(compiled);
+
+  await step(
+    4,
+    86,
+    'Building the exact preview',
+    'Piki is binding the generated layout to live brand, category, product, cart, and page data.',
+    'site_building',
+  );
+  const build = await withTransaction((client) =>
+    createStorefrontSiteBuild(
+      client,
+      job.business_id,
+      {
+        branchId,
+        storefrontType,
+        instruction,
+        package: verified,
+        source: 'ai',
+        parentBuildId,
+      },
+      { createdBy: job.user_id },
+    ),
+  );
+  const result = {
+    build: storefrontSiteBuildSummary(build),
+    buildId: build.id,
+  };
+  await updateJob(job.id, job.business_id, {
+    status: 'completed',
+    progress: 100,
+    completedSteps: totalSteps,
+    totalSteps,
+    currentStep: 'Generated site build ready',
+    completedAt: new Date().toISOString(),
+    resultJson: result,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId,
+    eventType: 'site_ready',
+    title: 'Generated site build ready',
+    message: 'The sandboxed exact preview is ready. The live site is unchanged until you publish this build.',
+    toolName: 'complete_storefront_site',
+    progress: 100,
+    metadata: { buildId: build.id, version: build.version },
   });
 }
 
@@ -10901,17 +11133,29 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
 
     const preview = storefrontThemePreviewFromRequest(req, businessId);
     const pagePreview = storefrontPagePreviewFromRequest(req, businessId);
+    const sitePreview = storefrontSitePreviewFromRequest(req, businessId);
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
-      branchId: preview?.branchId || pagePreview?.branchId || req.query?.branchId,
+      branchId:
+        preview?.branchId ||
+        pagePreview?.branchId ||
+        sitePreview?.branchId ||
+        req.query?.branchId,
       storefrontType:
-        preview?.storefrontType || pagePreview?.storefrontType || req.query?.storefront || req.query?.type,
+        preview?.storefrontType ||
+        pagePreview?.storefrontType ||
+        sitePreview?.storefrontType ||
+        req.query?.storefront ||
+        req.query?.type,
       previewThemeId: preview?.themeId,
+      previewSiteBuildId: sitePreview?.buildId,
       campaignSlug: req.query?.campaign,
       pageSlug: pagePreview?.slug || req.query?.page,
       previewPageId: pagePreview?.pageId,
     });
-    if (preview || pagePreview) res.set('Cache-Control', 'private, no-store');
+    if (preview || pagePreview || sitePreview) {
+      res.set('Cache-Control', 'private, no-store');
+    }
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -10940,21 +11184,33 @@ app.get('/api/public/catalog', async (req, res, next) => {
       storefront.businessId,
     );
     const pagePreview = storefrontPagePreviewFromRequest(req, storefront.businessId);
+    const sitePreview = storefrontSitePreviewFromRequest(
+      req,
+      storefront.businessId,
+    );
     const catalog = await loadPublicCatalog(storefront.businessId, {
       currencyOverride: req.query?.currency,
-      branchId: preview?.branchId || pagePreview?.branchId || req.query?.branchId,
+      branchId:
+        preview?.branchId ||
+        pagePreview?.branchId ||
+        sitePreview?.branchId ||
+        req.query?.branchId,
       storefrontType:
         preview?.storefrontType ||
         pagePreview?.storefrontType ||
+        sitePreview?.storefrontType ||
         storefront.storefrontType ||
         req.query?.storefront ||
         req.query?.type,
       previewThemeId: preview?.themeId,
+      previewSiteBuildId: sitePreview?.buildId,
       campaignSlug: req.query?.campaign,
       pageSlug: pagePreview?.slug || req.query?.page,
       previewPageId: pagePreview?.pageId,
     });
-    if (preview || pagePreview) res.set('Cache-Control', 'private, no-store');
+    if (preview || pagePreview || sitePreview) {
+      res.set('Cache-Control', 'private, no-store');
+    }
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -11345,6 +11601,187 @@ app.delete('/api/catalog/campaigns/:campaignId', async (req, res, next) => {
     );
     await invalidateCatalogCache(businessContext.businessId);
     res.json({ ok: true, data: campaign });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/site-builds', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.query || {}, businessContext);
+    const builds = await listStorefrontSiteBuilds(
+      query,
+      businessContext.businessId,
+      scope,
+    );
+    res.json({ ok: true, data: builds });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/site-builds/starter', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const build = await withTransaction((client) =>
+      createStorefrontSiteBuild(
+        client,
+        businessContext.businessId,
+        {
+          ...scope,
+          instruction: 'Create the safe Piki Site Compiler starter.',
+          package: defaultStorefrontSitePackage({
+            businessName: businessContext.businessName,
+          }),
+          source: 'starter',
+        },
+        { createdBy: businessContext.userId },
+      ),
+    );
+    res.status(201).json({
+      ok: true,
+      data: storefrontSiteBuildSummary(build),
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/site-builds/ai-jobs', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    ensureAiFeatureAllowed(businessContext);
+    const instruction = limitText(req.body?.instruction || req.body?.prompt, 1600);
+    if (!instruction || instruction.length < 10) {
+      throw createHttpError(400, 'Describe the website Piki should code.');
+    }
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig?.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+    }
+    const rateCheck = await checkAiRateLimit(businessContext, {
+      consumeQuota: req.body?.consumeQuota !== false,
+    });
+    if (!rateCheck.allowed) {
+      throw createHttpError(
+        429,
+        `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`,
+      );
+    }
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const parentBuildId = normalizeOptionalText(req.body?.parentBuildId);
+    if (parentBuildId) {
+      const parent = await getStorefrontSiteBuild(
+        query,
+        businessContext.businessId,
+        parentBuildId,
+      );
+      if (!parent) throw createHttpError(404, 'The generated site to refine was not found.');
+      if (
+        parent.branchId !== scope.branchId ||
+        parent.storefrontType !== scope.storefrontType
+      ) {
+        throw createHttpError(
+          409,
+          'That generated site belongs to a different storefront or branch.',
+        );
+      }
+    }
+    const job = await aiJobs.createJob({
+      businessId: businessContext.businessId,
+      branchId: scope.branchId,
+      userId: businessContext.userId,
+      jobType: 'storefront_site',
+      title: parentBuildId ? 'Refine generated storefront code' : 'Code a new storefront',
+      instruction,
+      payload: {
+        ...scope,
+        parentBuildId,
+        businessName: businessContext.businessName,
+      },
+      totalSteps: 5,
+    });
+    res.status(202).json({ ok: true, job, remaining: rateCheck.remaining });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/site-builds/:buildId/preview', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const build = await getStorefrontSiteBuild(
+      query,
+      businessContext.businessId,
+      req.params.buildId,
+    );
+    if (!build) throw createHttpError(404, 'Generated site build was not found.');
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    const token = createStorefrontSitePreviewToken({
+      secret: config.platformJwtSecret,
+      businessId: businessContext.businessId,
+      build,
+    });
+    const previewUrl = new URL(
+      buildTypedStorefrontUrl(publicSubdomain, build.storefrontType),
+    );
+    previewUrl.searchParams.set('branchId', build.branchId);
+    previewUrl.searchParams.set('sitePreview', token);
+    res.json({
+      ok: true,
+      data: {
+        url: previewUrl.toString(),
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/site-builds/:buildId/publish', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const build = await withTransaction((client) =>
+      publishStorefrontSiteBuild(
+        client,
+        businessContext.businessId,
+        req.params.buildId,
+      ),
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    notifyBusinessRealtimeChange({
+      businessId: businessContext.businessId,
+      sourceDeviceId: businessContext.deviceId,
+      reason: 'storefront_site_build',
+      tables: ['storefront_site_builds'],
+    });
+    res.json({ ok: true, data: storefrontSiteBuildSummary(build) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.delete('/api/catalog/site-builds/:buildId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const build = await deleteStorefrontSiteBuild(
+      query,
+      businessContext.businessId,
+      req.params.buildId,
+    );
+    res.json({ ok: true, data: storefrontSiteBuildSummary(build) });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -12207,15 +12644,19 @@ app.get(
       }
 
       const preview = storefrontThemePreviewFromRequest(req, businessId);
+      const sitePreview = storefrontSitePreviewFromRequest(req, businessId);
       const catalog = await loadPublicCatalog(businessId, {
         currencyOverride: req.query?.currency,
-        branchId: preview?.branchId || req.query?.branchId,
+        branchId:
+          preview?.branchId || sitePreview?.branchId || req.query?.branchId,
         storefrontType:
           preview?.storefrontType ||
+          sitePreview?.storefrontType ||
           req.params.storefrontType ||
           req.query?.storefront ||
           req.query?.type,
         previewThemeId: preview?.themeId,
+        previewSiteBuildId: sitePreview?.buildId,
       });
       res
         .status(200)
@@ -12256,11 +12697,17 @@ app.get(['/', '/catalog', '/retail', '/services', '/restaurant'], async (req, re
       req,
       storefrontLookup.businessId,
     );
+    const sitePreview = storefrontSitePreviewFromRequest(
+      req,
+      storefrontLookup.businessId,
+    );
     const catalog = await loadPublicCatalog(storefrontLookup.businessId, {
       currencyOverride: req.query?.currency,
-      branchId: preview?.branchId || req.query?.branchId,
+      branchId:
+        preview?.branchId || sitePreview?.branchId || req.query?.branchId,
       storefrontType:
         preview?.storefrontType ||
+        sitePreview?.storefrontType ||
         storefrontLookup.storefrontType ||
         (req.path === '/retail' ||
         req.path === '/services' ||
@@ -12268,6 +12715,7 @@ app.get(['/', '/catalog', '/retail', '/services', '/restaurant'], async (req, re
           ? req.path.slice(1)
           : req.query?.storefront || req.query?.type),
       previewThemeId: preview?.themeId,
+      previewSiteBuildId: sitePreview?.buildId,
     });
     res
       .status(200)
@@ -15161,6 +15609,23 @@ function storefrontPagePreviewFromRequest(req, businessId) {
   return preview;
 }
 
+function storefrontSitePreviewFromRequest(req, businessId) {
+  const token = normalizeOptionalText(req.query?.sitePreview);
+  if (!token) return null;
+  const preview = verifyStorefrontSitePreviewToken({
+    secret: config.platformJwtSecret,
+    token,
+    businessId,
+  });
+  if (!preview) {
+    throw createHttpError(
+      401,
+      'Generated storefront preview link is invalid or expired.',
+    );
+  }
+  return preview;
+}
+
 async function loadPublicCatalog(
   businessId,
   {
@@ -15171,6 +15636,7 @@ async function loadPublicCatalog(
     campaignSlug,
     pageSlug,
     previewPageId,
+    previewSiteBuildId,
   } = {},
 ) {
   await ensureCatalogSubdomainSchema(query);
@@ -15254,7 +15720,11 @@ async function loadPublicCatalog(
     businessId,
     selectedBranch.id,
   );
-  cacheKey = previewThemeId || previewPageId || hasDynamicConnection
+  cacheKey =
+    previewThemeId ||
+    previewPageId ||
+    previewSiteBuildId ||
+    hasDynamicConnection
     ? null
     : await buildCatalogCacheKey(businessId, {
         currencyOverride,
@@ -15499,8 +15969,25 @@ async function loadPublicCatalog(
     throw createHttpError(404, 'This page is not available for this storefront.');
   }
 
+  const siteBuild = campaign
+    ? null
+    : previewSiteBuildId
+      ? await getStorefrontSiteBuild(query, business.id, previewSiteBuildId)
+      : await loadPublishedStorefrontSiteBuild(query, business.id, {
+          branchId: selectedBranch.id,
+          storefrontType: selectedStorefrontType,
+        });
+  if (
+    previewSiteBuildId &&
+    (!siteBuild ||
+      siteBuild.branchId !== selectedBranch.id ||
+      siteBuild.storefrontType !== selectedStorefrontType)
+  ) {
+    throw createHttpError(404, 'Generated storefront preview was not found.');
+  }
+
   const catalog = {
-    preview: Boolean(previewThemeId || previewPageId),
+    preview: Boolean(previewThemeId || previewPageId || previewSiteBuildId),
     business: {
       id: business.id,
       name: branchBrand.businessName || business.name,
@@ -15515,6 +16002,7 @@ async function loadPublicCatalog(
     checkout: publicTheme.checkout,
     campaign,
     page,
+    siteBuild: publicStorefrontSiteBuild(siteBuild),
     pages: publishedPages
       .filter((item) => item.showInNavigation)
       .map((item) => ({

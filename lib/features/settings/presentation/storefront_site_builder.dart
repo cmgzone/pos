@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -5,6 +7,7 @@ import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/storefront_page_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
+import '../../../widgets/piki_activity_panel.dart';
 import 'storefront_section_editor.dart';
 
 class StorefrontSiteBuilder extends StatefulWidget {
@@ -23,6 +26,10 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
   String? _error;
   List<StorefrontPage> _pages = const [];
   StorefrontConnection? _connection;
+  List<StorefrontSiteBuild> _siteBuilds = const [];
+  PikiAiJob? _siteJob;
+  List<PikiAiJobEvent> _siteEvents = const [];
+  String? _watchingSiteJobId;
 
   @override
   void initState() {
@@ -48,17 +55,191 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
           storefrontType: widget.storefrontType,
         ),
         StorefrontPageService.connection(branchId: _branchId),
+        StorefrontPageService.listSiteBuilds(
+          branchId: _branchId,
+          storefrontType: widget.storefrontType,
+        ),
+        PikiAiJobService.listStorefrontSiteJobs(),
       ]);
       if (!mounted) return;
       setState(() {
         _pages = results[0] as List<StorefrontPage>;
         _connection = results[1] as StorefrontConnection?;
+        _siteBuilds = results[2] as List<StorefrontSiteBuild>;
+        final jobs = results[3] as List<PikiAiJob>;
+        _siteJob = _latestRelevantSiteJob(jobs);
       });
+      if (_siteJob != null) unawaited(_watchSiteJob(_siteJob!.id));
     } catch (error) {
       if (mounted) setState(() => _error = AppErrorMessage.from(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  PikiAiJob? _latestRelevantSiteJob(List<PikiAiJob> jobs) {
+    for (final job in jobs) {
+      final payload = job.payload ?? const <String, dynamic>{};
+      final storefrontType = payload['storefrontType']?.toString();
+      if (storefrontType != null && storefrontType != widget.storefrontType) {
+        continue;
+      }
+      return job.isRunning || job.isFailed ? job : null;
+    }
+    return null;
+  }
+
+  StorefrontSiteBuild? get _publishedSiteBuild {
+    for (final build in _siteBuilds) {
+      if (build.isPublished) return build;
+    }
+    return null;
+  }
+
+  Future<void> _refreshSiteBuilds() async {
+    final builds = await StorefrontPageService.listSiteBuilds(
+      branchId: _branchId,
+      storefrontType: widget.storefrontType,
+    );
+    if (mounted) setState(() => _siteBuilds = builds);
+  }
+
+  Future<void> _openSiteCompiler([StorefrontSiteBuild? baseBuild]) async {
+    final selectedBase = baseBuild ?? _publishedSiteBuild;
+    final request = await showDialog<_SiteCompilerRequest>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _SiteCompilerDialog(baseBuild: selectedBase),
+    );
+    if (request == null) return;
+    await _run(() async {
+      final job = await PikiAiJobService.createStorefrontSiteJob(
+        request.instruction,
+        branchId: _branchId,
+        storefrontType: widget.storefrontType,
+        parentBuildId: request.parentBuildId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _siteJob = job;
+        _siteEvents = const [];
+      });
+      unawaited(_watchSiteJob(job.id));
+    });
+  }
+
+  Future<void> _watchSiteJob(String jobId) async {
+    if (_watchingSiteJobId == jobId) return;
+    _watchingSiteJobId = jobId;
+    try {
+      while (mounted) {
+        final results = await Future.wait([
+          PikiAiJobService.getJob(jobId),
+          PikiAiJobService.getEvents(jobId),
+        ]);
+        if (!mounted) return;
+        final job = results[0] as PikiAiJob;
+        final events = results[1] as List<PikiAiJobEvent>;
+        setState(() {
+          _siteJob = job;
+          _siteEvents = events;
+        });
+        if (job.isDone) {
+          if (!job.isFailed) await _refreshSiteBuilds();
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = AppErrorMessage.from(error));
+    } finally {
+      if (_watchingSiteJobId == jobId) _watchingSiteJobId = null;
+    }
+  }
+
+  Future<void> _previewSiteBuild(StorefrontSiteBuild build) async {
+    await _run(() async {
+      final uri = await StorefrontPageService.siteBuildPreviewUrl(build.id);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not open the exact generated-site preview.');
+      }
+    });
+  }
+
+  Future<void> _publishSiteBuild(StorefrontSiteBuild build) async {
+    final current = _publishedSiteBuild;
+    final restoring = build.status == 'archived';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          restoring
+              ? 'Restore version ${build.version}?'
+              : 'Publish this generated site?',
+        ),
+        content: Text(
+          current == null
+              ? 'This exact generated website will become the customer storefront.'
+              : 'Version ${current.version} will remain safely available in history. You can restore it at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: Icon(
+              restoring ? Icons.history_rounded : Icons.publish_rounded,
+            ),
+            label: Text(restoring ? 'Restore version' : 'Publish site'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _run(() async {
+      await StorefrontPageService.publishSiteBuild(build.id);
+      await _refreshSiteBuilds();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              restoring
+                  ? 'Version ${build.version} is now live.'
+                  : 'Generated site version ${build.version} is now live.',
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _deleteSiteBuild(StorefrontSiteBuild build) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete draft version ${build.version}?'),
+        content: const Text(
+          'This removes only this unpublished draft. Your live storefront will not change.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete draft'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _run(() async {
+      await StorefrontPageService.deleteSiteBuild(build.id);
+      await _refreshSiteBuilds();
+    });
   }
 
   Future<void> _createPage() async {
@@ -239,6 +420,8 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
             ),
           )
         else ...[
+          _siteCompilerCard(colors),
+          const SizedBox(height: 18),
           _sectionHeader(
             icon: Icons.web_stories_outlined,
             title: 'Website pages',
@@ -274,6 +457,295 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
           _connectionCard(colors),
         ],
       ],
+    );
+  }
+
+  Widget _siteCompilerCard(ColorScheme colors) {
+    final live = _publishedSiteBuild;
+    final job = _siteJob;
+    final isWorking = job?.isRunning == true;
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          colors.primary.withValues(alpha: 0.025),
+          colors.surface,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(Icons.code_rounded, color: colors.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Piki Site Compiler',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        if (live != null) ...[
+                          const SizedBox(width: 8),
+                          Chip(
+                            avatar: const Icon(Icons.public_rounded, size: 15),
+                            label: Text('Version ${live.version} live'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Piki writes a unique responsive website structure, then safely binds it to live products, categories, pages, cart, and checkout.',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: _busy || isWorking
+                    ? null
+                    : () => _openSiteCompiler(),
+                icon: Icon(
+                  live == null
+                      ? Icons.auto_awesome_rounded
+                      : Icons.draw_outlined,
+                ),
+                label: Text(
+                  live == null ? 'Code new site' : 'Refine with Piki',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: const [
+              _CompilerCapability(
+                icon: Icons.account_tree_outlined,
+                label: 'Any page structure',
+              ),
+              _CompilerCapability(
+                icon: Icons.devices_rounded,
+                label: 'Responsive HTML & CSS',
+              ),
+              _CompilerCapability(
+                icon: Icons.security_rounded,
+                label: 'Sandboxed code',
+              ),
+              _CompilerCapability(
+                icon: Icons.inventory_2_outlined,
+                label: 'Live catalogue bindings',
+              ),
+              _CompilerCapability(
+                icon: Icons.history_rounded,
+                label: 'Version history & rollback',
+              ),
+            ],
+          ),
+          if (job != null) ...[
+            const SizedBox(height: 16),
+            PikiActivityPanel(
+              job: job,
+              events: _siteEvents,
+              title: 'Piki is coding your storefront',
+            ),
+          ],
+          const SizedBox(height: 18),
+          if (_siteBuilds.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: colors.outlineVariant),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lightbulb_outline_rounded),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Describe the website in your own words. Piki can create sidebars, editorial layouts, bold landing experiences, unusual navigation, and custom responsive compositions.',
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            _sectionHeader(
+              icon: Icons.layers_outlined,
+              title: 'Generated site versions',
+              detail:
+                  '${_siteBuilds.length} secure ${_siteBuilds.length == 1 ? 'build' : 'builds'} · preview before publishing · one-click rollback',
+            ),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth >= 840
+                    ? (constraints.maxWidth - 12) / 2
+                    : constraints.maxWidth;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: _siteBuilds.take(8).map((build) {
+                    return SizedBox(
+                      width: width,
+                      child: _siteBuildCard(build, colors),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _siteBuildCard(StorefrontSiteBuild build, ColorScheme colors) {
+    final isArchived = build.status == 'archived';
+    final shortHash = build.codeHash.length > 8
+        ? build.codeHash.substring(0, 8)
+        : build.codeHash;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: build.isPublished
+              ? colors.primary.withValues(alpha: 0.5)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'v${build.version}',
+                  style: TextStyle(
+                    color: colors.primary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                build.securityPassed
+                    ? Icons.verified_user_outlined
+                    : Icons.warning_amber_outlined,
+                size: 17,
+                color: build.securityPassed ? Colors.green : colors.error,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                build.securityPassed ? 'Security passed' : 'Review required',
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Chip(
+                label: Text(
+                  build.isPublished
+                      ? 'Live'
+                      : isArchived
+                      ? 'History'
+                      : 'Draft',
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            build.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            build.summary,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${build.slots.length} live bindings · ${build.compilerVersion} · $shortHash',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
+          ),
+          const SizedBox(height: 13),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _previewSiteBuild(build),
+                icon: const Icon(Icons.visibility_outlined, size: 17),
+                label: const Text('Exact preview'),
+              ),
+              const SizedBox(width: 8),
+              if (!build.isPublished)
+                FilledButton.icon(
+                  onPressed: _busy ? null : () => _publishSiteBuild(build),
+                  icon: Icon(
+                    isArchived ? Icons.history_rounded : Icons.publish_rounded,
+                    size: 17,
+                  ),
+                  label: Text(isArchived ? 'Restore' : 'Publish'),
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Refine this version with Piki',
+                onPressed: _busy ? null : () => _openSiteCompiler(build),
+                icon: const Icon(Icons.auto_awesome_outlined),
+              ),
+              if (build.isDraft)
+                IconButton(
+                  tooltip: 'Delete draft',
+                  onPressed: _busy ? null : () => _deleteSiteBuild(build),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -484,6 +956,287 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
     'landing' => Icons.rocket_launch_outlined,
     _ => Icons.web_asset_outlined,
   };
+}
+
+class _CompilerCapability extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _CompilerCapability({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: colors.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SiteCompilerRequest {
+  final String instruction;
+  final String? parentBuildId;
+
+  const _SiteCompilerRequest(this.instruction, this.parentBuildId);
+}
+
+class _SiteCompilerDialog extends StatefulWidget {
+  final StorefrontSiteBuild? baseBuild;
+
+  const _SiteCompilerDialog({required this.baseBuild});
+
+  @override
+  State<_SiteCompilerDialog> createState() => _SiteCompilerDialogState();
+}
+
+class _SiteCompilerDialogState extends State<_SiteCompilerDialog> {
+  late final TextEditingController _brief = TextEditingController();
+  late bool _refineBase = widget.baseBuild != null;
+
+  static const _examples = [
+    'Luxury editorial shop',
+    'Categories in a left sidebar',
+    'Bold mobile-first streetwear store',
+    'Minimal catalogue with large photography',
+  ];
+
+  @override
+  void dispose() {
+    _brief.dispose();
+    super.dispose();
+  }
+
+  void _addExample(String value) {
+    setState(() {
+      _brief.text = switch (value) {
+        'Luxury editorial shop' =>
+          'Code a luxury editorial storefront with a cinematic hero, refined serif headlines, quiet navigation, large image-first product cards, and generous spacing.',
+        'Categories in a left sidebar' =>
+          'Code a desktop catalogue with categories in a real sticky left sidebar, search and products on the right, then transform the sidebar into a horizontal category rail on mobile.',
+        'Bold mobile-first streetwear store' =>
+          'Create a bold mobile-first streetwear storefront with oversized typography, a compact sticky header, strong product imagery, high contrast, and an energetic editorial layout.',
+        _ =>
+          'Create a minimal catalogue with large product photography, clean typography, subtle borders, a calm neutral palette, clear search, and an elegant responsive grid.',
+      };
+      _brief.selection = TextSelection.collapsed(offset: _brief.text.length);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 780, maxHeight: 760),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 16, 18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Icon(Icons.code_rounded, color: colors.primary),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Code a website with Piki',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Describe the structure and visual direction—not a preset name.',
+                          style: TextStyle(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: colors.outlineVariant),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (widget.baseBuild != null) ...[
+                      SegmentedButton<bool>(
+                        segments: [
+                          ButtonSegment(
+                            value: true,
+                            icon: const Icon(Icons.draw_outlined),
+                            label: Text('Refine v${widget.baseBuild!.version}'),
+                          ),
+                          const ButtonSegment(
+                            value: false,
+                            icon: Icon(Icons.note_add_outlined),
+                            label: Text('Start from blank'),
+                          ),
+                        ],
+                        selected: {_refineBase},
+                        onSelectionChanged: (selection) {
+                          setState(() => _refineBase = selection.first);
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+                    TextField(
+                      controller: _brief,
+                      minLines: 6,
+                      maxLines: 10,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Website brief',
+                        alignLabelWithHint: true,
+                        hintText:
+                            'Example: Put categories in a sticky left sidebar. Use a warm editorial design, large image-first product cards, serif headings, compact navigation, and a responsive mobile category rail.',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _examples.map((example) {
+                        return ActionChip(
+                          avatar: const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 15,
+                          ),
+                          label: Text(example),
+                          onPressed: () => _addExample(example),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: colors.outlineVariant),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.verified_user_outlined, size: 19),
+                              SizedBox(width: 8),
+                              Text(
+                                'What Piki can safely code',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 9),
+                          Text(
+                            'Piki can create and position the header, navigation, hero, sidebars, catalogue, search, promotional sections, cart action, WhatsApp action, footer, typography, spacing, colours, motion-ready states, grids, and mobile layouts.',
+                            style: TextStyle(
+                              color: colors.onSurfaceVariant,
+                              fontSize: 12,
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Payments, customer forms, scripts, trackers, and API secrets stay outside generated code. Piki uses protected live bindings so the website remains dynamic and checkout remains trustworthy.',
+                            style: TextStyle(
+                              color: colors.onSurfaceVariant,
+                              fontSize: 12,
+                              height: 1.45,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Divider(height: 1, color: colors.outlineVariant),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.cloud_outlined,
+                    size: 17,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      'Piki continues securely in the cloud if you close the app.',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () {
+                      final instruction = _brief.text.trim();
+                      if (instruction.length < 10) return;
+                      Navigator.pop(
+                        context,
+                        _SiteCompilerRequest(
+                          instruction,
+                          _refineBase ? widget.baseBuild?.id : null,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                    label: Text(
+                      _refineBase ? 'Create refined draft' : 'Code website',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _StudioStep extends StatelessWidget {

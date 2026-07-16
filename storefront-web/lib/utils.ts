@@ -67,6 +67,12 @@ export function getPagePreviewTokenFromQuery(): string | undefined {
   return token || undefined;
 }
 
+export function getSitePreviewTokenFromQuery(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const value = new URLSearchParams(window.location.search).get("sitePreview");
+  return value || undefined;
+}
+
 export function clamp(num: number, min: number, max: number): number {
   return Math.min(Math.max(num, min), max);
 }

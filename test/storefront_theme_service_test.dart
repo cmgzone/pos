@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_app/core/services/piki_ai_job_service.dart';
+import 'package:pos_app/core/services/storefront_page_service.dart';
 import 'package:pos_app/core/services/storefront_theme_service.dart';
 import 'package:pos_app/features/agent/data/piki_agent_service.dart';
 
@@ -107,4 +108,46 @@ void main() {
       expect(job.isRunning, isFalse);
     },
   );
+
+  test('generated storefront build keeps compiler and rollback metadata', () {
+    final build = StorefrontSiteBuild.fromJson({
+      'id': 'site_4',
+      'branchId': 'main_branch',
+      'storefrontType': 'retail',
+      'version': 4,
+      'name': 'Editorial shop',
+      'summary': 'A custom category-sidebar storefront.',
+      'status': 'archived',
+      'compilerVersion': 'piki-site-1',
+      'codeHash': '1234567890abcdef',
+      'slots': ['piki-brand', 'piki-categories', 'piki-products'],
+      'security': {'passed': true, 'sandbox': 'opaque-origin'},
+      'updatedAt': '2026-07-16T09:00:00.000Z',
+    });
+
+    expect(build.version, 4);
+    expect(build.isPublished, isFalse);
+    expect(build.isDraft, isFalse);
+    expect(build.securityPassed, isTrue);
+    expect(build.slots, contains('piki-products'));
+    expect(build.updatedAt, isNotNull);
+  });
+
+  test('Piki site compiler jobs restore cloud progress after app restart', () {
+    final job = PikiAiJob.fromJson({
+      'id': 'site_job_1',
+      'branchId': 'main_branch',
+      'jobType': 'storefront_site',
+      'status': 'running',
+      'progress': 66,
+      'totalSteps': 5,
+      'completedSteps': 3,
+      'currentStep': 'Security-checking the generated code',
+      'payload': {'storefrontType': 'retail', 'parentBuildId': 'site_3'},
+    });
+
+    expect(job.isRunning, isTrue);
+    expect(job.payload?['parentBuildId'], 'site_3');
+    expect(job.progress, 66);
+  });
 }

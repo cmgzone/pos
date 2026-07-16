@@ -7,6 +7,9 @@ const { ensureCommunicationSchema } = require('./communication');
 const { ensurePosPaymentSchema } = require('./posPayments');
 const { ensureCatalogSubdomainSchema } = require('./catalogSubdomains');
 const { ensureEmailOtpSchema } = require('./authOtp');
+const {
+  ensureStorefrontSiteBuildSchema,
+} = require('./storefrontSiteBuilds');
 
 async function main() {
   const sqlPath = path.resolve(__dirname, '..', 'sql', 'init.sql');
@@ -20,6 +23,7 @@ async function main() {
     await ensurePosPaymentSchema(client);
     await ensureCatalogSubdomainSchema(client);
     await ensureEmailOtpSchema(client);
+    await ensureStorefrontSiteBuildSchema(client);
     await client.query('COMMIT');
 
     console.log(

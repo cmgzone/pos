@@ -273,6 +273,8 @@ class _PikiActivityPanelState extends State<PikiActivityPanel>
         'Piki is composing your storefront from the latest saved brief.',
       'storefront_page' =>
         'Piki is composing the layout and content for this page.',
+      'storefront_site' =>
+        'Piki is coding, security-checking, and building your custom storefront.',
       'marketing_content' || 'storefront_marketing' =>
         'Piki is preparing your campaign from verified store information.',
       _ => 'Piki is processing the latest saved information.',
@@ -427,6 +429,11 @@ IconData _eventIcon(PikiAiJobEvent? event, PikiAiJob? job) {
     'storefront_saving' => Icons.cloud_upload_outlined,
     'storefront_ready' => Icons.web_asset_rounded,
     'page_ready' => Icons.web_stories_outlined,
+    'site_brief' => Icons.notes_rounded,
+    'site_coding' => Icons.code_rounded,
+    'site_security' => Icons.verified_user_outlined,
+    'site_building' => Icons.build_circle_outlined,
+    'site_ready' => Icons.language_rounded,
     'marketing_context' => Icons.inventory_2_outlined,
     'marketing_writing' => Icons.edit_note_rounded,
     'marketing_validating' => Icons.fact_check_outlined,

@@ -86,6 +86,7 @@ export async function fetchCatalog(
   campaignSlug?: string,
   pageSlug?: string,
   pagePreviewToken?: string,
+  sitePreviewToken?: string,
 ): Promise<Catalog> {
   const params = new URLSearchParams();
   if (branchId) params.set("branchId", branchId);
@@ -93,6 +94,7 @@ export async function fetchCatalog(
   if (campaignSlug) params.set("campaign", campaignSlug);
   if (pageSlug) params.set("page", pageSlug);
   if (pagePreviewToken) params.set("pagePreview", pagePreviewToken);
+  if (sitePreviewToken) params.set("sitePreview", sitePreviewToken);
   params.set("storefront", storefrontType);
   const query = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(
