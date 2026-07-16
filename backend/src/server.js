@@ -177,7 +177,6 @@ const {
 const {
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
-  isUnsupportedJsonModeResponse,
   parseStorefrontAiThemeResponse,
   storefrontJsonResponseFormat,
 } = require('./storefrontThemeAi');
@@ -8074,8 +8073,12 @@ ${
 OWNER REQUEST:
 ${instruction}`;
 
-  const baseRequest = {
+  const requestResult = await requestOpenRouterJson({
+    fetchImpl,
+    baseUrl: OPENROUTER_BASE_URL,
+    apiKey: aiConfig.api_key,
     model: aiConfig.model || 'openai/gpt-4o-mini',
+    fallbackModel: config.openRouterFallbackModel,
     messages: [
       {
         role: 'system',
@@ -8084,43 +8087,19 @@ ${instruction}`;
       },
       { role: 'user', content: prompt },
     ],
-    max_tokens: 4000,
+    maxTokens: 4000,
     temperature: 0.2,
-  };
-  const sendRequest = async (useJsonMode) => {
-    const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${aiConfig.api_key}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://pikipos.com',
-        'X-Title': 'Piki Storefront Designer',
-      },
-      body: JSON.stringify({
-        ...baseRequest,
-        ...(useJsonMode
-          ? { response_format: storefrontJsonResponseFormat() }
-          : {}),
-      }),
-    });
-    return { response, body: await readMaybeJson(response) };
-  };
-  let requestResult = await sendRequest(true);
-  if (
-    isUnsupportedJsonModeResponse(
-      requestResult.response.status,
-      requestResult.body,
-    )
-  ) {
-    requestResult = await sendRequest(false);
-  }
-  const { response, body } = requestResult;
-  if (!response.ok) {
-    throw createHttpError(
-      response.status === 401 ? 502 : response.status,
-      body?.error?.message || body?.message || 'Piki storefront customization failed',
-    );
-  }
+    title: 'Piki Storefront Designer',
+    responseFormat: storefrontJsonResponseFormat(),
+    isUsableBody: (candidateBody) => Boolean(
+      parseStorefrontAiThemeResponse(
+        extractStorefrontAiContent(candidateBody),
+        theme,
+        { buildFromScratch },
+      ),
+    ),
+  });
+  const body = requestResult.body;
   const parsed =
     parseStorefrontAiThemeResponse(extractStorefrontAiContent(body), theme, {
       buildFromScratch,
