@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   inspectStorefrontSiteAiBody,
+  inspectStorefrontSiteSource,
   storefrontSiteSourceFromBody,
 } = require('../src/storefrontSiteAi');
 
@@ -55,4 +56,18 @@ test('site AI keeps the server-selected product outside generated code', () => {
     singleProductId: 'product-42',
   });
   assert.equal(inspected.compiled.singleProductId, 'product-42');
+});
+
+test('site AI validates independently generated structure and styling', () => {
+  const structure = {
+    html: '<main><piki-products></piki-products></main>',
+    pageHtml: '<main><piki-page-content></piki-page-content></main>',
+  };
+  const inspected = inspectStorefrontSiteSource({
+    ...structure,
+    css: 'main { max-width: 80rem; margin: auto; }',
+  });
+
+  assert.equal(inspected.error, null);
+  assert.equal(inspected.compiled.security.passed, true);
 });

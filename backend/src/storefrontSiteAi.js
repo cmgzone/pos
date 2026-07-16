@@ -22,6 +22,17 @@ function inspectStorefrontSiteAiBody(body, options = {}) {
       error: 'The response did not contain a JSON storefront package.',
     };
   }
+  return inspectStorefrontSiteSource(source, options);
+}
+
+function inspectStorefrontSiteSource(source, options = {}) {
+  if (!source || typeof source !== 'object') {
+    return {
+      source: null,
+      compiled: null,
+      error: 'The response did not contain a storefront package.',
+    };
+  }
   try {
     return {
       source,
@@ -121,5 +132,6 @@ function limitText(value, maxLength) {
 module.exports = {
   compactStorefrontSiteSource,
   inspectStorefrontSiteAiBody,
+  inspectStorefrontSiteSource,
   storefrontSiteSourceFromBody,
 };

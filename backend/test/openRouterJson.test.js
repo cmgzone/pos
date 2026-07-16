@@ -93,7 +93,9 @@ test('invalid successful response also uses the backup router', async () => {
     const requestBody = JSON.parse(options.body);
     requests.push(requestBody);
     if (requestBody.model === 'primary/model') {
-      return response(200, { choices: [{ message: { content: '' } }] });
+      return response(200, {
+        choices: [{ finish_reason: 'length', message: { content: '' } }],
+      });
     }
     return response(200, {
       choices: [{ message: { content: '{"ok":true}' } }],
@@ -115,6 +117,7 @@ test('invalid successful response also uses the backup router', async () => {
 
   assert.equal(requests.length, 2);
   assert.equal(result.usedFallback, true);
+  assert.equal(result.attempts[0].finishReason, 'length');
 });
 
 test('network failures use the backup router', async () => {

@@ -214,14 +214,20 @@ function summarizeAttempt(model, jsonMode, result) {
     jsonMode,
     status: Number(result.response.status || 0),
     ok: Boolean(result.response.ok),
+    finishReason:
+      normalizeModel(result.body?.choices?.[0]?.finish_reason) || null,
   };
 }
 
 function logAttemptFailure(logger, model, result, reason) {
   if (!logger || typeof logger.warn !== 'function') return;
   const message = providerMessage(result.body).replace(/\s+/g, ' ').slice(0, 180);
+  const finishReason = normalizeModel(
+    result.body?.choices?.[0]?.finish_reason,
+  );
   logger.warn(
     `[openrouter] ${reason} model=${model} status=${result.response.status}` +
+      (finishReason ? ` finish=${finishReason}` : '') +
       (message ? ` message=${message}` : ''),
   );
 }
