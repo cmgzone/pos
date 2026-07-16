@@ -281,6 +281,7 @@ module.exports = {
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
   isUnsupportedJsonModeResponse,
+  parseJsonValue,
   parseStorefrontAiThemeResponse,
   storefrontJsonResponseFormat,
 };

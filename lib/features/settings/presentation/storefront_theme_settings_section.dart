@@ -9,6 +9,7 @@ import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
 import '../../../widgets/piki_activity_panel.dart';
 import 'storefront_section_editor.dart';
+import 'storefront_site_builder.dart';
 
 class StorefrontThemeSettingsSection extends StatefulWidget {
   const StorefrontThemeSettingsSection({super.key});
@@ -314,17 +315,65 @@ class _StorefrontThemeSettingsSectionState
     final request = await showDialog<_PikiStorefrontRequest>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Build with Piki'),
+        title: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Piki Website Designer'),
+                  SizedBox(height: 2),
+                  Text(
+                    'Professional storefront generation',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         content: StatefulBuilder(
           builder: (context, setDialogState) => SizedBox(
-            width: 540,
+            width: 720,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Tell Piki what the customer website should feel like and what it should emphasize.',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.architecture_outlined),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Piki can direct typography, colours, spacing, content width, image placement, section order, columns, cards, buttons, icons, and motion as one design system.',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 SegmentedButton<bool>(
@@ -345,11 +394,37 @@ class _StorefrontThemeSettingsSectionState
                       setDialogState(() => fromScratch = selection.first),
                 ),
                 const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children:
+                      [
+                            'Premium editorial store',
+                            'Bright image-first catalogue',
+                            'Minimal luxury layout',
+                            'Warm local brand story',
+                          ]
+                          .map(
+                            (prompt) => ActionChip(
+                              avatar: const Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 15,
+                              ),
+                              label: Text(prompt),
+                              onPressed: () => setDialogState(() {
+                                controller.text =
+                                    'Design a $prompt with a complete customer journey. Use professional typography, intentional spacing, strong product imagery, useful trust sections, and a polished checkout flow.';
+                              }),
+                            ),
+                          )
+                          .toList(),
+                ),
+                const SizedBox(height: 14),
                 TextField(
                   controller: controller,
                   autofocus: true,
-                  minLines: 4,
-                  maxLines: 7,
+                  minLines: 6,
+                  maxLines: 10,
                   decoration: InputDecoration(
                     labelText: fromScratch
                         ? 'Describe the complete storefront'
@@ -358,8 +433,8 @@ class _StorefrontThemeSettingsSectionState
                         ? 'Example: Build a warm modern grocery store with a strong welcome, category shortcuts, featured products, trust benefits, and WhatsApp help.'
                         : 'Example: Move featured products above categories and make the hero more minimal.',
                     helperText: fromScratch
-                        ? 'Piki creates and orders the full page as a safe draft.'
-                        : 'Piki keeps the structure and refines only what you request.',
+                        ? 'Piki builds the complete homepage in the cloud. You can close the app while it works.'
+                        : 'Piki preserves everything you do not ask to change.',
                     alignLabelWithHint: true,
                   ),
                 ),
@@ -687,6 +762,393 @@ class _StorefrontThemeSettingsSectionState
     });
   }
 
+  Future<void> _editDesign(StorefrontTheme theme) async {
+    final background = TextEditingController(
+      text: theme.design.backgroundColor,
+    );
+    final text = TextEditingController(text: theme.design.textColor);
+    final surface = TextEditingController(text: theme.design.surfaceColor);
+    final accent = TextEditingController(text: theme.design.accentColor);
+    var headingFont = theme.design.headingFontFamily;
+    var bodyFont = theme.design.bodyFontFamily;
+    var headingScale = theme.design.headingScale;
+    var contentWidth = theme.design.contentWidth;
+    var sectionSpacing = theme.design.sectionSpacing;
+    var buttonStyle = theme.design.buttonStyle;
+    var navigationStyle = theme.design.navigationStyle;
+    var iconStyle = theme.design.iconStyle;
+    var motionStyle = theme.design.motionStyle;
+    var heroStyle = theme.design.heroStyle;
+    var cardStyle = theme.design.cardStyle;
+    var imageRatio = theme.design.imageRatio;
+    var cornerStyle = theme.design.cornerStyle;
+    var productColumns = theme.design.productColumns;
+    final save = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Widget dropdown({
+            required String label,
+            required String value,
+            required List<(String, String)> options,
+            required ValueChanged<String> onChanged,
+          }) {
+            return DropdownButtonFormField<String>(
+              initialValue: value,
+              decoration: InputDecoration(labelText: label),
+              items: options
+                  .map(
+                    (item) =>
+                        DropdownMenuItem(value: item.$1, child: Text(item.$2)),
+                  )
+                  .toList(),
+              onChanged: (next) {
+                if (next != null) setDialogState(() => onChanged(next));
+              },
+            );
+          }
+
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.palette_outlined),
+                SizedBox(width: 10),
+                Text('Design system'),
+              ],
+            ),
+            content: SizedBox(
+              width: 760,
+              height: 590,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'These global controls keep every page consistent. Section-level width, spacing, columns, alignment, and image placement are available in Edit sections.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 18),
+                    _builderGroupTitle(context, 'Typography'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: dropdown(
+                            label: 'Heading font',
+                            value: headingFont,
+                            options: _fontOptions,
+                            onChanged: (value) => headingFont = value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Body font',
+                            value: bodyFont,
+                            options: _fontOptions,
+                            onChanged: (value) => bodyFont = value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Heading scale',
+                            value: headingScale,
+                            options: const [
+                              ('compact', 'Compact'),
+                              ('balanced', 'Balanced'),
+                              ('display', 'Large display'),
+                            ],
+                            onChanged: (value) => headingScale = value,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _builderGroupTitle(context, 'Layout & rhythm'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: dropdown(
+                            label: 'Content width',
+                            value: contentWidth,
+                            options: const [
+                              ('compact', 'Compact'),
+                              ('standard', 'Standard'),
+                              ('wide', 'Wide'),
+                              ('full', 'Full canvas'),
+                            ],
+                            onChanged: (value) => contentWidth = value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Section spacing',
+                            value: sectionSpacing,
+                            options: const [
+                              ('tight', 'Tight'),
+                              ('standard', 'Standard'),
+                              ('airy', 'Airy'),
+                            ],
+                            onChanged: (value) => sectionSpacing = value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: productColumns,
+                            decoration: const InputDecoration(
+                              labelText: 'Product columns',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 2,
+                                child: Text('2 columns'),
+                              ),
+                              DropdownMenuItem(
+                                value: 3,
+                                child: Text('3 columns'),
+                              ),
+                              DropdownMenuItem(
+                                value: 4,
+                                child: Text('4 columns'),
+                              ),
+                              DropdownMenuItem(
+                                value: 5,
+                                child: Text('5 columns'),
+                              ),
+                            ],
+                            onChanged: (value) => setDialogState(
+                              () => productColumns = value ?? productColumns,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _builderGroupTitle(context, 'Components'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: dropdown(
+                            label: 'Hero',
+                            value: heroStyle,
+                            options: const [
+                              ('cover', 'Cover'),
+                              ('split', 'Split'),
+                              ('minimal', 'Minimal'),
+                            ],
+                            onChanged: (value) => heroStyle = value,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Cards',
+                            value: cardStyle,
+                            options: const [
+                              ('bordered', 'Bordered'),
+                              ('elevated', 'Elevated'),
+                              ('minimal', 'Minimal'),
+                            ],
+                            onChanged: (value) => cardStyle = value,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Images',
+                            value: imageRatio,
+                            options: const [
+                              ('square', 'Square'),
+                              ('portrait', 'Portrait'),
+                              ('landscape', 'Landscape'),
+                            ],
+                            onChanged: (value) => imageRatio = value,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Corners',
+                            value: cornerStyle,
+                            options: const [
+                              ('sharp', 'Sharp'),
+                              ('soft', 'Soft'),
+                              ('rounded', 'Rounded'),
+                              ('pill', 'Pill'),
+                            ],
+                            onChanged: (value) => cornerStyle = value,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: dropdown(
+                            label: 'Buttons',
+                            value: buttonStyle,
+                            options: const [
+                              ('solid', 'Solid'),
+                              ('outline', 'Outline'),
+                              ('soft', 'Soft'),
+                            ],
+                            onChanged: (value) => buttonStyle = value,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Navigation',
+                            value: navigationStyle,
+                            options: const [
+                              ('minimal', 'Minimal'),
+                              ('centered', 'Centered'),
+                              ('expanded', 'Expanded'),
+                            ],
+                            onChanged: (value) => navigationStyle = value,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Icons',
+                            value: iconStyle,
+                            options: const [
+                              ('plain', 'Plain'),
+                              ('boxed', 'Boxed'),
+                              ('circle', 'Circle'),
+                            ],
+                            onChanged: (value) => iconStyle = value,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: dropdown(
+                            label: 'Motion',
+                            value: motionStyle,
+                            options: const [
+                              ('none', 'None'),
+                              ('subtle', 'Subtle'),
+                              ('expressive', 'Expressive'),
+                            ],
+                            onChanged: (value) => motionStyle = value,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _builderGroupTitle(context, 'Colour palette'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: background,
+                            decoration: const InputDecoration(
+                              labelText: 'Background',
+                              hintText: '#F8F7F3',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: text,
+                            decoration: const InputDecoration(
+                              labelText: 'Text',
+                              hintText: '#191916',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: surface,
+                            decoration: const InputDecoration(
+                              labelText: 'Surface',
+                              hintText: '#FFFFFF',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: accent,
+                            decoration: const InputDecoration(
+                              labelText: 'Accent',
+                              hintText: '#D14343',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save design draft'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    final design = {
+      ...theme.design.toJson(),
+      'backgroundColor': background.text.trim(),
+      'textColor': text.text.trim(),
+      'surfaceColor': surface.text.trim(),
+      'accentColor': accent.text.trim(),
+      'fontFamily': bodyFont,
+      'headingFontFamily': headingFont,
+      'bodyFontFamily': bodyFont,
+      'headingScale': headingScale,
+      'contentWidth': contentWidth,
+      'sectionSpacing': sectionSpacing,
+      'buttonStyle': buttonStyle,
+      'navigationStyle': navigationStyle,
+      'iconStyle': iconStyle,
+      'motionStyle': motionStyle,
+      'heroStyle': heroStyle,
+      'cardStyle': cardStyle,
+      'imageRatio': imageRatio,
+      'cornerStyle': cornerStyle,
+      'productColumns': productColumns,
+    };
+    background.dispose();
+    text.dispose();
+    surface.dispose();
+    accent.dispose();
+    if (save != true) return;
+    await _run(() async {
+      final draft = theme.isPublished
+          ? await StorefrontThemeService.duplicate(
+              theme.id,
+              name: '${theme.name} design draft',
+            )
+          : theme;
+      await StorefrontThemeService.update(draft.id, {
+        'design': design,
+        'source': 'manual',
+      });
+    });
+  }
+
   Future<void> _publish(StorefrontTheme theme) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -818,6 +1280,29 @@ class _StorefrontThemeSettingsSectionState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        StorefrontSiteBuilder(
+          key: ValueKey('site-builder-$_storefrontType'),
+          storefrontType: _storefrontType,
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            Icon(Icons.home_work_outlined, color: colors.primary, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Homepage themes',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Control the global design system, homepage structure, and checkout.',
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -1028,7 +1513,12 @@ class _StorefrontThemeSettingsSectionState
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _customizeWithPiki(theme),
                       icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: const Text('Piki build'),
+                      label: const Text('Design with Piki'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _editDesign(theme),
+                      icon: const Icon(Icons.palette_outlined, size: 18),
+                      label: const Text('Design system'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : () => _editSections(theme),
@@ -1151,6 +1641,36 @@ class _StorefrontThemeSettingsSectionState
       ),
     );
   }
+}
+
+const _fontOptions = <(String, String)>[
+  ('inter', 'Inter'),
+  ('modern', 'Modern sans'),
+  ('serif', 'Editorial serif'),
+  ('rounded', 'Friendly rounded'),
+  ('poppins', 'Poppins'),
+  ('playfair', 'Playfair Display'),
+  ('montserrat', 'Montserrat'),
+  ('nunito', 'Nunito'),
+  ('oswald', 'Oswald'),
+  ('merriweather', 'Merriweather'),
+  ('system', 'System'),
+];
+
+Widget _builderGroupTitle(BuildContext context, String label) {
+  return Row(
+    children: [
+      Text(
+        label.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
+        ),
+      ),
+      const SizedBox(width: 10),
+      const Expanded(child: Divider()),
+    ],
+  );
 }
 
 class _PikiStorefrontRequest {

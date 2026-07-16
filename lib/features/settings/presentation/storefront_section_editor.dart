@@ -6,17 +6,36 @@ Future<List<Map<String, dynamic>>?> showStorefrontSectionEditor(
   BuildContext context,
   StorefrontTheme theme,
 ) {
+  return showStorefrontSectionsEditor(
+    context,
+    sections: theme.sections,
+    requireCatalog: true,
+  );
+}
+
+Future<List<Map<String, dynamic>>?> showStorefrontSectionsEditor(
+  BuildContext context, {
+  required List<StorefrontThemeSection> sections,
+  bool requireCatalog = false,
+}) {
   return showDialog<List<Map<String, dynamic>>>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _StorefrontSectionEditorDialog(theme: theme),
+    builder: (_) => _StorefrontSectionEditorDialog(
+      sections: sections,
+      requireCatalog: requireCatalog,
+    ),
   );
 }
 
 class _StorefrontSectionEditorDialog extends StatefulWidget {
-  final StorefrontTheme theme;
+  final List<StorefrontThemeSection> sections;
+  final bool requireCatalog;
 
-  const _StorefrontSectionEditorDialog({required this.theme});
+  const _StorefrontSectionEditorDialog({
+    required this.sections,
+    required this.requireCatalog,
+  });
 
   @override
   State<_StorefrontSectionEditorDialog> createState() =>
@@ -30,7 +49,7 @@ class _StorefrontSectionEditorDialogState
   @override
   void initState() {
     super.initState();
-    _sections = [...widget.theme.sections];
+    _sections = [...widget.sections];
   }
 
   @override
@@ -212,7 +231,7 @@ class _StorefrontSectionEditorDialogState
             ),
             Switch.adaptive(
               value: section.enabled,
-              onChanged: section.type == 'catalog'
+              onChanged: section.type == 'catalog' && widget.requireCatalog
                   ? null
                   : (value) => setState(() {
                       _sections[index] = section.copyWith(enabled: value);
@@ -224,10 +243,10 @@ class _StorefrontSectionEditorDialogState
               icon: const Icon(Icons.edit_outlined),
             ),
             IconButton(
-              tooltip: section.type == 'catalog'
+              tooltip: section.type == 'catalog' && widget.requireCatalog
                   ? 'The full catalogue is required'
                   : 'Remove section',
-              onPressed: section.type == 'catalog'
+              onPressed: section.type == 'catalog' && widget.requireCatalog
                   ? null
                   : () => setState(() => _sections.removeAt(index)),
               icon: const Icon(Icons.delete_outline_rounded),
@@ -279,6 +298,16 @@ class _StorefrontSectionEditorDialogState
             'icon': 'truck',
           },
         ],
+      if (type == 'richText') 'content': 'Add your page content here.',
+      if (type == 'faq')
+        'items': const [
+          {
+            'question': 'How can we help?',
+            'answer': 'Replace this with a clear answer for your customers.',
+          },
+        ],
+      if (type == 'gallery') 'items': const [],
+      if (type == 'video') ...{'videoUrl': '', 'caption': ''},
       if (type == 'hero') ...{
         'buttonLabel': 'Shop now',
         'buttonAction': 'catalog',
@@ -309,10 +338,34 @@ class _StorefrontSectionEditorDialogState
       text: data['eyebrow']?.toString() ?? '',
     );
     final body = TextEditingController(text: data['body']?.toString() ?? '');
+    final content = TextEditingController(
+      text: current.type == 'faq'
+          ? (data['items'] as List? ?? const [])
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      '${item['question']?.toString() ?? ''} | ${item['answer']?.toString() ?? ''}',
+                )
+                .join('\n')
+          : current.type == 'gallery'
+          ? (data['items'] as List? ?? const [])
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      '${item['imageUrl']?.toString() ?? ''} | ${item['caption']?.toString() ?? ''}',
+                )
+                .join('\n')
+          : data['content']?.toString() ?? data['videoUrl']?.toString() ?? '',
+    );
     final button = TextEditingController(
       text: data['buttonLabel']?.toString() ?? '',
     );
+    final icon = TextEditingController(text: data['icon']?.toString() ?? '');
     var style = data['style']?.toString() ?? 'default';
+    var width = data['width']?.toString() ?? 'contained';
+    var spacing = data['spacing']?.toString() ?? 'comfortable';
+    var columns = int.tryParse(data['columns']?.toString() ?? '') ?? 3;
+    var imagePosition = data['imagePosition']?.toString() ?? 'right';
     var alignment = data['alignment']?.toString() ?? 'left';
     var action = data['buttonAction']?.toString() ?? 'none';
     var showImage = data['showImage'] != false;
@@ -357,6 +410,44 @@ class _StorefrontSectionEditorDialogState
                         labelText: 'Supporting copy',
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: icon,
+                      decoration: const InputDecoration(
+                        labelText: 'Icon name (optional)',
+                        hintText: 'ShoppingBag, Sparkles, Heart, Truck',
+                        helperText:
+                            'Use any Lucide icon name. Piki can choose this automatically.',
+                      ),
+                    ),
+                  ],
+                  if (const {
+                    'richText',
+                    'faq',
+                    'gallery',
+                    'video',
+                  }.contains(current.type)) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: content,
+                      minLines: 4,
+                      maxLines: 10,
+                      decoration: InputDecoration(
+                        labelText: current.type == 'faq'
+                            ? 'Questions and answers'
+                            : current.type == 'gallery'
+                            ? 'Image URLs and captions'
+                            : current.type == 'video'
+                            ? 'YouTube or Vimeo URL'
+                            : 'Page content',
+                        helperText: current.type == 'faq'
+                            ? 'One per line: Question | Answer'
+                            : current.type == 'gallery'
+                            ? 'One per line: HTTPS image URL | Caption'
+                            : null,
+                        alignLabelWithHint: true,
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
@@ -385,6 +476,111 @@ class _StorefrontSectionEditorDialogState
                     onChanged: (value) =>
                         setDialogState(() => style = value ?? style),
                   ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: width,
+                          decoration: const InputDecoration(
+                            labelText: 'Content width',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'narrow',
+                              child: Text('Narrow'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'contained',
+                              child: Text('Contained'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'wide',
+                              child: Text('Wide'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'full',
+                              child: Text('Full width'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setDialogState(() => width = value ?? width),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: spacing,
+                          decoration: const InputDecoration(
+                            labelText: 'Vertical spacing',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'none',
+                              child: Text('None'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'compact',
+                              child: Text('Compact'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'comfortable',
+                              child: Text('Comfortable'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'spacious',
+                              child: Text('Spacious'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setDialogState(() => spacing = value ?? spacing),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (const {'benefits', 'gallery'}.contains(current.type)) ...[
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<int>(
+                      initialValue: columns,
+                      decoration: const InputDecoration(labelText: 'Columns'),
+                      items: const [
+                        DropdownMenuItem(value: 1, child: Text('1 column')),
+                        DropdownMenuItem(value: 2, child: Text('2 columns')),
+                        DropdownMenuItem(value: 3, child: Text('3 columns')),
+                        DropdownMenuItem(value: 4, child: Text('4 columns')),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => columns = value ?? columns),
+                    ),
+                  ],
+                  if (const {
+                    'hero',
+                    'story',
+                    'gallery',
+                  }.contains(current.type)) ...[
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: imagePosition,
+                      decoration: const InputDecoration(
+                        labelText: 'Image position',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'left', child: Text('Left')),
+                        DropdownMenuItem(value: 'right', child: Text('Right')),
+                        DropdownMenuItem(
+                          value: 'top',
+                          child: Text('Above content'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'background',
+                          child: Text('Background'),
+                        ),
+                      ],
+                      onChanged: (value) => setDialogState(
+                        () => imagePosition = value ?? imagePosition,
+                      ),
+                    ),
+                  ],
                   if (_supportsAction(current.type)) ...[
                     const SizedBox(height: 10),
                     TextField(
@@ -462,12 +658,17 @@ class _StorefrontSectionEditorDialogState
     );
     if (save == true && mounted) {
       data['style'] = style;
+      data['width'] = width;
+      data['spacing'] = spacing;
+      data['columns'] = columns;
+      data['imagePosition'] = imagePosition;
       if (isAnnouncement) {
         data['text'] = title.text.trim();
       } else {
         data['title'] = title.text.trim();
         data['eyebrow'] = eyebrow.text.trim();
         data['body'] = body.text.trim();
+        data['icon'] = icon.text.trim();
       }
       if (_supportsAction(current.type)) {
         data['buttonLabel'] = button.text.trim();
@@ -477,6 +678,34 @@ class _StorefrontSectionEditorDialogState
       if (current.type == 'hero' || current.type == 'story') {
         data['showImage'] = showImage;
       }
+      if (current.type == 'richText') data['content'] = content.text.trim();
+      if (current.type == 'video') data['videoUrl'] = content.text.trim();
+      if (current.type == 'faq') {
+        data['items'] = content.text
+            .split('\n')
+            .map((line) => line.split('|'))
+            .where((parts) => parts.length >= 2)
+            .map(
+              (parts) => {
+                'question': parts.first.trim(),
+                'answer': parts.skip(1).join('|').trim(),
+              },
+            )
+            .toList();
+      }
+      if (current.type == 'gallery') {
+        data['items'] = content.text
+            .split('\n')
+            .map((line) => line.split('|'))
+            .where((parts) => parts.first.trim().isNotEmpty)
+            .map(
+              (parts) => {
+                'imageUrl': parts.first.trim(),
+                'caption': parts.skip(1).join('|').trim(),
+              },
+            )
+            .toList();
+      }
       setState(() {
         _sections[index] = StorefrontThemeSection.fromJson(data);
       });
@@ -484,7 +713,9 @@ class _StorefrontSectionEditorDialogState
     title.dispose();
     eyebrow.dispose();
     body.dispose();
+    content.dispose();
     button.dispose();
+    icon.dispose();
   }
 
   bool _supportsAction(String type) =>
@@ -550,6 +781,30 @@ const _sectionTypes = <_SectionTypeDetails>[
     label: 'Brand story',
     defaultTitle: 'Our story',
     icon: Icons.auto_stories_outlined,
+  ),
+  _SectionTypeDetails(
+    key: 'richText',
+    label: 'Rich text',
+    defaultTitle: 'Page content',
+    icon: Icons.notes_rounded,
+  ),
+  _SectionTypeDetails(
+    key: 'faq',
+    label: 'Frequently asked questions',
+    defaultTitle: 'Common questions',
+    icon: Icons.help_outline_rounded,
+  ),
+  _SectionTypeDetails(
+    key: 'gallery',
+    label: 'Image gallery',
+    defaultTitle: 'Gallery',
+    icon: Icons.photo_library_outlined,
+  ),
+  _SectionTypeDetails(
+    key: 'video',
+    label: 'Video',
+    defaultTitle: 'Watch the story',
+    icon: Icons.play_circle_outline_rounded,
   ),
   _SectionTypeDetails(
     key: 'catalog',

@@ -14,11 +14,21 @@ class StorefrontThemeDesign {
   final String borderColor;
   final String accentColor;
   final String fontFamily;
+  final String headingFontFamily;
+  final String bodyFontFamily;
   final String heroStyle;
   final String cardStyle;
   final String imageRatio;
   final String density;
   final String cornerStyle;
+  final String headingScale;
+  final String contentWidth;
+  final String sectionSpacing;
+  final String buttonStyle;
+  final String navigationStyle;
+  final String iconStyle;
+  final String motionStyle;
+  final int productColumns;
 
   const StorefrontThemeDesign({
     required this.backgroundColor,
@@ -29,11 +39,21 @@ class StorefrontThemeDesign {
     required this.borderColor,
     required this.accentColor,
     required this.fontFamily,
+    required this.headingFontFamily,
+    required this.bodyFontFamily,
     required this.heroStyle,
     required this.cardStyle,
     required this.imageRatio,
     required this.density,
     required this.cornerStyle,
+    required this.headingScale,
+    required this.contentWidth,
+    required this.sectionSpacing,
+    required this.buttonStyle,
+    required this.navigationStyle,
+    required this.iconStyle,
+    required this.motionStyle,
+    required this.productColumns,
   });
 
   factory StorefrontThemeDesign.fromJson(Map<String, dynamic> json) {
@@ -47,11 +67,28 @@ class StorefrontThemeDesign {
       borderColor: json['borderColor']?.toString() ?? '#37332f',
       accentColor: json['accentColor']?.toString() ?? '#f0ead6',
       fontFamily: json['fontFamily']?.toString() ?? 'inter',
+      headingFontFamily:
+          json['headingFontFamily']?.toString() ??
+          json['fontFamily']?.toString() ??
+          'inter',
+      bodyFontFamily:
+          json['bodyFontFamily']?.toString() ??
+          json['fontFamily']?.toString() ??
+          'inter',
       heroStyle: json['heroStyle']?.toString() ?? 'cover',
       cardStyle: json['cardStyle']?.toString() ?? 'bordered',
       imageRatio: json['imageRatio']?.toString() ?? 'portrait',
       density: json['density']?.toString() ?? 'comfortable',
       cornerStyle: json['cornerStyle']?.toString() ?? 'soft',
+      headingScale: json['headingScale']?.toString() ?? 'balanced',
+      contentWidth: json['contentWidth']?.toString() ?? 'standard',
+      sectionSpacing: json['sectionSpacing']?.toString() ?? 'standard',
+      buttonStyle: json['buttonStyle']?.toString() ?? 'solid',
+      navigationStyle: json['navigationStyle']?.toString() ?? 'minimal',
+      iconStyle: json['iconStyle']?.toString() ?? 'plain',
+      motionStyle: json['motionStyle']?.toString() ?? 'subtle',
+      productColumns:
+          int.tryParse(json['productColumns']?.toString() ?? '') ?? 4,
     );
   }
 
@@ -64,11 +101,21 @@ class StorefrontThemeDesign {
     'borderColor': borderColor,
     'accentColor': accentColor,
     'fontFamily': fontFamily,
+    'headingFontFamily': headingFontFamily,
+    'bodyFontFamily': bodyFontFamily,
     'heroStyle': heroStyle,
     'cardStyle': cardStyle,
     'imageRatio': imageRatio,
     'density': density,
     'cornerStyle': cornerStyle,
+    'headingScale': headingScale,
+    'contentWidth': contentWidth,
+    'sectionSpacing': sectionSpacing,
+    'buttonStyle': buttonStyle,
+    'navigationStyle': navigationStyle,
+    'iconStyle': iconStyle,
+    'motionStyle': motionStyle,
+    'productColumns': productColumns,
   };
 }
 

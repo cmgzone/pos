@@ -1,23 +1,26 @@
 "use client";
 
 import { Search, MessageCircle } from "lucide-react";
-import type { Business } from "@/lib/types";
+import type { Business, StorefrontPageLink } from "@/lib/types";
 import { getInitials } from "@/lib/utils";
 
 interface FooterProps {
   business?: Business;
   onTrackOrder: () => void;
   showTracking?: boolean;
+  pages?: StorefrontPageLink[];
 }
 
-export function Footer({ business, onTrackOrder, showTracking = true }: FooterProps) {
+export function Footer({ business, onTrackOrder, showTracking = true, pages = [] }: FooterProps) {
   const year = new Date().getFullYear();
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
   const whatsapp = business?.whatsappNumber;
 
   const scrollToCatalog = () => {
-    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+    const catalog = document.getElementById("catalog");
+    if (catalog) catalog.scrollIntoView({ behavior: "smooth" });
+    else window.location.href = "/";
   };
 
   return (
@@ -77,6 +80,16 @@ export function Footer({ business, onTrackOrder, showTracking = true }: FooterPr
                   </button>
                 </li>
               )}
+              {pages.map((page) => (
+                <li key={page.id}>
+                  <a
+                    href={`/page/${encodeURIComponent(page.slug)}`}
+                    className="text-muted-strong transition hover:text-foreground"
+                  >
+                    {page.label || page.title}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
 

@@ -68,6 +68,7 @@ export function Hero({ business, storefront, section, onAction }: HeroProps) {
     section?.buttonLabel || storefront?.browseLabel || "Browse collection";
   const secondaryAction = section?.secondaryButtonAction || "none";
   const secondaryLabel = section?.secondaryButtonLabel || "";
+  const imagePosition = section?.imagePosition || "background";
 
   const actions = (
     <div
@@ -98,6 +99,34 @@ export function Hero({ business, storefront, section, onAction }: HeroProps) {
       )}
     </div>
   );
+
+  if (coverUrls.length > 0 && imagePosition !== "background") {
+    const image = coverUrls[slideIndex % coverUrls.length];
+    const isTop = imagePosition === "top";
+    return (
+      <section className="theme-hero mx-auto max-w-[var(--site-max-width)] overflow-hidden">
+        <div className={`grid items-stretch ${isTop ? "" : "lg:grid-cols-2"}`}>
+          <div
+            className={`min-h-[320px] overflow-hidden bg-surface-elevated ${
+              imagePosition === "left" || isTop ? "order-first" : "lg:order-last"
+            }`}
+          >
+            <img src={image} alt="" className="h-full w-full object-cover" />
+          </div>
+          <div
+            className={`flex min-h-[360px] flex-col justify-center px-6 py-16 sm:px-10 lg:px-16 ${copyAlignment}`}
+          >
+            <HeroCopy
+              eyebrow={eyebrow}
+              headline={headline}
+              description={description}
+              actions={actions}
+            />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (coverUrls.length > 0) {
     return (
@@ -196,7 +225,7 @@ function HeroCopy({
         )}
       </FadeIn>
       <FadeIn delay={0.1}>
-        <h1 className="font-display text-4xl leading-[1.08] text-foreground sm:text-5xl lg:text-6xl">
+        <h1 className="theme-hero-heading font-display text-4xl leading-[1.08] text-foreground sm:text-5xl lg:text-6xl">
           {headline}
         </h1>
       </FadeIn>

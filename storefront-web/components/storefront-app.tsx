@@ -18,11 +18,13 @@ import { ErrorState } from "./error-state";
 import {
   getBootstrap,
   getBranchIdFromQuery,
+  getPagePreviewTokenFromQuery,
   getPreviewTokenFromQuery,
 } from "@/lib/utils";
 import {
   campaignSlugFromPath,
   fetchCatalog,
+  pageSlugFromPath,
   storefrontTypeFromPath,
 } from "@/lib/api";
 import type {
@@ -59,6 +61,8 @@ function StorefrontInner() {
       storefrontType?: StorefrontType,
       previewToken?: string,
       campaignSlug?: string,
+      pageSlug?: string,
+      pagePreviewToken?: string,
     ) => {
       setError(null);
       try {
@@ -68,6 +72,8 @@ function StorefrontInner() {
           storefrontType,
           previewToken,
           campaignSlug,
+          pageSlug,
+          pagePreviewToken,
         );
         setCatalog(data);
         setSelectedBranch(data.business.selectedBranch);
@@ -84,6 +90,7 @@ function StorefrontInner() {
   useEffect(() => {
     const bootstrap = getBootstrap();
     const previewToken = getPreviewTokenFromQuery();
+    const pagePreviewToken = getPagePreviewTokenFromQuery();
     const businessId = bootstrap.businessId || bootstrap.catalog?.business.id;
     const branchId =
       bootstrap.branchId ||
@@ -92,6 +99,7 @@ function StorefrontInner() {
     const storefrontType =
       bootstrap.catalog?.storefront.type || storefrontTypeFromPath();
     const campaignSlug = bootstrap.catalog?.campaign?.slug || campaignSlugFromPath();
+    const pageSlug = bootstrap.catalog?.page?.slug || pageSlugFromPath();
 
     if (bootstrap.catalog) {
       setCatalog(bootstrap.catalog);
@@ -102,12 +110,12 @@ function StorefrontInner() {
       );
       return;
     } else {
-      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug);
+      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken);
     }
 
-    if (!previewToken || !businessId) return;
+    if ((!previewToken && !pagePreviewToken) || !businessId) return;
     const timer = window.setInterval(() => {
-      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug);
+      loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken);
     }, 2000);
     return () => window.clearInterval(timer);
   }, [loadCatalog, setCatalog, setSelectedBranch]);
@@ -148,6 +156,8 @@ function StorefrontInner() {
         catalog.storefront.type,
         getPreviewTokenFromQuery(),
         catalog.campaign?.slug || campaignSlugFromPath(),
+        catalog.page?.slug || pageSlugFromPath(),
+        getPagePreviewTokenFromQuery(),
       );
     },
     [catalog, loadCatalog, setSelectedBranch],
@@ -194,7 +204,9 @@ function StorefrontInner() {
 
   const handleSectionAction = (action: StorefrontSectionAction) => {
     if (action === "catalog") {
-      document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+      const catalogSection = document.getElementById("catalog");
+      if (catalogSection) catalogSection.scrollIntoView({ behavior: "smooth" });
+      else window.location.href = "/";
       return;
     }
     if (action === "trackOrder") {
@@ -213,6 +225,7 @@ function StorefrontInner() {
 
   const isLoading = catalog === null;
   const isSearching = Boolean(search) || category !== "all";
+  const activeSections = catalog?.page?.sections || catalog?.theme.sections || [];
 
   return (
     <>
@@ -222,7 +235,7 @@ function StorefrontInner() {
           this theme until you publish
         </div>
       )}
-      {catalog?.theme.sections
+      {activeSections
         .filter(
           (section) =>
             section.enabled !== false && section.type === "announcement",
@@ -241,6 +254,7 @@ function StorefrontInner() {
         appearance={appearance}
         onAppearanceChange={handleAppearanceChange}
         showTracking={catalog?.checkout.showOrderTracking !== false}
+        pages={catalog?.pages || []}
       />
 
       {isLoading || !catalog ? (
@@ -250,7 +264,7 @@ function StorefrontInner() {
       ) : (
         <StorefrontSections
           catalog={catalog}
-          sections={catalog.theme.sections.filter(
+          sections={activeSections.filter(
             (section) =>
               section.type !== "announcement" &&
               (!catalog.campaign ||
@@ -276,6 +290,7 @@ function StorefrontInner() {
         business={catalog?.business}
         onTrackOrder={() => setShowTracker(true)}
         showTracking={catalog?.checkout.showOrderTracking !== false}
+        pages={catalog?.pages || []}
       />
       <FloatingCart onOpen={() => setIsCartOpen(true)} />
       <CartDrawer
@@ -322,6 +337,14 @@ function applyStorefrontStyles(
   root.dataset.themeImage = design?.imageRatio || "portrait";
   root.dataset.themeDensity = design?.density || "comfortable";
   root.dataset.themeCorner = design?.cornerStyle || "soft";
+  root.dataset.themeHeadingScale = design?.headingScale || "balanced";
+  root.dataset.themeContentWidth = design?.contentWidth || "standard";
+  root.dataset.themeSectionSpacing = design?.sectionSpacing || "standard";
+  root.dataset.themeButton = design?.buttonStyle || "solid";
+  root.dataset.themeNavigation = design?.navigationStyle || "minimal";
+  root.dataset.themeIcon = design?.iconStyle || "plain";
+  root.dataset.themeMotion = design?.motionStyle || "subtle";
+  root.dataset.themeProductColumns = String(design?.productColumns || 4);
   root.dataset.appearance = appearance;
   root.style.colorScheme = appearance;
 
@@ -350,11 +373,18 @@ function applyStorefrontStyles(
     serif: 'Georgia, "Times New Roman", serif',
     rounded: 'Nunito, "Arial Rounded MT Bold", ui-sans-serif, sans-serif',
     system: "ui-sans-serif, system-ui, sans-serif",
+    poppins: 'var(--font-poppins), "Segoe UI", sans-serif',
+    playfair: 'var(--font-playfair), Georgia, serif',
+    montserrat: 'var(--font-montserrat), "Segoe UI", sans-serif',
+    nunito: 'var(--font-nunito), "Arial Rounded MT Bold", sans-serif',
+    oswald: 'var(--font-oswald), Impact, sans-serif',
+    merriweather: 'var(--font-merriweather), Georgia, serif',
   };
-  const font = design ? fontFamilies[design.fontFamily] : undefined;
-  if (font) {
-    root.style.setProperty("--storefront-font", font);
-    root.style.setProperty("--storefront-display-font", font);
+  const bodyFont = design ? fontFamilies[design.bodyFontFamily || design.fontFamily] : undefined;
+  const headingFont = design ? fontFamilies[design.headingFontFamily || design.fontFamily] : undefined;
+  if (bodyFont || headingFont) {
+    root.style.setProperty("--storefront-font", bodyFont || headingFont || "");
+    root.style.setProperty("--storefront-display-font", headingFont || bodyFont || "");
   } else {
     root.style.removeProperty("--storefront-font");
     root.style.removeProperty("--storefront-display-font");

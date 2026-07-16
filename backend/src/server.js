@@ -175,8 +175,22 @@ const {
   updateStorefrontCampaign,
 } = require('./storefrontCampaigns');
 const {
+  createStorefrontPage,
+  deleteStorefrontPage,
+  ensureStorefrontPageSchema,
+  getStorefrontPage,
+  listPublishedStorefrontPages,
+  listStorefrontPages,
+  loadPublishedStorefrontPage,
+  normalizeStorefrontPageInput,
+  publishStorefrontPage,
+  unpublishStorefrontPage,
+  updateStorefrontPage,
+} = require('./storefrontPages');
+const {
   extractStorefrontAiContent,
   fallbackStorefrontAiTheme,
+  parseJsonValue,
   parseStorefrontAiThemeResponse,
   storefrontJsonResponseFormat,
 } = require('./storefrontThemeAi');
@@ -185,6 +199,17 @@ const {
   createStorefrontThemePreviewToken,
   verifyStorefrontThemePreviewToken,
 } = require('./storefrontThemePreview');
+const {
+  createStorefrontPagePreviewToken,
+  verifyStorefrontPagePreviewToken,
+} = require('./storefrontPagePreview');
+const {
+  getStorefrontConnection,
+  hasEnabledStorefrontConnection,
+  loadDynamicStorefrontProducts,
+  saveStorefrontConnection,
+  testStorefrontConnection,
+} = require('./storefrontConnections');
 
 const app = express();
 const server = http.createServer(app);
@@ -235,7 +260,7 @@ const CATALOG_CACHE_TABLES = new Set([
   'promotions',
   'promotion_rules',
 ]);
-const CATALOG_CACHE_CODE_VERSION = '4';
+const CATALOG_CACHE_CODE_VERSION = '5';
 const STOREFRONT_TYPES = Object.freeze({
   retail: Object.freeze({
     type: 'retail',
@@ -8005,17 +8030,27 @@ Return JSON only, with no markdown or commentary:
     "surfaceElevatedColor": "#RRGGBB",
     "borderColor": "#RRGGBB",
     "accentColor": "#RRGGBB",
-    "fontFamily": "inter|modern|serif|rounded|system",
+    "fontFamily": "inter|modern|serif|rounded|system|poppins|playfair|montserrat|nunito|oswald|merriweather",
+    "headingFontFamily": "inter|modern|serif|rounded|system|poppins|playfair|montserrat|nunito|oswald|merriweather",
+    "bodyFontFamily": "inter|modern|serif|rounded|system|poppins|playfair|montserrat|nunito|oswald|merriweather",
     "heroStyle": "cover|split|minimal",
     "cardStyle": "bordered|elevated|minimal",
     "imageRatio": "square|portrait|landscape",
     "density": "comfortable|compact",
-    "cornerStyle": "sharp|soft|rounded|pill"
+    "cornerStyle": "sharp|soft|rounded|pill",
+    "headingScale": "compact|balanced|display",
+    "contentWidth": "compact|standard|wide|full",
+    "sectionSpacing": "tight|standard|airy",
+    "buttonStyle": "solid|outline|soft",
+    "navigationStyle": "minimal|centered|expanded",
+    "iconStyle": "plain|boxed|circle",
+    "motionStyle": "none|subtle|expressive",
+    "productColumns": 4
   },
   "sections": [
     {
       "id": "short-unique-id",
-      "type": "announcement|hero|categoryShowcase|featuredProducts|promoBanner|benefits|story|catalog|contact",
+      "type": "announcement|hero|categoryShowcase|featuredProducts|promoBanner|benefits|story|richText|faq|gallery|video|catalog|contact",
       "enabled": true,
       "style": "default|surface|accent|contrast",
       "eyebrow": "optional short label",
@@ -8058,6 +8093,7 @@ Rules:
 - Use only truthful general business copy. Never invent reviews, discounts, delivery promises, awards, addresses, opening hours, or product facts.
 - Header, cart, secure checkout, order tracking, and footer are managed by Piki and must not be represented as sections.
 - Use accessible contrast between text, backgrounds, surfaces, and the accent.
+- Treat typography, spacing, content width, image placement, columns, buttons, icons, and motion as one coherent design system.
 - Do not output CSS, HTML, JavaScript, URLs, credentials, analytics, pixels, or scripts.
 - Do not add payment providers outside manual and mpesa.
 - Customer name and phone always remain required and cannot be removed.
@@ -8117,6 +8153,99 @@ ${instruction}`;
         ? parsed.checkout
         : {},
   };
+}
+
+async function requestOpenRouterStorefrontPage({
+  fetchImpl,
+  aiConfig,
+  instruction,
+  page,
+  storeContext = {},
+}) {
+  const prompt = `You are Piki's professional website page designer. Create a complete, customer-ready page for a real online store.
+
+Return exactly one JSON object with this shape:
+{
+  "title": "page title",
+  "navigationLabel": "short navigation label",
+  "seoTitle": "search title under 70 characters",
+  "seoDescription": "truthful search description under 180 characters",
+  "sections": [
+    {
+      "id": "short-unique-id",
+      "type": "announcement|hero|categoryShowcase|featuredProducts|promoBanner|benefits|story|richText|faq|gallery|video|catalog|contact",
+      "enabled": true,
+      "style": "default|surface|accent|contrast",
+      "width": "narrow|contained|wide|full",
+      "spacing": "none|compact|comfortable|spacious",
+      "columns": 3,
+      "imagePosition": "left|right|top|background",
+      "icon": "semantic icon name",
+      "eyebrow": "optional label",
+      "title": "section heading",
+      "body": "supporting copy",
+      "content": "plain text for richText",
+      "buttonLabel": "optional action label",
+      "buttonAction": "none|catalog|whatsapp|trackOrder",
+      "alignment": "left|center|right",
+      "showImage": true,
+      "source": "featured|all|category",
+      "category": "real category name when known",
+      "limit": 4,
+      "items": []
+    }
+  ]
+}
+
+Rules:
+- Compose 2 to 10 sections in the order customers should experience them.
+- Use only verified business context and the owner's instructions. Never invent reviews, policies, discounts, guarantees, addresses, hours, or product facts.
+- FAQ items use {"question":"...","answer":"..."}; benefits use {"title":"...","body":"...","icon":"sparkles|shield|truck|clock|heart|message|star"}.
+- Do not output HTML, CSS, JavaScript, scripts, credentials, forms that collect sensitive data, or unsupported URLs.
+- A custom page does not require a catalog section. Add one only when shopping is central to the page.
+- Preserve the page URL; it is managed separately.
+
+BUSINESS:
+${JSON.stringify(storeContext)}
+
+CURRENT PAGE:
+${JSON.stringify(page)}
+
+OWNER REQUEST:
+${instruction}`;
+
+  const parseCandidate = (body) => {
+    const parsed = parseJsonValue(extractStorefrontAiContent(body));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    try {
+      return normalizeStorefrontPageInput(
+        { ...page, ...parsed, slug: page.slug, source: 'ai' },
+        page,
+      );
+    } catch (_) {
+      return null;
+    }
+  };
+  const requestResult = await requestOpenRouterJson({
+    fetchImpl,
+    baseUrl: OPENROUTER_BASE_URL,
+    apiKey: aiConfig.api_key,
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+    fallbackModel: config.openRouterFallbackModel,
+    messages: [
+      {
+        role: 'system',
+        content: 'Return one valid JSON object for the requested storefront page. Do not include markdown or prose.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    maxTokens: 4000,
+    temperature: 0.2,
+    title: 'Piki Page Designer',
+    responseFormat: storefrontJsonResponseFormat(),
+    isUsableBody: (body) => Boolean(parseCandidate(body)),
+  });
+  return parseCandidate(requestResult.body);
 }
 
 async function requestOpenRouterMarketingContent({
@@ -9066,6 +9195,7 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
 
 aiJobs.registerHandler('product_import', runProductImportAiJob);
 aiJobs.registerHandler('storefront_theme', runStorefrontThemeAiJob);
+aiJobs.registerHandler('storefront_page', runStorefrontPageAiJob);
 aiJobs.registerHandler('marketing_content', runMarketingContentAiJob);
 
 async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
@@ -9230,6 +9360,85 @@ async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
     toolName: 'complete_storefront_theme',
     progress: 100,
     metadata: { themeId: updated.id },
+  });
+}
+
+async function runStorefrontPageAiJob({ job, updateJob, addEvent }) {
+  const totalSteps = 4;
+  const payload = parseJsonObjectFromText(job.payload_json) || {};
+  const pageId = normalizeOptionalText(payload.pageId);
+  const instruction = limitText(job.instruction, 1200);
+  if (!pageId || !instruction) {
+    throw createHttpError(400, 'The saved page design job is incomplete.');
+  }
+  const step = async (completedSteps, progress, title, message, eventType) => {
+    await updateJob(job.id, job.business_id, {
+      completedSteps,
+      totalSteps,
+      currentStep: title,
+      progress,
+    });
+    await addEvent({
+      jobId: job.id,
+      businessId: job.business_id,
+      branchId: job.branch_id,
+      eventType,
+      title,
+      message,
+      toolName: `storefront_page_${eventType}`,
+      progress,
+    });
+  };
+  await step(1, 18, 'Reading the page brief', 'Piki is identifying the page goal, audience, and verified business context.', 'page_brief');
+  const page = await getStorefrontPage(query, job.business_id, pageId);
+  if (!page) throw createHttpError(404, 'Storefront page was not found.');
+  const aiConfig = await loadPlatformAiConfig();
+  if (!aiConfig?.enabled || !aiConfig.api_key) {
+    throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+  }
+  const brand = await loadStorefrontBrand(job.business_id, { branchId: page.branchId });
+  await step(2, 42, 'Planning the customer journey', 'Piki is composing the right sections, hierarchy, actions, and navigation copy.', 'page_planning');
+  const fetch = (await import('node-fetch')).default;
+  const proposal = await requestOpenRouterStorefrontPage({
+    fetchImpl: fetch,
+    aiConfig,
+    instruction,
+    page,
+    storeContext: {
+      name: brand.businessName || payload.businessName,
+      tagline: brand.tagline,
+      description: brand.description,
+      storefrontType: page.storefrontType,
+    },
+  });
+  await step(3, 78, 'Validating the page', 'Piki is checking safe content, supported blocks, navigation, and exact storefront compatibility.', 'page_validating');
+  const updated = await updateStorefrontPage(
+    query,
+    job.business_id,
+    page.id,
+    { ...proposal, slug: page.slug, source: 'ai' },
+  );
+  await invalidateCatalogCache(job.business_id);
+  const result = { page: updated, pageId: updated.id };
+  await updateJob(job.id, job.business_id, {
+    status: 'completed',
+    progress: 100,
+    completedSteps: totalSteps,
+    totalSteps,
+    currentStep: 'Page draft ready',
+    completedAt: new Date().toISOString(),
+    resultJson: result,
+  });
+  await addEvent({
+    jobId: job.id,
+    businessId: job.business_id,
+    branchId: job.branch_id,
+    eventType: 'page_ready',
+    title: 'Page draft ready',
+    message: 'The exact website preview is ready. Customers cannot see the page until you publish it.',
+    toolName: 'complete_storefront_page',
+    progress: 100,
+    metadata: { pageId: updated.id },
   });
 }
 
@@ -10680,15 +10889,18 @@ app.get('/api/public/catalog/:businessId', async (req, res, next) => {
     }
 
     const preview = storefrontThemePreviewFromRequest(req, businessId);
+    const pagePreview = storefrontPagePreviewFromRequest(req, businessId);
     const catalog = await loadPublicCatalog(businessId, {
       currencyOverride: req.query?.currency,
-      branchId: preview?.branchId || req.query?.branchId,
+      branchId: preview?.branchId || pagePreview?.branchId || req.query?.branchId,
       storefrontType:
-        preview?.storefrontType || req.query?.storefront || req.query?.type,
+        preview?.storefrontType || pagePreview?.storefrontType || req.query?.storefront || req.query?.type,
       previewThemeId: preview?.themeId,
       campaignSlug: req.query?.campaign,
+      pageSlug: pagePreview?.slug || req.query?.page,
+      previewPageId: pagePreview?.pageId,
     });
-    if (preview) res.set('Cache-Control', 'private, no-store');
+    if (preview || pagePreview) res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -10716,18 +10928,22 @@ app.get('/api/public/catalog', async (req, res, next) => {
       req,
       storefront.businessId,
     );
+    const pagePreview = storefrontPagePreviewFromRequest(req, storefront.businessId);
     const catalog = await loadPublicCatalog(storefront.businessId, {
       currencyOverride: req.query?.currency,
-      branchId: preview?.branchId || req.query?.branchId,
+      branchId: preview?.branchId || pagePreview?.branchId || req.query?.branchId,
       storefrontType:
         preview?.storefrontType ||
+        pagePreview?.storefrontType ||
         storefront.storefrontType ||
         req.query?.storefront ||
         req.query?.type,
       previewThemeId: preview?.themeId,
       campaignSlug: req.query?.campaign,
+      pageSlug: pagePreview?.slug || req.query?.page,
+      previewPageId: pagePreview?.pageId,
     });
-    if (preview) res.set('Cache-Control', 'private, no-store');
+    if (preview || pagePreview) res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, data: catalog });
   } catch (error) {
     next(normalizeRouteError(error));
@@ -11118,6 +11334,270 @@ app.delete('/api/catalog/campaigns/:campaignId', async (req, res, next) => {
     );
     await invalidateCatalogCache(businessContext.businessId);
     res.json({ ok: true, data: campaign });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/pages', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.query || {}, businessContext);
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    const pages = await listStorefrontPages(query, businessContext.businessId, scope);
+    res.json({
+      ok: true,
+      data: pages.map((page) => ({ ...page, url: storefrontPageShareUrl(publicSubdomain, page) })),
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/pages', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const page = await createStorefrontPage(
+      query,
+      businessContext.businessId,
+      { ...(req.body || {}), ...scope },
+      { createdBy: businessContext.userId },
+    );
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    res.status(201).json({
+      ok: true,
+      data: { ...page, url: storefrontPageShareUrl(publicSubdomain, page) },
+    });
+  } catch (error) {
+    if (error?.code === '23505') {
+      next(createHttpError(409, 'That page URL is already in use. Choose another one.'));
+      return;
+    }
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/pages/:pageId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const page = await updateStorefrontPage(
+      query,
+      businessContext.businessId,
+      req.params.pageId,
+      req.body || {},
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: page });
+  } catch (error) {
+    if (error?.code === '23505') {
+      next(createHttpError(409, 'That page URL is already in use. Choose another one.'));
+      return;
+    }
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/pages/:pageId/publish', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const page = await publishStorefrontPage(query, businessContext.businessId, req.params.pageId);
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: page });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/pages/:pageId/unpublish', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const page = await unpublishStorefrontPage(query, businessContext.businessId, req.params.pageId);
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: page });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.delete('/api/catalog/pages/:pageId', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const page = await deleteStorefrontPage(query, businessContext.businessId, req.params.pageId);
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: page });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/pages/:pageId/preview', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const page = await getStorefrontPage(query, businessContext.businessId, req.params.pageId);
+    if (!page) throw createHttpError(404, 'Storefront page was not found.');
+    const publicSubdomain = await ensureBusinessCatalogSubdomain(query, {
+      businessId: businessContext.businessId,
+      businessName: businessContext.businessName,
+    });
+    const token = createStorefrontPagePreviewToken({
+      secret: config.platformJwtSecret,
+      businessId: businessContext.businessId,
+      page,
+    });
+    const url = new URL(storefrontPageShareUrl(publicSubdomain, page));
+    url.searchParams.set('pagePreview', token);
+    res.json({ ok: true, data: { url: url.toString(), expiresInSeconds: 3600 } });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/pages/:pageId/piki-design', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    ensureAiFeatureAllowed(businessContext);
+    const instruction = limitText(req.body?.instruction, 1200);
+    if (!instruction) throw createHttpError(400, 'Describe the page Piki should design.');
+    const page = await getStorefrontPage(query, businessContext.businessId, req.params.pageId);
+    if (!page) throw createHttpError(404, 'Storefront page was not found.');
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig?.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+    }
+    const brand = await loadStorefrontBrand(businessContext.businessId, { branchId: page.branchId });
+    const fetch = (await import('node-fetch')).default;
+    const proposal = await requestOpenRouterStorefrontPage({
+      fetchImpl: fetch,
+      aiConfig,
+      instruction,
+      page,
+      storeContext: {
+        name: brand.businessName || businessContext.businessName,
+        tagline: brand.tagline,
+        description: brand.description,
+        storefrontType: page.storefrontType,
+      },
+    });
+    const updated = await updateStorefrontPage(
+      query,
+      businessContext.businessId,
+      page.id,
+      { ...proposal, slug: page.slug, source: 'ai' },
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: updated });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/pages/:pageId/ai-jobs', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    ensureAiFeatureAllowed(businessContext);
+    const instruction = limitText(req.body?.instruction || req.body?.prompt, 1200);
+    if (!instruction || instruction.length < 5) {
+      throw createHttpError(400, 'Describe the page Piki should design.');
+    }
+    const page = await getStorefrontPage(query, businessContext.businessId, req.params.pageId);
+    if (!page) throw createHttpError(404, 'Storefront page was not found.');
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig?.enabled || !aiConfig.api_key) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+    }
+    const rateCheck = await checkAiRateLimit(businessContext, {
+      consumeQuota: req.body?.consumeQuota !== false,
+    });
+    if (!rateCheck.allowed) {
+      throw createHttpError(429, `AI rate limit reached. Try again in ${rateCheck.resetInMinutes} minutes.`);
+    }
+    const job = await aiJobs.createJob({
+      businessId: businessContext.businessId,
+      branchId: page.branchId,
+      userId: businessContext.userId,
+      jobType: 'storefront_page',
+      title: `Design the ${page.title} page`,
+      instruction,
+      payload: {
+        pageId: page.id,
+        branchId: page.branchId,
+        storefrontType: page.storefrontType,
+        businessName: businessContext.businessName,
+      },
+      totalSteps: 4,
+    });
+    res.status(202).json({ ok: true, job, remaining: rateCheck.remaining });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/catalog/connection', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.query || {}, businessContext);
+    const connection = await getStorefrontConnection(
+      query,
+      businessContext.businessId,
+      scope.branchId,
+    );
+    res.json({ ok: true, data: publicStorefrontConnection(connection) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.put('/api/catalog/connection', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const connection = await saveStorefrontConnection(
+      query,
+      businessContext.businessId,
+      { ...(req.body || {}), branchId: scope.branchId },
+      {
+        createdBy: businessContext.userId,
+        encryptionKey: config.paymentSecretsEncryptionKey,
+      },
+    );
+    await invalidateCatalogCache(businessContext.businessId);
+    res.json({ ok: true, data: publicStorefrontConnection(connection) });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/catalog/connection/test', async (req, res, next) => {
+  try {
+    const businessContext = await requireBusinessContext(req);
+    requireManagerOrAdmin(businessContext);
+    const scope = resolveStorefrontThemeScope(req.body || {}, businessContext);
+    const fetch = (await import('node-fetch')).default;
+    const result = await testStorefrontConnection(
+      query,
+      businessContext.businessId,
+      scope.branchId,
+      { encryptionKey: config.paymentSecretsEncryptionKey, fetchImpl: fetch },
+    );
+    res.json({ ok: true, data: { itemCount: result.itemCount, message: result.message } });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -11643,6 +12123,41 @@ app.get(
     }
   },
 );
+
+app.get('/page/:pageSlug', async (req, res, next) => {
+  try {
+    const subdomain = extractCatalogSubdomain(
+      req.get('x-forwarded-host') || req.get('host'),
+      config.publicCatalogRootDomain,
+    );
+    if (!subdomain) {
+      next();
+      return;
+    }
+    const storefrontLookup = await findBusinessCatalogStorefrontBySubdomain(
+      query,
+      subdomain,
+    );
+    if (!storefrontLookup) throw createHttpError(404, 'Catalog not found');
+    const pagePreview = storefrontPagePreviewFromRequest(
+      req,
+      storefrontLookup.businessId,
+    );
+    const catalog = await loadPublicCatalog(storefrontLookup.businessId, {
+      currencyOverride: req.query?.currency,
+      branchId: pagePreview?.branchId || req.query?.branchId,
+      storefrontType:
+        pagePreview?.storefrontType ||
+        storefrontLookup.storefrontType ||
+        req.query?.storefront,
+      pageSlug: pagePreview?.slug || req.params.pageSlug,
+      previewPageId: pagePreview?.pageId,
+    });
+    await sendStorefrontCatalogPage(res, catalog);
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
 
 app.get('/campaign/:campaignSlug', async (req, res, next) => {
   try {
@@ -14299,6 +14814,20 @@ function campaignShareUrl(businessSubdomain, campaign) {
   return `${base}/campaign/${encodeURIComponent(campaign?.slug || '')}`;
 }
 
+function storefrontPageShareUrl(businessSubdomain, page) {
+  const base = buildTypedStorefrontUrl(
+    businessSubdomain,
+    page?.storefrontType || 'retail',
+  );
+  return `${base}/page/${encodeURIComponent(page?.slug || '')}`;
+}
+
+function publicStorefrontConnection(connection) {
+  if (!connection) return null;
+  const { secretEnvelope: _secretEnvelope, businessId: _businessId, ...safe } = connection;
+  return safe;
+}
+
 function storefrontItemMatchesType(item, storefrontType) {
   const itemType = normalizePublicCatalogItemType(item?.itemType || item?.type);
   return storefrontType === 'services'
@@ -14607,6 +15136,20 @@ function storefrontThemePreviewFromRequest(req, businessId) {
   return preview;
 }
 
+function storefrontPagePreviewFromRequest(req, businessId) {
+  const token = normalizeOptionalText(req.query?.pagePreview);
+  if (!token) return null;
+  const preview = verifyStorefrontPagePreviewToken({
+    secret: config.platformJwtSecret,
+    token,
+    businessId,
+  });
+  if (!preview) {
+    throw createHttpError(401, 'Storefront page preview link is invalid or expired.');
+  }
+  return preview;
+}
+
 async function loadPublicCatalog(
   businessId,
   {
@@ -14615,11 +15158,14 @@ async function loadPublicCatalog(
     storefrontType,
     previewThemeId,
     campaignSlug,
+    pageSlug,
+    previewPageId,
   } = {},
 ) {
   await ensureCatalogSubdomainSchema(query);
   await ensureStorefrontBrandSchema(query);
   await ensureStorefrontThemeSchema(query);
+  await ensureStorefrontPageSchema(query);
   await ensureProductStorefrontSchema(query);
   const businessResult = await query(
     `
@@ -14670,18 +15216,7 @@ async function loadPublicCatalog(
     throw createHttpError(404, 'Storefront not found');
   }
   const storefront = storefrontDefinition(selectedStorefrontType);
-  const cacheKey = previewThemeId
-    ? null
-    : await buildCatalogCacheKey(businessId, {
-        currencyOverride,
-        branchId: requestedBranchId,
-        storefrontType: selectedStorefrontType,
-        campaignSlug,
-      });
-  const cached = cacheKey ? await cacheGetJson(cacheKey) : null;
-  if (cached) {
-    return cached;
-  }
+  let cacheKey = null;
 
   const branchesResult = await query(
     `SELECT id, name
@@ -14703,6 +15238,22 @@ async function loadPublicCatalog(
         id: 'main_branch',
         name: 'Main',
       };
+  const hasDynamicConnection = await hasEnabledStorefrontConnection(
+    query,
+    businessId,
+    selectedBranch.id,
+  );
+  cacheKey = previewThemeId || previewPageId || hasDynamicConnection
+    ? null
+    : await buildCatalogCacheKey(businessId, {
+        currencyOverride,
+        branchId: selectedBranch.id,
+        storefrontType: selectedStorefrontType,
+        campaignSlug,
+        pageSlug,
+      });
+  const cached = cacheKey ? await cacheGetJson(cacheKey) : null;
+  if (cached) return cached;
 
   const productsResult = await query(
     `
@@ -14803,11 +15354,27 @@ async function loadPublicCatalog(
   const baseProducts = deduplicatePublicCatalogProducts(
     productsResult.rows.map((row) => normalizePublicCatalogProduct(row)),
   );
-  const products = await applyActiveStorefrontPromotions(
+  const localProducts = await applyActiveStorefrontPromotions(
     baseProducts,
     businessId,
     selectedBranch.id,
   );
+  const fetch = hasDynamicConnection ? (await import('node-fetch')).default : null;
+  const externalProducts = hasDynamicConnection
+    ? await loadDynamicStorefrontProducts(
+        query,
+        businessId,
+        selectedBranch.id,
+        {
+          encryptionKey: config.paymentSecretsEncryptionKey,
+          fetchImpl: fetch,
+        },
+      )
+    : [];
+  const products = deduplicatePublicCatalogProducts([
+    ...localProducts,
+    ...externalProducts,
+  ]);
   const servicesResult = await query(
     `
     SELECT
@@ -14897,8 +15464,32 @@ async function loadPublicCatalog(
     throw createHttpError(404, 'This campaign is not available.');
   }
 
+  const publishedPages = await listPublishedStorefrontPages(query, business.id, {
+    branchId: selectedBranch.id,
+    storefrontType: selectedStorefrontType,
+  });
+  const page = previewPageId
+    ? await getStorefrontPage(query, business.id, previewPageId)
+    : pageSlug
+      ? await loadPublishedStorefrontPage(query, business.id, {
+          branchId: selectedBranch.id,
+          storefrontType: selectedStorefrontType,
+          slug: pageSlug,
+        })
+      : null;
+  if ((pageSlug || previewPageId) && !page) {
+    throw createHttpError(404, 'This page is not available.');
+  }
+  if (
+    page &&
+    (page.branchId !== selectedBranch.id ||
+      page.storefrontType !== selectedStorefrontType)
+  ) {
+    throw createHttpError(404, 'This page is not available for this storefront.');
+  }
+
   const catalog = {
-    preview: Boolean(previewThemeId),
+    preview: Boolean(previewThemeId || previewPageId),
     business: {
       id: business.id,
       name: branchBrand.businessName || business.name,
@@ -14912,6 +15503,16 @@ async function loadPublicCatalog(
     theme: publicTheme,
     checkout: publicTheme.checkout,
     campaign,
+    page,
+    pages: publishedPages
+      .filter((item) => item.showInNavigation)
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        label: item.navigationLabel,
+        slug: item.slug,
+        pageType: item.pageType,
+      })),
     currency: currencyInfo.code,
     currencyCode: currencyInfo.code,
     currencySymbol: currencyInfo.symbol,
@@ -14930,7 +15531,7 @@ async function loadPublicCatalog(
 
 async function buildCatalogCacheKey(
   businessId,
-  { currencyOverride, branchId, storefrontType, campaignSlug } = {},
+  { currencyOverride, branchId, storefrontType, campaignSlug, pageSlug } = {},
 ) {
   const version = (await cacheGetText(catalogCacheVersionKey(businessId))) || '0';
   return [
@@ -14941,6 +15542,7 @@ async function buildCatalogCacheKey(
     normalizeCacheKeyPart(currencyOverride || 'default'),
     normalizeCacheKeyPart(storefrontType || 'default'),
     normalizeCacheKeyPart(campaignSlug || 'store'),
+    normalizeCacheKeyPart(pageSlug || 'home'),
     CATALOG_CACHE_CODE_VERSION,
   ].join(':');
 }
@@ -16160,6 +16762,7 @@ function injectStorefrontMeta(html, catalog) {
   const businessName = normalizeOptionalText(catalog.business?.name) || 'Online Store';
   const brand = catalog.business?.brand || {};
   const campaign = catalog.campaign || null;
+  const page = catalog.page || null;
   const storefront = storefrontDefinition(catalog.storefront?.type);
   const primaryColor = normalizeStorefrontColor(brand.primaryColor, {
     fallback: '#111827',
@@ -16174,12 +16777,15 @@ function injectStorefrontMeta(html, catalog) {
     coverUrls[0] ||
     safePublicImageUrl(brand.coverUrl);
   const description =
+    normalizeOptionalText(page?.seoDescription) ||
     normalizeOptionalText(campaign?.description) ||
     normalizeOptionalText(brand.description) ||
     storefront.description;
-  const title = campaign
-    ? `${escapeHtml(campaign.title)} - ${escapeHtml(businessName)}`
-    : `${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}`;
+  const title = page
+    ? `${escapeHtml(page.seoTitle || page.title)} - ${escapeHtml(businessName)}`
+    : campaign
+      ? `${escapeHtml(campaign.title)} - ${escapeHtml(businessName)}`
+      : `${escapeHtml(businessName)} - ${escapeHtml(storefront.title)}`;
 
   const headTags = [
     `<title>${title}</title>`,

@@ -13,6 +13,9 @@
   --border-strong: rgba(25, 25, 22, 0.19);
   --theme-radius: 0.5rem;
   --theme-card-shadow: none;
+  --site-max-width: 72rem;
+  --section-padding-y: 5rem;
+  --heading-scale: 1;
 }
 
 :root[data-storefront-type="services"] {
@@ -70,6 +73,19 @@ body {
   color: var(--foreground);
 }
 
+.storefront-section[data-section-spacing="none"] { padding-top: 0; padding-bottom: 0; }
+.storefront-section[data-section-spacing="compact"] { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+.storefront-section[data-section-spacing="comfortable"] { padding-top: var(--section-padding-y); padding-bottom: var(--section-padding-y); }
+.storefront-section[data-section-spacing="spacious"] { padding-top: calc(var(--section-padding-y) * 1.45); padding-bottom: calc(var(--section-padding-y) * 1.45); }
+
+.storefront-section[data-section-width="narrow"] .theme-section-inner { max-width: 52rem; }
+.storefront-section[data-section-width="contained"] .theme-section-inner { max-width: var(--site-max-width); }
+.storefront-section[data-section-width="wide"] .theme-section-inner { max-width: 88rem; }
+.storefront-section[data-section-width="full"] { padding-left: 0; padding-right: 0; }
+.storefront-section[data-section-width="full"] .theme-section-inner { max-width: none; }
+
+.theme-dynamic-grid { grid-template-columns: 1fr; }
+
 .storefront-section[data-section-style="surface"] {
   background: var(--surface);
 }
@@ -107,6 +123,29 @@ body {
   color: var(--accent-contrast);
 }
 
+:root[data-theme-button="outline"] .section-primary-action {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--foreground);
+}
+
+:root[data-theme-button="soft"] .section-primary-action {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+}
+
+:root[data-theme-icon="boxed"] .theme-section-icon {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--theme-radius);
+}
+
+:root[data-theme-icon="circle"] .theme-section-icon {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-radius: 999px;
+}
+
 .storefront-section[data-section-style="accent"] .section-primary-action,
 .storefront-section[data-section-style="contrast"] .section-primary-action,
 .storefront-section[data-section-style="accent"] .theme-hero .bg-accent,
@@ -120,6 +159,32 @@ body {
   font-weight: 400;
   letter-spacing: -0.015em;
 }
+
+:root[data-theme-heading-scale="compact"] { --heading-scale: 0.86; }
+:root[data-theme-heading-scale="balanced"] { --heading-scale: 1; }
+:root[data-theme-heading-scale="display"] { --heading-scale: 1.18; }
+:root[data-theme-heading-scale="compact"] .theme-section-heading { font-size: 1.9rem; }
+:root[data-theme-heading-scale="display"] .theme-section-heading { font-size: 2.8rem; }
+:root[data-theme-heading-scale="compact"] .theme-hero-heading { font-size: 2.5rem; }
+:root[data-theme-heading-scale="display"] .theme-hero-heading { font-size: 4.5rem; }
+
+:root[data-theme-content-width="compact"] { --site-max-width: 58rem; }
+:root[data-theme-content-width="standard"] { --site-max-width: 72rem; }
+:root[data-theme-content-width="wide"] { --site-max-width: 88rem; }
+:root[data-theme-content-width="full"] { --site-max-width: 100%; }
+
+:root[data-theme-section-spacing="tight"] { --section-padding-y: 3rem; }
+:root[data-theme-section-spacing="standard"] { --section-padding-y: 5rem; }
+:root[data-theme-section-spacing="airy"] { --section-padding-y: 7rem; }
+
+:root[data-theme-navigation="centered"] header > div,
+:root[data-theme-navigation="expanded"] header > div { max-width: var(--site-max-width); margin-inline: auto; }
+
+:root[data-theme-motion="none"] *,
+:root[data-theme-motion="none"] *::before,
+:root[data-theme-motion="none"] *::after { animation: none !important; transition: none !important; }
+
+:root[data-theme-motion="expressive"] .theme-product-card:hover { transform: translateY(-0.5rem) scale(1.01); }
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -253,6 +318,17 @@ select {
 
 :root[data-theme-density="compact"] .theme-product-card > :last-child {
   padding: 0.75rem !important;
+}
+
+@media (min-width: 768px) {
+  .theme-dynamic-grid { grid-template-columns: repeat(var(--section-columns, 3), minmax(0, 1fr)); }
+}
+
+@media (min-width: 1280px) {
+  :root[data-theme-product-columns="2"] .theme-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root[data-theme-product-columns="3"] .theme-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-theme-product-columns="4"] .theme-product-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  :root[data-theme-product-columns="5"] .theme-product-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 
 :root[data-theme-hero="minimal"] .theme-hero > .absolute {

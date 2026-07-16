@@ -99,12 +99,21 @@ const STOREFRONT_THEME_PRESETS = Object.freeze({
 });
 
 const THEME_ENUMS = Object.freeze({
-  fontFamily: new Set(['inter', 'modern', 'serif', 'rounded', 'system']),
+  fontFamily: new Set(['inter', 'modern', 'serif', 'rounded', 'system', 'poppins', 'playfair', 'montserrat', 'nunito', 'oswald', 'merriweather']),
+  headingFontFamily: new Set(['inter', 'modern', 'serif', 'rounded', 'system', 'poppins', 'playfair', 'montserrat', 'nunito', 'oswald', 'merriweather']),
+  bodyFontFamily: new Set(['inter', 'modern', 'serif', 'rounded', 'system', 'poppins', 'playfair', 'montserrat', 'nunito', 'oswald', 'merriweather']),
   heroStyle: new Set(['cover', 'split', 'minimal']),
   cardStyle: new Set(['bordered', 'elevated', 'minimal']),
   imageRatio: new Set(['square', 'portrait', 'landscape']),
   density: new Set(['comfortable', 'compact']),
   cornerStyle: new Set(['sharp', 'soft', 'rounded', 'pill']),
+  headingScale: new Set(['compact', 'balanced', 'display']),
+  contentWidth: new Set(['compact', 'standard', 'wide', 'full']),
+  sectionSpacing: new Set(['tight', 'standard', 'airy']),
+  buttonStyle: new Set(['solid', 'outline', 'soft']),
+  navigationStyle: new Set(['minimal', 'centered', 'expanded']),
+  iconStyle: new Set(['plain', 'boxed', 'circle']),
+  motionStyle: new Set(['none', 'subtle', 'expressive']),
 });
 
 const STOREFRONT_SECTION_TYPES = new Set([
@@ -115,6 +124,10 @@ const STOREFRONT_SECTION_TYPES = new Set([
   'promoBanner',
   'benefits',
   'story',
+  'richText',
+  'faq',
+  'gallery',
+  'video',
   'catalog',
   'contact',
 ]);
@@ -131,6 +144,9 @@ const STOREFRONT_SECTION_ACTIONS = new Set([
   'trackOrder',
 ]);
 const STOREFRONT_SECTION_ALIGNMENTS = new Set(['left', 'center', 'right']);
+const STOREFRONT_SECTION_WIDTHS = new Set(['narrow', 'contained', 'wide', 'full']);
+const STOREFRONT_SECTION_SPACING = new Set(['none', 'compact', 'comfortable', 'spacious']);
+const STOREFRONT_IMAGE_POSITIONS = new Set(['left', 'right', 'top', 'background']);
 const STOREFRONT_PRODUCT_SOURCES = new Set(['featured', 'all', 'category']);
 const STOREFRONT_BENEFIT_ICONS = new Set([
   'sparkles',
@@ -298,7 +314,7 @@ function normalizeStorefrontThemeDesign(input = {}, fallback = {}) {
   const enumValue = (key, aliases = []) => {
     const value = normalizeText(firstDefined(raw, [key, ...aliases]))?.toLowerCase();
     if (value && THEME_ENUMS[key].has(value)) return value;
-    const fallbackValue = normalizeText(base[key])?.toLowerCase();
+    const fallbackValue = normalizeText(firstDefined(base, [key, ...aliases]))?.toLowerCase();
     return THEME_ENUMS[key].has(fallbackValue) ? fallbackValue : [...THEME_ENUMS[key]][0];
   };
 
@@ -311,11 +327,21 @@ function normalizeStorefrontThemeDesign(input = {}, fallback = {}) {
     borderColor: color('borderColor', ['border_color']),
     accentColor: color('accentColor', ['accent_color', 'primaryColor', 'primary_color']),
     fontFamily: enumValue('fontFamily', ['font_family', 'font']),
+    headingFontFamily: enumValue('headingFontFamily', ['heading_font_family', 'displayFont', 'fontFamily', 'font_family', 'font']),
+    bodyFontFamily: enumValue('bodyFontFamily', ['body_font_family', 'fontFamily', 'font_family', 'font']),
     heroStyle: enumValue('heroStyle', ['hero_style']),
     cardStyle: enumValue('cardStyle', ['card_style']),
     imageRatio: enumValue('imageRatio', ['image_ratio']),
     density: enumValue('density'),
     cornerStyle: enumValue('cornerStyle', ['corner_style', 'corners']),
+    headingScale: enumValue('headingScale', ['heading_scale']),
+    contentWidth: enumValue('contentWidth', ['content_width']),
+    sectionSpacing: enumValue('sectionSpacing', ['section_spacing']),
+    buttonStyle: enumValue('buttonStyle', ['button_style']),
+    navigationStyle: enumValue('navigationStyle', ['navigation_style', 'navStyle']),
+    iconStyle: enumValue('iconStyle', ['icon_style']),
+    motionStyle: enumValue('motionStyle', ['motion_style', 'motion']),
+    productColumns: clampInteger(raw.productColumns ?? raw.product_columns ?? base.productColumns, 2, 5, 4),
   };
 }
 
@@ -406,6 +432,8 @@ function defaultStorefrontSectionBlueprints(storefrontType) {
 
 function normalizeStorefrontThemeSections(input, fallback = [], options = {}) {
   const storefrontType = normalizeStorefrontType(options.storefrontType);
+  const requireCatalog = options.requireCatalog !== false;
+  const maxSections = clampInteger(options.maxSections, 1, 24, 12);
   const requested = Array.isArray(input) ? input : [];
   const fallbackSections = Array.isArray(fallback) ? fallback : [];
   const candidates = requested.length
@@ -417,7 +445,7 @@ function normalizeStorefrontThemeSections(input, fallback = [], options = {}) {
   const ids = new Set();
   let hasCatalog = false;
 
-  for (const [index, candidateValue] of candidates.slice(0, 12).entries()) {
+  for (const [index, candidateValue] of candidates.slice(0, maxSections).entries()) {
     const candidate = objectValue(candidateValue);
     const type = normalizeStorefrontSectionType(candidate.type);
     if (!STOREFRONT_SECTION_TYPES.has(type)) continue;
@@ -443,7 +471,7 @@ function normalizeStorefrontThemeSections(input, fallback = [], options = {}) {
     if (type === 'catalog') hasCatalog = true;
   }
 
-  if (!hasCatalog) {
+  if (requireCatalog && !hasCatalog) {
     const catalogFallback = defaultStorefrontSectionBlueprints(storefrontType).find(
       (section) => section.type === 'catalog',
     );
@@ -472,6 +500,15 @@ function normalizeStorefrontSection(raw, fallback, { index, type }) {
     type,
     enabled: raw.enabled !== false,
     style: enumValue('style', STOREFRONT_SECTION_STYLES, 'default'),
+    width: enumValue('width', STOREFRONT_SECTION_WIDTHS, 'contained'),
+    spacing: enumValue('spacing', STOREFRONT_SECTION_SPACING, 'comfortable'),
+    columns: clampInteger(raw.columns ?? fallback.columns, 1, 4, 3),
+    imagePosition: enumValue(
+      'imagePosition',
+      STOREFRONT_IMAGE_POSITIONS,
+      'right',
+    ),
+    icon: limitText(raw.icon ?? fallback.icon, 40) || '',
   };
   const heading = () => ({
     eyebrow: text('eyebrow', 50),
@@ -506,6 +543,11 @@ function normalizeStorefrontSection(raw, fallback, { index, type }) {
           'left',
         ),
         showImage: raw.showImage ?? fallback.showImage ?? true,
+        imagePosition: enumValue(
+          'imagePosition',
+          STOREFRONT_IMAGE_POSITIONS,
+          'background',
+        ),
       };
     case 'categoryShowcase':
       return { ...common, ...heading() };
@@ -560,6 +602,53 @@ function normalizeStorefrontSection(raw, fallback, { index, type }) {
           'left',
         ),
         showImage: raw.showImage ?? fallback.showImage ?? false,
+      };
+    case 'richText':
+      return {
+        ...common,
+        ...heading(),
+        content: text('content', 6000),
+        alignment: enumValue(
+          'alignment',
+          STOREFRONT_SECTION_ALIGNMENTS,
+          'left',
+        ),
+      };
+    case 'faq': {
+      const requestedItems = Array.isArray(raw.items) ? raw.items : fallback.items;
+      const items = (Array.isArray(requestedItems) ? requestedItems : [])
+        .slice(0, 12)
+        .map((item) => {
+          const value = objectValue(item);
+          return {
+            question: limitText(value.question, 180),
+            answer: limitText(value.answer, 1000),
+          };
+        })
+        .filter((item) => item.question && item.answer);
+      return { ...common, ...heading(), items };
+    }
+    case 'gallery': {
+      const requestedItems = Array.isArray(raw.items) ? raw.items : fallback.items;
+      const items = (Array.isArray(requestedItems) ? requestedItems : [])
+        .slice(0, 12)
+        .map((item) => {
+          const value = objectValue(item);
+          return {
+            imageUrl: normalizeHttpsUrl(value.imageUrl ?? value.url),
+            alt: limitText(value.alt, 160) || '',
+            caption: limitText(value.caption, 240) || '',
+          };
+        })
+        .filter((item) => item.imageUrl);
+      return { ...common, ...heading(), items };
+    }
+    case 'video':
+      return {
+        ...common,
+        ...heading(),
+        videoUrl: normalizeVideoUrl(raw.videoUrl ?? raw.url ?? fallback.videoUrl),
+        caption: text('caption', 240),
       };
     case 'catalog':
       return { ...common, ...heading() };
@@ -950,6 +1039,47 @@ function normalizeText(value) {
   if (value == null) return null;
   const clean = String(value).trim();
   return clean || null;
+}
+
+function normalizeHttpsUrl(value) {
+  const clean = normalizeText(value);
+  if (!clean) return null;
+  try {
+    const url = new URL(clean);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function normalizeVideoUrl(value) {
+  const url = normalizeHttpsUrl(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id ? `https://www.youtube.com/embed/${encodeURIComponent(id)}` : null;
+    }
+    if (host === 'youtube.com' || host === 'www.youtube.com') {
+      if (parsed.pathname.startsWith('/embed/')) return parsed.toString();
+      const id = parsed.searchParams.get('v');
+      return id ? `https://www.youtube.com/embed/${encodeURIComponent(id)}` : null;
+    }
+    if (host === 'vimeo.com' || host === 'www.vimeo.com') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id && /^\d+$/.test(id)
+        ? `https://player.vimeo.com/video/${id}`
+        : null;
+    }
+    if (host === 'player.vimeo.com' && parsed.pathname.startsWith('/video/')) {
+      return parsed.toString();
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
 }
 
 function toIsoString(value) {

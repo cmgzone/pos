@@ -9,6 +9,18 @@ export interface BusinessBrand {
 
 export type StorefrontType = "retail" | "services" | "restaurant";
 export type StorefrontAppearance = "light" | "dark";
+export type StorefrontFontFamily =
+  | "inter"
+  | "modern"
+  | "serif"
+  | "rounded"
+  | "system"
+  | "poppins"
+  | "playfair"
+  | "montserrat"
+  | "nunito"
+  | "oswald"
+  | "merriweather";
 
 export interface Storefront {
   type: StorefrontType;
@@ -26,12 +38,22 @@ export interface StorefrontThemeDesign {
   surfaceElevatedColor: string;
   borderColor: string;
   accentColor: string;
-  fontFamily: "inter" | "modern" | "serif" | "rounded" | "system";
+  fontFamily: StorefrontFontFamily;
+  headingFontFamily: StorefrontFontFamily;
+  bodyFontFamily: StorefrontFontFamily;
   heroStyle: "cover" | "split" | "minimal";
   cardStyle: "bordered" | "elevated" | "minimal";
   imageRatio: "square" | "portrait" | "landscape";
   density: "comfortable" | "compact";
   cornerStyle: "sharp" | "soft" | "rounded" | "pill";
+  headingScale: "compact" | "balanced" | "display";
+  contentWidth: "compact" | "standard" | "wide" | "full";
+  sectionSpacing: "tight" | "standard" | "airy";
+  buttonStyle: "solid" | "outline" | "soft";
+  navigationStyle: "minimal" | "centered" | "expanded";
+  iconStyle: "plain" | "boxed" | "circle";
+  motionStyle: "none" | "subtle" | "expressive";
+  productColumns: number;
 }
 
 export type StorefrontSectionType =
@@ -42,6 +64,10 @@ export type StorefrontSectionType =
   | "promoBanner"
   | "benefits"
   | "story"
+  | "richText"
+  | "faq"
+  | "gallery"
+  | "video"
   | "catalog"
   | "contact";
 
@@ -57,11 +83,27 @@ export interface StorefrontBenefit {
   icon: "sparkles" | "shield" | "truck" | "clock" | "heart" | "message" | "star";
 }
 
+export interface StorefrontFaqItem {
+  question: string;
+  answer: string;
+}
+
+export interface StorefrontGalleryItem {
+  imageUrl: string;
+  alt?: string;
+  caption?: string;
+}
+
 export interface StorefrontSection {
   id: string;
   type: StorefrontSectionType;
   enabled: boolean;
   style: "default" | "surface" | "accent" | "contrast";
+  width?: "narrow" | "contained" | "wide" | "full";
+  spacing?: "none" | "compact" | "comfortable" | "spacious";
+  columns?: number;
+  imagePosition?: "left" | "right" | "top" | "background";
+  icon?: string;
   eyebrow?: string;
   title?: string;
   body?: string;
@@ -75,7 +117,27 @@ export interface StorefrontSection {
   source?: "featured" | "all" | "category";
   category?: string;
   limit?: number;
-  items?: StorefrontBenefit[];
+  items?: Array<StorefrontBenefit | StorefrontFaqItem | StorefrontGalleryItem>;
+  content?: string;
+  videoUrl?: string | null;
+  caption?: string;
+}
+
+export interface StorefrontPageLink {
+  id: string;
+  title: string;
+  label: string;
+  slug: string;
+  pageType: string;
+}
+
+export interface StorefrontPage extends StorefrontPageLink {
+  navigationLabel: string;
+  showInNavigation: boolean;
+  seoTitle: string;
+  seoDescription: string;
+  sections: StorefrontSection[];
+  status: "draft" | "published" | "archived";
 }
 
 export interface StorefrontCheckoutSettings {
@@ -151,6 +213,8 @@ export interface CatalogItem {
   updatedAt?: string;
   soldQty?: number;
   variants?: ProductVariant[];
+  source?: "external_api" | string;
+  externalCheckoutUrl?: string | null;
   durationMinutes?: number | null;
   itemType?: "product" | "service";
   type?: "product" | "service";
@@ -185,6 +249,8 @@ export interface Catalog {
   theme: StorefrontTheme;
   checkout: StorefrontCheckoutSettings;
   campaign?: StorefrontCampaign | null;
+  page?: StorefrontPage | null;
+  pages?: StorefrontPageLink[];
   currencySymbol: string;
   currencyLabel: string;
   categories: string[];

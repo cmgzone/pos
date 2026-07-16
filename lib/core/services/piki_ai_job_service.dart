@@ -226,6 +226,39 @@ class PikiAiJobService {
     return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
   }
 
+  static Future<PikiAiJob> createStorefrontPageJob(
+    String pageId,
+    String instruction,
+  ) async {
+    final backendUrl = SyncSettingsService.backendUrl;
+    if (backendUrl.isEmpty) throw Exception('Cloud sync is not configured');
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final license = await _ensureAccess(backendUrl, deviceId);
+    final response = await http
+        .post(
+          _buildUri(backendUrl, 'catalog/pages/$pageId/ai-jobs'),
+          headers: {
+            ..._authHeaders(license),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'deviceId': deviceId,
+            'instruction': instruction.trim(),
+          }),
+        )
+        .timeout(_timeout);
+    final body = _decodeBody(response);
+    if (response.statusCode != 202 ||
+        body['ok'] != true ||
+        body['job'] is! Map) {
+      throw Exception(
+        body['error']?.toString() ??
+            'Piki could not start the page design job (${response.statusCode}).',
+      );
+    }
+    return PikiAiJob.fromJson(Map<String, dynamic>.from(body['job'] as Map));
+  }
+
   static Future<PikiAiJob> createMarketingContentJob(
     String instruction, {
     String branchId = 'main_branch',

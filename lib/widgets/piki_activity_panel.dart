@@ -57,9 +57,13 @@ class PikiActivityPanel extends StatelessWidget {
                     Text(
                       currentStep?.isNotEmpty == true
                           ? currentStep!
-                          : job?.jobType == 'storefront_theme'
-                          ? 'Preparing your storefront'
-                          : 'Preparing your import',
+                          : switch (job?.jobType) {
+                              'storefront_theme' => 'Preparing your storefront',
+                              'storefront_page' => 'Preparing your custom page',
+                              'storefront_marketing' =>
+                                'Preparing your marketing pack',
+                              _ => 'Preparing your import',
+                            },
                       style: TextStyle(
                         color: theme.colorScheme.onSurfaceVariant,
                         fontSize: 13,
@@ -259,6 +263,10 @@ class _ActivityLine extends StatelessWidget {
       'storefront_validating' => Icons.fact_check_outlined,
       'storefront_saving' => Icons.cloud_upload_outlined,
       'storefront_ready' => Icons.web_asset_rounded,
+      'page_brief' => Icons.notes_rounded,
+      'page_planning' => Icons.account_tree_outlined,
+      'page_validating' => Icons.fact_check_outlined,
+      'page_ready' => Icons.web_stories_outlined,
       'marketing_context' => Icons.inventory_2_outlined,
       'marketing_writing' => Icons.edit_note_rounded,
       'marketing_validating' => Icons.fact_check_outlined,
@@ -273,7 +281,8 @@ class _ActivityLine extends StatelessWidget {
     if (event?.isWarning == true) return AppColors.warning;
     if (event?.eventType == 'review_required' ||
         event?.eventType == 'completed' ||
-        event?.eventType == 'storefront_ready') {
+        event?.eventType == 'storefront_ready' ||
+        event?.eventType == 'page_ready') {
       return AppColors.success;
     }
     return theme.colorScheme.primary;

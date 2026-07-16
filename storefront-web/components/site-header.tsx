@@ -1,7 +1,7 @@
 "use client";
 
 import { Moon, Search, ShoppingBag, Sun } from "lucide-react";
-import type { Business, Storefront, StorefrontAppearance } from "@/lib/types";
+import type { Business, Storefront, StorefrontAppearance, StorefrontPageLink } from "@/lib/types";
 import { useStore } from "./store-provider";
 import { getInitials } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ interface SiteHeaderProps {
   appearance: StorefrontAppearance;
   onAppearanceChange: (appearance: StorefrontAppearance) => void;
   showTracking?: boolean;
+  pages?: StorefrontPageLink[];
 }
 
 export function SiteHeader({
@@ -21,13 +22,16 @@ export function SiteHeader({
   appearance,
   onAppearanceChange,
   showTracking = true,
+  pages = [],
 }: SiteHeaderProps) {
   const { cartCount, setIsCartOpen } = useStore();
   const brand = business?.brand;
   const logoUrl = brand?.logoUrl;
 
   const scrollToCatalog = () => {
-    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
+    const catalog = document.getElementById("catalog");
+    if (catalog) catalog.scrollIntoView({ behavior: "smooth" });
+    else window.location.href = "/";
   };
 
   return (
@@ -64,6 +68,15 @@ export function SiteHeader({
           >
             {storefront?.type === "services" ? "Services" : storefront?.type === "restaurant" ? "Menu" : "Shop"}
           </button>
+          {pages.slice(0, 3).map((page) => (
+            <a
+              key={page.id}
+              href={`/page/${encodeURIComponent(page.slug)}`}
+              className="hidden rounded-md px-3 py-2 text-[13px] font-medium text-muted-strong transition hover:text-foreground lg:inline-flex"
+            >
+              {page.label || page.title}
+            </a>
+          ))}
           {showTracking && (
             <button
               onClick={onTrackOrder}

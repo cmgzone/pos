@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -11,12 +11,17 @@ import {
   Sparkles,
   Star,
   Truck,
+  PlayCircle,
+  icons,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type {
   Branch,
   Catalog,
   CatalogItem,
   StorefrontBenefit,
+  StorefrontFaqItem,
+  StorefrontGalleryItem,
   StorefrontSection,
   StorefrontSectionAction,
 } from "@/lib/types";
@@ -162,24 +167,28 @@ export function StorefrontSections({
                 </div>
               </SectionShell>
             );
-          case "benefits":
+          case "benefits": {
             if (!section.items?.length) return null;
+            const benefits = section.items.filter(isBenefit);
+            if (!benefits.length) return null;
             return (
               <SectionShell key={section.id} section={section}>
                 <SectionHeading section={section} />
-                <div className="mt-8 grid gap-4 md:grid-cols-3">
-                  {section.items.map((item, index) => (
+                <DynamicGrid columns={section.columns} className="mt-8 gap-4">
+                  {benefits.map((item, index) => (
                     <BenefitCard key={`${item.title}-${index}`} item={item} />
                   ))}
-                </div>
+                </DynamicGrid>
               </SectionShell>
             );
+          }
           case "story": {
             const cover = catalog.business.brand.coverUrls?.[0] ||
               catalog.business.brand.coverUrl;
+            const sideBySide = section.imagePosition === "left" || section.imagePosition === "right";
             return (
               <SectionShell key={section.id} section={section}>
-                <div className={`grid items-center gap-10 ${section.showImage && cover ? "lg:grid-cols-2" : ""}`}>
+                <div className={`grid items-center gap-10 ${section.showImage && cover && sideBySide ? "lg:grid-cols-2" : ""}`}>
                   <div className={alignmentClass(section.alignment)}>
                     <SectionHeading section={section} />
                   </div>
@@ -187,13 +196,82 @@ export function StorefrontSections({
                     <img
                       src={cover}
                       alt=""
-                      className="aspect-[4/3] h-full w-full rounded-[var(--theme-radius)] object-cover ring-1 ring-border-subtle"
+                      className={`aspect-[4/3] h-full w-full rounded-[var(--theme-radius)] object-cover ring-1 ring-border-subtle ${section.imagePosition === "left" ? "lg:order-first" : ""}`}
                     />
                   )}
                 </div>
               </SectionShell>
             );
           }
+          case "richText":
+            return (
+              <SectionShell key={section.id} section={section} narrow={section.width === "narrow"}>
+                <div className={alignmentClass(section.alignment)}>
+                  <SectionHeading section={section} />
+                  {section.content && (
+                    <div className="section-muted mt-6 whitespace-pre-line text-[15px] leading-8">
+                      {section.content}
+                    </div>
+                  )}
+                </div>
+              </SectionShell>
+            );
+          case "faq": {
+            const items = (section.items || []).filter(isFaqItem);
+            if (!items.length) return null;
+            return (
+              <SectionShell key={section.id} section={section} narrow>
+                <SectionHeading section={section} />
+                <div className="mt-8 divide-y divide-border-subtle border-y border-border-subtle">
+                  {items.map((item, index) => (
+                    <details key={`${item.question}-${index}`} className="group py-5">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-5 text-[15px] font-semibold">
+                        {item.question}
+                        <span className="text-xl text-accent transition group-open:rotate-45">+</span>
+                      </summary>
+                      <p className="section-muted max-w-2xl pt-3 text-[14px] leading-7">{item.answer}</p>
+                    </details>
+                  ))}
+                </div>
+              </SectionShell>
+            );
+          }
+          case "gallery": {
+            const items = (section.items || []).filter(isGalleryItem);
+            if (!items.length) return null;
+            return (
+              <SectionShell key={section.id} section={section}>
+                <SectionHeading section={section} />
+                <DynamicGrid columns={section.columns} className="mt-8 gap-4">
+                  {items.map((item, index) => (
+                    <figure key={`${item.imageUrl}-${index}`} className="overflow-hidden rounded-[var(--theme-radius)] bg-surface-elevated ring-1 ring-border-subtle">
+                      <img src={item.imageUrl} alt={item.alt || ""} className="aspect-[4/3] w-full object-cover" loading="lazy" />
+                      {item.caption && <figcaption className="section-muted p-4 text-[12px]">{item.caption}</figcaption>}
+                    </figure>
+                  ))}
+                </DynamicGrid>
+              </SectionShell>
+            );
+          }
+          case "video":
+            if (!section.videoUrl) return null;
+            return (
+              <SectionShell key={section.id} section={section} narrow>
+                <SectionHeading section={section} />
+                <div className="relative mt-8 aspect-video overflow-hidden rounded-[var(--theme-radius)] bg-surface-elevated ring-1 ring-border-subtle">
+                  <iframe
+                    src={section.videoUrl}
+                    title={section.title || "Store video"}
+                    className="h-full w-full"
+                    loading="lazy"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                  <PlayCircle className="pointer-events-none absolute left-4 top-4 h-6 w-6 text-white/70" />
+                </div>
+                {section.caption && <p className="section-muted mt-3 text-[12px]">{section.caption}</p>}
+              </SectionShell>
+            );
           case "catalog":
             return (
               <SectionShell key={section.id} section={section}>
@@ -379,26 +457,58 @@ function SectionShell({
 }) {
   return (
     <section
-      className="storefront-section border-b border-border-subtle px-4 py-16 sm:px-6 sm:py-20 lg:px-10"
+      className="storefront-section border-b border-border-subtle px-4 sm:px-6 lg:px-10"
       data-section-style={section.style}
+      data-section-spacing={section.spacing || "comfortable"}
+      data-section-width={section.width || (narrow ? "narrow" : "contained")}
+      data-image-position={section.imagePosition || "right"}
     >
-      <div className={`mx-auto ${narrow ? "max-w-4xl" : "max-w-6xl"}`}>
+      <div className={`theme-section-inner mx-auto ${narrow ? "max-w-4xl" : ""}`}>
         {children}
       </div>
     </section>
   );
 }
 
+function DynamicGrid({ columns = 3, className, children }: { columns?: number; className?: string; children: ReactNode }) {
+  return (
+    <div
+      className={`theme-dynamic-grid grid ${className || ""}`}
+      style={{ "--section-columns": Math.max(1, Math.min(4, columns)) } as CSSProperties}
+    >
+      {children}
+    </div>
+  );
+}
+
+function isBenefit(item: StorefrontBenefit | StorefrontFaqItem | StorefrontGalleryItem): item is StorefrontBenefit {
+  return "title" in item && "icon" in item;
+}
+
+function isFaqItem(item: StorefrontBenefit | StorefrontFaqItem | StorefrontGalleryItem): item is StorefrontFaqItem {
+  return "question" in item && "answer" in item;
+}
+
+function isGalleryItem(item: StorefrontBenefit | StorefrontFaqItem | StorefrontGalleryItem): item is StorefrontGalleryItem {
+  return "imageUrl" in item;
+}
+
 function SectionHeading({ section }: { section: StorefrontSection }) {
+  const Icon = resolveSectionIcon(section.icon);
   return (
     <div className="max-w-2xl">
+      {Icon && (
+        <span className="theme-section-icon mb-4 inline-flex h-10 w-10 items-center justify-center text-accent">
+          <Icon className="h-5 w-5" />
+        </span>
+      )}
       {section.eyebrow && (
         <p className="section-muted text-[11px] font-semibold uppercase tracking-[0.18em]">
           {section.eyebrow}
         </p>
       )}
       {section.title && (
-        <h2 className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">
+        <h2 className="theme-section-heading mt-2 font-display text-3xl tracking-tight sm:text-4xl">
           {section.title}
         </h2>
       )}
@@ -409,6 +519,15 @@ function SectionHeading({ section }: { section: StorefrontSection }) {
       )}
     </div>
   );
+}
+
+function resolveSectionIcon(value?: string): LucideIcon | null {
+  const requested = String(value || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (!requested) return null;
+  const match = Object.entries(icons).find(([name]) =>
+    name.replace(/[^a-z0-9]/gi, "").toLowerCase() === requested,
+  );
+  return (match?.[1] as LucideIcon | undefined) || null;
 }
 
 function SectionAction({

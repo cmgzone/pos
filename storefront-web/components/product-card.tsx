@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Check, ImageOff, PackageCheck } from "lucide-react";
+import { Plus, Check, ImageOff, PackageCheck, ExternalLink } from "lucide-react";
 import type { CatalogItem, ProductVariant } from "@/lib/types";
 import { formatPrice, getCatalogItemImages } from "@/lib/utils";
 import { useStore } from "./store-provider";
@@ -23,6 +23,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
   const [imageError, setImageError] = useState(false);
 
   const variants = item.variants || [];
+  const isExternal = item.source === "external_api";
   const hasVariants = Boolean(item.hasVariants && variants.length > 0);
   const availableVariants = variants.filter((variant) => variant.available !== false);
   const variantPrices = (availableVariants.length ? availableVariants : variants).map(
@@ -55,6 +56,10 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
   const handleAdd = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isExternal) {
+      if (item.externalCheckoutUrl) window.open(item.externalCheckoutUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
     if (isOutOfStock) return;
     if (hasVariants && !selectedAvailableVariant) {
       setShowQuickView(true);
@@ -70,13 +75,20 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
     : hasVariants && !selectedAvailableVariant
       ? "Choose options"
       : "Add to cart";
+  const openDetails = () => {
+    if (isExternal) {
+      if (item.externalCheckoutUrl) window.open(item.externalCheckoutUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setShowQuickView(true);
+  };
 
   return (
     <StaggerItem>
       <div className="theme-product-card group flex h-full flex-col overflow-hidden rounded-[var(--theme-radius)] border border-border-subtle bg-surface shadow-[0_18px_50px_-34px_rgba(0,0,0,0.85)] transition duration-300 hover:-translate-y-1 hover:border-border-strong hover:shadow-[0_24px_60px_-30px_rgba(0,0,0,0.9)]">
         <button
           type="button"
-          onClick={() => setShowQuickView(true)}
+          onClick={openDetails}
           className="theme-product-image relative aspect-[4/5] overflow-hidden bg-surface-elevated text-left"
         >
           {hasImage ? (
@@ -135,7 +147,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
           )}
           <button
             type="button"
-            onClick={() => setShowQuickView(true)}
+            onClick={openDetails}
             className="text-left"
           >
             <h3 className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground sm:text-[15px]">
@@ -170,7 +182,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
 
           <button
             onClick={handleAdd}
-            disabled={isOutOfStock}
+            disabled={isOutOfStock || (isExternal && !item.externalCheckoutUrl)}
             className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-surface-elevated text-[13px] font-semibold text-foreground transition hover:border-accent hover:bg-accent hover:text-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border-subtle disabled:hover:bg-surface-elevated disabled:hover:text-foreground"
           >
             <motion.span
@@ -180,7 +192,12 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
               transition={{ duration: 0.18 }}
               className="inline-flex items-center gap-2"
             >
-              {added ? (
+              {isExternal ? (
+                <>
+                  <ExternalLink className="h-4 w-4" />
+                  <span>{item.externalCheckoutUrl ? "View product" : "Unavailable"}</span>
+                </>
+              ) : added ? (
                 <>
                   <Check className="h-4 w-4" />
                   Added
@@ -203,7 +220,7 @@ export function ProductCard({ item, currencySymbol, currencyCode }: ProductCardP
         </div>
       </div>
 
-      {showQuickView && (
+      {showQuickView && !isExternal && (
         <QuickViewModal
           item={item}
           currencySymbol={currencySymbol}
