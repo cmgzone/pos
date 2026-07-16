@@ -232,9 +232,7 @@ function StorefrontInner() {
   const isLoading = catalog === null;
   const isSearching = Boolean(search) || category !== "all";
   const activeSections = catalog?.page?.sections || catalog?.theme.sections || [];
-  const usesGeneratedSite = Boolean(
-    catalog?.siteBuild && !catalog?.campaign,
-  );
+  const usesGeneratedSite = Boolean(catalog?.siteBuild);
 
   return (
     <>

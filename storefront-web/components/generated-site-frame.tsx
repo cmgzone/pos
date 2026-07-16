@@ -156,7 +156,9 @@ export function GeneratedSiteFrame({
 function buildSiteDocument(catalog: Catalog, scope: string): string {
   const build = catalog.siteBuild!;
   const accent = catalog.theme.design.accentColor || catalog.business.brand.primaryColor || "#d14343";
-  let markup = catalog.page ? build.pageHtml || build.html : build.html;
+  let markup = catalog.page || catalog.campaign
+    ? build.pageHtml || build.html
+    : build.html;
   markup = replaceSlot(markup, "piki-brand", brandMarkup(catalog));
   markup = replaceSlot(markup, "piki-store-intro", storeIntroMarkup(catalog));
   markup = replaceSlot(markup, "piki-cover", coverMarkup(catalog));
@@ -280,12 +282,27 @@ function footerMarkup(catalog: Catalog): string {
 
 function pageMarkup(catalog: Catalog): string {
   const page = catalog.page;
-  if (!page) return "";
+  if (!page) return campaignMarkup(catalog);
   const sections = page.sections
     .filter((section) => section.enabled !== false && section.type !== "announcement")
     .map((section) => pageSectionMarkup(section))
     .join("");
   return `<main class="piki-binding-page"><header class="piki-binding-page-heading"><p class="piki-binding-page-eyebrow">${escapeHtml(page.pageType || "Page")}</p><h1>${escapeHtml(page.title)}</h1>${page.seoDescription ? `<p>${escapeHtml(page.seoDescription)}</p>` : ""}</header>${sections}</main>`;
+}
+
+function campaignMarkup(catalog: Catalog): string {
+  const campaign = catalog.campaign;
+  if (!campaign) return "";
+  const productIds = new Set(campaign.productIds || []);
+  const products = catalog.products.filter((item) => productIds.has(item.id));
+  const heroImage = safeTrustedImageUrl(campaign.heroImageUrl);
+  const highlights = (campaign.highlights || [])
+    .map(
+      (highlight) =>
+        `<li class="piki-binding-page-item">${escapeHtml(highlight)}</li>`,
+    )
+    .join("");
+  return `<main class="piki-binding-page piki-binding-campaign"><header class="piki-binding-page-heading">${campaign.badgeLabel ? `<p class="piki-binding-page-eyebrow">${escapeHtml(campaign.badgeLabel)}</p>` : campaign.eyebrow ? `<p class="piki-binding-page-eyebrow">${escapeHtml(campaign.eyebrow)}</p>` : ""}<h1>${escapeHtml(campaign.title)}</h1>${campaign.description ? `<p>${escapeHtml(campaign.description)}</p>` : ""}${campaign.buttonLabel ? `<a class="piki-binding-page-action" href="#piki-campaign-products">${escapeHtml(campaign.buttonLabel)}</a>` : ""}${heroImage ? `<img class="piki-binding-cover" src="${escapeAttr(heroImage)}" alt="" loading="eager">` : ""}</header>${highlights ? `<section class="piki-binding-page-section" data-style="surface"><div class="piki-binding-page-inner"><ul class="piki-binding-page-items">${highlights}</ul></div></section>` : ""}<section id="piki-campaign-products" class="piki-binding-page-section"><div class="piki-binding-page-inner"><p class="piki-binding-page-eyebrow">Campaign selection</p><h2>${escapeHtml(campaign.name)}</h2>${productsMarkup({ ...catalog, products })}</div></section></main>`;
 }
 
 function pageSectionMarkup(section: StorefrontSection): string {

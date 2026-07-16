@@ -15969,14 +15969,12 @@ async function loadPublicCatalog(
     throw createHttpError(404, 'This page is not available for this storefront.');
   }
 
-  const siteBuild = campaign
-    ? null
-    : previewSiteBuildId
-      ? await getStorefrontSiteBuild(query, business.id, previewSiteBuildId)
-      : await loadPublishedStorefrontSiteBuild(query, business.id, {
-          branchId: selectedBranch.id,
-          storefrontType: selectedStorefrontType,
-        });
+  const siteBuild = previewSiteBuildId
+    ? await getStorefrontSiteBuild(query, business.id, previewSiteBuildId)
+    : await loadPublishedStorefrontSiteBuild(query, business.id, {
+        branchId: selectedBranch.id,
+        storefrontType: selectedStorefrontType,
+      });
   if (
     previewSiteBuildId &&
     (!siteBuild ||
