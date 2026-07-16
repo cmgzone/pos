@@ -181,6 +181,7 @@ const {
   parseStorefrontAiThemeResponse,
   storefrontJsonResponseFormat,
 } = require('./storefrontThemeAi');
+const { requestOpenRouterJson } = require('./openRouterJson');
 const {
   createStorefrontThemePreviewToken,
   verifyStorefrontThemePreviewToken,
@@ -8182,47 +8183,28 @@ ${JSON.stringify(products)}
 
 OWNER BRIEF:
 ${instruction}`;
-  const sendRequest = async (useJsonMode) => {
-    const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${aiConfig.api_key}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://pikipos.com',
-        'X-Title': 'Piki Marketing Studio',
+  const requestResult = await requestOpenRouterJson({
+    fetchImpl,
+    baseUrl: OPENROUTER_BASE_URL,
+    apiKey: aiConfig.api_key,
+    model: aiConfig.model || 'openai/gpt-4o-mini',
+    fallbackModel: config.openRouterFallbackModel,
+    messages: [
+      {
+        role: 'system',
+        content: 'Return one valid JSON object only. Never wrap it in markdown.',
       },
-      body: JSON.stringify({
-        model: aiConfig.model || 'openai/gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'Return one valid JSON object only. Never wrap it in markdown.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        ...(useJsonMode ? { response_format: storefrontJsonResponseFormat() } : {}),
-        max_tokens: 3500,
-        temperature: 0.45,
-      }),
-    });
-    return { response, body: await readMaybeJson(response) };
-  };
-  let requestResult = await sendRequest(true);
-  if (
-    isUnsupportedJsonModeResponse(
-      requestResult.response.status,
-      requestResult.body,
-    )
-  ) {
-    requestResult = await sendRequest(false);
-  }
-  const { response, body } = requestResult;
-  if (!response.ok) {
-    throw createHttpError(
-      response.status === 401 ? 502 : response.status,
-      body?.error?.message || body?.message || 'Piki marketing generation failed',
-    );
-  }
+      { role: 'user', content: prompt },
+    ],
+    maxTokens: 3500,
+    temperature: 0.45,
+    title: 'Piki Marketing Studio',
+    responseFormat: storefrontJsonResponseFormat(),
+    isUsableBody: (candidateBody) => Boolean(
+      parseJsonObjectFromText(extractOpenRouterTextContent(candidateBody)),
+    ),
+  });
+  const body = requestResult.body;
   const parsed = parseJsonObjectFromText(extractOpenRouterTextContent(body));
   if (!parsed) {
     throw createHttpError(502, 'Piki could not prepare a valid marketing draft.');

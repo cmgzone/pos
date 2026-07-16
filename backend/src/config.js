@@ -119,6 +119,8 @@ const config = {
     '',
   serpApiBaseUrl:
     process.env.SERPAPI_BASE_URL?.trim() || 'https://google.serper.dev/search',
+  openRouterFallbackModel:
+    process.env.OPENROUTER_FALLBACK_MODEL?.trim() || 'openrouter/free',
   bunnyStorageZone: process.env.BUNNY_STORAGE_ZONE?.trim() || '',
   bunnyStorageAccessKey:
     process.env.BUNNY_STORAGE_ACCESS_KEY?.trim() ||
