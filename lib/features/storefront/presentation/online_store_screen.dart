@@ -96,7 +96,10 @@ class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _OnlineStoreHeader(selectedSection: _selectedSection),
-            const _OnlineStorePikiStatusBar(),
+            _OnlineStorePikiStatusBar(
+              selectedSection: _selectedSection,
+              onOpenSection: _selectSection,
+            ),
             if (isWide)
               Expanded(
                 child: Row(
@@ -158,7 +161,13 @@ class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
 }
 
 class _OnlineStorePikiStatusBar extends StatefulWidget {
-  const _OnlineStorePikiStatusBar();
+  final OnlineStoreSection selectedSection;
+  final ValueChanged<OnlineStoreSection> onOpenSection;
+
+  const _OnlineStorePikiStatusBar({
+    required this.selectedSection,
+    required this.onOpenSection,
+  });
 
   @override
   State<_OnlineStorePikiStatusBar> createState() =>
@@ -166,7 +175,7 @@ class _OnlineStorePikiStatusBar extends StatefulWidget {
 }
 
 class _OnlineStorePikiStatusBarState extends State<_OnlineStorePikiStatusBar> {
-  PikiAiJob? _job;
+  List<PikiAiJob> _jobs = const [];
   Timer? _timer;
   bool _refreshing = false;
 
@@ -195,12 +204,15 @@ class _OnlineStorePikiStatusBarState extends State<_OnlineStorePikiStatusBar> {
           .where(
             (job) => const {
               'storefront_theme',
+              'storefront_site',
+              'storefront_page',
               'marketing_content',
+              'storefront_marketing',
             }.contains(job.jobType),
           )
           .toList();
       if (!mounted) return;
-      setState(() => _job = onlineStoreJobs.firstOrNull);
+      setState(() => _jobs = onlineStoreJobs);
     } catch (_) {
       // Online Store remains usable when cloud activity cannot refresh.
     } finally {
@@ -210,13 +222,24 @@ class _OnlineStorePikiStatusBarState extends State<_OnlineStorePikiStatusBar> {
 
   @override
   Widget build(BuildContext context) {
-    final job = _job;
+    PikiAiJob? job;
+    for (final candidate in _jobs) {
+      if (_sectionForJob(candidate) != widget.selectedSection) {
+        job = candidate;
+        break;
+      }
+    }
     if (job == null) return const SizedBox.shrink();
     final colors = Theme.of(context).colorScheme;
+    final destination = _sectionForJob(job);
+    final area = destination == OnlineStoreSection.marketing
+        ? 'marketing'
+        : 'website';
+    final currentStep = job.currentStep?.trim();
     return Material(
       color: colors.primaryContainer.withValues(alpha: 0.72),
       child: InkWell(
-        onTap: _refresh,
+        onTap: () => widget.onOpenSection(destination),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 9, 24, 10),
           child: Row(
@@ -233,14 +256,30 @@ class _OnlineStorePikiStatusBarState extends State<_OnlineStorePikiStatusBar> {
               ),
               const SizedBox(width: 11),
               Expanded(
-                child: Text(
-                  '${job.title ?? 'Piki is working'} · ${job.currentStep ?? 'Working in Piki Cloud'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.onPrimaryContainer,
-                    fontWeight: FontWeight.w800,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Piki is working on your $area',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.onPrimaryContainer,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (currentStep?.isNotEmpty == true)
+                      Text(
+                        currentStep!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onPrimaryContainer.withValues(
+                            alpha: 0.78,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(width: 10),
@@ -252,17 +291,37 @@ class _OnlineStorePikiStatusBarState extends State<_OnlineStorePikiStatusBar> {
                 ),
               ),
               const SizedBox(width: 12),
-              Text(
-                'Continues after app closes',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colors.onPrimaryContainer.withValues(alpha: 0.78),
+              TextButton.icon(
+                onPressed: () => widget.onOpenSection(destination),
+                icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                label: const Text('View progress'),
+                style: TextButton.styleFrom(
+                  foregroundColor: colors.onPrimaryContainer,
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ),
+              if (MediaQuery.sizeOf(context).width >= 1120) ...[
+                const SizedBox(width: 8),
+                Text(
+                  'Safe to close the app',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onPrimaryContainer.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  OnlineStoreSection _sectionForJob(PikiAiJob job) {
+    return switch (job.jobType) {
+      'marketing_content' ||
+      'storefront_marketing' => OnlineStoreSection.marketing,
+      _ => OnlineStoreSection.website,
+    };
   }
 }
 
