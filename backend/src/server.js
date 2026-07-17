@@ -5395,7 +5395,7 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
   try {
     await ensureAiVoiceColumns();
     const result = await query(
-      `SELECT api_key, serp_api_key, dashscope_api_key, model, image_model, stt_model, tts_model, tts_voice,
+      `SELECT api_key, serp_api_key, dashscope_api_key, dashscope_base_url, model, image_model, stt_model, tts_model, tts_voice,
               chat_provider, image_provider, stt_provider, tts_provider, enabled, updated_at
        FROM platform_ai_config
        WHERE id = 1`
@@ -5404,6 +5404,7 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
       api_key: '',
       serp_api_key: '',
       dashscope_api_key: '',
+      dashscope_base_url: '',
       model: 'openai/gpt-4o-mini',
       image_model: DEFAULT_IMAGE_MODEL,
       stt_model: DEFAULT_STT_MODEL,
@@ -5432,6 +5433,7 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
         hasKey,
         dashscopeApiKey: maskedDashScopeKey,
         hasDashScopeKey,
+        dashscopeBaseUrl: row.dashscope_base_url || '',
         serpApiKey: maskSecret(effectiveSerpApiKey),
         hasSerpApiKey,
         serpApiKeySource: row.serp_api_key
@@ -5467,6 +5469,7 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
     const imageProvider = normalizeOptionalText(req.body?.imageProvider) || 'openrouter';
     const sttProvider = normalizeOptionalText(req.body?.sttProvider) || 'openrouter';
     const ttsProvider = normalizeOptionalText(req.body?.ttsProvider) || 'openrouter';
+    const dashscopeBaseUrl = normalizeOptionalText(req.body?.dashscopeBaseUrl) || '';
     const enabled = Boolean(req.body?.enabled);
     const rawApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
     const rawDashScopeApiKey = typeof req.body?.dashscopeApiKey === 'string' ? req.body.dashscopeApiKey.trim() : '';
@@ -5498,25 +5501,26 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
     }
 
     await query(
-      `INSERT INTO platform_ai_config (id, api_key, serp_api_key, dashscope_api_key, model, image_model, stt_model, tts_model, tts_voice,
+      `INSERT INTO platform_ai_config (id, api_key, serp_api_key, dashscope_api_key, dashscope_base_url, model, image_model, stt_model, tts_model, tts_voice,
                                        chat_provider, image_provider, stt_provider, tts_provider, enabled, updated_at)
-       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
        ON CONFLICT (id) DO UPDATE
        SET api_key = $1,
            serp_api_key = $2,
            dashscope_api_key = $3,
-           model = $4,
-           image_model = $5,
-           stt_model = $6,
-           tts_model = $7,
-           tts_voice = $8,
-           chat_provider = $9,
-           image_provider = $10,
-           stt_provider = $11,
-           tts_provider = $12,
-           enabled = $13,
+           dashscope_base_url = $4,
+           model = $5,
+           image_model = $6,
+           stt_model = $7,
+           tts_model = $8,
+           tts_voice = $9,
+           chat_provider = $10,
+           image_provider = $11,
+           stt_provider = $12,
+           tts_provider = $13,
+           enabled = $14,
            updated_at = NOW()`,
-      [nextApiKey, nextSerpApiKey, nextDashScopeApiKey, model, imageModel, sttModel, ttsModel, ttsVoice,
+      [nextApiKey, nextSerpApiKey, nextDashScopeApiKey, dashscopeBaseUrl, model, imageModel, sttModel, ttsModel, ttsVoice,
        chatProvider, imageProvider, sttProvider, ttsProvider, enabled]
     );
 
@@ -5538,6 +5542,7 @@ app.post('/api/platform/ai-test', requirePlatformAdmin, async (req, res, next) =
       const testResult = await dashscopeProvider.testDashScopeConnection(
         aiConfig.dashscope_api_key,
         aiConfig.model || 'qwen-turbo',
+        aiConfig.dashscope_base_url || undefined,
       );
       res.json({ ok: true, response: testResult.response, model: testResult.model, provider: 'dashscope' });
       return;
@@ -5586,6 +5591,7 @@ app.post('/api/platform/dashscope-test', requirePlatformAdmin, async (req, res, 
     const testResult = await dashscopeProvider.testDashScopeConnection(
       aiConfig.dashscope_api_key,
       aiConfig.model || 'qwen-turbo',
+      aiConfig.dashscope_base_url || undefined,
     );
     res.json({ ok: true, response: testResult.response, model: testResult.model });
   } catch (error) {
@@ -5599,7 +5605,11 @@ app.get('/api/platform/ai-models', requirePlatformAdmin, async (req, res, next) 
     const type = normalizeOptionalText(req.query?.type) || 'chat';
     if (provider === 'dashscope') {
       const aiConfig = await loadPlatformAiConfig();
-      const models = await dashscopeProvider.fetchDashScopeModels(aiConfig.dashscope_api_key, type);
+      const models = await dashscopeProvider.fetchDashScopeModels(
+        aiConfig.dashscope_api_key,
+        type,
+        aiConfig.dashscope_base_url || undefined,
+      );
       const voices = type === 'tts' ? dashscopeProvider.DASHSCOPE_TTS_VOICES : undefined;
       res.json({ ok: true, models, voices, provider: 'dashscope', type });
       return;
@@ -6658,12 +6668,16 @@ async function ensureAiVoiceColumns() {
     `ALTER TABLE platform_ai_config
      ADD COLUMN IF NOT EXISTS tts_provider text NOT NULL DEFAULT 'openrouter'`,
   );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS dashscope_base_url text NOT NULL DEFAULT ''`,
+  );
 }
 
 async function loadPlatformAiConfig() {
   await ensureAiVoiceColumns();
   const result = await query(
-    `SELECT api_key, serp_api_key, dashscope_api_key, model, image_model, stt_model, tts_model, tts_voice,
+    `SELECT api_key, serp_api_key, dashscope_api_key, dashscope_base_url, model, image_model, stt_model, tts_model, tts_voice,
             chat_provider, image_provider, stt_provider, tts_provider, enabled
      FROM platform_ai_config
      WHERE id = 1`,
@@ -6673,6 +6687,7 @@ async function loadPlatformAiConfig() {
       api_key: '',
       serp_api_key: '',
       dashscope_api_key: '',
+      dashscope_base_url: '',
       model: 'openai/gpt-4o-mini',
       image_model: DEFAULT_IMAGE_MODEL,
       stt_model: DEFAULT_STT_MODEL,
@@ -6729,7 +6744,7 @@ function getTtsApiKey(aiConfig) {
 function getChatBaseUrl(aiConfig) {
   if (!aiConfig) return OPENROUTER_BASE_URL;
   if (aiConfig.chat_provider === 'dashscope') {
-    return dashscopeProvider.DASHSCOPE_BASE_URL;
+    return aiConfig.dashscope_base_url || dashscopeProvider.DASHSCOPE_BASE_URL;
   }
   return OPENROUTER_BASE_URL;
 }
@@ -6737,7 +6752,7 @@ function getChatBaseUrl(aiConfig) {
 function getImageBaseUrl(aiConfig) {
   if (!aiConfig) return OPENROUTER_BASE_URL;
   if (aiConfig.image_provider === 'dashscope') {
-    return dashscopeProvider.DASHSCOPE_BASE_URL;
+    return aiConfig.dashscope_base_url || dashscopeProvider.DASHSCOPE_BASE_URL;
   }
   return OPENROUTER_BASE_URL;
 }

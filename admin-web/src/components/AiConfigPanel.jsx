@@ -50,6 +50,7 @@ export default function AiConfigPanel({ token }) {
   const [hasKey, setHasKey] = useState(false)
   const [dashscopeApiKey, setDashscopeApiKey] = useState('')
   const [hasDashScopeKey, setHasDashScopeKey] = useState(false)
+  const [dashscopeBaseUrl, setDashscopeBaseUrl] = useState('')
   const [serpApiKey, setSerpApiKey] = useState('')
   const [hasSerpApiKey, setHasSerpApiKey] = useState(false)
   const [serpApiKeySource, setSerpApiKeySource] = useState('none')
@@ -138,6 +139,7 @@ export default function AiConfigPanel({ token }) {
           setHasKey(data.data.hasKey)
           setDashscopeApiKey(data.data.dashscopeApiKey || '')
           setHasDashScopeKey(data.data.hasDashScopeKey)
+          setDashscopeBaseUrl(data.data.dashscopeBaseUrl || '')
           setSerpApiKey(data.data.serpApiKey || '')
           setHasSerpApiKey(Boolean(data.data.hasSerpApiKey))
           setSerpApiKeySource(data.data.serpApiKeySource || 'none')
@@ -245,7 +247,7 @@ export default function AiConfigPanel({ token }) {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey, dashscopeApiKey, serpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice,
+          apiKey, dashscopeApiKey, dashscopeBaseUrl, serpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice,
           chatProvider, imageProvider, sttProvider, ttsProvider, enabled,
         }),
       })
@@ -579,6 +581,19 @@ export default function AiConfigPanel({ token }) {
           </div>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
             Get your key from <a href="https://dashscope.console.aliyun.com/apiKey" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-secondary)' }}>DashScope Console</a>
+          </span>
+        </div>
+        <div className="form-group" style={{ marginTop: '1rem' }}>
+          <label className="form-label">Base URL (OpenAI Compatible)</label>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="https://ws-xxxxx.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+            value={dashscopeBaseUrl}
+            onChange={(e) => setDashscopeBaseUrl(e.target.value)}
+          />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            Your workspace-specific OpenAI-compatible endpoint. Found in your DashScope workspace settings. Leave empty to use the default international endpoint.
           </span>
         </div>
       </div>

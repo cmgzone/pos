@@ -70,12 +70,13 @@ function getDashScopeModels(type) {
   }
 }
 
-async function fetchDashScopeModels(apiKey, type) {
+async function fetchDashScopeModels(apiKey, type, baseUrl) {
   if (!apiKey) return getDashScopeModels(type);
   try {
+    const url = `${(baseUrl || DASHSCOPE_BASE_URL).replace(/\/+$/, '')}/models`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${DASHSCOPE_BASE_URL}/models`, {
+    const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
       signal: controller.signal,
     });
