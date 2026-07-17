@@ -68,10 +68,36 @@ export default function AiConfigPanel({ token }) {
   const [showSerpApiKey, setShowSerpApiKey] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
 
-  const [dashscopeChatModels, setDashscopeChatModels] = useState([])
-  const [dashscopeImageModels, setDashscopeImageModels] = useState([])
-  const [dashscopeSttModels, setDashscopeSttModels] = useState([])
-  const [dashscopeTtsModels, setDashscopeTtsModels] = useState([])
+  const DASHSCOPE_CHAT_FALLBACK = [
+    { id: 'qwen-max', name: 'Qwen Max', tier: 'Pro' },
+    { id: 'qwen-plus', name: 'Qwen Plus', tier: 'Balanced' },
+    { id: 'qwen-turbo', name: 'Qwen Turbo', tier: 'Budget' },
+    { id: 'qwen-long', name: 'Qwen Long', tier: 'Budget' },
+    { id: 'qwen3-235b-a22b', name: 'Qwen3 235B', tier: 'Pro' },
+    { id: 'qwen3-32b', name: 'Qwen3 32B', tier: 'Balanced' },
+    { id: 'qwq-plus', name: 'QwQ Plus (Reasoning)', tier: 'Pro' },
+    { id: 'deepseek-r1', name: 'DeepSeek R1', tier: 'Pro' },
+    { id: 'deepseek-v3', name: 'DeepSeek V3', tier: 'Balanced' },
+  ]
+  const DASHSCOPE_IMAGE_FALLBACK = [
+    { id: 'wanx2.1-t2i-turbo', name: 'Wanx 2.1 Turbo', tier: 'Image' },
+    { id: 'wanx2.1-t2i-plus', name: 'Wanx 2.1 Plus', tier: 'Image' },
+    { id: 'flux-schnell', name: 'Flux Schnell', tier: 'Image' },
+  ]
+  const DASHSCOPE_STT_FALLBACK = [
+    { id: 'paraformer-v2', name: 'Paraformer V2', tier: 'STT' },
+    { id: 'sensevoice-v1', name: 'SenseVoice V1', tier: 'STT' },
+  ]
+  const DASHSCOPE_TTS_FALLBACK = [
+    { id: 'cosyvoice-v2', name: 'CosyVoice V2', tier: 'TTS' },
+    { id: 'sambert-zhichu-v1', name: 'Sambert ZhiChu (Male)', tier: 'TTS' },
+    { id: 'sambert-zhimiao-v1', name: 'Sambert ZhiMiao (Female)', tier: 'TTS' },
+  ]
+
+  const [dashscopeChatModels, setDashscopeChatModels] = useState(DASHSCOPE_CHAT_FALLBACK)
+  const [dashscopeImageModels, setDashscopeImageModels] = useState(DASHSCOPE_IMAGE_FALLBACK)
+  const [dashscopeSttModels, setDashscopeSttModels] = useState(DASHSCOPE_STT_FALLBACK)
+  const [dashscopeTtsModels, setDashscopeTtsModels] = useState(DASHSCOPE_TTS_FALLBACK)
   const [dashscopeTtsVoices, setDashscopeTtsVoices] = useState([])
 
   const authHeaders = useCallback(() => ({ 'Authorization': `Bearer ${token}` }), [token])
@@ -134,20 +160,30 @@ export default function AiConfigPanel({ token }) {
       const res = await fetch(`/api/platform/ai-models?provider=dashscope&type=${type}`, { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
-        if (data.ok) {
-          if (type === 'chat') setDashscopeChatModels(data.models || [])
-          if (type === 'image') setDashscopeImageModels(data.models || [])
-          if (type === 'stt') setDashscopeSttModels(data.models || [])
+        if (data.ok && data.models && data.models.length > 0) {
+          if (type === 'chat') setDashscopeChatModels(data.models)
+          if (type === 'image') setDashscopeImageModels(data.models)
+          if (type === 'stt') setDashscopeSttModels(data.models)
           if (type === 'tts') {
-            setDashscopeTtsModels(data.models || [])
+            setDashscopeTtsModels(data.models)
             if (data.voices) setDashscopeTtsVoices(data.voices)
           }
-          return data.models || []
+          return data.models
         }
       }
+      // Fallback to curated lists if API fails or returns empty
+      if (type === 'chat') return DASHSCOPE_CHAT_FALLBACK
+      if (type === 'image') return DASHSCOPE_IMAGE_FALLBACK
+      if (type === 'stt') return DASHSCOPE_STT_FALLBACK
+      if (type === 'tts') return DASHSCOPE_TTS_FALLBACK
       return []
     } catch (err) {
       console.error('Failed to fetch DashScope models:', err)
+      // Return fallback lists on error
+      if (type === 'chat') return DASHSCOPE_CHAT_FALLBACK
+      if (type === 'image') return DASHSCOPE_IMAGE_FALLBACK
+      if (type === 'stt') return DASHSCOPE_STT_FALLBACK
+      if (type === 'tts') return DASHSCOPE_TTS_FALLBACK
       return []
     } finally {
       setFetchingModels(false)
@@ -159,28 +195,28 @@ export default function AiConfigPanel({ token }) {
   }, [fetchConfig])
 
   useEffect(() => {
-    if (chatProvider === 'dashscope' && dashscopeChatModels.length === 0) {
+    if (chatProvider === 'dashscope') {
       fetchDashScopeModels('chat')
     }
-  }, [chatProvider, dashscopeChatModels.length, fetchDashScopeModels])
+  }, [chatProvider, fetchDashScopeModels])
 
   useEffect(() => {
-    if (imageProvider === 'dashscope' && dashscopeImageModels.length === 0) {
+    if (imageProvider === 'dashscope') {
       fetchDashScopeModels('image')
     }
-  }, [imageProvider, dashscopeImageModels.length, fetchDashScopeModels])
+  }, [imageProvider, fetchDashScopeModels])
 
   useEffect(() => {
-    if (sttProvider === 'dashscope' && dashscopeSttModels.length === 0) {
+    if (sttProvider === 'dashscope') {
       fetchDashScopeModels('stt')
     }
-  }, [sttProvider, dashscopeSttModels.length, fetchDashScopeModels])
+  }, [sttProvider, fetchDashScopeModels])
 
   useEffect(() => {
-    if (ttsProvider === 'dashscope' && dashscopeTtsModels.length === 0) {
+    if (ttsProvider === 'dashscope') {
       fetchDashScopeModels('tts')
     }
-  }, [ttsProvider, dashscopeTtsModels.length, fetchDashScopeModels])
+  }, [ttsProvider, fetchDashScopeModels])
 
   const saveConfig = async () => {
     setSaving(true)
@@ -347,6 +383,7 @@ export default function AiConfigPanel({ token }) {
   const renderModelSelector = (label, value, onChange, provider, type, placeholder) => {
     const models = getModelsForProvider(provider, type)
     const listId = getModelListId(type, provider)
+    const isDashScope = provider === 'dashscope'
     return (
       <div className="form-group">
         <label className="form-label">{label}</label>
@@ -359,7 +396,7 @@ export default function AiConfigPanel({ token }) {
             placeholder={placeholder}
             style={{ flex: 1 }}
           />
-          {provider === 'dashscope' && (
+          {isDashScope && (
             <button
               type="button"
               onClick={() => fetchDashScopeModels(type)}
@@ -374,8 +411,9 @@ export default function AiConfigPanel({ token }) {
                 fontSize: '0.8rem',
                 whiteSpace: 'nowrap',
               }}
+              title="Refresh models from DashScope API"
             >
-              {fetchingModels ? '...' : 'Refresh'}
+              {fetchingModels ? 'Loading...' : 'Refresh'}
             </button>
           )}
         </div>
@@ -387,11 +425,21 @@ export default function AiConfigPanel({ token }) {
           ))}
         </datalist>
         {models.length > 0 && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-            <span className="badge badge-info">{provider === 'dashscope' ? 'Alibaba' : 'OpenRouter'}</span>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="badge badge-info">{isDashScope ? 'Alibaba' : 'OpenRouter'}</span>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {models.length} model{models.length !== 1 ? 's' : ''} available
             </span>
+            {isDashScope && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                (Type to search or click Refresh to fetch latest)
+              </span>
+            )}
+          </div>
+        )}
+        {isDashScope && models.length === 0 && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--accent-warning)', marginTop: '0.5rem' }}>
+            No models loaded. Click Refresh to fetch from DashScope API.
           </div>
         )}
       </div>
