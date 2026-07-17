@@ -6726,6 +6726,22 @@ function getTtsApiKey(aiConfig) {
   return aiConfig.api_key || null;
 }
 
+function getChatBaseUrl(aiConfig) {
+  if (!aiConfig) return OPENROUTER_BASE_URL;
+  if (aiConfig.chat_provider === 'dashscope') {
+    return dashscopeProvider.DASHSCOPE_BASE_URL;
+  }
+  return OPENROUTER_BASE_URL;
+}
+
+function getImageBaseUrl(aiConfig) {
+  if (!aiConfig) return OPENROUTER_BASE_URL;
+  if (aiConfig.image_provider === 'dashscope') {
+    return dashscopeProvider.DASHSCOPE_BASE_URL;
+  }
+  return OPENROUTER_BASE_URL;
+}
+
 // Business-authenticated AI routes
 app.get('/api/ai/config', async (req, res, next) => {
   try {
@@ -8291,7 +8307,7 @@ ${instruction}`;
 
   const requestResult = await requestOpenRouterJson({
     fetchImpl,
-    baseUrl: OPENROUTER_BASE_URL,
+    baseUrl: getChatBaseUrl(aiConfig),
     apiKey: getChatApiKey(aiConfig),
     model: aiConfig.model || 'openai/gpt-4o-mini',
     fallbackModel: config.openRouterFallbackModel,
@@ -8414,7 +8430,7 @@ ${instruction}`;
   };
   const requestResult = await requestOpenRouterJson({
     fetchImpl,
-    baseUrl: OPENROUTER_BASE_URL,
+    baseUrl: getChatBaseUrl(aiConfig),
     apiKey: getChatApiKey(aiConfig),
     model: aiConfig.model || 'openai/gpt-4o-mini',
     fallbackModel: config.openRouterFallbackModel,
@@ -8537,7 +8553,7 @@ ${instruction}${targetedEdit}`;
   try {
     requestResult = await requestOpenRouterJson({
       fetchImpl,
-      baseUrl: OPENROUTER_BASE_URL,
+      baseUrl: getChatBaseUrl(aiConfig),
       apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
@@ -8620,7 +8636,7 @@ ${JSON.stringify(
   try {
     const combinedRepairResult = await requestOpenRouterJson({
       fetchImpl,
-      baseUrl: OPENROUTER_BASE_URL,
+      baseUrl: getChatBaseUrl(aiConfig),
       apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
@@ -8695,7 +8711,7 @@ ${JSON.stringify(
   try {
     const structureResult = await requestOpenRouterJson({
       fetchImpl,
-      baseUrl: OPENROUTER_BASE_URL,
+      baseUrl: getChatBaseUrl(aiConfig),
       apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
@@ -8782,7 +8798,7 @@ ${JSON.stringify(compactPreviousSource?.css || '')}`;
   try {
     const stylingResult = await requestOpenRouterJson({
       fetchImpl,
-      baseUrl: OPENROUTER_BASE_URL,
+      baseUrl: getChatBaseUrl(aiConfig),
       apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
@@ -8960,7 +8976,7 @@ OWNER BRIEF:
 ${instruction}`;
   const requestResult = await requestOpenRouterJson({
     fetchImpl,
-    baseUrl: OPENROUTER_BASE_URL,
+    baseUrl: getChatBaseUrl(aiConfig),
     apiKey: getChatApiKey(aiConfig),
     model: aiConfig.model || 'openai/gpt-4o-mini',
     fallbackModel: config.openRouterFallbackModel,
