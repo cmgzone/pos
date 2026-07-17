@@ -62,7 +62,11 @@ test('site compiler rejects executable, document-level, form, and network code',
     ['closing script boundary', '<div></script><piki-products></piki-products></div>', '.shop{}'],
     ['form', '<form><piki-products></piki-products></form>', '.shop{}'],
     ['inline handler', '<div onclick="run()"><piki-products></piki-products></div>', '.shop{}'],
-    ['inline style', '<div style="color:red"><piki-products></piki-products></div>', '.shop{}'],
+    ['inline style with url()', '<div style="background:url(https://example.com/a.png)"><piki-products></piki-products></div>', '.shop{}'],
+    ['inline style with expression', '<div style="width:expression(alert(1))"><piki-products></piki-products></div>', '.shop{}'],
+    ['inline style with behavior', '<div style="behavior:url(evil.htc)"><piki-products></piki-products></div>', '.shop{}'],
+    ['inline style with javascript', '<div style="background:javascript:alert(1)"><piki-products></piki-products></div>', '.shop{}'],
+    ['inline style with position fixed', '<div style="position:fixed;top:0"><piki-products></piki-products></div>', '.shop{}'],
     ['document style tag', '<style>.x{}</style><piki-products></piki-products>', '.shop{}'],
     ['external link', '<a href="https://example.com">Leave</a><piki-products></piki-products>', '.shop{}'],
     ['legacy background URL', '<table background="https://example.com/pixel"><tr><td></td></tr></table><piki-products></piki-products>', '.shop{}'],
@@ -78,6 +82,32 @@ test('site compiler rejects executable, document-level, form, and network code',
       );
     });
   }
+
+  await t.test('safe inline style is accepted', () => {
+    const result = compileStorefrontSitePackage({
+      html: '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:40px"><piki-products></piki-products></div>',
+      css: '.shop{}',
+    });
+    assert.ok(result.html.includes('style='));
+  });
+
+  await t.test('inline SVG without scripts is accepted', () => {
+    const result = compileStorefrontSitePackage({
+      html: '<div><svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 2L2 22h20L12 2z" fill="currentColor"/></svg><piki-products></piki-products></div>',
+      css: '.shop{}',
+    });
+    assert.ok(result.html.includes('<svg'));
+  });
+
+  await t.test('inline SVG with script is rejected', () => {
+    assert.throws(
+      () => compileStorefrontSitePackage({
+        html: '<div><svg><script>alert(1)</script></svg><piki-products></piki-products></div>',
+        css: '.shop{}',
+      }),
+      (error) => error.statusCode === 400,
+    );
+  });
 });
 
 test('site compiler requires exactly one trusted product catalogue binding', () => {

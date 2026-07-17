@@ -27,12 +27,23 @@ const BLOCKED_HTML_PATTERNS = Object.freeze([
   { pattern: /<\s*\/?\s*(?:object|embed|applet|portal)\b/i, message: 'Embedded executable content is not allowed.' },
   { pattern: /<\s*\/?\s*(?:form|input|textarea|select|option)\b/i, message: 'Generated forms are not allowed. Use Piki checkout bindings.' },
   { pattern: /<\s*\/?\s*(?:meta|base|link|style|html|head|body)\b/i, message: 'Document-level tags are managed by the Piki compiler.' },
-  { pattern: /<\s*\/?\s*(?:svg|math)\b/i, message: 'Inline SVG and MathML are not accepted in generated source.' },
+  { pattern: /<\s*\/?\s*math\b/i, message: 'MathML is not accepted in generated source.' },
   { pattern: /<\s*\/?\s*(?:img|video|audio|source)\b/i, message: 'Generated media URLs are not allowed. Use Piki brand and product bindings.' },
-  { pattern: /\s(?:on[a-z]+|srcdoc|style)\s*=/i, message: 'Event handlers, inline styles, and nested documents are not allowed.' },
+  { pattern: /\s(?:on[a-z]+|srcdoc)\s*=/i, message: 'Event handlers and nested documents are not allowed.' },
   { pattern: /\s(?:src|srcset|poster|background|action|formaction|ping|data)\s*=/i, message: 'Generated URL-bearing attributes are not allowed. Use trusted Piki media and action bindings.' },
   { pattern: /(?:javascript|vbscript)\s*:/i, message: 'Executable URLs are not allowed.' },
   { pattern: /data\s*:\s*text\/html/i, message: 'HTML data URLs are not allowed.' },
+]);
+
+const BLOCKED_INLINE_STYLE_PATTERNS = Object.freeze([
+  { pattern: /expression\s*\(/i, message: 'CSS expressions are not allowed in inline styles.' },
+  { pattern: /(?:javascript|vbscript)\s*:/i, message: 'Executable URLs are not allowed in inline styles.' },
+  { pattern: /behavior\s*:/i, message: 'CSS behavior is not allowed in inline styles.' },
+  { pattern: /-moz-binding\s*:/i, message: 'Browser bindings are not allowed in inline styles.' },
+  { pattern: /url\s*\(/i, message: 'CSS url() is not allowed in inline styles.' },
+  { pattern: /(?:image|(?:-webkit-)?image-set)\s*\(/i, message: 'CSS image functions are not allowed in inline styles.' },
+  { pattern: /@import\b/i, message: 'CSS imports are not allowed in inline styles.' },
+  { pattern: /position\s*:\s*fixed/i, message: 'position:fixed is not allowed in inline styles.' },
 ]);
 
 const BLOCKED_CSS_PATTERNS = Object.freeze([
@@ -63,6 +74,10 @@ function compileStorefrontSitePackage(input = {}) {
   validatePatterns(html, BLOCKED_HTML_PATTERNS);
   validatePatterns(pageHtml, BLOCKED_HTML_PATTERNS);
   validatePatterns(css, BLOCKED_CSS_PATTERNS);
+  validateInlineStyles(html);
+  validateInlineStyles(pageHtml);
+  validateSvgContent(html);
+  validateSvgContent(pageHtml);
   validateSafeLinks(html);
   validateSafeLinks(pageHtml);
 
@@ -279,6 +294,34 @@ function validateBindingMarkup(html, slotCounts) {
 function validatePatterns(value, rules) {
   for (const rule of rules) {
     if (rule.pattern.test(value)) throw createError(400, rule.message);
+  }
+}
+
+function validateInlineStyles(html) {
+  const styleMatches = html.matchAll(/\sstyle\s*=\s*(["'])(.*?)\1/gis);
+  for (const match of styleMatches) {
+    const styleValue = match[2];
+    for (const rule of BLOCKED_INLINE_STYLE_PATTERNS) {
+      if (rule.pattern.test(styleValue)) {
+        throw createError(400, rule.message);
+      }
+    }
+  }
+}
+
+function validateSvgContent(html) {
+  const svgMatches = html.matchAll(/<svg\b[^>]*>([\s\S]*?)<\/svg>/gi);
+  for (const match of svgMatches) {
+    const svgContent = match[1];
+    if (/<\s*script\b/i.test(svgContent)) {
+      throw createError(400, 'Scripts inside SVG are not allowed.');
+    }
+    if (/\son[a-z]+\s*=/i.test(svgContent)) {
+      throw createError(400, 'Event handlers inside SVG are not allowed.');
+    }
+    if (/(?:javascript|vbscript)\s*:/i.test(svgContent)) {
+      throw createError(400, 'Executable URLs inside SVG are not allowed.');
+    }
   }
 }
 
