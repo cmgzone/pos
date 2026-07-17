@@ -14,6 +14,7 @@ const { PDFParse } = require('pdf-parse');
 
 const { config } = require('./config');
 const { query, withTransaction, withReadTransaction, closePool } = require('./db');
+const dashscopeProvider = require('./dashscopeProvider');
 const {
   cacheGetJson,
   cacheGetText,
@@ -5394,32 +5395,43 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
   try {
     await ensureAiVoiceColumns();
     const result = await query(
-      `SELECT api_key, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled, updated_at
+      `SELECT api_key, serp_api_key, dashscope_api_key, model, image_model, stt_model, tts_model, tts_voice,
+              chat_provider, image_provider, stt_provider, tts_provider, enabled, updated_at
        FROM platform_ai_config
        WHERE id = 1`
     );
     const row = result.rows[0] || {
       api_key: '',
       serp_api_key: '',
+      dashscope_api_key: '',
       model: 'openai/gpt-4o-mini',
       image_model: DEFAULT_IMAGE_MODEL,
       stt_model: DEFAULT_STT_MODEL,
       tts_model: DEFAULT_TTS_MODEL,
       tts_voice: DEFAULT_TTS_VOICE,
+      chat_provider: 'openrouter',
+      image_provider: 'openrouter',
+      stt_provider: 'openrouter',
+      tts_provider: 'openrouter',
       enabled: false,
     };
     const hasKey = Boolean(row.api_key && row.api_key.length > 0);
+    const hasDashScopeKey = Boolean(row.dashscope_api_key && row.dashscope_api_key.length > 0);
     const effectiveSerpApiKey = row.serp_api_key || config.serpApiKey || '';
     const hasSerpApiKey = Boolean(effectiveSerpApiKey);
-    // Mask the API key for security — only show last 4 chars
     const maskedKey = row.api_key
       ? `${'•'.repeat(Math.max(0, row.api_key.length - 4))}${row.api_key.slice(-4)}`
+      : '';
+    const maskedDashScopeKey = row.dashscope_api_key
+      ? `${'•'.repeat(Math.max(0, row.dashscope_api_key.length - 4))}${row.dashscope_api_key.slice(-4)}`
       : '';
     res.json({
       ok: true,
       data: {
         apiKey: maskedKey,
         hasKey,
+        dashscopeApiKey: maskedDashScopeKey,
+        hasDashScopeKey,
         serpApiKey: maskSecret(effectiveSerpApiKey),
         hasSerpApiKey,
         serpApiKeySource: row.serp_api_key
@@ -5430,7 +5442,11 @@ app.get('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
         sttModel: row.stt_model || DEFAULT_STT_MODEL,
         ttsModel: row.tts_model || DEFAULT_TTS_MODEL,
         ttsVoice: row.tts_voice || DEFAULT_TTS_VOICE,
-        enabled: Boolean(row.enabled && hasKey),
+        chatProvider: row.chat_provider || 'openrouter',
+        imageProvider: row.image_provider || 'openrouter',
+        sttProvider: row.stt_provider || 'openrouter',
+        ttsProvider: row.tts_provider || 'openrouter',
+        enabled: Boolean(row.enabled && (hasKey || hasDashScopeKey)),
         updatedAt: row.updated_at,
       },
     });
@@ -5447,61 +5463,62 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
     const sttModel = normalizeOptionalText(req.body?.sttModel) || DEFAULT_STT_MODEL;
     const ttsModel = normalizeOptionalText(req.body?.ttsModel) || DEFAULT_TTS_MODEL;
     const ttsVoice = normalizeOptionalText(req.body?.ttsVoice) || DEFAULT_TTS_VOICE;
+    const chatProvider = normalizeOptionalText(req.body?.chatProvider) || 'openrouter';
+    const imageProvider = normalizeOptionalText(req.body?.imageProvider) || 'openrouter';
+    const sttProvider = normalizeOptionalText(req.body?.sttProvider) || 'openrouter';
+    const ttsProvider = normalizeOptionalText(req.body?.ttsProvider) || 'openrouter';
     const enabled = Boolean(req.body?.enabled);
     const rawApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+    const rawDashScopeApiKey = typeof req.body?.dashscopeApiKey === 'string' ? req.body.dashscopeApiKey.trim() : '';
     const rawSerpApiKey = typeof req.body?.serpApiKey === 'string' ? req.body.serpApiKey.trim() : '';
     const currentResult = await query(
-      'SELECT api_key, serp_api_key FROM platform_ai_config WHERE id = 1'
+      'SELECT api_key, serp_api_key, dashscope_api_key FROM platform_ai_config WHERE id = 1'
     );
     const currentApiKey = currentResult.rows[0]?.api_key || '';
     const currentSerpApiKey = currentResult.rows[0]?.serp_api_key || '';
+    const currentDashScopeApiKey = currentResult.rows[0]?.dashscope_api_key || '';
 
-    // Only update the API key if a new one was explicitly provided
-    // (not the masked version echoed back)
     const hasNewKey = rawApiKey.length > 0 && !rawApiKey.startsWith('•');
     const nextApiKey = hasNewKey ? rawApiKey : currentApiKey;
+    const hasNewDashScopeKey = rawDashScopeApiKey.length > 0 && !rawDashScopeApiKey.startsWith('•');
+    const nextDashScopeApiKey = hasNewDashScopeKey ? rawDashScopeApiKey : currentDashScopeApiKey;
     const hasNewSerpApiKey =
       rawSerpApiKey.length > 0 &&
       !rawSerpApiKey.startsWith('â€¢') &&
       !rawSerpApiKey.startsWith('*');
     const nextSerpApiKey = hasNewSerpApiKey ? rawSerpApiKey : currentSerpApiKey;
 
-    if (enabled && !nextApiKey) {
-      throw createHttpError(400, 'Add a valid OpenRouter API key before enabling AI');
+    const needsOpenRouter = [chatProvider, imageProvider, sttProvider, ttsProvider].some((p) => p === 'openrouter');
+    const needsDashScope = [chatProvider, imageProvider, sttProvider, ttsProvider].some((p) => p === 'dashscope');
+    if (enabled && needsOpenRouter && !nextApiKey) {
+      throw createHttpError(400, 'Add a valid OpenRouter API key before enabling AI with OpenRouter provider');
+    }
+    if (enabled && needsDashScope && !nextDashScopeApiKey) {
+      throw createHttpError(400, 'Add a valid DashScope API key before enabling AI with Alibaba provider');
     }
 
-    if (hasNewKey) {
-      await query(
-        `INSERT INTO platform_ai_config (id, api_key, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW())
-         ON CONFLICT (id) DO UPDATE
-         SET api_key = $1,
-             serp_api_key = $2,
-             model = $3,
-             image_model = $4,
-             stt_model = $5,
-             tts_model = $6,
-             tts_voice = $7,
-             enabled = $8,
-             updated_at = NOW()`,
-        [rawApiKey, nextSerpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice, enabled]
-      );
-    } else {
-      await query(
-        `INSERT INTO platform_ai_config (id, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
-         ON CONFLICT (id) DO UPDATE
-         SET serp_api_key = $1,
-             model = $2,
-             image_model = $3,
-             stt_model = $4,
-             tts_model = $5,
-             tts_voice = $6,
-             enabled = $7,
-             updated_at = NOW()`,
-        [nextSerpApiKey, model, imageModel, sttModel, ttsModel, ttsVoice, enabled]
-      );
-    }
+    await query(
+      `INSERT INTO platform_ai_config (id, api_key, serp_api_key, dashscope_api_key, model, image_model, stt_model, tts_model, tts_voice,
+                                       chat_provider, image_provider, stt_provider, tts_provider, enabled, updated_at)
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+       ON CONFLICT (id) DO UPDATE
+       SET api_key = $1,
+           serp_api_key = $2,
+           dashscope_api_key = $3,
+           model = $4,
+           image_model = $5,
+           stt_model = $6,
+           tts_model = $7,
+           tts_voice = $8,
+           chat_provider = $9,
+           image_provider = $10,
+           stt_provider = $11,
+           tts_provider = $12,
+           enabled = $13,
+           updated_at = NOW()`,
+      [nextApiKey, nextSerpApiKey, nextDashScopeApiKey, model, imageModel, sttModel, ttsModel, ttsVoice,
+       chatProvider, imageProvider, sttProvider, ttsProvider, enabled]
+    );
 
     res.json({ ok: true });
   } catch (error) {
@@ -5511,25 +5528,35 @@ app.put('/api/platform/ai-config', requirePlatformAdmin, async (req, res, next) 
 
 app.post('/api/platform/ai-test', requirePlatformAdmin, async (req, res, next) => {
   try {
-    const result = await query(
-      'SELECT api_key, model FROM platform_ai_config WHERE id = 1'
-    );
-    const row = result.rows[0];
-    if (!row || !row.api_key) {
-      throw createHttpError(400, 'No API key configured');
+    const aiConfig = await loadPlatformAiConfig();
+    const provider = aiConfig.chat_provider || 'openrouter';
+
+    if (provider === 'dashscope') {
+      if (!aiConfig.dashscope_api_key) {
+        throw createHttpError(400, 'No DashScope API key configured');
+      }
+      const testResult = await dashscopeProvider.testDashScopeConnection(
+        aiConfig.dashscope_api_key,
+        aiConfig.model || 'qwen-turbo',
+      );
+      res.json({ ok: true, response: testResult.response, model: testResult.model, provider: 'dashscope' });
+      return;
     }
 
+    if (!aiConfig.api_key) {
+      throw createHttpError(400, 'No OpenRouter API key configured');
+    }
     const fetch = (await import('node-fetch')).default;
     const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${row.api_key}`,
+        'Authorization': `Bearer ${aiConfig.api_key}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://pikipos.com',
         'X-Title': 'Piki POS AI',
       },
       body: JSON.stringify({
-        model: row.model,
+        model: aiConfig.model,
         messages: [{ role: 'user', content: 'Say "AI is connected!" in exactly those words.' }],
         max_tokens: 30,
       }),
@@ -5544,7 +5571,40 @@ app.post('/api/platform/ai-test', requirePlatformAdmin, async (req, res, next) =
     }
 
     const content = orBody?.choices?.[0]?.message?.content || '';
-    res.json({ ok: true, response: content, model: row.model });
+    res.json({ ok: true, response: content, model: aiConfig.model, provider: 'openrouter' });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.post('/api/platform/dashscope-test', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const aiConfig = await loadPlatformAiConfig();
+    if (!aiConfig.dashscope_api_key) {
+      throw createHttpError(400, 'No DashScope API key configured');
+    }
+    const testResult = await dashscopeProvider.testDashScopeConnection(
+      aiConfig.dashscope_api_key,
+      aiConfig.model || 'qwen-turbo',
+    );
+    res.json({ ok: true, response: testResult.response, model: testResult.model });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
+app.get('/api/platform/ai-models', requirePlatformAdmin, async (req, res, next) => {
+  try {
+    const provider = normalizeOptionalText(req.query?.provider) || 'dashscope';
+    const type = normalizeOptionalText(req.query?.type) || 'chat';
+    if (provider === 'dashscope') {
+      const aiConfig = await loadPlatformAiConfig();
+      const models = await dashscopeProvider.fetchDashScopeModels(aiConfig.dashscope_api_key, type);
+      const voices = type === 'tts' ? dashscopeProvider.DASHSCOPE_TTS_VOICES : undefined;
+      res.json({ ok: true, models, voices, provider: 'dashscope', type });
+      return;
+    }
+    res.json({ ok: true, models: [], provider: 'openrouter', type });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -6578,12 +6638,33 @@ async function ensureAiVoiceColumns() {
     `ALTER TABLE platform_ai_config
      ADD COLUMN IF NOT EXISTS image_model text NOT NULL DEFAULT '${DEFAULT_IMAGE_MODEL}'`,
   );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS dashscope_api_key text NOT NULL DEFAULT ''`,
+  );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS chat_provider text NOT NULL DEFAULT 'openrouter'`,
+  );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS image_provider text NOT NULL DEFAULT 'openrouter'`,
+  );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS stt_provider text NOT NULL DEFAULT 'openrouter'`,
+  );
+  await query(
+    `ALTER TABLE platform_ai_config
+     ADD COLUMN IF NOT EXISTS tts_provider text NOT NULL DEFAULT 'openrouter'`,
+  );
 }
 
 async function loadPlatformAiConfig() {
   await ensureAiVoiceColumns();
   const result = await query(
-    `SELECT api_key, serp_api_key, model, image_model, stt_model, tts_model, tts_voice, enabled
+    `SELECT api_key, serp_api_key, dashscope_api_key, model, image_model, stt_model, tts_model, tts_voice,
+            chat_provider, image_provider, stt_provider, tts_provider, enabled
      FROM platform_ai_config
      WHERE id = 1`,
   );
@@ -6591,11 +6672,16 @@ async function loadPlatformAiConfig() {
     result.rows[0] || {
       api_key: '',
       serp_api_key: '',
+      dashscope_api_key: '',
       model: 'openai/gpt-4o-mini',
       image_model: DEFAULT_IMAGE_MODEL,
       stt_model: DEFAULT_STT_MODEL,
       tts_model: DEFAULT_TTS_MODEL,
       tts_voice: DEFAULT_TTS_VOICE,
+      chat_provider: 'openrouter',
+      image_provider: 'openrouter',
+      stt_provider: 'openrouter',
+      tts_provider: 'openrouter',
       enabled: false,
     }
   );
@@ -6607,9 +6693,10 @@ app.get('/api/ai/config', async (req, res, next) => {
     const businessContext = await requireBusinessContext(req);
     const row = await loadPlatformAiConfig();
     const hasAiEntitlement = hasPlanFeature(businessContext, FEATURE_KEYS.agent);
+    const hasAnyKey = Boolean(row.api_key || row.dashscope_api_key);
     res.json({
       ok: true,
-      aiEnabled: Boolean(row.enabled && row.api_key && hasAiEntitlement),
+      aiEnabled: Boolean(row.enabled && hasAnyKey && hasAiEntitlement),
       webSearchEnabled: Boolean(
         (row.serp_api_key || config.serpApiKey) && hasAiEntitlement,
       ),
@@ -6617,6 +6704,10 @@ app.get('/api/ai/config', async (req, res, next) => {
       imageModel: row.image_model || DEFAULT_IMAGE_MODEL,
       sttModel: row.stt_model || DEFAULT_STT_MODEL,
       ttsModel: row.tts_model || DEFAULT_TTS_MODEL,
+      chatProvider: row.chat_provider || 'openrouter',
+      imageProvider: row.image_provider || 'openrouter',
+      sttProvider: row.stt_provider || 'openrouter',
+      ttsProvider: row.tts_provider || 'openrouter',
       entitlementEnabled: hasAiEntitlement,
     });
   } catch (error) {
