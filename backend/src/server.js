@@ -6687,6 +6687,45 @@ async function loadPlatformAiConfig() {
   );
 }
 
+function isAiEnabled(aiConfig) {
+  if (!aiConfig || !aiConfig.enabled) return false;
+  const hasOpenRouterKey = Boolean(aiConfig.api_key);
+  const hasDashScopeKey = Boolean(aiConfig.dashscope_api_key);
+  return hasOpenRouterKey || hasDashScopeKey;
+}
+
+function getChatApiKey(aiConfig) {
+  if (!aiConfig) return null;
+  if (aiConfig.chat_provider === 'dashscope') {
+    return aiConfig.dashscope_api_key || null;
+  }
+  return aiConfig.api_key || null;
+}
+
+function getImageApiKey(aiConfig) {
+  if (!aiConfig) return null;
+  if (aiConfig.image_provider === 'dashscope') {
+    return aiConfig.dashscope_api_key || null;
+  }
+  return aiConfig.api_key || null;
+}
+
+function getSttApiKey(aiConfig) {
+  if (!aiConfig) return null;
+  if (aiConfig.stt_provider === 'dashscope') {
+    return aiConfig.dashscope_api_key || null;
+  }
+  return aiConfig.api_key || null;
+}
+
+function getTtsApiKey(aiConfig) {
+  if (!aiConfig) return null;
+  if (aiConfig.tts_provider === 'dashscope') {
+    return aiConfig.dashscope_api_key || null;
+  }
+  return aiConfig.api_key || null;
+}
+
 // Business-authenticated AI routes
 app.get('/api/ai/config', async (req, res, next) => {
   try {
@@ -8091,12 +8130,12 @@ ${sourceText}`;
 
   const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${aiConfig.api_key}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://pikipos.com',
-      'X-Title': 'Piki POS Smart File Import',
-    },
+      headers: {
+        'Authorization': `Bearer ${getChatApiKey(aiConfig)}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://pikipos.com',
+        'X-Title': 'Piki POS AI',
+      },
     body: JSON.stringify({
       model: aiConfig.model || 'openai/gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
@@ -8253,7 +8292,7 @@ ${instruction}`;
   const requestResult = await requestOpenRouterJson({
     fetchImpl,
     baseUrl: OPENROUTER_BASE_URL,
-    apiKey: aiConfig.api_key,
+    apiKey: getChatApiKey(aiConfig),
     model: aiConfig.model || 'openai/gpt-4o-mini',
     fallbackModel: config.openRouterFallbackModel,
     messages: [
@@ -8376,7 +8415,7 @@ ${instruction}`;
   const requestResult = await requestOpenRouterJson({
     fetchImpl,
     baseUrl: OPENROUTER_BASE_URL,
-    apiKey: aiConfig.api_key,
+    apiKey: getChatApiKey(aiConfig),
     model: aiConfig.model || 'openai/gpt-4o-mini',
     fallbackModel: config.openRouterFallbackModel,
     messages: [
@@ -8499,7 +8538,7 @@ ${instruction}${targetedEdit}`;
     requestResult = await requestOpenRouterJson({
       fetchImpl,
       baseUrl: OPENROUTER_BASE_URL,
-      apiKey: aiConfig.api_key,
+      apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
       messages: [
@@ -8582,7 +8621,7 @@ ${JSON.stringify(
     const combinedRepairResult = await requestOpenRouterJson({
       fetchImpl,
       baseUrl: OPENROUTER_BASE_URL,
-      apiKey: aiConfig.api_key,
+      apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
       messages: [
@@ -8657,7 +8696,7 @@ ${JSON.stringify(
     const structureResult = await requestOpenRouterJson({
       fetchImpl,
       baseUrl: OPENROUTER_BASE_URL,
-      apiKey: aiConfig.api_key,
+      apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
       messages: [
@@ -8744,7 +8783,7 @@ ${JSON.stringify(compactPreviousSource?.css || '')}`;
     const stylingResult = await requestOpenRouterJson({
       fetchImpl,
       baseUrl: OPENROUTER_BASE_URL,
-      apiKey: aiConfig.api_key,
+      apiKey: getChatApiKey(aiConfig),
       model: aiConfig.model || 'openai/gpt-4o-mini',
       fallbackModel: config.openRouterFallbackModel,
       messages: [
@@ -8922,7 +8961,7 @@ ${instruction}`;
   const requestResult = await requestOpenRouterJson({
     fetchImpl,
     baseUrl: OPENROUTER_BASE_URL,
-    apiKey: aiConfig.api_key,
+    apiKey: getChatApiKey(aiConfig),
     model: aiConfig.model || 'openai/gpt-4o-mini',
     fallbackModel: config.openRouterFallbackModel,
     messages: [
@@ -9050,7 +9089,7 @@ ${sourceText}`;
   const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${aiConfig.api_key}`,
+      Authorization: `Bearer ${getChatApiKey(aiConfig)}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://pikipos.com',
       'X-Title': 'Piki POS Product File Import',
@@ -9131,7 +9170,7 @@ Type: ${extension || 'image'}`;
   const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${aiConfig.api_key}`,
+      Authorization: `Bearer ${getChatApiKey(aiConfig)}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://pikipos.com',
       'X-Title': 'Piki POS Product Image Import',
@@ -9232,7 +9271,7 @@ ${sourceText}`;
   const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${aiConfig.api_key}`,
+      Authorization: `Bearer ${getChatApiKey(aiConfig)}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://pikipos.com',
       'X-Title': 'Piki POS Sales File Import',
@@ -9314,7 +9353,7 @@ ${userNote ? `Owner note: ${userNote}` : ''}`;
   const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${aiConfig.api_key}`,
+      Authorization: `Bearer ${getChatApiKey(aiConfig)}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://pikipos.com',
       'X-Title': 'Piki POS Image Analysis',
@@ -9395,7 +9434,7 @@ async function requestOpenRouterProductImage({ fetchImpl, aiConfig, imageDataUrl
     const response = await fetchImpl(`${OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${aiConfig.api_key}`,
+        'Authorization': `Bearer ${getImageApiKey(aiConfig)}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://pikipos.com',
         'X-Title': 'Piki POS Product Images',
@@ -9824,7 +9863,7 @@ app.post('/api/ai/product-image/enhance', async (req, res, next) => {
     ensureAiFeatureAllowed(businessContext);
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
 
@@ -9872,7 +9911,7 @@ app.post('/api/ai/order-image/analyze', async (req, res, next) => {
     ensureAiFeatureAllowed(businessContext);
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
 
@@ -9977,7 +10016,7 @@ async function runStorefrontThemeAiJob({ job, updateJob, addEvent }) {
   const theme = await getStorefrontTheme(query, job.business_id, themeId);
   if (!theme) throw createHttpError(404, 'The storefront theme was not found.');
   const aiConfig = await loadPlatformAiConfig();
-  if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+  if (!isAiEnabled(aiConfig)) {
     throw createHttpError(403, 'AI is not enabled by the platform administrator');
   }
   const storefrontBrand = await loadStorefrontBrand(job.business_id, {
@@ -10120,9 +10159,9 @@ async function runStorefrontPageAiJob({ job, updateJob, addEvent }) {
   const page = await getStorefrontPage(query, job.business_id, pageId);
   if (!page) throw createHttpError(404, 'Storefront page was not found.');
   const aiConfig = await loadPlatformAiConfig();
-  if (!aiConfig?.enabled || !aiConfig.api_key) {
-    throw createHttpError(403, 'AI is not enabled by the platform administrator.');
-  }
+    if (!isAiEnabled(aiConfig)) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
   const brand = await loadStorefrontBrand(job.business_id, { branchId: page.branchId });
   await step(2, 42, 'Planning the customer journey', 'Piki is composing the right sections, hierarchy, actions, and navigation copy.', 'page_planning');
   const fetch = (await import('node-fetch')).default;
@@ -10219,9 +10258,9 @@ async function runStorefrontSiteAiJob({ job, updateJob, addEvent }) {
     ? await getStorefrontSiteBuild(query, job.business_id, parentBuildId)
     : null;
   const aiConfig = await loadPlatformAiConfig();
-  if (!aiConfig?.enabled || !aiConfig.api_key) {
-    throw createHttpError(403, 'AI is not enabled by the platform administrator.');
-  }
+    if (!isAiEnabled(aiConfig)) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
+    }
   const brand = await loadStorefrontBrand(job.business_id, { branchId });
   let liveProducts = [];
   try {
@@ -10450,7 +10489,7 @@ async function runMarketingContentAiJob({ job, updateJob, addEvent }) {
     progress: 46,
   });
   const aiConfig = await loadPlatformAiConfig();
-  if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+  if (!isAiEnabled(aiConfig)) {
     throw createHttpError(403, 'AI is not enabled by the platform administrator');
   }
   const fetch = (await import('node-fetch')).default;
@@ -10542,7 +10581,7 @@ async function runProductImportAiJob({ job, updateJob, addEvent, saveDraftItems 
   });
 
   const aiConfig = await loadPlatformAiConfig();
-  if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+  if (!isAiEnabled(aiConfig)) {
     throw createHttpError(403, 'AI is not enabled by the platform administrator');
   }
 
@@ -10829,7 +10868,7 @@ app.post('/api/ai/imports', async (req, res, next) => {
     }
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
 
@@ -11020,7 +11059,7 @@ app.post('/api/ai/product-file/extract', async (req, res, next) => {
     }
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
 
@@ -11082,7 +11121,7 @@ app.post('/api/ai/sales-file/extract', async (req, res, next) => {
     }
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
 
@@ -11140,7 +11179,7 @@ app.post('/api/ai/smart-file/extract', async (req, res, next) => {
     ensureAiFeatureAllowed(businessContext);
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
 
@@ -11200,7 +11239,7 @@ app.post('/api/ai/chat', async (req, res, next) => {
     const businessContext = await requireBusinessContext(req);
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     ensureAiFeatureAllowed(businessContext);
@@ -11321,7 +11360,7 @@ app.post('/api/ai/transcribe', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     ensureAiFeatureAllowed(businessContext);
@@ -11362,7 +11401,7 @@ app.post('/api/ai/tts', async (req, res, next) => {
   try {
     const businessContext = await requireBusinessContext(req);
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     ensureAiFeatureAllowed(businessContext);
@@ -12352,8 +12391,8 @@ app.post('/api/catalog/site-builds/ai-jobs', async (req, res, next) => {
       throw createHttpError(400, 'Describe the website Piki should code.');
     }
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig?.enabled || !aiConfig.api_key) {
-      throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+    if (!isAiEnabled(aiConfig)) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     const rateCheck = await checkAiRateLimit(businessContext, {
       consumeQuota: req.body?.consumeQuota !== false,
@@ -12637,8 +12676,8 @@ app.post('/api/catalog/pages/:pageId/piki-design', async (req, res, next) => {
     const page = await getStorefrontPage(query, businessContext.businessId, req.params.pageId);
     if (!page) throw createHttpError(404, 'Storefront page was not found.');
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig?.enabled || !aiConfig.api_key) {
-      throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+    if (!isAiEnabled(aiConfig)) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     const brand = await loadStorefrontBrand(businessContext.businessId, { branchId: page.branchId });
     const fetch = (await import('node-fetch')).default;
@@ -12679,8 +12718,8 @@ app.post('/api/catalog/pages/:pageId/ai-jobs', async (req, res, next) => {
     const page = await getStorefrontPage(query, businessContext.businessId, req.params.pageId);
     if (!page) throw createHttpError(404, 'Storefront page was not found.');
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig?.enabled || !aiConfig.api_key) {
-      throw createHttpError(403, 'AI is not enabled by the platform administrator.');
+    if (!isAiEnabled(aiConfig)) {
+      throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     const rateCheck = await checkAiRateLimit(businessContext, {
       consumeQuota: req.body?.consumeQuota !== false,
@@ -12944,7 +12983,7 @@ app.post('/api/catalog/marketing/ai-jobs', async (req, res, next) => {
       throw createHttpError(400, 'Describe the campaign, audience, or offer Piki should write for.');
     }
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    if (!isAiEnabled(aiConfig)) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     const rateCheck = await checkAiRateLimit(businessContext, {
@@ -12997,7 +13036,10 @@ app.post('/api/catalog/themes/:themeId/ai-jobs', async (req, res, next) => {
     if (!theme) throw createHttpError(404, 'Theme was not found.');
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    const hasApiKey = aiConfig.chat_provider === 'dashscope' 
+      ? Boolean(aiConfig.dashscope_api_key)
+      : Boolean(aiConfig.api_key);
+    if (!aiConfig || !aiConfig.enabled || !hasApiKey) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     const rateCheck = await checkAiRateLimit(businessContext, {
@@ -13058,7 +13100,10 @@ app.post('/api/catalog/themes/:themeId/ai-customize', async (req, res, next) => 
     if (!theme) throw createHttpError(404, 'Theme was not found.');
 
     const aiConfig = await loadPlatformAiConfig();
-    if (!aiConfig || !aiConfig.enabled || !aiConfig.api_key) {
+    const hasApiKey = aiConfig.chat_provider === 'dashscope' 
+      ? Boolean(aiConfig.dashscope_api_key)
+      : Boolean(aiConfig.api_key);
+    if (!aiConfig || !aiConfig.enabled || !hasApiKey) {
       throw createHttpError(403, 'AI is not enabled by the platform administrator');
     }
     const rateCheck = await checkAiRateLimit(businessContext, {
@@ -20013,7 +20058,7 @@ async function transcribeAudio(aiConfig, { audioBase64, mimeType, filename }) {
 
   const response = await fetch(`${OPENROUTER_BASE_URL}/audio/transcriptions`, {
     method: 'POST',
-    headers: openRouterHeaders(aiConfig.api_key),
+    headers: openRouterHeaders(getSttApiKey(aiConfig)),
     body: formData,
   });
 
@@ -20034,7 +20079,7 @@ async function synthesizeSpeech(aiConfig, { text, voice }) {
   const response = await fetch(`${OPENROUTER_BASE_URL}/audio/speech`, {
     method: 'POST',
     headers: {
-      ...openRouterHeaders(aiConfig.api_key),
+      ...openRouterHeaders(getTtsApiKey(aiConfig)),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
