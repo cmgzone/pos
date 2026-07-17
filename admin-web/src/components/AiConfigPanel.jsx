@@ -80,6 +80,13 @@ export default function AiConfigPanel({ token }) {
     { id: 'deepseek-v3', name: 'DeepSeek V3', tier: 'Balanced' },
   ]
   const DASHSCOPE_IMAGE_FALLBACK = [
+    { id: 'qwen-image-2.0-pro', name: 'Qwen Image 2.0 Pro', tier: 'Image' },
+    { id: 'qwen-image-2.0', name: 'Qwen Image 2.0', tier: 'Image' },
+    { id: 'qwen-image-max', name: 'Qwen Image Max', tier: 'Image' },
+    { id: 'qwen-image-plus', name: 'Qwen Image Plus', tier: 'Image' },
+    { id: 'wan2.7-image-pro', name: 'Wan 2.7 Image Pro', tier: 'Image' },
+    { id: 'wan2.7-image', name: 'Wan 2.7 Image', tier: 'Image' },
+    { id: 'z-image-turbo', name: 'Z-Image Turbo', tier: 'Image' },
     { id: 'wanx2.1-t2i-turbo', name: 'Wanx 2.1 Turbo', tier: 'Image' },
     { id: 'wanx2.1-t2i-plus', name: 'Wanx 2.1 Plus', tier: 'Image' },
     { id: 'flux-schnell', name: 'Flux Schnell', tier: 'Image' },

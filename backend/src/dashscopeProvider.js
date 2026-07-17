@@ -86,10 +86,10 @@ async function fetchDashScopeModels(apiKey, type) {
     return data.data
       .filter((m) => {
         const id = m.id || '';
-        if (type === 'chat') return !id.includes('audio') && !id.includes('vl') && !id.includes('image');
-        if (type === 'image') return id.includes('wanx') || id.includes('flux') || id.includes('stable-diffusion');
-        if (type === 'stt') return id.includes('paraformer') || id.includes('sensevoice');
-        if (type === 'tts') return id.includes('cosyvoice') || id.includes('sambert');
+        if (type === 'chat') return !id.includes('audio') && !id.includes('vl') && !id.includes('image') && !id.includes('livetranslate') && !id.includes('omni') && !id.includes('realtime');
+        if (type === 'image') return id.includes('image') || id.includes('wanx') || id.includes('flux') || id.includes('stable-diffusion') || id.includes('z-image');
+        if (type === 'stt') return id.includes('paraformer') || id.includes('sensevoice') || id.includes('whisper');
+        if (type === 'tts') return id.includes('cosyvoice') || id.includes('sambert') || id.includes('longxia');
         return true;
       })
       .map((m) => ({
