@@ -52,7 +52,7 @@ class _StorefrontThemeSettingsSectionState
   List<PikiAiJobEvent> _pikiEvents = const [];
   Timer? _pikiPollTimer;
   bool _pikiRefreshing = false;
-  _WebsiteWorkspaceView _workspaceView = _WebsiteWorkspaceView.studio;
+  _WebsiteWorkspaceView _workspaceView = _WebsiteWorkspaceView.themes;
 
   @override
   void initState() {
@@ -274,7 +274,7 @@ class _StorefrontThemeSettingsSectionState
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  initialValue: preset,
+                  value: preset,
                   decoration: const InputDecoration(
                     labelText: 'Starting style',
                   ),
@@ -591,6 +591,109 @@ class _StorefrontThemeSettingsSectionState
     }
   }
 
+  Future<PikiAiJob> _createGeneratedSiteEditJob(
+    StorefrontPreviewEditRequest edit,
+  ) async {
+    final selection = edit.selection;
+    final buildId = selection.siteBuildId;
+    if (buildId == null) {
+      throw Exception('Select a generated website element first.');
+    }
+    if (_pikiJob?.isRunning == true) {
+      throw Exception('Piki is already editing this storefront.');
+    }
+    final job = await PikiAiJobService.createStorefrontSiteJob(
+      edit.instruction,
+      branchId: _branchId,
+      storefrontType: _storefrontType,
+      parentBuildId: buildId,
+      siteMode: selection.siteMode,
+      selectedProductId: selection.selectedProductId,
+      selectionContext: selection.toJson(),
+    );
+    if (mounted) {
+      setState(() {
+        _pikiJob = job;
+        _pikiEvents = const [];
+      });
+      _syncPikiPolling();
+      unawaited(_refreshPikiJob());
+    }
+    return job;
+  }
+
+  Future<PikiAiJob> _createThemePreviewEditJob(
+    StorefrontTheme theme,
+    StorefrontPreviewEditRequest edit,
+  ) async {
+    final selection = edit.selection;
+    if (selection.siteBuildId != null) {
+      return _createGeneratedSiteEditJob(edit);
+    }
+    if (_pikiJob?.isRunning == true) {
+      throw Exception('Piki is already editing this storefront.');
+    }
+    final instruction =
+        '''
+Edit the selected ${selection.label} component to satisfy this request: ${edit.instruction}
+
+Selected component metadata: ${jsonEncode(selection.toJson())}
+Preserve every unrelated website section, existing brand choice, checkout setting, and live catalogue behavior.
+''';
+    final job = await PikiAiJobService.createStorefrontThemeJob(
+      theme.id,
+      instruction,
+      fromScratch: false,
+    );
+    if (mounted) {
+      setState(() {
+        _pikiJob = job;
+        _pikiEvents = const [];
+      });
+      _syncPikiPolling();
+      unawaited(_refreshPikiJob());
+    }
+    return job;
+  }
+
+  Future<StorefrontPreviewJobCompletion?> _resolvePreviewEditCompletion(
+    PikiAiJob job,
+  ) async {
+    if (job.jobType == 'storefront_site') {
+      final value = job.result?['build'];
+      if (value is! Map) {
+        throw Exception(
+          'Piki finished, but the generated site build is missing.',
+        );
+      }
+      final build = StorefrontSiteBuild.fromJson(
+        Map<String, dynamic>.from(value),
+      );
+      await _load(showLoading: false);
+      final uri = await StorefrontPageService.siteBuildPreviewUrl(build.id);
+      return StorefrontPreviewJobCompletion(
+        previewUri: uri,
+        buildVersion: build.version,
+        buildName: build.name,
+      );
+    }
+    if (job.jobType == 'storefront_theme') {
+      await _load(showLoading: false);
+      final theme = _pikiResultTheme(job);
+      if (theme == null) {
+        throw Exception(
+          'Piki finished, but the saved theme could not be loaded.',
+        );
+      }
+      final uri = await StorefrontThemeService.previewUrl(theme);
+      return StorefrontPreviewJobCompletion(
+        previewUri: uri,
+        buildName: theme.name,
+      );
+    }
+    return null;
+  }
+
   StorefrontTheme? _pikiResultTheme(PikiAiJob job) {
     final value = job.result?['theme'];
     if (value is Map) {
@@ -637,6 +740,8 @@ class _StorefrontThemeSettingsSectionState
               previewUri: uri,
               buildVersion: build.version,
               buildName: build.name,
+              onEditRequest: _createGeneratedSiteEditJob,
+              onJobCompleted: _resolvePreviewEditCompletion,
             ),
           );
         },
@@ -704,6 +809,8 @@ class _StorefrontThemeSettingsSectionState
           previewUri: uri,
           buildName: theme.name,
           enablePointAndEdit: true,
+          onEditRequest: (edit) => _createThemePreviewEditJob(theme, edit),
+          onJobCompleted: _resolvePreviewEditCompletion,
         ),
       );
       if (edit != null && mounted) {
@@ -954,7 +1061,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
           }) {
             return DropdownButtonFormField<String>(
               isExpanded: true,
-              initialValue: value,
+              value: value,
               decoration: InputDecoration(labelText: label),
               items: options
                   .map(
@@ -1074,7 +1181,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<int>(
-                            initialValue: productColumns,
+                            value: productColumns,
                             decoration: const InputDecoration(
                               labelText: 'Product columns',
                             ),
@@ -1325,22 +1432,38 @@ Preserve every unrelated website section, existing brand choice, checkout settin
     });
   }
 
+  bool _isThemeRestoreCandidate(StorefrontTheme theme) {
+    final live = _themes.where((item) => item.isPublished).firstOrNull;
+    if (theme.isPublished || live == null || live.id == theme.id) return false;
+    final themeUpdated = theme.updatedAt;
+    final liveUpdated = live.updatedAt;
+    return themeUpdated == null ||
+        liveUpdated == null ||
+        themeUpdated.isBefore(liveUpdated);
+  }
+
   Future<void> _publish(StorefrontTheme theme) async {
+    final restoring = _isThemeRestoreCandidate(theme);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Publish this theme?'),
+        title: Text(restoring ? 'Restore this theme?' : 'Publish this theme?'),
         content: Text(
-          '“${theme.name}” will replace the current live theme for this storefront. Other themes remain saved.',
+          restoring
+              ? 'This will revert the customer storefront to ${theme.name}. The current live theme remains saved.'
+              : '${theme.name} will replace the current live theme for this storefront. Other themes remain saved.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          FilledButton.icon(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Publish'),
+            icon: Icon(
+              restoring ? Icons.history_rounded : Icons.publish_rounded,
+            ),
+            label: Text(restoring ? 'Restore theme' : 'Publish'),
           ),
         ],
       ),
@@ -1504,7 +1627,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                   SizedBox(
                     width: 250,
                     child: DropdownButtonFormField<String>(
-                      initialValue: _storefrontType,
+                      value: _storefrontType,
                       decoration: const InputDecoration(
                         labelText: 'Storefront type',
                       ),
@@ -1559,10 +1682,6 @@ Preserve every unrelated website section, existing brand choice, checkout settin
           if (_error != null) ...[
             const SizedBox(height: 12),
             _buildErrorNotice(),
-          ],
-          if (_pikiJob != null) ...[
-            const SizedBox(height: 12),
-            _buildPikiJobNotice(),
           ],
           const SizedBox(height: 16),
           if (_loading)
@@ -1712,15 +1831,6 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                     Expanded(
                       child: _websiteWorkspaceTab(
                         colors: colors,
-                        value: _WebsiteWorkspaceView.studio,
-                        icon: Icons.auto_awesome_rounded,
-                        label: compact ? 'Build' : 'Build website',
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: _websiteWorkspaceTab(
-                        colors: colors,
                         value: _WebsiteWorkspaceView.themes,
                         icon: Icons.tune_rounded,
                         label: compact ? 'Manage' : 'Themes & checkout',
@@ -1781,6 +1891,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
 
   Widget _themeCard(StorefrontTheme theme) {
     final colors = Theme.of(context).colorScheme;
+    final restoring = _isThemeRestoreCandidate(theme);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1872,11 +1983,6 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                       ),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _busy ? null : () => _customizeWithPiki(theme),
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: const Text('Design with Piki'),
-                    ),
-                    OutlinedButton.icon(
                       onPressed: _busy ? null : () => _editDesign(theme),
                       icon: const Icon(Icons.palette_outlined, size: 18),
                       label: const Text('Design system'),
@@ -1906,8 +2012,13 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                     if (!theme.isPublished)
                       FilledButton.icon(
                         onPressed: _busy ? null : () => _publish(theme),
-                        icon: const Icon(Icons.publish_rounded, size: 18),
-                        label: const Text('Publish'),
+                        icon: Icon(
+                          restoring
+                              ? Icons.history_rounded
+                              : Icons.publish_rounded,
+                          size: 18,
+                        ),
+                        label: Text(restoring ? 'Restore' : 'Publish'),
                       ),
                     if (!theme.isPublished)
                       IconButton(

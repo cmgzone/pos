@@ -718,7 +718,7 @@ const _sectionDetails = <OnlineStoreSection, _OnlineStoreSectionDetails>{
   ),
   OnlineStoreSection.marketing: _OnlineStoreSectionDetails(
     label: 'Marketing',
-    description: 'Generate social, WhatsApp, and product copy with Piki.',
+    description: 'Generate social, WhatsApp, and product marketing copy.',
     icon: Icons.auto_awesome_outlined,
   ),
   OnlineStoreSection.branding: _OnlineStoreSectionDetails(
@@ -728,7 +728,7 @@ const _sectionDetails = <OnlineStoreSection, _OnlineStoreSectionDetails>{
   ),
   OnlineStoreSection.website: _OnlineStoreSectionDetails(
     label: 'Website & Checkout',
-    description: 'Customize themes with Piki, preview, and publish changes.',
+    description: 'Choose premium themes, customize design, preview, and publish.',
     icon: Icons.web_outlined,
   ),
   OnlineStoreSection.payments: _OnlineStoreSectionDetails(
