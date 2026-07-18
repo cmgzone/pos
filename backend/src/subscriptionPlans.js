@@ -952,10 +952,17 @@ function defaultPaymentGateways() {
     {
       provider: 'flutterwave',
       displayName: 'Flutterwave',
-      isActive: Boolean(config.flutterwaveSecretKey && config.publicBaseUrl),
+      isActive: Boolean(
+        config.flutterwaveSecretKey &&
+          config.flutterwaveWebhookSecretHash &&
+          config.publicBaseUrl,
+      ),
       countries: ['KE', 'GLOBAL'],
       publicConfig: removeEmptyValues({ baseUrl: config.flutterwaveBaseUrl }),
-      secretConfig: removeEmptyValues({ secretKey: config.flutterwaveSecretKey }),
+      secretConfig: removeEmptyValues({
+        secretKey: config.flutterwaveSecretKey,
+        webhookHash: config.flutterwaveWebhookSecretHash,
+      }),
     },
     {
       provider: 'paypal',
@@ -1180,6 +1187,9 @@ function validatePaymentGatewayConfiguration(gateway) {
     }
     if (!secretConfig.secretKey) {
       throw createError(400, 'Flutterwave secret key is required.');
+    }
+    if (!secretConfig.webhookHash) {
+      throw createError(400, 'Flutterwave webhook secret hash is required.');
     }
   }
 }

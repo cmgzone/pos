@@ -13,6 +13,12 @@ const mammoth = require('mammoth');
 const { PDFParse } = require('pdf-parse');
 
 const { config } = require('./config');
+const {
+  buildFlutterwavePayloadHash,
+  flutterwaveWebhookTransaction,
+  isFlutterwaveSuccessfulWebhook,
+  isFlutterwaveWebhookSignatureValid,
+} = require('./flutterwave');
 const { query, withTransaction, withReadTransaction, closePool } = require('./db');
 const dashscopeProvider = require('./dashscopeProvider');
 const {
@@ -337,7 +343,16 @@ app.use(
     callback(null, buildCorsOptions(req));
   }),
 );
-app.use(express.json({ limit: '10mb' }));
+app.use(
+  express.json({
+    limit: '10mb',
+    verify(req, _res, buffer) {
+      if (req.path === '/api/subscription/flutterwave/webhook') {
+        req.rawBody = Buffer.from(buffer);
+      }
+    },
+  }),
+);
 app.use(
   appReleaseUrlPrefix,
   express.static(config.appReleaseDir, {
@@ -11566,17 +11581,22 @@ app.post('/api/subscription/flutterwave/webhook', async (req, res, next) => {
     if (!flutterwaveConfig.webhookHash) {
       throw createHttpError(503, 'Flutterwave webhook verification is not configured');
     }
-    const providedHash = normalizeOptionalText(req.headers['verif-hash']);
-    if (!safeEquals(providedHash, flutterwaveConfig.webhookHash)) {
+    const signature = normalizeOptionalText(req.headers['flutterwave-signature']);
+    const legacyHash = normalizeOptionalText(req.headers['verif-hash']);
+    const validSignature = isFlutterwaveWebhookSignatureValid(
+      req.rawBody,
+      signature,
+      flutterwaveConfig.webhookHash,
+    );
+    const validLegacySignature =
+      !signature && legacyHash && safeEquals(legacyHash, flutterwaveConfig.webhookHash);
+    if (!validSignature && !validLegacySignature) {
       throw createHttpError(401, 'Invalid Flutterwave webhook signature');
     }
     const event = req.body || {};
-    const data = event.data || {};
-    const transactionId = normalizeOptionalText(data.id);
-    const transactionReference = normalizeOptionalText(data.tx_ref);
+    const { transactionId, transactionReference } = flutterwaveWebhookTransaction(event);
     if (
-      String(event.event || '').toLowerCase() === 'charge.completed' &&
-      String(data.status || '').toLowerCase() === 'successful' &&
+      isFlutterwaveSuccessfulWebhook(event) &&
       transactionId &&
       transactionReference
     ) {
@@ -14811,6 +14831,9 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
   const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
   const customer = await loadSubscriptionCustomer(payment.businessId);
   const fetch = (await import('node-fetch')).default;
+  const amount = minorAmountToMajor(payment.amountMinor);
+  const currency = String(payment.currency || '').toUpperCase();
+  const txRef = payment.externalReference;
   const response = await fetch(`${flutterwaveConfig.baseUrl}/payments`, {
     method: 'POST',
     headers: {
@@ -14818,11 +14841,18 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      tx_ref: payment.externalReference,
-      amount: Number(minorAmountToMajor(payment.amountMinor)),
-      currency: payment.currency,
+      tx_ref: txRef,
+      amount,
+      currency,
       redirect_url: `${config.publicBaseUrl}/api/subscription/flutterwave/return?paymentId=${encodeURIComponent(payment.id)}`,
       customer,
+      payload_hash: buildFlutterwavePayloadHash({
+        amount,
+        currency,
+        customerEmail: customer.email,
+        txRef,
+        secretKey: flutterwaveConfig.secretKey,
+      }),
       meta: { paymentId: payment.id, planCode: payment.planCode },
       customizations: {
         title: 'Piki POS Subscription',
@@ -14858,8 +14888,11 @@ async function processFlutterwaveReturn({
   const gateway = await loadPaymentGateway('flutterwave');
   const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
   const fetch = (await import('node-fetch')).default;
+  const verifyUrl = transactionId && /^\d+$/.test(String(transactionId))
+    ? `${flutterwaveConfig.baseUrl}/transactions/${encodeURIComponent(transactionId)}/verify`
+    : `${flutterwaveConfig.baseUrl}/transactions/verify_by_reference?tx_ref=${encodeURIComponent(transactionReference)}`;
   const response = await fetch(
-    `${flutterwaveConfig.baseUrl}/transactions/${encodeURIComponent(transactionId)}/verify`,
+    verifyUrl,
     { headers: { Authorization: `Bearer ${flutterwaveConfig.secretKey}` } },
   );
   const body = await readMaybeJson(response);
@@ -14868,8 +14901,8 @@ async function processFlutterwaveReturn({
     !response.ok ||
     body.status !== 'success' ||
     data.status !== 'successful' ||
-    data.tx_ref !== payment.providerReference ||
-    data.currency !== payment.currency ||
+    (data.tx_ref || data.reference) !== payment.providerReference ||
+    String(data.currency || '').toUpperCase() !== String(payment.currency || '').toUpperCase() ||
     majorAmountToMinor(data.amount) !== payment.amountMinor
   ) {
     throw createHttpError(400, body.message || 'Flutterwave payment details did not match');
@@ -16369,7 +16402,8 @@ function resolveFlutterwaveGatewayConfig(gateway) {
     publicKey: secretConfig.publicKey || '',
     secretKey: secretConfig.secretKey || config.flutterwaveSecretKey,
     encryptionKey: secretConfig.encryptionKey || '',
-    webhookHash: secretConfig.webhookHash || '',
+    webhookHash:
+      secretConfig.webhookHash || config.flutterwaveWebhookSecretHash,
   };
 }
 

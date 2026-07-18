@@ -106,7 +106,15 @@ const config = {
   paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET?.trim() || '',
   flutterwaveBaseUrl:
     process.env.FLUTTERWAVE_BASE_URL?.trim() || 'https://api.flutterwave.com/v3',
-  flutterwaveSecretKey: process.env.FLUTTERWAVE_SECRET_KEY?.trim() || '',
+  flutterwaveSecretKey:
+    process.env.FLUTTERWAVE_SECRET_KEY?.trim() ||
+    process.env.FLW_SECRET_KEY?.trim() ||
+    '',
+  flutterwaveWebhookSecretHash:
+    process.env.FLUTTERWAVE_WEBHOOK_SECRET_HASH?.trim() ||
+    process.env.FLUTTERWAVE_SECRET_HASH?.trim() ||
+    process.env.FLW_SECRET_HASH?.trim() ||
+    '',
   mpesaBaseUrl:
     process.env.MPESA_BASE_URL?.trim() || 'https://sandbox.safaricom.co.ke',
   mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL?.trim() || '',

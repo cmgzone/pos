@@ -54,6 +54,7 @@ GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----
 PAYPAL_CLIENT_ID=your-paypal-client-id
 PAYPAL_CLIENT_SECRET=your-paypal-client-secret
 FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret-key
+FLUTTERWAVE_WEBHOOK_SECRET_HASH=replace-with-a-random-flutterwave-webhook-secret
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 PAYMENT_SECRETS_ENCRYPTION_KEY=replace-with-a-random-32-byte-base64-key
 SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
@@ -90,7 +91,9 @@ configured service account access to the Android Publisher API.
 Windows subscriptions open PayPal or Flutterwave hosted checkout. Set
 `PUBLIC_BASE_URL` to this backend's public HTTPS origin so those providers can
 return to the verification endpoints. Use PayPal's live API base URL when
-moving out of sandbox.
+moving out of sandbox. In Flutterwave Dashboard → Settings → Webhooks, register
+`https://your-api-host.example.com/api/subscription/flutterwave/webhook` and use
+the same value as `FLUTTERWAVE_WEBHOOK_SECRET_HASH`.
 
 Coolify production variables should include:
 
@@ -116,6 +119,7 @@ PAYPAL_CLIENT_ID=your-live-paypal-client-id
 PAYPAL_CLIENT_SECRET=your-live-paypal-client-secret
 FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
 FLUTTERWAVE_SECRET_KEY=your-live-flutterwave-secret-key
+FLUTTERWAVE_WEBHOOK_SECRET_HASH=replace-with-a-random-flutterwave-webhook-secret
 MPESA_CALLBACK_URL=https://your-api-host.example.com/api/payments/mpesa/stk-callback?secret=replace-with-a-long-random-callback-secret
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 PAYMENT_SECRETS_ENCRYPTION_KEY=replace-with-a-random-32-byte-base64-key

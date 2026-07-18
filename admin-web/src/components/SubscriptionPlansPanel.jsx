@@ -35,6 +35,8 @@ const SELLING_MODE_LABELS = {
 
 const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
 const META_API_VERSION_PATTERN = /^v\d+\.\d+$/
+const FLUTTERWAVE_WEBHOOK_PATH = '/api/subscription/flutterwave/webhook'
+const FLUTTERWAVE_DASHBOARD_WEBHOOK_URL = 'https://dashboard.flutterwave.com'
 
 const GATEWAY_FIELDS = {
   google_play: {
@@ -60,7 +62,7 @@ const GATEWAY_FIELDS = {
       ['publicKey', 'Public Key'],
       ['secretKey', 'Secret Key'],
       ['encryptionKey', 'Encryption Key'],
-      ['webhookHash', 'Webhook Secret Hash'],
+      ['webhookHash', 'Webhook Secret Hash (HMAC-SHA256)'],
     ],
   },
 }
@@ -179,6 +181,9 @@ function gatewayConfigurationError(gateway) {
       return 'Flutterwave API URL must use HTTPS.'
     }
     if (!gateway.secretConfig?.secretKey) return 'Flutterwave secret key is required.'
+    if (!gateway.secretConfig?.webhookHash) {
+      return 'Flutterwave webhook secret hash is required.'
+    }
   }
 
   return ''
@@ -626,6 +631,51 @@ export default function SubscriptionPlansPanel({ token }) {
         },
       }
     })
+  }
+
+  const copyGatewayValue = async (label, value) => {
+    const text = String(value || '').trim()
+    if (!text || text.startsWith('********')) {
+      setMessage(`Generate a new ${label.toLowerCase()} before copying it.`)
+      return false
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      document.execCommand('copy')
+      textarea.remove()
+    }
+    setMessage(`${label} copied`)
+    return true
+  }
+
+  const generateFlutterwaveWebhookHash = async (copySetup = false) => {
+    if (!apiBaseUrl || !isHttpsUrl(apiBaseUrl)) {
+      setMessage('Set PIKI_API_BASE_URL to the public HTTPS backend URL first.')
+      return
+    }
+    const bytes = new Uint8Array(32)
+    window.crypto.getRandomValues(bytes)
+    const hash = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const webhookUrl = apiUrl(FLUTTERWAVE_WEBHOOK_PATH)
+    updateGatewayConfig('flutterwave', 'secretConfig', 'webhookHash', hash)
+    if (copySetup) {
+      await copyGatewayValue(
+        'Flutterwave webhook setup',
+        `Webhook URL:\n${webhookUrl}\n\nWebhook Secret Hash:\n${hash}`,
+      )
+      setMessage('Webhook URL and secret hash copied. Save the gateway afterward.')
+    } else {
+      await copyGatewayValue('Flutterwave webhook secret hash', hash)
+      setMessage('Webhook secret hash generated and copied. Save the gateway afterward.')
+    }
   }
 
   const saveGateway = async (provider) => {
@@ -1494,6 +1544,76 @@ export default function SubscriptionPlansPanel({ token }) {
                     </label>
                   ))}
                 </div>
+
+                {gateway.provider === 'flutterwave' && (
+                  <div className="gateway-help">
+                    <strong>Webhook URL:</strong>{' '}
+                    <code>{apiUrl('/api/subscription/flutterwave/webhook')}</code>
+                    <br />
+                    Set this URL and the same random secret hash in Flutterwave Dashboard →
+                    Settings → Webhooks. The server verifies the current
+                    <code>flutterwave-signature</code> HMAC header.
+                  </div>
+                )}
+
+                {gateway.provider === 'flutterwave' && (
+                  <div className="gateway-help-tools">
+                    <div className="gateway-copy-row">
+                      <code>{apiUrl(FLUTTERWAVE_WEBHOOK_PATH)}</code>
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => {
+                          if (!apiBaseUrl || !isHttpsUrl(apiBaseUrl)) {
+                            setMessage('Set PIKI_API_BASE_URL to the public HTTPS backend URL.')
+                            return
+                          }
+                          copyGatewayValue(
+                            'Flutterwave webhook URL',
+                            apiUrl(FLUTTERWAVE_WEBHOOK_PATH),
+                          )
+                        }}
+                      >
+                        Copy URL
+                      </button>
+                    </div>
+                    <div className="gateway-copy-row">
+                      <code>
+                        {gatewayDraft.secretConfig?.webhookHash || 'Generate a new hash below'}
+                      </code>
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() =>
+                          copyGatewayValue(
+                            'Flutterwave webhook secret hash',
+                            gatewayDraft.secretConfig?.webhookHash,
+                          )
+                        }
+                      >
+                        Copy Hash
+                      </button>
+                    </div>
+                    <div className="gateway-help-actions">
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => generateFlutterwaveWebhookHash(true)}
+                      >
+                        Generate & Copy Setup
+                      </button>
+                      <a
+                        className="btn btn-secondary"
+                        href={FLUTTERWAVE_DASHBOARD_WEBHOOK_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Flutterwave Dashboard
+                      </a>
+                    </div>
+                    <small>Save Gateway after generating a new hash.</small>
+                  </div>
+                )}
 
                 <div className="editor-actions">
                   <span className="gateway-status">

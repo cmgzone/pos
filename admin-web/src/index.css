@@ -765,6 +765,60 @@ select.compact-input {
   margin-top: 0.65rem;
 }
 
+.gateway-help {
+  margin-top: 0.8rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.gateway-help code {
+  overflow-wrap: anywhere;
+}
+
+.gateway-help-tools {
+  margin-top: 0.8rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.gateway-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.gateway-copy-row:first-child {
+  margin-top: 0;
+}
+
+.gateway-copy-row code {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.gateway-help-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.gateway-help-tools small {
+  display: block;
+  margin-top: 0.65rem;
+  color: var(--text-muted);
+}
+
 .gateway-card {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
