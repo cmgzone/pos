@@ -8,7 +8,7 @@
 ; a standard Windows installer wizard with shortcuts and an uninstaller.
 
 #define MyAppName "Piki POS"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "Piki POS"
 #define MyAppURL "https://pikipos.com"
 #define MyAppExeName "pos_app.exe"

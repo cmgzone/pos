@@ -17158,6 +17158,73 @@ function hasCatalogCacheChanges(summary) {
   );
 }
 
+async function registerPublicCatalogCustomer({
+  client,
+  businessId,
+  branchId,
+  name,
+  phone,
+  email,
+  now,
+}) {
+  const phoneCandidates = phoneMatchCandidates(phone);
+  const existingResult = await client.query(
+    `
+    SELECT id
+    FROM customers
+    WHERE business_id = $1
+      AND COALESCE(branch_id, 'main_branch') = $2
+      AND deleted_at IS NULL
+      AND (
+        regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = ANY($3::text[])
+        OR ($4::text IS NOT NULL AND LOWER(TRIM(COALESCE(email, ''))) = $4)
+      )
+    ORDER BY CASE
+      WHEN regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = ANY($3::text[])
+        THEN 0
+      ELSE 1
+    END
+    LIMIT 1
+    FOR UPDATE
+    `,
+    [businessId, branchId, phoneCandidates, email],
+  );
+  const existing = existingResult.rows[0];
+  if (existing) {
+    const updated = await client.query(
+      `
+      UPDATE customers
+      SET name = COALESCE(NULLIF($3, ''), name),
+          phone = COALESCE(NULLIF($4, ''), phone),
+          email = COALESCE($5, email),
+          updated_at = $6,
+          sync_status = 'synced',
+          server_revision = nextval('sync_revision_seq')
+      WHERE business_id = $1 AND id = $2
+      RETURNING id
+      `,
+      [businessId, existing.id, name, phone, email, now],
+    );
+    return updated.rows[0];
+  }
+
+  const created = await client.query(
+    `
+    INSERT INTO customers (
+      id, business_id, branch_id, name, phone, email, balance,
+      created_at, updated_at, sync_status, server_revision
+    )
+    VALUES (
+      $1, $2, $3, $4, $5, $6, 0,
+      $7, $7, 'synced', nextval('sync_revision_seq')
+    )
+    RETURNING id
+    `,
+    [crypto.randomUUID(), businessId, branchId, name, phone, email, now],
+  );
+  return created.rows[0];
+}
+
 async function createPublicCatalogOrder(businessId, payload) {
   await ensureCatalogSubdomainSchema(query);
   await ensurePublicCatalogOrderSchema(query);
@@ -17167,6 +17234,10 @@ async function createPublicCatalogOrder(businessId, payload) {
   );
   const customerName = normalizeOptionalText(payload.customerName || payload.customer_name);
   const phone = normalizeOptionalText(payload.phone || payload.phoneNumber || payload.phone_number);
+  const rawEmail = normalizeOptionalText(
+    payload.email || payload.customerEmail || payload.customer_email,
+  );
+  const email = rawEmail ? normalizeCustomerPortalEmail(rawEmail) : null;
   const deliveryAddress = normalizeOptionalText(payload.deliveryAddress || payload.delivery_address);
   const fulfillmentMethod = normalizeFulfillmentMethod(
     payload.fulfillmentMethod ||
@@ -17196,6 +17267,9 @@ async function createPublicCatalogOrder(businessId, payload) {
   }
   if (!phone) {
     throw createHttpError(400, 'Phone number is required');
+  }
+  if (rawEmail && !email) {
+    throw createHttpError(400, 'Use a valid email address');
   }
   if (rawItems.length === 0) {
     throw createHttpError(400, 'Add at least one item to the order');
@@ -17268,15 +17342,27 @@ async function createPublicCatalogOrder(businessId, payload) {
   const orderId = crypto.randomUUID();
   const now = new Date().toISOString();
   const itemCount = preparedItems.reduce((sum, item) => sum + item.quantity, 0);
+  let customerId = null;
 
   await withTransaction(async (client) => {
     await ensurePublicCatalogOrderSchema(client);
+    const customer = await registerPublicCatalogCustomer({
+      client,
+      businessId,
+      branchId,
+      name: customerName,
+      phone,
+      email,
+      now,
+    });
+    customerId = customer.id;
     await client.query(
       `
       INSERT INTO public_catalog_orders (
         id,
         business_id,
         branch_id,
+        customer_id,
         customer_name,
         phone,
         fulfillment_method,
@@ -17289,12 +17375,13 @@ async function createPublicCatalogOrder(businessId, payload) {
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, $11, $12, $13, $14)
       `,
       [
         orderId,
         businessId,
         branchId,
+        customerId,
         customerName,
         phone,
         fulfillmentMethod,
@@ -17354,6 +17441,7 @@ async function createPublicCatalogOrder(businessId, payload) {
     orderNumber: shortOrderNumber(orderId),
     businessName: business.name,
     branchId,
+    customerId,
     customerName,
     phone,
     fulfillmentMethod,
@@ -17798,6 +17886,7 @@ async function ensurePublicCatalogOrderSchema(target = query) {
       id text PRIMARY KEY,
       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
       branch_id text NOT NULL DEFAULT 'main_branch',
+      customer_id text REFERENCES customers(id) ON DELETE SET NULL,
       customer_name text NOT NULL,
       phone text NOT NULL,
       fulfillment_method text NOT NULL DEFAULT 'delivery',
@@ -17842,6 +17931,11 @@ async function ensurePublicCatalogOrderSchema(target = query) {
   await runDbQuery(
     target,
     `ALTER TABLE public_catalog_orders
+     ADD COLUMN IF NOT EXISTS customer_id text REFERENCES customers(id) ON DELETE SET NULL`,
+  );
+  await runDbQuery(
+    target,
+    `ALTER TABLE public_catalog_orders
      ADD COLUMN IF NOT EXISTS fulfillment_method text NOT NULL DEFAULT 'delivery'`,
   );
   await runDbQuery(
@@ -17873,6 +17967,11 @@ async function ensurePublicCatalogOrderSchema(target = query) {
     target,
     `CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_branch
      ON public_catalog_orders(business_id, branch_id, created_at DESC)`,
+  );
+  await runDbQuery(
+    target,
+    `CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_customer
+     ON public_catalog_orders(business_id, customer_id, created_at DESC)`,
   );
   await runDbQuery(
     target,
@@ -20477,6 +20576,8 @@ async function ensureAppVersionSchema(target = query) {
       windows_version text NOT NULL DEFAULT '',
       windows_minimum_version text NOT NULL DEFAULT '',
       windows_url text NOT NULL DEFAULT '',
+      google_play_tester_group_url text NOT NULL DEFAULT '',
+      google_play_testing_url text NOT NULL DEFAULT '',
       release_notes text NOT NULL DEFAULT '',
       updated_at timestamptz NOT NULL DEFAULT NOW(),
       CONSTRAINT platform_app_version_single_row CHECK (id = 1)
@@ -20492,7 +20593,9 @@ async function ensureAppVersionSchema(target = query) {
       ADD COLUMN IF NOT EXISTS android_url text NOT NULL DEFAULT '',
       ADD COLUMN IF NOT EXISTS windows_version text NOT NULL DEFAULT '',
       ADD COLUMN IF NOT EXISTS windows_minimum_version text NOT NULL DEFAULT '',
-      ADD COLUMN IF NOT EXISTS windows_url text NOT NULL DEFAULT ''
+      ADD COLUMN IF NOT EXISTS windows_url text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS google_play_tester_group_url text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS google_play_testing_url text NOT NULL DEFAULT ''
     `,
   );
   const initialLatestVersion =
@@ -20516,9 +20619,11 @@ async function ensureAppVersionSchema(target = query) {
       windows_version,
       windows_minimum_version,
       windows_url,
+      google_play_tester_group_url,
+      google_play_testing_url,
       release_notes
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT (id) DO NOTHING
     `,
     [
@@ -20532,6 +20637,8 @@ async function ensureAppVersionSchema(target = query) {
       process.env.APP_WINDOWS_VERSION || '',
       process.env.APP_WINDOWS_MINIMUM_VERSION || '',
       process.env.APP_WINDOWS_URL || '',
+      process.env.GOOGLE_PLAY_TESTER_GROUP_URL || '',
+      process.env.GOOGLE_PLAY_TESTING_URL || '',
       process.env.APP_RELEASE_NOTES || '',
     ],
   );
@@ -20552,6 +20659,8 @@ async function loadAppVersionConfig(target = query) {
       windows_version,
       windows_minimum_version,
       windows_url,
+      google_play_tester_group_url,
+      google_play_testing_url,
       release_notes,
       updated_at
     FROM platform_app_version
@@ -20584,6 +20693,14 @@ async function saveAppVersionConfig(input = {}, target = query) {
     ) || '';
   const windowsUrl =
     normalizeOptionalText(input.windowsUrl || input.windows_url) || '';
+  const googlePlayTesterGroupUrl =
+    normalizeOptionalText(
+      input.googlePlayTesterGroupUrl || input.google_play_tester_group_url,
+    ) || '';
+  const googlePlayTestingUrl =
+    normalizeOptionalText(
+      input.googlePlayTestingUrl || input.google_play_testing_url,
+    ) || '';
   const releaseNotes = normalizeOptionalText(input.releaseNotes || input.release_notes) || '';
   for (const [label, url] of [
     ['APK URL', apkUrl],
@@ -20596,6 +20713,18 @@ async function saveAppVersionConfig(input = {}, target = query) {
         `${label} must be a hosted release path or a valid HTTPS URL.`,
       );
     }
+  }
+  if (!isAllowedGooglePlayTesterGroupUrl(googlePlayTesterGroupUrl)) {
+    throw createHttpError(
+      400,
+      'Google Play tester group URL must be a valid https://groups.google.com/g/... link.',
+    );
+  }
+  if (!isAllowedGooglePlayTestingUrl(googlePlayTestingUrl)) {
+    throw createHttpError(
+      400,
+      `Google Play testing URL must be https://play.google.com/apps/testing/${config.googlePlayPackageName}.`,
+    );
   }
   const result = await runDbQuery(
     target,
@@ -20611,10 +20740,12 @@ async function saveAppVersionConfig(input = {}, target = query) {
       windows_version,
       windows_minimum_version,
       windows_url,
+      google_play_tester_group_url,
+      google_play_testing_url,
       release_notes,
       updated_at
     )
-    VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+    VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     ON CONFLICT (id) DO UPDATE
     SET latest_version = EXCLUDED.latest_version,
         minimum_version = EXCLUDED.minimum_version,
@@ -20625,6 +20756,8 @@ async function saveAppVersionConfig(input = {}, target = query) {
         windows_version = EXCLUDED.windows_version,
         windows_minimum_version = EXCLUDED.windows_minimum_version,
         windows_url = EXCLUDED.windows_url,
+        google_play_tester_group_url = EXCLUDED.google_play_tester_group_url,
+        google_play_testing_url = EXCLUDED.google_play_testing_url,
         release_notes = EXCLUDED.release_notes,
         updated_at = NOW()
     RETURNING
@@ -20637,6 +20770,8 @@ async function saveAppVersionConfig(input = {}, target = query) {
       windows_version,
       windows_minimum_version,
       windows_url,
+      google_play_tester_group_url,
+      google_play_testing_url,
       release_notes,
       updated_at
     `,
@@ -20650,6 +20785,8 @@ async function saveAppVersionConfig(input = {}, target = query) {
       windowsVersion,
       windowsMinimumVersion,
       windowsUrl,
+      googlePlayTesterGroupUrl,
+      googlePlayTestingUrl,
       releaseNotes,
     ],
   );
@@ -20670,6 +20807,8 @@ function normalizeAppVersionRow(row) {
     windowsVersion: row.windows_version || '',
     windowsMinimumVersion: row.windows_minimum_version || '',
     windowsUrl: row.windows_url || '',
+    googlePlayTesterGroupUrl: row.google_play_tester_group_url || '',
+    googlePlayTestingUrl: row.google_play_testing_url || '',
     releaseNotes: row.release_notes || '',
     updatedAt: toIsoString(row.updated_at),
   };
@@ -20733,6 +20872,36 @@ function isAllowedReleaseUrl(value) {
     config.nodeEnv !== 'production' &&
     /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(\/|$)/i.test(clean)
   );
+}
+
+function isAllowedGooglePlayTesterGroupUrl(value) {
+  const clean = normalizeOptionalText(value);
+  if (!clean) return true;
+  try {
+    const url = new URL(clean);
+    return (
+      url.protocol === 'https:' &&
+      url.hostname === 'groups.google.com' &&
+      url.pathname.startsWith('/g/')
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function isAllowedGooglePlayTestingUrl(value) {
+  const clean = normalizeOptionalText(value);
+  if (!clean) return true;
+  try {
+    const url = new URL(clean);
+    return (
+      url.protocol === 'https:' &&
+      url.hostname === 'play.google.com' &&
+      url.pathname === `/apps/testing/${config.googlePlayPackageName}`
+    );
+  } catch (_) {
+    return false;
+  }
 }
 
 async function saveUploadedAppRelease({

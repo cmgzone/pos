@@ -246,6 +246,8 @@ export default function SubscriptionPlansPanel({ token }) {
     windowsVersion: '',
     windowsMinimumVersion: '',
     windowsUrl: '',
+    googlePlayTesterGroupUrl: '',
+    googlePlayTestingUrl: '',
     releaseNotes: '',
   })
   const [readiness, setReadiness] = useState(null)
@@ -1125,6 +1127,49 @@ export default function SubscriptionPlansPanel({ token }) {
               Use{' '}
               <code>scripts/package-windows.ps1</code> to build the installer
               and zip automatically.
+            </small>
+          </label>
+        </div>
+        <div className="gateway-card">
+          <div className="gateway-card-header">
+            <strong>Google Play closed testing</strong>
+            <small>
+              {appVersion.googlePlayTestingUrl ? 'Configured' : 'Optional'}
+            </small>
+          </div>
+          <label className="form-group">
+            <span className="form-label">Tester Google Group Link</span>
+            <input
+              className="form-input"
+              type="url"
+              placeholder="https://groups.google.com/g/your-testers/about"
+              value={appVersion.googlePlayTesterGroupUrl || ''}
+              onChange={(event) =>
+                setAppVersion((current) => ({
+                  ...current,
+                  googlePlayTesterGroupUrl: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label className="form-group">
+            <span className="form-label">Google Play Opt-in Link</span>
+            <input
+              className="form-input"
+              type="url"
+              placeholder="https://play.google.com/apps/testing/com.piki.pos"
+              value={appVersion.googlePlayTestingUrl || ''}
+              onChange={(event) =>
+                setAppVersion((current) => ({
+                  ...current,
+                  googlePlayTestingUrl: event.target.value,
+                }))
+              }
+            />
+            <small className="form-hint">
+              Testers join the Google Group first, then use the opt-in link
+              while signed in with that same Google account. Google Play does
+              not let a website verify group membership automatically.
             </small>
           </label>
         </div>

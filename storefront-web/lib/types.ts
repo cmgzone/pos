@@ -293,6 +293,7 @@ export interface CartItem {
 export interface CustomerInfo {
   customerName: string;
   phone: string;
+  email?: string;
   deliveryAddress?: string;
   fulfillmentMethod?: "pickup" | "delivery";
   note?: string;
@@ -304,6 +305,7 @@ export interface OrderPayload {
   paymentMethod?: "manual" | "mpesa";
   customerName: string;
   phone: string;
+  email?: string;
   deliveryAddress?: string;
   fulfillmentMethod?: "pickup" | "delivery";
   note?: string;

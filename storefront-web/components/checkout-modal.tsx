@@ -68,6 +68,7 @@ export function CheckoutModal({
   const { cart, cartTotal, clearCart } = useStore();
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"pickup" | "delivery">(
     initialFulfillment,
@@ -89,6 +90,7 @@ export function CheckoutModal({
       storefrontType,
       customerName: customerName.trim(),
       phone: phone.trim(),
+      email: email.trim() || undefined,
       deliveryAddress:
         checkout.showDeliveryAddress && fulfillmentMethod === "delivery"
           ? deliveryAddress.trim() || undefined
@@ -167,6 +169,12 @@ export function CheckoutModal({
                 <p className="mt-2 text-[13px] text-muted">
                   {checkout.successMessage}
                 </p>
+                {email.trim() && (
+                  <p className="mt-3 max-w-sm text-[13px] leading-5 text-muted">
+                    Your customer account is ready. Use {email.trim()} from the
+                    Account link to view it anytime.
+                  </p>
+                )}
                 {result.paymentMethod === "mpesa" && result.paymentStatus === "initiated" && (
                   <p className="mt-2 rounded-md border border-border-subtle bg-surface-elevated px-4 py-3 text-[13px] text-muted-strong">
                     Check your phone and enter your M-Pesa PIN to complete payment.
@@ -244,6 +252,21 @@ export function CheckoutModal({
                       placeholder="+254 712 345 678"
                       className={inputClass}
                     />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-[12px] font-medium text-muted-strong">
+                      Email address <span className="text-muted">(for your account)</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@example.com"
+                      className={inputClass}
+                    />
+                    <p className="mt-1.5 text-[11px] leading-4 text-muted">
+                      Add your email to access your customer account and statements later.
+                    </p>
                   </div>
 
                   <div>

@@ -161,7 +161,7 @@ img { display: block; max-width: 100%; }
 
 .downloads { background: var(--paper); }
 .compact { max-width: 650px; }
-.download-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 59px; }
+.download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 59px; }
 .download-option { min-height: 335px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 18px; padding: 30px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); }
 .download-option.secondary { color: var(--ink); background: #f9edba; }
 .platform-icon { width: 46px; height: 46px; display: grid; place-items: center; color: var(--ink); background: var(--coral); border-radius: 6px; }
@@ -169,6 +169,8 @@ img { display: block; max-width: 100%; }
 .platform-icon-windows { color: #0078d4; background: #fffaf5; }
 .platform-icon-android { color: #3ddc84; background: #173a2c; }
 .platform-icon-android img { width: 28px; height: 28px; }
+.platform-icon-play { color: #3ddc84; background: #173a2c; }
+.platform-icon-play img { width: 28px; height: 28px; }
 .download-label, .plan-code { margin: 0; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0; }
 .download-option h3 { margin: 8px 0; font-size: 25px; line-height: 1.1; }
 .download-option div > p:last-child { max-width: 390px; margin: 0; color: rgba(244,245,240,0.73); font-size: 14px; }
@@ -179,6 +181,13 @@ img { display: block; max-width: 100%; }
 .download-option small { color: rgba(244,245,240,0.62); font-family: var(--mono); font-size: 10px; }
 .secondary small { color: #5f572d; }
 .download-option .button-ink { background: var(--paper); color: var(--ink); }
+.download-option.play-test { color: var(--ink); background: var(--coral); }
+.play-test div > p:last-child { color: rgba(43, 28, 23, 0.74); }
+.play-test-actions { display: grid; gap: 9px; align-items: start; }
+.play-test .button { width: 100%; justify-content: center; }
+.play-test .button-outline { border-color: var(--ink); }
+.play-test small { color: rgba(43, 28, 23, 0.72); }
+.download-option[hidden] { display: none; }
 
 .pricing { color: var(--paper); background: var(--ink-soft); }
 .pricing-head { display: flex; justify-content: space-between; align-items: end; gap: 35px; }
@@ -258,6 +267,7 @@ img { display: block; max-width: 100%; }
   .workflow-step h3 { margin-top: 14px; }
   .product-strip { grid-template-columns: repeat(2, 1fr); }
   .phone-shot { display: none; }
+  .download-grid { grid-template-columns: repeat(2, 1fr); }
   .footer-main { grid-template-columns: 1fr; }
   .footer-links { justify-content: flex-start; }
 }

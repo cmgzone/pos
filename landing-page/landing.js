@@ -135,6 +135,32 @@
       }
     };
 
+    const setGooglePlayTesting = (release) => {
+      const card = document.querySelector('[data-google-play-tester]');
+      const groupLink = document.querySelector('[data-google-play-group]');
+      const optInLink = document.querySelector('[data-google-play-opt-in]');
+      const status = document.querySelector('[data-google-play-status]');
+      const groupUrl = String(release.googlePlayTesterGroupUrl || '').trim();
+      const optInUrl = String(release.googlePlayTestingUrl || '').trim();
+
+      if (!card || !optInUrl) {
+        card?.setAttribute('hidden', '');
+        return;
+      }
+
+      card.removeAttribute('hidden');
+      optInLink.href = optInUrl;
+      if (groupUrl) {
+        groupLink.href = groupUrl;
+        groupLink.hidden = false;
+        status.textContent = 'Step 1: join the group. Step 2: opt in to Play with the same Google account.';
+      } else {
+        groupLink.hidden = true;
+        status.textContent = 'Use the invited Google account, then opt in to the Play testing release.';
+      }
+      window.lucide?.createIcons({ nodes: [card] });
+    };
+
     try {
       const response = await fetch('/api/app/version', { headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error('Release service unavailable');
@@ -145,9 +171,11 @@
         android: { url: data.androidUrl || data.apkUrl, version: data.androidVersion || data.latestVersion },
       };
       Object.entries(releases).forEach(([platform, release]) => setReleaseAvailable(platform, release));
+      setGooglePlayTesting(data);
     } catch (_) {
       setReleaseUnavailable('windows', 'Check back for the next Windows release.');
       setReleaseUnavailable('android', 'Check back for the next Android release.');
+      document.querySelector('[data-google-play-tester]')?.setAttribute('hidden', '');
     }
   }
 

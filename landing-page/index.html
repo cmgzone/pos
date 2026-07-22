@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="assets/piki-screens/piki-operations-hero.png" fetchpriority="high">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="landing.css?v=20260722-4">
+  <link rel="stylesheet" href="landing.css?v=20260722-5">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script type="importmap">
   {
@@ -237,6 +237,15 @@
             <a class="button button-outline download-link is-disabled" data-release="android" data-ready-label="Download APK" aria-disabled="true" tabindex="-1">Checking Android release <i data-lucide="loader-circle"></i></a>
             <small data-release-meta="android" aria-live="polite">Android 8.0+ / Direct install</small>
           </article>
+          <article class="download-option play-test" data-google-play-tester hidden data-reveal>
+            <div class="platform-icon platform-icon-play"><img src="assets/brands/android.svg" alt="" width="28" height="28"></div>
+            <div><p class="download-label">Google Play</p><h3>Join the test release</h3><p>Use your Google account to join the tester group, then install Piki POS directly from the Play Store.</p></div>
+            <div class="play-test-actions">
+              <a class="button button-ink" data-google-play-group target="_blank" rel="noopener">1. Join tester group <i data-lucide="users-round"></i></a>
+              <a class="button button-outline" data-google-play-opt-in target="_blank" rel="noopener">2. Open Google Play <i data-lucide="external-link"></i></a>
+            </div>
+            <small data-google-play-status aria-live="polite">Join with the same Google account you use in Google Play.</small>
+          </article>
         </div>
       </div>
     </section>
@@ -292,7 +301,7 @@
     </div>
     <div class="shell footer-bottom"><span>Built in Nairobi, Kenya</span><span>&copy; <span id="year"></span> Piki POS</span></div>
   </footer>
-  <script src="landing.js?v=20260722-2" defer></script>
+  <script src="landing.js?v=20260722-3" defer></script>
   <script type="module" src="three-icons.js?v=20260722-2"></script>
 </body>
 </html>

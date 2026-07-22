@@ -153,7 +153,7 @@ export default function CustomerPortalPage() {
         <div className="mt-6 rounded-2xl border border-border-subtle bg-surface p-6 shadow-2xl sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Customer self-service</p>
           <h1 className="mt-2 font-display text-4xl tracking-tight">Your account</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-strong">View your outstanding statements and pay securely with M-Pesa.</p>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-strong">View your outstanding statements and pay securely with M-Pesa. Your account is created automatically when you check out with an email address.</p>
 
           {error && <p className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-200">{error}</p>}
           {message && <p className="mt-5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100">{message}</p>}

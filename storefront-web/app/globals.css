@@ -148,6 +148,9 @@ body {
 
 .atelier-header-actions { justify-content: flex-end; gap: 8px; }
 .atelier-branch-select select { max-width: 130px; border: 0; background: transparent; color: var(--atelier-muted); font-size: 11px; font-weight: 700; outline: none; }
+.atelier-account-link { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; color: var(--atelier-muted); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-decoration: none; text-transform: uppercase; transition: color 160ms ease; }
+.atelier-account-link:hover { color: var(--atelier-ink); }
+.atelier-account-link svg { width: 16px; height: 16px; }
 .atelier-icon-button,
 .atelier-cart-button { min-height: 38px; border: 1px solid var(--atelier-line); transition: transform 160ms ease, background-color 160ms ease; }
 .atelier-icon-button:hover,
@@ -292,7 +295,8 @@ body {
   .atelier-brand-mark { width: 30px; height: 30px; flex-basis: 30px; }
   .atelier-header-actions { gap: 5px; }
   .atelier-branch-select,
-  .atelier-icon-button { display: none; }
+  .atelier-icon-button,
+  .atelier-account-link span { display: none; }
   .atelier-cart-button { min-height: 34px; padding: 0 10px; }
   .atelier-cart-label { display: none; }
   .atelier-hero-copy { min-height: 510px; padding: 56px 20px 32px; }

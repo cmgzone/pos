@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUpRight,
+  CircleUserRound,
   Clock3,
   Moon,
   Package,
@@ -132,6 +133,14 @@ export function AtelierStorefront({
               </select>
             </label>
           )}
+          <a
+            href={`/portal?businessId=${encodeURIComponent(catalog.business.id)}`}
+            className="atelier-account-link"
+            aria-label="Open my customer account"
+          >
+            <CircleUserRound />
+            <span>Account</span>
+          </a>
           <button
             type="button"
             onClick={() => onAppearanceChange(appearance === "light" ? "dark" : "light")}

@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS public_catalog_orders (
   id text PRIMARY KEY,
   business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
   branch_id text NOT NULL DEFAULT 'main_branch',
+  customer_id text,
   customer_name text NOT NULL,
   phone text NOT NULL,
   delivery_address text,
@@ -314,6 +315,8 @@ CREATE TABLE IF NOT EXISTS public_catalog_orders (
 
 ALTER TABLE public_catalog_orders
   ADD COLUMN IF NOT EXISTS branch_id text NOT NULL DEFAULT 'main_branch';
+ALTER TABLE public_catalog_orders
+  ADD COLUMN IF NOT EXISTS customer_id text;
 
 CREATE TABLE IF NOT EXISTS public_catalog_order_items (
   id text PRIMARY KEY,
@@ -368,6 +371,8 @@ CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_status
   ON public_catalog_orders(business_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_business_branch
   ON public_catalog_orders(business_id, branch_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_public_catalog_orders_customer
+  ON public_catalog_orders(business_id, customer_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_public_catalog_order_items_order
   ON public_catalog_order_items(order_id);
 
