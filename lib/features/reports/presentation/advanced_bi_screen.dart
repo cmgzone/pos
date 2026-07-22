@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -127,7 +127,7 @@ class _BiDashboard extends StatelessWidget {
                 _MetricCard(
                   width: horizontal ? (constraints.maxWidth - 36) / 4 : constraints.maxWidth,
                   icon: Icons.people_alt_outlined,
-                  color: AppColors.fuchsia,
+                  color: AppColors.orangeDeep,
                   label: 'Average customer value',
                   value: _money(clvSummary['averageClv']),
                   detail: '${_number(clvSummary['customerCount']).toInt()} customers measured',
@@ -146,7 +146,7 @@ class _BiDashboard extends StatelessWidget {
                   color: AppColors.metricStaff,
                   label: 'Current headcount',
                   value: '${_number(turnoverSummary['currentHeadcount']).toInt()}',
-                  detail: '${_number(turnoverSummary['hires']).toInt()} hires · ${_number(turnoverSummary['departures']).toInt()} departures',
+                  detail: '${_number(turnoverSummary['hires']).toInt()} hires ? ${_number(turnoverSummary['departures']).toInt()} departures',
                 ),
               ],
             ),
@@ -175,8 +175,8 @@ class _BiDashboard extends StatelessWidget {
                     child: _RankedRows(
                       rows: customers.take(5).toList(),
                       title: (row) => row['customer_name']?.toString() ?? 'Customer',
-                      value: (row) => '${_money(row['lifetime_value'])} · ${_number(row['transaction_count']).toInt()} orders',
-                      color: AppColors.fuchsia,
+                      value: (row) => '${_money(row['lifetime_value'])} ? ${_number(row['transaction_count']).toInt()} orders',
+                      color: AppColors.orangeDeep,
                     ),
                   ),
                 ),
@@ -211,7 +211,7 @@ class _BiDashboard extends StatelessWidget {
                   ),
                   _InsightRow(
                     icon: Icons.favorite_outline_rounded,
-                    color: AppColors.fuchsia,
+                    color: AppColors.orangeDeep,
                     text: retentionCount == 0
                         ? 'More cohort history is needed before retention can be measured.'
                         : 'Average month-one retention is ${(monthOneRetention / retentionCount).toStringAsFixed(1)}%.',
@@ -340,7 +340,7 @@ class _TurnoverRows extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Row(children: [
         SizedBox(width: 58, child: Text(row['month']?.toString() ?? '', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-        Expanded(child: Text('${_number(row['hires']).toInt()} hired · ${_number(row['departures']).toInt()} left', style: const TextStyle(fontSize: 12))),
+        Expanded(child: Text('${_number(row['hires']).toInt()} hired ? ${_number(row['departures']).toInt()} left', style: const TextStyle(fontSize: 12))),
         Text('${_number(row['ending_headcount']).toInt()} staff', style: const TextStyle(fontSize: 12)),
       ]),
     )).toList());
@@ -369,7 +369,7 @@ class _ForecastChart extends StatelessWidget {
   const _ForecastChart({required this.actual, required this.projected});
   @override
   Widget build(BuildContext context) => CustomPaint(
-    painter: _ForecastPainter(actual: actual, projected: projected, actualColor: AppColors.primary, forecastColor: AppColors.fuchsia, gridColor: Theme.of(context).dividerColor),
+    painter: _ForecastPainter(actual: actual, projected: projected, actualColor: AppColors.primary, forecastColor: AppColors.apricot, gridColor: Theme.of(context).dividerColor),
     child: const SizedBox.expand(),
   );
 }

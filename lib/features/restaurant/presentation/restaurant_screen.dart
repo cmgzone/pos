@@ -2218,7 +2218,7 @@ Color _sectionColor(String section) {
     AppColors.primary,
     AppColors.secondary,
     AppColors.warning,
-    AppColors.fuchsia,
+    AppColors.orangeDeep,
     AppColors.metricMonth,
     AppColors.metricStaff,
   ];

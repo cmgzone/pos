@@ -22,7 +22,7 @@ class StorefrontBrandSettingsSection extends StatefulWidget {
 class _StorefrontBrandSettingsSectionState
     extends State<StorefrontBrandSettingsSection> {
   static const _brandColorPresets = [
-    '#ff2a6d',
+    '#ff7a1a',
     '#f4c430',
     '#10b981',
     '#0ea5e9',
@@ -36,7 +36,7 @@ class _StorefrontBrandSettingsSectionState
 
   final _logoController = TextEditingController();
   final _coverController = TextEditingController();
-  final _colorController = TextEditingController(text: '#ff2a6d');
+  final _colorController = TextEditingController(text: '#c45a00');
   final _taglineController = TextEditingController(text: 'Online catalog');
   final _descriptionController = TextEditingController();
   final _nameController = TextEditingController();
@@ -543,7 +543,7 @@ class _StorefrontBrandSettingsSectionState
       ],
       decoration: InputDecoration(
         labelText: 'Primary brand color',
-        hintText: '#ff2a6d',
+        hintText: '#c45a00',
         prefixIcon: Icon(Icons.palette_outlined, color: color),
         suffixIcon: Container(
           width: 22,
@@ -1135,7 +1135,7 @@ class _StorefrontBrandSettingsSectionState
   Color _colorFromHex(String hex) {
     final clean = _normalizeColorInput(hex);
     final value = int.tryParse(clean.substring(1), radix: 16);
-    if (value == null) return Color(0xFFff2a6d);
+    if (value == null) return AppColors.brandOrange;
     return Color(value + 0xFF000000);
   }
 
@@ -1157,7 +1157,7 @@ class _StorefrontBrandSettingsSectionState
     if (RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(withHash)) {
       return withHash.toLowerCase();
     }
-    return '#ff2a6d';
+    return '#c45a00';
   }
 
   bool _isRemoteUrl(String value) {

@@ -53,8 +53,8 @@ class AppTheme {
     const scheme = ColorScheme.light(
       primary: AppColors.primary,
       onPrimary: Colors.white,
-      primaryContainer: Color(0xFFFBE6E2),
-      onPrimaryContainer: Color(0xFF5B1E1C),
+      primaryContainer: Color(0xFFFFE9D2),
+      onPrimaryContainer: Color(0xFF4A2500),
       secondary: AppColors.secondary,
       onSecondary: Colors.white,
       secondaryContainer: Color(0xFFDDF1ED),
@@ -81,9 +81,9 @@ class AppTheme {
   static ThemeData get darkTheme {
     const scheme = ColorScheme.dark(
       primary: AppColors.darkAccent,
-      onPrimary: Color(0xFF321110),
-      primaryContainer: Color(0xFF4A211F),
-      onPrimaryContainer: Color(0xFFFFD9D3),
+      onPrimary: Color(0xFF321700),
+      primaryContainer: Color(0xFF4A2A10),
+      onPrimaryContainer: Color(0xFFFFE0BD),
       secondary: Color(0xFF62D8C9),
       onSecondary: Color(0xFF062E2A),
       secondaryContainer: Color(0xFF123D39),

@@ -3,18 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { StoreProvider, useStore } from "./store-provider";
-import { SiteHeader } from "./site-header";
-import {
-  StorefrontAnnouncement,
-  StorefrontSections,
-} from "./storefront-sections";
 import { CartDrawer } from "./cart-drawer";
 import { CheckoutModal } from "./checkout-modal";
 import { OrderTracker } from "./order-tracker";
-import { Footer } from "./footer";
 import { FloatingCart } from "./floating-cart";
 import { SkeletonGrid } from "./skeleton-grid";
 import { ErrorState } from "./error-state";
+import { AtelierStorefront } from "./atelier-storefront";
 import {
   GeneratedSiteFrame,
   type PikiComponentSelection,
@@ -35,7 +30,6 @@ import {
 import type {
   BusinessBrand,
   StorefrontAppearance,
-  StorefrontSectionAction,
   StorefrontTheme,
   StorefrontThemeDesign,
   StorefrontType,
@@ -299,9 +293,7 @@ function StorefrontInner() {
     setIsCartOpen,
   } = useStore();
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("featured");
   const [showCheckout, setShowCheckout] = useState(false);
   const [showTracker, setShowTracker] = useState(false);
   const [appearance, setAppearance] = useState<StorefrontAppearance>("light");
@@ -540,63 +532,20 @@ function StorefrontInner() {
     let items = catalog.campaign
       ? catalog.products.filter((item) => campaignProductIds.has(item.id))
       : [...catalog.products];
-    const query = search.trim().toLowerCase();
-    if (query) {
-      items = items.filter(
-        (item) =>
-          item.name.toLowerCase().includes(query) ||
-          item.description?.toLowerCase().includes(query) ||
-          item.category?.toLowerCase().includes(query) ||
-          item.brand?.toLowerCase().includes(query),
-      );
-    }
     if (category !== "all") {
       items = items.filter((item) => item.category === category);
     }
-    switch (sortBy) {
-      case "priceAsc":
-        items.sort((first, second) => first.price - second.price);
-        break;
-      case "priceDesc":
-        items.sort((first, second) => second.price - first.price);
-        break;
-      case "name":
-        items.sort((first, second) => first.name.localeCompare(second.name));
-        break;
-      default:
-        items.sort((first, second) => {
-          if (first.isFeatured && !second.isFeatured) return -1;
-          if (!first.isFeatured && second.isFeatured) return 1;
-          return (second.soldQty || 0) - (first.soldQty || 0);
-        });
-    }
+    items.sort((first, second) => {
+      if (first.isFeatured && !second.isFeatured) return -1;
+      if (!first.isFeatured && second.isFeatured) return 1;
+      return (second.soldQty || 0) - (first.soldQty || 0);
+    });
     return items;
-  }, [catalog, search, category, sortBy]);
-
-  const handleSectionAction = (action: StorefrontSectionAction) => {
-    if (action === "catalog") {
-      const catalogSection = document.getElementById("catalog");
-      if (catalogSection) catalogSection.scrollIntoView({ behavior: "smooth" });
-      else window.location.href = "/";
-      return;
-    }
-    if (action === "trackOrder") {
-      setShowTracker(true);
-      return;
-    }
-    if (action === "whatsapp" && catalog?.business.whatsappNumber) {
-      const phone = catalog.business.whatsappNumber.replace(/[^\d]/g, "");
-      if (phone) {
-        window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
-      }
-    }
-  };
+  }, [catalog, category]);
 
   if (error) return <ErrorState message={error} />;
 
   const isLoading = catalog === null;
-  const isSearching = Boolean(search) || category !== "all";
-  const activeSections = catalog?.page?.sections || catalog?.theme.sections || [];
   const usesGeneratedSite = Boolean(catalog?.siteBuild);
 
   return (
@@ -609,29 +558,6 @@ function StorefrontInner() {
           Draft website preview · Updates automatically · Customers cannot see
           this website until you publish
         </div>
-      )}
-      {!usesGeneratedSite && activeSections
-        .filter(
-          (section) =>
-            section.enabled !== false && section.type === "announcement",
-        )
-        .map((section) => (
-          <StorefrontAnnouncement
-            key={section.id}
-            section={section}
-            onAction={handleSectionAction}
-          />
-        ))}
-      {!usesGeneratedSite && (
-        <SiteHeader
-          business={catalog?.business}
-          storefront={catalog?.storefront}
-          onTrackOrder={() => setShowTracker(true)}
-          appearance={appearance}
-          onAppearanceChange={handleAppearanceChange}
-          showTracking={catalog?.checkout.showOrderTracking !== false}
-          pages={catalog?.pages || []}
-        />
       )}
       {inspectMode && (
         <div
@@ -655,36 +581,16 @@ function StorefrontInner() {
           onComponentSelected={handlePikiComponentSelected}
         />
       ) : (
-        <StorefrontSections
+        <AtelierStorefront
           catalog={catalog}
-          sections={activeSections.filter(
-            (section) =>
-              section.type !== "announcement" &&
-              (!catalog.campaign ||
-                section.type === "catalog" ||
-                section.type === "contact" ||
-                section.type === "benefits"),
-          )}
-          filteredItems={filteredItems}
-          isSearching={isSearching}
-          search={search}
-          onSearchChange={setSearch}
+          items={filteredItems}
           category={category}
           onCategoryChange={setCategory}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
           selectedBranch={selectedBranch}
           onBranchChange={handleBranchChange}
-          onAction={handleSectionAction}
-        />
-      )}
-
-      {!usesGeneratedSite && (
-        <Footer
-          business={catalog?.business}
           onTrackOrder={() => setShowTracker(true)}
-          showTracking={catalog?.checkout.showOrderTracking !== false}
-          pages={catalog?.pages || []}
+          appearance={appearance}
+          onAppearanceChange={handleAppearanceChange}
         />
       )}
       <FloatingCart onOpen={() => setIsCartOpen(true)} />

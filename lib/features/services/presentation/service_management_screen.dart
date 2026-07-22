@@ -2832,7 +2832,7 @@ void _showServicePaymentSuccessDialog(
                   'balance ${GiftCardRepository.formatBalance(giftCardBalance)}',
               ].join(' - '),
               style: TextStyle(
-                color: AppColors.fuchsia,
+                color: AppColors.orangeDeep,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2842,7 +2842,7 @@ void _showServicePaymentSuccessDialog(
             Text(
               'Earned gift card ${earnedGiftCardReward.code} - ${GiftCardRepository.formatBalance(earnedGiftCardReward.amount)}',
               style: TextStyle(
-                color: AppColors.fuchsia,
+                color: AppColors.orangeDeep,
                 fontWeight: FontWeight.w800,
               ),
             ),

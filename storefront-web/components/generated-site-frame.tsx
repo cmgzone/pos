@@ -52,9 +52,9 @@ const PLATFORM_BINDING_CSS = `
 :where(.piki-binding-single-buy) .piki-binding-add { min-height:52px; font-size:14px; }
 :where(.piki-binding-single-trust) { margin:0; font-size:11px; line-height:1.55; opacity:.6; }
 :where(.piki-binding-missing) { padding:64px 24px; border:1px dashed var(--piki-binding-line,rgba(127,127,127,.25)); border-radius:20px; text-align:center; }
-.piki-inspect-mode [data-piki-inspect-hover="true"] { outline:3px solid #f04b5a !important; outline-offset:4px; cursor:crosshair !important; }
+.piki-inspect-mode [data-piki-inspect-hover="true"] { outline:3px solid #c45a00 !important; outline-offset:4px; cursor:crosshair !important; }
 .piki-inspect-mode [data-piki-inspect-selected="true"] { outline:4px solid #d14343 !important; outline-offset:5px; box-shadow:0 0 0 9px rgba(209,67,67,.14) !important; }
-.piki-inspector-box { position:fixed; z-index:2147483646; pointer-events:none; border:2px solid #f04b5a; border-radius:4px; box-shadow:0 0 0 3px rgba(240,75,90,.16); }
+.piki-inspector-box { position:fixed; z-index:2147483646; pointer-events:none; border:2px solid #c45a00; border-radius:4px; box-shadow:0 0 0 3px rgba(196,90,0,.18); }
 .piki-inspector-box[data-selected="true"] { border-width:3px; border-color:#d14343; box-shadow:0 0 0 5px rgba(209,67,67,.18); }
 .piki-inspector-badge { position:absolute; left:-2px; top:0; max-width:min(360px,90vw); transform:translateY(calc(-100% - 7px)); overflow:hidden; padding:5px 8px; border-radius:6px; background:#17171a; color:#fff; font:700 11px/1.25 Inter,system-ui,sans-serif; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 5px 18px rgba(0,0,0,.28); }
 @media (max-width:820px) { :where(.piki-binding-single-product) { grid-template-columns:1fr; } :where(.piki-binding-single-info) { position:static; } }

@@ -15707,7 +15707,7 @@ function normalizeStorefrontBrandRow(row) {
     coverUrl: coverUrls[0] || coverUrl,
     coverUrls,
     primaryColor: normalizeStorefrontColor(row.catalog_primary_color, {
-      fallback: '#ff2a6d',
+      fallback: '#c45a00',
       throwOnInvalid: false,
     }),
     tagline: normalizeOptionalText(row.catalog_tagline) || 'Online catalog',
@@ -15735,7 +15735,7 @@ function normalizeStorefrontImageUrl(value, label = 'image URL') {
 
 function normalizeStorefrontColor(
   value,
-  { fallback = '#ff2a6d', throwOnInvalid = true } = {},
+  { fallback = '#c45a00', throwOnInvalid = true } = {},
 ) {
   const clean = normalizeOptionalText(value);
   if (!clean) {
@@ -15743,10 +15743,11 @@ function normalizeStorefrontColor(
   }
   const withHash = clean.startsWith('#') ? clean : `#${clean}`;
   if (/^#[0-9a-f]{6}$/i.test(withHash)) {
-    return withHash.toLowerCase();
+    const normalized = withHash.toLowerCase();
+    return normalized === '#ff2a6d' ? '#c45a00' : normalized;
   }
   if (throwOnInvalid) {
-    throw createHttpError(400, 'Use a valid 6-digit brand color, like #ff2a6d.');
+    throw createHttpError(400, 'Use a valid 6-digit brand color, like #c45a00.');
   }
   return fallback;
 }

@@ -72,7 +72,7 @@ class _PikiFallbackPainter extends CustomPainter {
     );
 
     final stroke = Paint()
-      ..color = const Color(0xFFFF5C52)
+      ..color = const Color(0xFFFF7A1A)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = size.width * 0.16;

@@ -1031,7 +1031,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
         context,
       ).colorScheme.secondary,
       PaymentMethodRepository.providerCard => AppColors.primaryLight,
-      PaymentMethodRepository.providerGiftCard => AppColors.fuchsia,
+      PaymentMethodRepository.providerGiftCard => AppColors.orangeDeep,
       _ => AppColors.primary,
     };
   }

@@ -43,7 +43,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
   static const _ink = Color(0xFF20242D);
   static const _muted = Color(0xFF667085);
   static const _border = Color(0xFFE2E7EF);
-  static const _accent = Color(0xFFD72668);
+  static const _accent = AppColors.primary;
   static const _success = Color(0xFF447A61);
   static const _blue = Color(0xFF3A6EA5);
   static const _amber = Color(0xFFA66A24);
@@ -883,9 +883,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           width: compact ? 44 : 52,
           height: compact ? 44 : 52,
           decoration: BoxDecoration(
-            color: const Color(0xFFFFEEF5),
+            color: const Color(0xFFFFF2E2),
             borderRadius: BorderRadius.circular(compact ? 16 : 20),
-            border: Border.all(color: const Color(0xFFF7CFE0)),
+            border: Border.all(color: const Color(0xFFFFD8AD)),
           ),
           child: const Icon(Icons.workspace_premium_outlined, color: _accent),
         ),
@@ -1029,7 +1029,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         vertical: compact ? 9 : 12,
       ),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFFFFEEF5) : _surfaceSoft,
+        color: selected ? const Color(0xFFFFF2E2) : _surfaceSoft,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: selected ? _accent.withValues(alpha: 0.45) : _border,
@@ -1341,7 +1341,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
           constraints: const BoxConstraints(minHeight: 292),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFFFFBFD) : _surface,
+            color: selected ? const Color(0xFFFFFCF8) : _surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected ? _accent : _border,
@@ -1501,7 +1501,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFFBFD) : _surface,
+          color: selected ? const Color(0xFFFFFCF8) : _surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected ? _accent : _border,
@@ -1582,7 +1582,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFFFFEEF5) : _surfaceSoft,
+        color: selected ? const Color(0xFFFFF2E2) : _surfaceSoft,
         borderRadius: BorderRadius.circular(size * 0.32),
         border: Border.all(color: selected ? _accent : _border),
       ),

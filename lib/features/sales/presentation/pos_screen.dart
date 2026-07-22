@@ -58,7 +58,7 @@ import 'widgets/variant_picker_bottom_sheet.dart';
 
 enum PosProductViewMode { cards, compact }
 
-const _posCatalogPink = Color(0xFFE83E6B);
+const _posCatalogOrange = AppColors.primary;
 const _posCatalogBackground = Color(0xFFF8F9FB);
 const _posCatalogText = Color(0xFF1A1A1A);
 const _posCatalogSecondary = Color(0xFF6B7280);
@@ -2352,7 +2352,7 @@ class _PremiumSearchField extends StatelessWidget {
               color: active
                   ? (isDark
                         ? AppColors.darkAccent.withValues(alpha: 0.28)
-                        : _posCatalogPink.withValues(alpha: 0.42))
+                        : _posCatalogOrange.withValues(alpha: 0.42))
                   : (isDark
                         ? AppColors.darkBorder.withValues(alpha: 0.9)
                         : _posCatalogBorder),
@@ -2361,7 +2361,7 @@ class _PremiumSearchField extends StatelessWidget {
             boxShadow: active && !isDark
                 ? [
                     BoxShadow(
-                      color: _posCatalogPink.withValues(alpha: 0.08),
+                      color: _posCatalogOrange.withValues(alpha: 0.08),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),
@@ -2394,7 +2394,7 @@ class _PremiumSearchField extends StatelessWidget {
                     Icons.qr_code_scanner_rounded,
                     size: 18,
                     color: active
-                        ? (isDark ? AppColors.darkAccent : _posCatalogPink)
+                        ? (isDark ? AppColors.darkAccent : _posCatalogOrange)
                         : (isDark
                               ? AppColors.darkTextMuted
                               : Theme.of(context).colorScheme.onSurfaceVariant),
@@ -5715,7 +5715,7 @@ class _CartSide extends ConsumerWidget {
                     'balance ${GiftCardRepository.formatBalance(giftCardBalance)}',
                 ].join(' - '),
                 style: TextStyle(
-                  color: AppColors.fuchsia,
+                  color: AppColors.orangeDeep,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -5725,7 +5725,7 @@ class _CartSide extends ConsumerWidget {
               Text(
                 'Earned gift card ${earnedGiftCardReward.code} - ${GiftCardRepository.formatBalance(earnedGiftCardReward.amount)}',
                 style: TextStyle(
-                  color: AppColors.fuchsia,
+                  color: AppColors.orangeDeep,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -7271,7 +7271,7 @@ class _CompactQuantityStepper extends ConsumerWidget {
                 size: 16,
                 color: isService
                     ? (isDark ? AppColors.darkTextMuted : Colors.grey.shade400)
-                    : _posCatalogPink,
+                    : _posCatalogOrange,
               ),
             ),
           ),
@@ -7489,7 +7489,7 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = isDark ? AppColors.darkAccent : _posCatalogPink;
+    final accent = isDark ? AppColors.darkAccent : _posCatalogOrange;
 
     return Padding(
       padding: const EdgeInsets.only(right: AppSpacing.sm),
@@ -7778,7 +7778,7 @@ class _ProductCardState extends State<ProductCard> {
                 ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.72))
         : (isDark ? AppColors.darkSurface : Colors.white);
     final borderColor = _isHovered && !isOutOfStock
-        ? (isDark ? AppColors.darkAccent : _posCatalogPink).withValues(
+        ? (isDark ? AppColors.darkAccent : _posCatalogOrange).withValues(
             alpha: 0.42,
           )
         : isOutOfStock
@@ -7787,14 +7787,14 @@ class _ProductCardState extends State<ProductCard> {
               : _posCatalogBorder.withValues(alpha: 0.7))
         : (isDark ? AppColors.darkBorder : _posCatalogBorder);
 
-    // Coral action button color
+    // Orange action button color.
     final actionColor = isOutOfStock
         ? (isDark
               ? AppColors.darkTextMuted.withValues(alpha: 0.3)
               : _posCatalogSecondary.withValues(alpha: 0.15))
         : (isDark
               ? AppColors.darkAccent
-              : (_isHovered ? const Color(0xFFEE4D78) : _posCatalogPink));
+              : (_isHovered ? AppColors.brandOrange : _posCatalogOrange));
     final actionIconColor = isOutOfStock
         ? (isDark ? AppColors.darkTextMuted : _posCatalogSecondary)
         : Colors.white;
@@ -7940,7 +7940,7 @@ class _ProductCardState extends State<ProductCard> {
                                         : Icons.favorite_border_rounded,
                                     size: 16,
                                     color: _isFavorite
-                                        ? _posCatalogPink
+                                        ? _posCatalogOrange
                                         : (isDark
                                               ? AppColors.darkTextSecondary
                                               : _posCatalogSecondary),
@@ -8023,7 +8023,7 @@ class _ProductCardState extends State<ProductCard> {
                                       ).colorScheme.onSurfaceVariant
                                     : (isDark
                                           ? AppColors.darkAccentSoft
-                                          : _posCatalogPink),
+                                          : _posCatalogOrange),
                                 fontWeight: FontWeight.w800,
                                 fontSize: compactCard ? 15 : 18,
                                 fontFeatures: const [

@@ -574,7 +574,7 @@ class PikiMessageBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [AppColors.primary, Color(0xFFCC2250)],
+            colors: [AppColors.primary, AppColors.orangeDeep],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -2476,7 +2476,7 @@ class _AgentRow extends StatelessWidget {
             margin: const EdgeInsets.only(right: 10, top: 2),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [AppColors.primary, Color(0xFFFF7E67)],
+                colors: [AppColors.primary, AppColors.apricot],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),

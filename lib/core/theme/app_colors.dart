@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Piki's palette is sampled from the active app mark: deep navy foundations,
-/// coral-led actions, orange highlights, and teal confirmation states.
+/// orange-led actions and highlights, and teal confirmation states.
 class AppColors {
   static const Color background = Color(0xFFF6F4F0);
   static const Color surface = Color(0xFFFFFEFC);
@@ -10,13 +10,13 @@ class AppColors {
   static const Color premiumPanelSoft = Color(0xFFFAF8F4);
   static const Color premiumStroke = Color(0xFFE2DED6);
 
-  /// The accessible action shade of the logo coral. The brighter [brandCoral]
-  /// is used where it does not carry white text.
-  static const Color primary = Color(0xFFC74343);
-  static const Color primaryLight = Color(0xFFF26A5E);
-  static const Color brandCoral = Color(0xFFFF5C52);
-  static const Color apricot = Color(0xFFFFB86B);
-  static const Color fuchsia = Color(0xFF9B4F62);
+  /// The accessible orange action shade. The brighter [brandOrange] is used
+  /// where it does not carry white text.
+  static const Color primary = Color(0xFFC45A00);
+  static const Color primaryLight = Color(0xFFF18424);
+  static const Color brandOrange = Color(0xFFFF7A1A);
+  static const Color apricot = Color(0xFFFFB45C);
+  static const Color orangeDeep = Color(0xFF9A4600);
   static const Color secondary = Color(0xFF087D73);
   static const Color signal = Color(0xFF18A999);
 
@@ -36,8 +36,8 @@ class AppColors {
   static const Color darkTextPrimary = Color(0xFFF8F5EF);
   static const Color darkTextSecondary = Color(0xFFA9B2C1);
   static const Color darkTextMuted = Color(0xFF768196);
-  static const Color darkAccent = Color(0xFFFF766E);
-  static const Color darkAccentSoft = Color(0xFFFF9A8F);
+  static const Color darkAccent = Color(0xFFFF9D3D);
+  static const Color darkAccentSoft = Color(0xFFFFC27A);
 
   static LinearGradient get premiumGradient => const LinearGradient(
     begin: Alignment.topCenter,
@@ -48,7 +48,7 @@ class AppColors {
   static LinearGradient get brandGradient => const LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [brandCoral, apricot],
+    colors: [brandOrange, apricot],
   );
 
   static List<BoxShadow> premiumShadow([double alpha = 0.08]) => [

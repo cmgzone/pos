@@ -146,7 +146,7 @@ class _BusinessSetupWizardScreenState extends State<BusinessSetupWizardScreen>
             value: 'beauty',
             label: 'Beauty / cosmetics',
             icon: Icons.spa_outlined,
-            color: Color(0xFFEC4899),
+            color: AppColors.brandOrange,
           ),
           _WizardOption(
             value: 'pharmacy',

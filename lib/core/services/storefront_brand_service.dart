@@ -41,7 +41,7 @@ class StorefrontBrandSettings {
       logoUrl: '',
       coverUrl: '',
       coverUrls: const [],
-      primaryColor: '#ff2a6d',
+      primaryColor: '#c45a00',
       tagline: 'Online catalog',
       description:
           'Shop products, choose variants, and send your order directly to the store. The team will confirm availability and payment before fulfillment.',
@@ -59,7 +59,7 @@ class StorefrontBrandSettings {
       logoUrl: json['logoUrl']?.toString() ?? '',
       coverUrl: coverUrls.isNotEmpty ? coverUrls.first : coverUrl,
       coverUrls: coverUrls,
-      primaryColor: json['primaryColor']?.toString() ?? '#ff2a6d',
+      primaryColor: json['primaryColor']?.toString() ?? '#c45a00',
       tagline: json['tagline']?.toString() ?? 'Online catalog',
       description:
           json['description']?.toString() ??

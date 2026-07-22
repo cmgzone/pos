@@ -938,7 +938,7 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
                       ? [Color(0xFF00C896), Color(0xFF00A8FF)]
                       : mode == PikiMode.advice
                       ? [Color(0xFF9C27B0), Color(0xFF651FFF)]
-                      : [AppColors.primary, Color(0xFFFF7E67)],
+                      : [AppColors.primary, AppColors.apricot],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -1638,7 +1638,7 @@ class _BottomBar extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.primary, Color(0xFFCC2250)],
+                      colors: [AppColors.primary, AppColors.orangeDeep],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),

@@ -16,16 +16,17 @@ test('storefront theme presets expose reusable validated designs', () => {
   const presets = storefrontThemePresets();
   assert.ok(presets.length >= 5);
   assert.ok(presets.some((preset) => preset.id === 'minimal'));
+  assert.ok(presets.some((preset) => preset.id === 'portfolio'));
   assert.ok(presets.every((preset) => /^#[0-9a-f]{6}$/.test(preset.design.accentColor)));
 });
 
 test('restaurant default theme keeps the restaurant presentation', () => {
   const theme = defaultStorefrontTheme({
     storefrontType: 'restaurant',
-    brandColor: '#FF2A6D',
+    brandColor: '#C45A00',
   });
   assert.equal(theme.storefrontType, 'restaurant');
-  assert.equal(theme.design.accentColor, '#ff2a6d');
+  assert.equal(theme.design.accentColor, '#c45a00');
   assert.equal(theme.preset, 'warm');
   assert.equal(theme.isPublished, true);
   assert.ok(theme.sections.some((section) => section.type === 'catalog'));

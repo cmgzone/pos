@@ -27,7 +27,7 @@ class _CatalogPublishSectionState extends State<CatalogPublishSection> {
           height: 52,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [AppColors.primary, Color(0xFFC72DFF)],
+              colors: [AppColors.primary, AppColors.apricot],
             ),
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
