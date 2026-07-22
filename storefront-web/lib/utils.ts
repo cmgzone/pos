@@ -43,6 +43,12 @@ export function getBootstrap(): {
   if (fromPath) {
     return { businessId: fromPath };
   }
+  const businessId = new URLSearchParams(window.location.search)
+    .get("businessId")
+    ?.trim();
+  if (businessId) {
+    return { businessId };
+  }
   return {};
 }
 

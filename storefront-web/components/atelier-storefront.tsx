@@ -59,7 +59,7 @@ export function AtelierStorefront({
     [catalog, featuredItem],
   );
   const isServiceStore = mode === "services";
-  const browseLabel = isServiceStore ? "Explore services" : "Explore collection";
+  const browseLabel = isServiceStore ? "Explore services" : "Shop the store";
 
   const scrollToCollection = () => {
     document.getElementById("atelier-collection")?.scrollIntoView({
@@ -183,22 +183,33 @@ export function AtelierStorefront({
               )}
             </div>
             <dl className="atelier-hero-notes">
-              <div><dt>01</dt><dd>{isServiceStore ? "Considered care" : "Made to last"}</dd></div>
-              <div><dt>02</dt><dd>{isServiceStore ? "Book in moments" : "Live availability"}</dd></div>
-              <div><dt>03</dt><dd>{selectedBranch?.name || "Independent store"}</dd></div>
+              <div><dt>01</dt><dd>{isServiceStore ? "Considered care" : "Live stock"}</dd></div>
+              <div><dt>02</dt><dd>{isServiceStore ? "Book in moments" : "Simple checkout"}</dd></div>
+              <div><dt>03</dt><dd>{selectedBranch?.name || "Local support"}</dd></div>
             </dl>
           </div>
 
           <div className="atelier-hero-media" data-piki-component="hero-media">
-            {media[0] ? (
-              <img src={media[0]} alt="" className="atelier-hero-image" />
-            ) : (
-              <div className="atelier-media-fallback">
-                <span>{getInitials(catalog.business.name)}</span>
+            <div className="atelier-hero-stage">
+              <div className="atelier-hero-stage-meta">
+                <span>{isServiceStore ? "Now booking" : "Featured today"}</span>
+                <span>01 / 01</span>
               </div>
-            )}
-            <div className="atelier-media-index">{mode === "services" ? "Practice / 01" : "Edition / 01"}</div>
-            <div className="atelier-media-orbit" aria-hidden="true" />
+              {media[0] ? (
+                <img src={media[0]} alt="" className="atelier-hero-image" />
+              ) : (
+                <div className="atelier-media-fallback">
+                  <span>{getInitials(catalog.business.name)}</span>
+                </div>
+              )}
+              <p className="atelier-hero-product-name">
+                {featuredItem?.name || catalog.business.name}
+              </p>
+            </div>
+            <div className="atelier-hero-caption">
+              <span>Curated for everyday use</span>
+              <p>{isServiceStore ? "Clear choices. Thoughtful timing." : "Prices, availability, and support in one place."}</p>
+            </div>
           </div>
         </section>
 
@@ -477,17 +488,17 @@ function resolveAtelierMode(catalog: Catalog): AtelierMode {
     ? catalog.products.filter((item) => (item.itemType || item.type) === "service").length / catalog.products.length
     : 0;
   if (catalog.storefront.type === "services" || serviceRatio > 0.5) return "services";
-  if (catalog.products.length === 1 || catalog.campaign?.productIds.length === 1) return "single-product";
+  if (catalog.siteBuild?.singleProductId || catalog.campaign?.productIds.length === 1) return "single-product";
   if (preset === "portfolio" || pageType.includes("portfolio")) return "portfolio";
   return "collection";
 }
 
 function collectMedia(catalog: Catalog, featuredItem?: CatalogItem): string[] {
   const urls = [
-    ...(catalog.business.brand.coverUrls || []),
-    catalog.business.brand.coverUrl || "",
     ...getCatalogItemImages(featuredItem || ({} as CatalogItem)),
     ...catalog.products.flatMap((item) => getCatalogItemImages(item)).slice(0, 4),
+    ...(catalog.business.brand.coverUrls || []),
+    catalog.business.brand.coverUrl || "",
   ];
   return [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
 }
@@ -496,19 +507,43 @@ function heroEyebrow(catalog: Catalog, mode: AtelierMode) {
   if (mode === "services") return catalog.storefront.label || "Independent practice";
   if (mode === "portfolio") return "Creative portfolio";
   if (mode === "single-product") return "A single considered release";
-  return catalog.storefront.label || "Independent collection";
+  return `${catalog.business.name} / online store`;
 }
 
 function heroTitle(catalog: Catalog, item: CatalogItem | undefined, mode: AtelierMode) {
   if (mode === "single-product" && item) return item.name;
   if (mode === "services") return catalog.storefront.title || `Make time for better ${catalog.business.name}.`;
   if (mode === "portfolio") return catalog.storefront.title || `${catalog.business.name}, in progress.`;
-  return catalog.storefront.title || catalog.business.brand.tagline || `${catalog.business.name}, selected with intention.`;
+  const title = catalog.storefront.title?.trim();
+  const itemName = item?.name?.trim();
+  const genericTitles = new Set(["online shop", "store", "catalog", "retail store"]);
+  if (
+    title &&
+    title.toLowerCase() !== itemName?.toLowerCase() &&
+    !genericTitles.has(title.toLowerCase())
+  ) {
+    return title;
+  }
+  const catalogText = [
+    catalog.storefront.label,
+    title,
+    ...catalog.products.flatMap((product) => [product.name, product.category, product.brand]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return /tech|electronic|phone|laptop|audio|headphone|computer|device/.test(catalogText)
+    ? "The right tech, right now."
+    : "Better things, better chosen.";
 }
 
 function heroDescription(catalog: Catalog, mode: AtelierMode) {
   if (mode === "services") {
     return catalog.storefront.description || catalog.business.brand.description || "Book a more thoughtful kind of service, on your own terms.";
   }
-  return catalog.storefront.description || catalog.business.brand.description || "A premium storefront shaped around the work itself, with every detail connected to the counter.";
+  const description = catalog.storefront.description || catalog.business.brand.description;
+  if (description && !/^browse products, choose variants, and place an order in seconds\.?$/i.test(description.trim())) {
+    return description;
+  }
+  return "Straightforward shopping with live availability, clear pricing, and support when you need it.";
 }
