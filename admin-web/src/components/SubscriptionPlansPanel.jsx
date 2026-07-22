@@ -37,6 +37,7 @@ const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
 const META_API_VERSION_PATTERN = /^v\d+\.\d+$/
 const FLUTTERWAVE_WEBHOOK_PATH = '/api/subscription/flutterwave/webhook'
 const FLUTTERWAVE_DASHBOARD_WEBHOOK_URL = 'https://dashboard.flutterwave.com'
+const APP_RELEASE_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
 const GATEWAY_FIELDS = {
   google_play: {
@@ -482,43 +483,67 @@ export default function SubscriptionPlansPanel({ token }) {
       })
       const url = apiUrl(`/api/platform/app-release/${platform}?${params}`)
 
-      const body = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', url)
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-        xhr.setRequestHeader(
-          'Content-Type',
-          file.type || 'application/octet-stream',
+      const uploadId =
+        globalThis.crypto?.randomUUID?.() ||
+        `release-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
+      const chunkCount = Math.max(
+        1,
+        Math.ceil(file.size / APP_RELEASE_UPLOAD_CHUNK_BYTES),
+      )
+      let body = null
+
+      for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+        const start = chunkIndex * APP_RELEASE_UPLOAD_CHUNK_BYTES
+        const chunk = file.slice(
+          start,
+          Math.min(file.size, start + APP_RELEASE_UPLOAD_CHUNK_BYTES),
         )
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const pct = Math.round((event.loaded / event.total) * 100)
-            setUploadProgress(pct)
+        body = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('POST', url)
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+          xhr.setRequestHeader(
+            'Content-Type',
+            file.type || 'application/octet-stream',
+          )
+          xhr.setRequestHeader('X-Release-Upload-Id', uploadId)
+          xhr.setRequestHeader('X-Release-Chunk-Index', String(chunkIndex))
+          xhr.setRequestHeader('X-Release-Chunk-Count', String(chunkCount))
+          xhr.setRequestHeader('X-Release-Total-Bytes', String(file.size))
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return
+            const uploaded = start + event.loaded
+            setUploadProgress(Math.min(99, Math.round((uploaded / file.size) * 100)))
           }
-        }
-        xhr.upload.onerror = () =>
-          reject(new Error('Network error during upload.'))
-        xhr.upload.ontimeout = () =>
-          reject(new Error('Upload timed out. Try a smaller file or check your connection.'))
-        xhr.onerror = () =>
-          reject(new Error('The server could not be reached.'))
-        xhr.ontimeout = () =>
-          reject(new Error('The request timed out.'))
-        xhr.onload = () => {
-          try {
-            const parsed = JSON.parse(xhr.responseText || '{}')
-            if (xhr.status >= 200 && xhr.status < 300 && parsed.ok === true) {
-              resolve(parsed)
-            } else {
-              reject(new Error(parsed.error || `Could not upload ${platformLabel}`))
+          xhr.upload.onerror = () =>
+            reject(new Error('Network error during upload.'))
+          xhr.upload.ontimeout = () =>
+            reject(new Error('Upload timed out. Try again; only an 8 MB chunk is sent at a time.'))
+          xhr.onerror = () =>
+            reject(new Error('The server could not be reached.'))
+          xhr.ontimeout = () =>
+            reject(new Error('The request timed out.'))
+          xhr.onload = () => {
+            try {
+              const parsed = JSON.parse(xhr.responseText || '{}')
+              if (xhr.status >= 200 && xhr.status < 300 && parsed.ok === true) {
+                resolve(parsed)
+              } else {
+                reject(new Error(parsed.error || `Could not upload ${platformLabel}`))
+              }
+            } catch {
+              reject(new Error(`Could not upload ${platformLabel}`))
             }
-          } catch {
-            reject(new Error(`Could not upload ${platformLabel}`))
           }
-        }
-        xhr.timeout = 1800000
-        xhr.send(file)
-      })
+          xhr.timeout = 300000
+          xhr.send(chunk)
+        })
+        setUploadProgress(Math.round(((chunkIndex + 1) / chunkCount) * 100))
+      }
+
+      if (!body?.data?.upload) {
+        throw new Error(`Could not finish uploading ${platformLabel}`)
+      }
 
       const nextVersion = { ...(body.data || {}) }
       delete nextVersion.upload

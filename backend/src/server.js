@@ -268,6 +268,7 @@ const storefrontPortalIndexPath = path.join(
   'index.html',
 );
 const appReleaseUrlPrefix = '/downloads/app';
+const appReleaseUploadChunkMaxBytes = 12 * 1024 * 1024;
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -5276,13 +5277,30 @@ app.post('/api/platform/app-release/:platform', requirePlatformAdmin, async (req
       throw createHttpError(400, 'Release version is required before upload.');
     }
 
-    const upload = await saveUploadedAppRelease({
+    const originalName =
+      normalizeOptionalText(req.query?.fileName) ||
+      normalizeOptionalText(req.headers['x-file-name']);
+    const chunk = readAppReleaseUploadChunk(req);
+    const chunkResult = chunk
+      ? await saveUploadedAppReleaseChunk({
+          req,
+          platform,
+          version,
+          originalName,
+          chunk,
+        })
+      : null;
+
+    if (chunkResult && !chunkResult.complete) {
+      res.status(202).json({ ok: true, data: chunkResult });
+      return;
+    }
+
+    const upload = chunkResult?.upload || await saveUploadedAppRelease({
       req,
       platform,
       version,
-      originalName:
-        normalizeOptionalText(req.query?.fileName) ||
-        normalizeOptionalText(req.headers['x-file-name']),
+      originalName,
     });
     const current = await loadAppVersionConfig();
     const nextVersion =
@@ -20902,6 +20920,195 @@ function isAllowedGooglePlayTestingUrl(value) {
   } catch (_) {
     return false;
   }
+}
+
+function readAppReleaseUploadChunk(req) {
+  const uploadId = normalizeOptionalText(req.headers['x-release-upload-id']);
+  const indexValue = normalizeOptionalText(req.headers['x-release-chunk-index']);
+  const countValue = normalizeOptionalText(req.headers['x-release-chunk-count']);
+  const totalValue = normalizeOptionalText(req.headers['x-release-total-bytes']);
+  const hasChunkHeaders = uploadId || indexValue || countValue || totalValue;
+  if (!hasChunkHeaders) return null;
+
+  if (!uploadId || !/^[a-z0-9][a-z0-9_-]{15,127}$/i.test(uploadId)) {
+    throw createHttpError(400, 'Release upload ID is invalid.');
+  }
+
+  const index = parseReleaseUploadInteger(indexValue, 'Release chunk index', 0);
+  const count = parseReleaseUploadInteger(countValue, 'Release chunk count', 1);
+  const totalBytes = parseReleaseUploadInteger(
+    totalValue,
+    'Release total size',
+    1,
+  );
+  if (index >= count) {
+    throw createHttpError(400, 'Release chunk index is outside the upload range.');
+  }
+  if (count > 1000) {
+    throw createHttpError(400, 'Release upload has too many chunks.');
+  }
+
+  return { uploadId, index, count, totalBytes };
+}
+
+function parseReleaseUploadInteger(value, label, minimum) {
+  if (!/^\d+$/.test(String(value || ''))) {
+    throw createHttpError(400, `${label} is invalid.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw createHttpError(400, `${label} is invalid.`);
+  }
+  return parsed;
+}
+
+function releaseUploadChunkFileName(index) {
+  return `${String(index).padStart(4, '0')}.part`;
+}
+
+async function saveUploadedAppReleaseChunk({
+  req,
+  platform,
+  version,
+  originalName,
+  chunk,
+}) {
+  const maxBytes = Math.max(1, Number(config.appReleaseMaxBytes) || 1);
+  if (chunk.totalBytes > maxBytes) {
+    throw createHttpError(413, 'Release file is too large.');
+  }
+
+  const contentLength = Number(req.headers['content-length'] || 0);
+  const maxChunkBytes = Math.min(maxBytes, appReleaseUploadChunkMaxBytes);
+  if (contentLength > maxChunkBytes) {
+    throw createHttpError(413, 'Release upload chunk is too large.');
+  }
+
+  const uploadDir = path.join(
+    config.appReleaseDir,
+    '.uploads',
+    platform,
+    chunk.uploadId,
+  );
+  const chunkFileName = releaseUploadChunkFileName(chunk.index);
+  const chunkPath = path.join(uploadDir, chunkFileName);
+  const incomingPath = path.join(
+    uploadDir,
+    `.incoming-${crypto.randomUUID()}-${chunkFileName}`,
+  );
+
+  await fsp.mkdir(uploadDir, { recursive: true });
+  let bytes = 0;
+  const limitStream = new Transform({
+    transform(chunkValue, _encoding, callback) {
+      bytes += chunkValue.length;
+      if (bytes > maxChunkBytes) {
+        callback(createHttpError(413, 'Release upload chunk is too large.'));
+        return;
+      }
+      callback(null, chunkValue);
+    },
+  });
+
+  try {
+    await pipeline(
+      req,
+      limitStream,
+      fs.createWriteStream(incomingPath, { flags: 'wx' }),
+    );
+    if (bytes === 0) {
+      throw createHttpError(400, 'Release upload chunk is empty.');
+    }
+    await fsp.rm(chunkPath, { force: true });
+    await fsp.rename(incomingPath, chunkPath);
+  } catch (error) {
+    await fsp.rm(incomingPath, { force: true }).catch(() => {});
+    throw error;
+  }
+
+  const entries = await fsp.readdir(uploadDir);
+  const chunkFiles = entries.filter((name) => /^\d{4}\.part$/.test(name));
+  if (chunkFiles.length < chunk.count) {
+    return {
+      complete: false,
+      chunkIndex: chunk.index,
+      chunkCount: chunk.count,
+      receivedBytes: bytes,
+    };
+  }
+
+  for (let index = 0; index < chunk.count; index += 1) {
+    const expectedPath = path.join(uploadDir, releaseUploadChunkFileName(index));
+    try {
+      await fsp.access(expectedPath);
+    } catch (_) {
+      return {
+        complete: false,
+        chunkIndex: chunk.index,
+        chunkCount: chunk.count,
+        receivedBytes: bytes,
+      };
+    }
+  }
+
+  const actualBytes = await concatenateReleaseUploadChunks({
+    uploadDir,
+    chunkCount: chunk.count,
+  });
+  if (actualBytes !== chunk.totalBytes) {
+    await fsp.rm(uploadDir, { recursive: true, force: true }).catch(() => {});
+    throw createHttpError(400, 'Release upload size did not match the selected file.');
+  }
+
+  const extension = releaseFileExtension(platform, originalName);
+  const safeVersion = safeReleaseFilePart(version, 'release');
+  const filename = `piki-pos-${platform}-${safeVersion}-${Date.now()}${extension}`;
+  const platformDir = path.join(config.appReleaseDir, platform);
+  const assembledPath = path.join(uploadDir, 'assembled-release');
+  const finalPath = path.join(platformDir, filename);
+  await fsp.mkdir(platformDir, { recursive: true });
+  await fsp.rename(assembledPath, finalPath);
+  await fsp.rm(uploadDir, { recursive: true, force: true }).catch(() => {});
+  await cleanupOldReleases(platformDir, filename);
+
+  return {
+    complete: true,
+    upload: {
+      platform,
+      version,
+      fileName: filename,
+      bytes: actualBytes,
+      url: `${appReleaseUrlPrefix}/${platform}/${filename}`,
+    },
+  };
+}
+
+async function concatenateReleaseUploadChunks({
+  uploadDir,
+  chunkCount,
+}) {
+  const assembledPath = path.join(uploadDir, 'assembled-release');
+  const output = fs.createWriteStream(assembledPath, { flags: 'wx' });
+  let bytes = 0;
+
+  try {
+    for (let index = 0; index < chunkCount; index += 1) {
+      const partPath = path.join(uploadDir, releaseUploadChunkFileName(index));
+      const stat = await fsp.stat(partPath);
+      bytes += stat.size;
+      await pipeline(fs.createReadStream(partPath), output, { end: false });
+    }
+    await new Promise((resolve, reject) => {
+      output.once('error', reject);
+      output.end(resolve);
+    });
+  } catch (error) {
+    output.destroy();
+    await fsp.rm(assembledPath, { force: true }).catch(() => {});
+    throw error;
+  }
+
+  return bytes;
 }
 
 async function saveUploadedAppRelease({
