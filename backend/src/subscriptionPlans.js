@@ -415,6 +415,31 @@ async function ensureSubscriptionSchema(target = query) {
   await runQuery(
     target,
     `
+    CREATE TABLE IF NOT EXISTS subscription_payment_events (
+      provider text NOT NULL,
+      provider_transaction_id text NOT NULL,
+      payment_id text NOT NULL REFERENCES subscription_payments(id) ON DELETE CASCADE,
+      provider_reference text,
+      amount_minor integer NOT NULL,
+      currency text NOT NULL,
+      metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      completed_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (provider, provider_transaction_id)
+    )
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
+    CREATE INDEX IF NOT EXISTS idx_subscription_payment_events_payment
+      ON subscription_payment_events(payment_id, completed_at DESC)
+    `,
+  );
+
+  await runQuery(
+    target,
+    `
     CREATE TABLE IF NOT EXISTS ai_rate_limit_counters (
       business_id text NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
       period text NOT NULL,

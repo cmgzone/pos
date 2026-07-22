@@ -4,7 +4,10 @@ const test = require('node:test');
 
 const {
   buildFlutterwavePayloadHash,
+  flutterwavePaymentPlanInterval,
   flutterwaveWebhookTransaction,
+  flutterwaveWebhookSubscription,
+  flutterwaveWebhookPaymentId,
   isFlutterwaveSuccessfulWebhook,
   isFlutterwaveWebhookSignatureValid,
 } = require('../src/flutterwave');
@@ -33,6 +36,12 @@ test('Flutterwave checksum matches the documented Standard formula', () => {
       secretKey,
     }),
     expected,
+  );
+  assert.equal(
+    flutterwaveWebhookPaymentId({
+      data: { meta: [{ metaname: 'paymentId', metavalue: 'payment-1' }] },
+    }),
+    'payment-1',
   );
 });
 
@@ -77,4 +86,20 @@ test('Flutterwave webhook parser supports current and legacy transaction fields'
     event: 'charge.completed',
     data: { id: 123, tx_ref: 'sub_123', status: 'successful' },
   }), true);
+});
+
+test('Flutterwave recurring helpers normalize payment-plan metadata', () => {
+  assert.equal(flutterwavePaymentPlanInterval('annual'), 'yearly');
+  assert.equal(flutterwavePaymentPlanInterval('monthly'), 'monthly');
+  assert.equal(flutterwavePaymentPlanInterval('every 30 days'), null);
+  assert.deepEqual(
+    flutterwaveWebhookSubscription({
+      event: 'charge.completed',
+      data: {
+        payment_plan: { id: 3807 },
+        customer: { email: 'OWNER@EXAMPLE.COM ' },
+      },
+    }),
+    { paymentPlanId: '3807', customerEmail: 'owner@example.com' },
+  );
 });

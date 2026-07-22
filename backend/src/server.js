@@ -15,7 +15,10 @@ const { PDFParse } = require('pdf-parse');
 const { config } = require('./config');
 const {
   buildFlutterwavePayloadHash,
+  flutterwavePaymentPlanInterval,
   flutterwaveWebhookTransaction,
+  flutterwaveWebhookSubscription,
+  flutterwaveWebhookPaymentId,
   isFlutterwaveSuccessfulWebhook,
   isFlutterwaveWebhookSignatureValid,
 } = require('./flutterwave');
@@ -11600,20 +11603,11 @@ app.post('/api/subscription/flutterwave/webhook', async (req, res, next) => {
       transactionId &&
       transactionReference
     ) {
-      const paymentResult = await query(
-        `SELECT id FROM subscription_payments
-         WHERE provider = 'flutterwave' AND provider_reference = $1
-         LIMIT 1`,
-        [transactionReference],
-      );
-      const paymentId = paymentResult.rows[0]?.id;
-      if (paymentId) {
-        await processFlutterwaveReturn({
-          paymentId,
-          transactionId,
-          transactionReference,
-        });
-      }
+      await processFlutterwaveWebhook({
+        transactionId,
+        transactionReference,
+        event,
+      });
     }
     res.status(200).json({ ok: true });
   } catch (error) {
@@ -14267,7 +14261,7 @@ async function createSubscriptionPayment(
   await ensureSubscriptionSchema(client);
   const paymentId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const externalReference = `sub_${paymentId.slice(0, 12)}`;
+  const externalReference = `sub_${paymentId}`;
   const result = await client.query(
     `
     INSERT INTO subscription_payments (
@@ -14341,6 +14335,22 @@ async function activateSubscriptionFromPayment(client, paymentId) {
     return false;
   }
 
+  await applySubscriptionPeriodFromPayment(client, payment);
+  const now = new Date();
+  await client.query(
+    `
+    UPDATE subscription_payments
+    SET status = 'paid',
+        completed_at = $2,
+        updated_at = $2
+    WHERE id = $1
+    `,
+    [paymentId, now.toISOString()],
+  );
+  return true;
+}
+
+async function applySubscriptionPeriodFromPayment(client, payment) {
   const now = new Date();
   const subscriptionResult = await client.query(
     'SELECT expires_at FROM subscriptions WHERE business_id = $1 FOR UPDATE',
@@ -14399,17 +14409,6 @@ async function activateSubscriptionFromPayment(client, paymentId) {
       now.toISOString(),
     ],
   );
-  await client.query(
-    `
-    UPDATE subscription_payments
-    SET status = 'paid',
-        completed_at = $2,
-        updated_at = $2
-    WHERE id = $1
-    `,
-    [paymentId, now.toISOString()],
-  );
-  return true;
 }
 
 async function initiateMpesaCheckout(payment, gateway) {
@@ -14834,6 +14833,12 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
   const amount = minorAmountToMajor(payment.amountMinor);
   const currency = String(payment.currency || '').toUpperCase();
   const txRef = payment.externalReference;
+  const paymentPlan = await createFlutterwavePaymentPlan({
+    payment,
+    customer,
+    flutterwaveConfig,
+    fetch,
+  });
   const response = await fetch(`${flutterwaveConfig.baseUrl}/payments`, {
     method: 'POST',
     headers: {
@@ -14846,6 +14851,8 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
       currency,
       redirect_url: `${config.publicBaseUrl}/api/subscription/flutterwave/return?paymentId=${encodeURIComponent(payment.id)}`,
       customer,
+      payment_plan: paymentPlan.id,
+      payment_options: 'card',
       payload_hash: buildFlutterwavePayloadHash({
         amount,
         currency,
@@ -14868,8 +14875,49 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
   }
   await setSubscriptionProviderReference(payment.id, payment.externalReference, {
     flutterwaveCheckout: body,
+    flutterwavePaymentPlanId: paymentPlan.id,
+    flutterwaveCustomerEmail: customer.email,
   });
   return { checkoutUrl, message: 'Continue in Flutterwave to complete payment.' };
+}
+
+async function createFlutterwavePaymentPlan({
+  payment,
+  customer,
+  flutterwaveConfig,
+  fetch,
+}) {
+  const interval = flutterwavePaymentPlanInterval(payment.billingPeriod);
+  if (!interval) {
+    throw createHttpError(
+      400,
+      `Flutterwave recurring billing does not support the ${payment.billingPeriod} billing period.`,
+    );
+  }
+  const response = await fetch(`${flutterwaveConfig.baseUrl}/payment-plans`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${flutterwaveConfig.secretKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: minorAmountToMajor(payment.amountMinor),
+      currency: String(payment.currency || '').toUpperCase(),
+      interval,
+      name: `Piki ${payment.planCode} subscription ${payment.id.slice(0, 8)}`,
+    }),
+  });
+  const body = await readMaybeJson(response);
+  const id = Number(body.data?.id);
+  if (
+    !response.ok ||
+    body.status !== 'success' ||
+    !Number.isSafeInteger(id) ||
+    id < 1
+  ) {
+    throw createHttpError(502, body.message || 'Flutterwave payment plan could not be created');
+  }
+  return { id, body };
 }
 
 async function processFlutterwaveReturn({
@@ -14881,10 +14929,76 @@ async function processFlutterwaveReturn({
   if (!payment || payment.provider !== 'flutterwave') {
     throw createHttpError(404, 'Flutterwave payment was not found');
   }
-  if (payment.status === 'paid') return;
   if (payment.providerReference !== transactionReference) {
     throw createHttpError(400, 'Flutterwave reference does not match this payment');
   }
+  const verification = await verifyFlutterwaveTransaction({
+    transactionId,
+    transactionReference,
+  });
+  return completeVerifiedFlutterwaveTransaction({
+    payment,
+    verification,
+    transactionReference,
+  });
+}
+
+async function processFlutterwaveWebhook({
+  transactionId,
+  transactionReference,
+  event,
+}) {
+  const payment = await loadFlutterwavePaymentByProviderReference(transactionReference);
+  if (payment) {
+    return processFlutterwaveReturn({
+      paymentId: payment.id,
+      transactionId,
+      transactionReference,
+    });
+  }
+
+  const verification = await verifyFlutterwaveTransaction({
+    transactionId,
+    transactionReference,
+  });
+  const verifiedSubscription = flutterwaveWebhookSubscription({
+    data: verification.data,
+  });
+  const webhookSubscription = flutterwaveWebhookSubscription(event);
+  const verifiedPaymentId = flutterwaveWebhookPaymentId({
+    data: verification.data,
+  });
+  const webhookPaymentId = flutterwaveWebhookPaymentId(event);
+  const paymentPlanId =
+    verifiedSubscription.paymentPlanId || webhookSubscription.paymentPlanId;
+  const customerEmail =
+    verifiedSubscription.customerEmail || webhookSubscription.customerEmail;
+  let recurringPayment = null;
+  const paymentId = verifiedPaymentId || webhookPaymentId;
+  if (paymentId) {
+    recurringPayment = await loadSubscriptionPaymentById(paymentId);
+    if (recurringPayment?.provider !== 'flutterwave') {
+      return false;
+    }
+  }
+  if (!recurringPayment && paymentPlanId && customerEmail) {
+    recurringPayment = await loadFlutterwaveRecurringPayment({
+      paymentPlanId,
+      customerEmail,
+    });
+  }
+  if (!recurringPayment) {
+    return false;
+  }
+  return completeVerifiedFlutterwaveTransaction({
+    payment: recurringPayment,
+    verification,
+    transactionReference,
+    isRecurring: true,
+  });
+}
+
+async function verifyFlutterwaveTransaction({ transactionId, transactionReference }) {
   const gateway = await loadPaymentGateway('flutterwave');
   const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
   const fetch = (await import('node-fetch')).default;
@@ -14897,19 +15011,128 @@ async function processFlutterwaveReturn({
   );
   const body = await readMaybeJson(response);
   const data = body.data || {};
-  if (
-    !response.ok ||
-    body.status !== 'success' ||
-    data.status !== 'successful' ||
-    (data.tx_ref || data.reference) !== payment.providerReference ||
-    String(data.currency || '').toUpperCase() !== String(payment.currency || '').toUpperCase() ||
-    majorAmountToMinor(data.amount) !== payment.amountMinor
-  ) {
-    throw createHttpError(400, body.message || 'Flutterwave payment details did not match');
+  if (!response.ok || body.status !== 'success' || !normalizeOptionalText(data.id)) {
+    throw createHttpError(400, body.message || 'Flutterwave payment verification failed');
   }
-  await completeHostedSubscriptionPayment(paymentId, {
-    flutterwaveVerification: body,
+  if (transactionId && String(data.id) !== String(transactionId)) {
+    throw createHttpError(400, 'Flutterwave transaction ID did not match');
+  }
+  return { body, data, transactionId: String(data.id) };
+}
+
+async function completeVerifiedFlutterwaveTransaction({
+  payment,
+  verification,
+  transactionReference,
+  isRecurring = false,
+}) {
+  const data = verification.data || {};
+  const verifiedReference = normalizeOptionalText(data.tx_ref || data.reference);
+  const verifiedCurrency = String(data.currency || '').toUpperCase();
+  const expectedCurrency = String(payment.currency || '').toUpperCase();
+  const expectedPlanId = normalizeOptionalText(
+    payment.metadata?.flutterwavePaymentPlanId,
+  );
+  const expectedEmail = normalizeEmailAddress(
+    payment.metadata?.flutterwaveCustomerEmail,
+  );
+  const verifiedSubscription = flutterwaveWebhookSubscription({ data });
+  if (
+    data.status !== 'successful' ||
+    verifiedCurrency !== expectedCurrency ||
+    majorAmountToMinor(data.amount) !== payment.amountMinor ||
+    (!isRecurring && verifiedReference !== payment.providerReference) ||
+    (isRecurring &&
+      (!expectedPlanId || !expectedEmail)) ||
+    (expectedPlanId &&
+      verifiedSubscription.paymentPlanId &&
+      verifiedSubscription.paymentPlanId !== expectedPlanId) ||
+    (expectedEmail &&
+      verifiedSubscription.customerEmail &&
+      verifiedSubscription.customerEmail !== expectedEmail)
+  ) {
+    throw createHttpError(400, 'Flutterwave payment details did not match');
+  }
+
+  return withTransaction(async (client) => {
+    const paymentResult = await client.query(
+      'SELECT * FROM subscription_payments WHERE id = $1 FOR UPDATE',
+      [payment.id],
+    );
+    const currentPayment = paymentResult.rows[0];
+    if (!currentPayment || currentPayment.provider !== 'flutterwave') {
+      throw createHttpError(404, 'Flutterwave payment was not found');
+    }
+    const recorded = await client.query(
+      `
+      INSERT INTO subscription_payment_events (
+        provider, provider_transaction_id, payment_id, provider_reference,
+        amount_minor, currency, metadata_json, completed_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+      ON CONFLICT (provider, provider_transaction_id) DO NOTHING
+      RETURNING provider_transaction_id
+      `,
+      [
+        'flutterwave',
+        verification.transactionId,
+        currentPayment.id,
+        verifiedReference || transactionReference || null,
+        payment.amountMinor,
+        expectedCurrency,
+        JSON.stringify({ flutterwaveVerification: verification.body }),
+      ],
+    );
+    if (!recorded.rows[0]) {
+      return false;
+    }
+    if (currentPayment.status === 'paid' && currentPayment.completed_at) {
+      await applySubscriptionPeriodFromPayment(client, currentPayment);
+    } else {
+      await activateSubscriptionFromPayment(client, currentPayment.id);
+    }
+    return true;
   });
+}
+
+async function loadFlutterwavePaymentByProviderReference(transactionReference) {
+  const result = await query(
+    `
+    SELECT *
+    FROM subscription_payments
+    WHERE provider = 'flutterwave' AND provider_reference = $1
+    LIMIT 1
+    `,
+    [transactionReference],
+  );
+  return result.rows[0]
+    ? {
+        ...normalizePaymentRow(result.rows[0]),
+        providerReference: result.rows[0].provider_reference,
+      }
+    : null;
+}
+
+async function loadFlutterwaveRecurringPayment({ paymentPlanId, customerEmail }) {
+  const result = await query(
+    `
+    SELECT *
+    FROM subscription_payments
+    WHERE provider = 'flutterwave'
+      AND status = 'paid'
+      AND metadata_json->>'flutterwavePaymentPlanId' = $1
+      AND lower(metadata_json->>'flutterwaveCustomerEmail') = $2
+    ORDER BY completed_at DESC
+    LIMIT 1
+    `,
+    [paymentPlanId, customerEmail],
+  );
+  return result.rows[0]
+    ? {
+        ...normalizePaymentRow(result.rows[0]),
+        providerReference: result.rows[0].provider_reference,
+      }
+    : null;
 }
 
 async function loadSubscriptionPaymentById(paymentId) {
@@ -14937,11 +15160,23 @@ async function loadSubscriptionCustomer(businessId) {
     [businessId],
   );
   const user = result.rows[0] || {};
+  const email = normalizeEmailAddress(user.email);
+  if (!email) {
+    throw createHttpError(
+      400,
+      'A valid admin email is required for Flutterwave subscriptions.',
+    );
+  }
   return {
     name: user.name || 'Piki customer',
-    email: user.email || 'customer@pikipos.com',
+    email,
     phonenumber: user.phone || undefined,
   };
+}
+
+function normalizeEmailAddress(value) {
+  const email = normalizeOptionalText(value)?.toLowerCase() || null;
+  return email && email.includes('@') ? email : null;
 }
 
 async function setSubscriptionProviderReference(paymentId, reference, metadata) {
