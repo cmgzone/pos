@@ -74,9 +74,12 @@ class PikiChatRepository {
       return PikiMessage(
         id: row['id'] as String?,
         sessionId: row['session_id'] as String?,
-        content: row['content'] as String,
-        timestamp: DateTime.parse(row['timestamp'] as String),
-        sender: PikiSender.values.firstWhere((e) => e.name == row['sender']),
+        content: row['content'] as String? ?? '',
+        timestamp: DateTime.tryParse(row['timestamp'] as String? ?? '') ?? DateTime.now(),
+        sender: PikiSender.values.firstWhere(
+          (e) => e.name == row['sender'],
+          orElse: () => PikiSender.agent,
+        ),
         messageType: PikiMessageType.values.firstWhere(
           (e) => e.name == row['message_type'],
           orElse: () => PikiMessageType.text,

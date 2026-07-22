@@ -45,7 +45,7 @@ class ShopSettings {
   ];
 
   static Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    _prefs ??= await SharedPreferences.getInstance();
   }
 
   @visibleForTesting

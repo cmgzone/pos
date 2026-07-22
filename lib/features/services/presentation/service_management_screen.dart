@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/services/session_service.dart';
@@ -122,15 +121,6 @@ class _ServiceManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text('Services'),
         bottom: TabBar(
           controller: _tabController,

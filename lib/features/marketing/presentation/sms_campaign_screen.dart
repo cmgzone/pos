@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../app/app_shell.dart';
 import '../../customers/data/customer_group_repository.dart';
 import '../data/sms_campaign_repository.dart';
 
@@ -99,10 +98,6 @@ class _SmsCampaignScreenState extends State<SmsCampaignScreen> {
     final isWide = width >= 980;
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu_rounded),
-          onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
-        ),
         title: const Text('SMS Campaigns'),
         actions: [
           IconButton(

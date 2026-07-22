@@ -8,6 +8,7 @@ final themeProvider = StateNotifierProvider<ThemeNotifier, ThemeMode>((ref) {
 
 class ThemeNotifier extends StateNotifier<ThemeMode> {
   static const _key = 'app_theme_mode';
+  bool _userSetMode = false;
 
   ThemeNotifier() : super(ThemeMode.system) {
     _load();
@@ -21,13 +22,14 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
       (e) => e?.name == saved,
       orElse: () => null,
     );
-    if (mode != null && mode != state) {
+    if (mode != null && !_userSetMode && mounted) {
       state = mode;
     }
   }
 
   Future<void> setMode(ThemeMode mode) async {
     if (mode == state) return;
+    _userSetMode = true;
     state = mode;
     final prefs = await SharedPreferences.getInstance();
     if (mode == ThemeMode.system) {

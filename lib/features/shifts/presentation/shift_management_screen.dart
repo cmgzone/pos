@@ -7,7 +7,6 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/error_messages.dart';
-import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/shift_provider.dart';
 import '../data/shift_preferences_service.dart';
@@ -26,7 +25,6 @@ class ShiftManagementScreen extends ConsumerWidget {
     final access = accessAsync.valueOrNull;
     final currentShift = currentShiftAsync.valueOrNull;
     final currentSummary = currentSummaryAsync.valueOrNull;
-    final isMobile = MediaQuery.of(context).size.width < 800;
     final requiresManagedShift = ShiftRepository.roleRequiresManagedShift(
       SessionService.currentUserRole,
     );
@@ -34,13 +32,6 @@ class ShiftManagementScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        leading: isMobile
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: Text('Shifts & Cash'),
         actions: [

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pos_app/features/app/app_shell.dart';
+
 
 import '../../../core/services/audit_log_service.dart';
 import '../../../core/services/branch_service.dart';
@@ -65,13 +65,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

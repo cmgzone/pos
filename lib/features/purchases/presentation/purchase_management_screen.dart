@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
@@ -74,8 +73,12 @@ class _PurchaseManagementScreenState
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text('Create Supplier'),
-          content: SizedBox(
-            width: 520,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width < 800
+                  ? MediaQuery.of(context).size.width - 32
+                  : 520,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -249,8 +252,12 @@ class _PurchaseManagementScreenState
               borderRadius: BorderRadius.circular(20),
             ),
             title: Text('New Purchase Invoice'),
-            content: SizedBox(
-              width: 760,
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width < 800
+                    ? MediaQuery.of(context).size.width - 32
+                    : 760,
+              ),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -872,9 +879,13 @@ class _PurchaseManagementScreenState
               ? 'Purchase ${details['invoice_number']}'
               : 'Purchase Invoice',
         ),
-        content: SizedBox(
-          width: 620,
-          child: SingleChildScrollView(
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width < 800
+                    ? MediaQuery.of(context).size.width - 32
+                    : 620,
+              ),
+              child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1064,15 +1075,6 @@ class _PurchaseManagementScreenState
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 50,
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text(
           'Purchases & Suppliers',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Piki's visual language is deliberately warm and tactile: paper-like
-/// backgrounds, ink surfaces, coral for momentum, and teal for confirmation.
-/// The palette avoids the purple/blue gradients common to generic SaaS apps.
+/// Piki's palette is sampled from the active app mark: deep navy foundations,
+/// coral-led actions, orange highlights, and teal confirmation states.
 class AppColors {
   static const Color background = Color(0xFFF6F4F0);
   static const Color surface = Color(0xFFFFFEFC);
@@ -11,8 +10,8 @@ class AppColors {
   static const Color premiumPanelSoft = Color(0xFFFAF8F4);
   static const Color premiumStroke = Color(0xFFE2DED6);
 
-  /// Accessible action coral. [brandCoral] is reserved for larger decorative
-  /// moments where white text contrast is not required.
+  /// The accessible action shade of the logo coral. The brighter [brandCoral]
+  /// is used where it does not carry white text.
   static const Color primary = Color(0xFFC74343);
   static const Color primaryLight = Color(0xFFF26A5E);
   static const Color brandCoral = Color(0xFFFF5C52);
@@ -30,7 +29,6 @@ class AppColors {
   static const Color warning = Color(0xFF9A641F);
   static const Color border = Color(0xFFE2DED6);
 
-  // Dark mode uses ink rather than pure black so long shifts remain calm.
   static const Color darkBackground = Color(0xFF090E19);
   static const Color darkSurface = Color(0xFF111827);
   static const Color darkSurfaceHighlight = Color(0xFF1A2333);
@@ -56,15 +54,15 @@ class AppColors {
   static List<BoxShadow> premiumShadow([double alpha = 0.08]) => [
     BoxShadow(
       color: ink.withValues(alpha: alpha),
-      blurRadius: 28,
-      offset: const Offset(0, 12),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
     ),
   ];
 
-  static const Color metricMonth = Color(0xFF4C659A);
-  static const Color metricTop = Color(0xFF8C5968);
+  static const Color metricMonth = primary;
+  static const Color metricTop = Color(0xFFB76134);
   static const Color metricOrders = secondary;
-  static const Color metricStaff = Color(0xFFB76134);
+  static const Color metricStaff = Color(0xFF59657A);
 }
 
 /// A compact 4pt-based spacing rhythm shared by phone and desktop layouts.
@@ -82,9 +80,9 @@ class AppSpacing {
 /// Small controls stay crisp while larger panels receive a softer silhouette.
 class AppRadius {
   const AppRadius._();
-  static const double xs = 7;
-  static const double sm = 11;
-  static const double md = 15;
-  static const double lg = 20;
-  static const double xl = 26;
+  static const double xs = 4;
+  static const double sm = 6;
+  static const double md = 8;
+  static const double lg = 12;
+  static const double xl = 16;
 }

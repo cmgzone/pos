@@ -97,11 +97,18 @@ class DatabaseService {
 
   static String get currentBranchId => _currentBranchId;
 
+  static Completer<void>? _initCompleter;
+
   static Future<void> initialize() async {
     if (_database != null) {
       return;
     }
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+    _initCompleter = Completer<void>();
 
+    try {
     _configureDatabaseFactory();
 
     _databasePath = _databasePathOverride ?? await _resolveDatabasePath();
@@ -124,10 +131,14 @@ class DatabaseService {
         }
         await _runMigrations(database);
       },
-      onOpen: (database) async {
-        await _runMigrations(database);
-      },
     );
+    _initCompleter!.complete();
+    } catch (e) {
+      _initCompleter!.completeError(e);
+      rethrow;
+    } finally {
+      _initCompleter = null;
+    }
   }
 
   static Future<void> close() async {
@@ -137,6 +148,9 @@ class DatabaseService {
     }
     await database.close();
     _database = null;
+    if (!_localChangeController.isClosed) {
+      _localChangeController.close();
+    }
   }
 
   /// Closes the current database connection, deletes the database file from
@@ -162,6 +176,11 @@ class DatabaseService {
     await close();
     _databasePathOverride = path;
     _databasePath = null;
+  }
+
+  static Future<Set<String>> getColumnNames(String table) async {
+    final database = await _ensureDatabase();
+    return _getColumnNames(database, table);
   }
 
   static Future<List<Map<String, dynamic>>> queryAll(
@@ -386,8 +405,8 @@ class DatabaseService {
         'updated_at': now,
         'sync_status': 'pending',
       });
-    } catch (_) {
-      // Audit logging should never block the sale or stock operation itself.
+    } catch (e) {
+      debugPrint('Audit log error: $e');
     }
   }
 

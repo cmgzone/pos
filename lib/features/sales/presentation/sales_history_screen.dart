@@ -1678,8 +1678,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
             borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           title: Text('Return Items'),
-          content: SizedBox(
-            width: 520,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width < 800
+                  ? MediaQuery.of(context).size.width - 32
+                  : 520,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

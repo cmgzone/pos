@@ -11,8 +11,7 @@ import '../core/theme/app_colors.dart';
 /// cards, pill badges, airy list rows) while reusing Piki's existing colour
 /// palette so the brand stays intact.
 
-/// Elevated surface card with Stitch's soft, diffused shadow and a hairline
-/// border. Use for panels, lists and metric tiles.
+/// Quiet bordered surface for panels, lists, and metric tiles.
 class StitchCard extends StatelessWidget {
   const StitchCard({
     super.key,
@@ -43,17 +42,13 @@ class StitchCard extends StatelessWidget {
         color: surface,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(
-          color: borderColor ?? theme.colorScheme.outline.withValues(alpha: 0.72),
+          color:
+              borderColor ??
+              (isDark
+                  ? theme.colorScheme.outline
+                  : theme.colorScheme.outline.withValues(alpha: 0.72)),
         ),
-        boxShadow: isDark
-            ? const []
-            : [
-                BoxShadow(
-                  color: AppColors.ink.withValues(alpha: 0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        boxShadow: const [],
       ),
       child: child,
     );
@@ -64,6 +59,8 @@ class StitchCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(radius),
+        splashColor: theme.colorScheme.primary.withValues(alpha: 0.08),
+        highlightColor: theme.colorScheme.primary.withValues(alpha: 0.04),
         child: decorated,
       ),
     );
@@ -134,7 +131,10 @@ class StitchSectionHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (leading != null) ...[leading!, const SizedBox(width: AppSpacing.md)],
+        if (leading != null) ...[
+          leading!,
+          const SizedBox(width: AppSpacing.md),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,7 +145,7 @@ class StitchSectionHeader extends StatelessWidget {
                   style: TextStyle(
                     color: theme.colorScheme.primary,
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 1.05,
                   ),
                 ),
@@ -155,7 +155,7 @@ class StitchSectionHeader extends StatelessWidget {
                 Text(
                   title,
                   style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: -0.35,
                   ),
                 ),
@@ -175,7 +175,7 @@ class StitchSectionHeader extends StatelessWidget {
       ],
     );
   }
-  }
+}
 
 /// Pill badge for statuses, counts and labels.
 class StitchBadge extends StatelessWidget {
@@ -254,11 +254,7 @@ class StitchEmptyState extends StatelessWidget {
               color: theme.colorScheme.primary.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              icon,
-              size: 26,
-              color: theme.colorScheme.primary,
-            ),
+            child: Icon(icon, size: 26, color: theme.colorScheme.primary),
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
@@ -373,15 +369,21 @@ class StitchListTile extends StatelessWidget {
     );
 
     if (onTap == null) return child;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: child,
+    return Semantics(
+      button: true,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: child,
+        ),
+      ),
     );
   }
 }
 
-/// Compact metric tile for dashboard grids: tinted icon chip, label, big value.
+/// Compact metric tile with label-first hierarchy and a restrained icon.
 class StitchMetricCard extends StatelessWidget {
   const StitchMetricCard({
     super.key,
@@ -402,42 +404,48 @@ class StitchMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tone = color ?? theme.colorScheme.primary;
-    return StitchCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: tone.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Icon(icon, color: tone, size: 19),
+    return Semantics(
+      button: onTap != null,
+      label: '$label: $value',
+      child: MouseRegion(
+        cursor: onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+        child: StitchCard(
+          onTap: onTap,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Icon(icon, color: tone, size: 18),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

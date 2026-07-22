@@ -5,10 +5,10 @@ import '../../../core/services/session_service.dart';
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/stitch_kit.dart';
+import '../../../widgets/staggered_animations.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/number_utils.dart';
 import '../../auth/data/user_repository.dart';
-import '../../app/app_shell.dart';
 import '../../shifts/data/shift_repository.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/kra_report_export_service.dart';
@@ -21,29 +21,11 @@ class ReportsScreen extends ConsumerStatefulWidget {
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportTab extends StatelessWidget {
-  final Icon icon;
+class _ReportSection {
+  final IconData icon;
   final String label;
 
-  const _ReportTab({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tab(
-      height: 42,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon.icon, size: 15),
-          SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
+  const _ReportSection({required this.icon, required this.label});
 }
 
 class _ReportsScreenState extends ConsumerState<ReportsScreen>
@@ -57,12 +39,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
     return role == RolePermissions.admin || role == RolePermissions.manager;
   }
 
-  int get _tabCount => _isManagerOrAdmin ? 7 : 5;
+  List<_ReportSection> get _reportSections => [
+    const _ReportSection(icon: Icons.badge_outlined, label: 'Cashier Summary'),
+    const _ReportSection(icon: Icons.bar_chart_rounded, label: 'Top Products'),
+    const _ReportSection(icon: Icons.people_outline, label: 'Top Debtors'),
+    const _ReportSection(icon: Icons.schedule_outlined, label: 'Overdue Aging'),
+    const _ReportSection(
+      icon: Icons.swap_vert_rounded,
+      label: 'Stock Movement',
+    ),
+    if (_isManagerOrAdmin)
+      const _ReportSection(
+        icon: Icons.receipt_long_outlined,
+        label: 'Kenya Reports',
+      ),
+    if (_isManagerOrAdmin)
+      const _ReportSection(
+        icon: Icons.compare_arrows_rounded,
+        label: 'Compare Branches',
+      ),
+  ];
+
+  int get _tabCount => _reportSections.length;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: _tabCount, vsync: this);
+    _tabs.addListener(() {
+      if (mounted && !_tabs.indexIsChanging) setState(() {});
+    });
   }
 
   @override
@@ -73,7 +79,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 800;
     final syncDataVersion = ref.watch(
       syncControllerProvider.select((state) => state.dataVersion),
     );
@@ -82,17 +87,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         toolbarHeight: 50,
-        leading: isMobile
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: Text(
           'Reports',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
         ),
         actions: [
           if (_isManagerOrAdmin)
@@ -103,12 +103,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                   ButtonSegment(
                     value: ReportBranchScope.current,
                     icon: Icon(Icons.store_outlined, size: 14),
-                    label: Text('Current', style: TextStyle(fontSize: 11)),
+                    label: Text('Current', style: TextStyle(fontSize: 12)),
                   ),
                   ButtonSegment(
                     value: ReportBranchScope.all,
                     icon: Icon(Icons.business_outlined, size: 14),
-                    label: Text('All', style: TextStyle(fontSize: 11)),
+                    label: Text('All', style: TextStyle(fontSize: 12)),
                   ),
                 ],
                 selected: {_branchScope},
@@ -121,57 +121,83 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   minimumSize: WidgetStateProperty.all(const Size(0, 32)),
                   padding: WidgetStateProperty.all(
-                    const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 6),
+                    const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: 6,
+                    ),
                   ),
                 ),
               ),
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(46),
+          preferredSize: const Size.fromHeight(58),
           child: TrainingAnchor(
             id: 'reports.tabs',
-            child: TabBar(
-              controller: _tabs,
-              isScrollable: isMobile || _isManagerOrAdmin,
-              labelPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant,
-              tabs: [
-                const _ReportTab(
-                  icon: Icon(Icons.badge_outlined),
-                  label: 'Cashier Summary',
-                ),
-                const _ReportTab(
-                  icon: Icon(Icons.bar_chart_rounded),
-                  label: 'Top Products',
-                ),
-                const _ReportTab(
-                  icon: Icon(Icons.people_outline),
-                  label: 'Top Debtors',
-                ),
-                const _ReportTab(
-                  icon: Icon(Icons.schedule_outlined),
-                  label: 'Overdue Aging',
-                ),
-                const _ReportTab(
-                  icon: Icon(Icons.swap_vert_rounded),
-                  label: 'Stock Movement',
-                ),
-                if (_isManagerOrAdmin)
-                  const _ReportTab(
-                    icon: Icon(Icons.receipt_long_outlined),
-                    label: 'Kenya Reports',
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: PopupMenuButton<int>(
+                key: const ValueKey('report-selector'),
+                tooltip: 'Choose report',
+                initialValue: _tabs.index,
+                onSelected: _tabs.animateTo,
+                itemBuilder: (context) => [
+                  for (var index = 0; index < _reportSections.length; index++)
+                    PopupMenuItem(
+                      value: index,
+                      child: Row(
+                        children: [
+                          Icon(_reportSections[index].icon, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(_reportSections[index].label)),
+                          if (index == _tabs.index)
+                            Icon(
+                              Icons.check_rounded,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 13),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                if (_isManagerOrAdmin)
-                  const _ReportTab(
-                    icon: Icon(Icons.compare_arrows_rounded),
-                    label: 'Compare Branches',
+                  child: Row(
+                    children: [
+                      Icon(
+                        _reportSections[_tabs.index].icon,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _reportSections[_tabs.index].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Text(
+                        'Change report',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.expand_more_rounded, size: 18),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
           ),
         ),
@@ -521,7 +547,10 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
       children: [
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: AppSpacing.md,
+          ),
           child: Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -753,7 +782,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                               padding: const EdgeInsets.all(AppSpacing.md),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(AppRadius.md),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
                                 border: Border.all(
                                   color: Theme.of(context).colorScheme.outline,
                                 ),
@@ -805,7 +836,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                               padding: const EdgeInsets.all(AppSpacing.md),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(AppRadius.md),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
                                 border: Border.all(
                                   color: Theme.of(context).colorScheme.outline,
                                 ),
@@ -827,7 +860,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         context,
                                       ).colorScheme.onSurfaceVariant,
                                       fontSize: 12,
-                                      fontFeatures: const [FontFeature.tabularFigures()],
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -892,7 +927,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                       height: 42,
                                       decoration: BoxDecoration(
                                         color: tone.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                                        borderRadius: BorderRadius.circular(
+                                          AppRadius.sm,
+                                        ),
                                       ),
                                       child: Icon(
                                         difference.abs() < 0.009
@@ -924,7 +961,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                                 context,
                                               ).colorScheme.onSurfaceVariant,
                                               fontSize: 12,
-                                              fontFeatures: const [FontFeature.tabularFigures()],
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
                                             ),
                                           ),
                                         ],
@@ -941,7 +980,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 16,
-                                            fontFeatures: const [FontFeature.tabularFigures()],
+                                            fontFeatures: const [
+                                              FontFeature.tabularFigures(),
+                                            ],
                                           ),
                                         ),
                                         Text(
@@ -950,7 +991,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                             color: tone,
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
-                                            fontFeatures: const [FontFeature.tabularFigures()],
+                                            fontFeatures: const [
+                                              FontFeature.tabularFigures(),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -1053,7 +1096,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                         color: AppColors.primary.withValues(
                                           alpha: 0.12,
                                         ),
-                                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                                        borderRadius: BorderRadius.circular(
+                                          AppRadius.sm,
+                                        ),
                                       ),
                                       child: Center(
                                         child: Text(
@@ -1143,7 +1188,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                             color: AppColors.success,
                                             fontWeight: FontWeight.w700,
                                             fontSize: 16,
-                                            fontFeatures: const [FontFeature.tabularFigures()],
+                                            fontFeatures: const [
+                                              FontFeature.tabularFigures(),
+                                            ],
                                           ),
                                         ),
                                         Text(
@@ -1251,7 +1298,9 @@ class _DailyCashierSummaryTabState extends State<_DailyCashierSummaryTab> {
                                           color: AppColors.error,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
-                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                          fontFeatures: const [
+                                            FontFeature.tabularFigures(),
+                                          ],
                                         ),
                                       ),
                                   ],
@@ -1324,7 +1373,10 @@ class _TopProductsTabState extends State<_TopProductsTab> {
         // Controls
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: AppSpacing.md,
+          ),
           child: Row(
             children: [
               // Period chips
@@ -1378,93 +1430,102 @@ class _TopProductsTabState extends State<_TopProductsTab> {
                     final txns = (p['transaction_count'] as num? ?? 0).toInt();
                     final rank = index + 1;
 
-                    return Container(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outline,
+                    return StaggeredListAnimation(
+                      index: index,
+                      child: Container(
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          // Rank badge
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: rank <= 3
-                                  ? AppColors.primary.withValues(alpha: 0.15)
-                                  : context.appSurfaceHighlight,
-                              borderRadius: BorderRadius.circular(AppRadius.sm),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '#$rank',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: rank <= 3
-                                      ? AppColors.primary
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
+                        child: Row(
+                          children: [
+                            // Rank badge
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: rank <= 3
+                                    ? AppColors.primary.withValues(alpha: 0.15)
+                                    : context.appSurfaceHighlight,
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.sm,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '#$rank',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: rank <= 3
+                                        ? AppColors.primary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    p['name'] as String? ?? '',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  SizedBox(height: AppSpacing.xs),
+                                  Text(
+                                    '${qtySold % 1 == 0 ? qtySold.toInt() : qtySold.toStringAsFixed(2)} ${p['sale_unit'] ?? 'pcs'} sold · $txns transactions',
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  p['name'] as String? ?? '',
+                                  '${ShopSettings.currency}${revenue.toStringAsFixed(2)}',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryLight,
+                                    fontSize: 15,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
                                   ),
                                 ),
-                                SizedBox(height: AppSpacing.xs),
                                 Text(
-                                  '${qtySold % 1 == 0 ? qtySold.toInt() : qtySold.toStringAsFixed(2)} ${p['sale_unit'] ?? 'pcs'} sold · $txns transactions',
+                                  'Profit: ${ShopSettings.currency}${profit.toStringAsFixed(2)}',
                                   style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    fontSize: 12,
+                                    fontSize: 11,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                    color: profit >= 0
+                                        ? AppColors.success
+                                        : AppColors.error,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${ShopSettings.currency}${revenue.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primaryLight,
-                                  fontSize: 15,
-                                  fontFeatures: const [FontFeature.tabularFigures()],
-                                ),
-                              ),
-                              Text(
-                                'Profit: ${ShopSettings.currency}${profit.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontFeatures: const [FontFeature.tabularFigures()],
-                                  color: profit >= 0
-                                      ? AppColors.success
-                                      : AppColors.error,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -1532,7 +1593,10 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
         // Total banner
         Container(
           color: AppColors.warning.withValues(alpha: 0.1),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: 14),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: 14,
+          ),
           child: Row(
             children: [
               Icon(
@@ -1588,114 +1652,121 @@ class _TopDebtorsTabState extends State<_TopDebtorsTab> {
                   ? (balance / totalOutstanding)
                   : 0.0;
 
-              return Container(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outline,
+              return StaggeredListAnimation(
+                index: index,
+                child: Container(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.warning.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(AppRadius.sm),
-                          ),
-                          child: Center(
-                            child: Text(
-                              (d['name'] as String? ?? '?')
-                                  .substring(0, 1)
-                                  .toUpperCase(),
-                              style: TextStyle(
-                                color: AppColors.warning,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                            ),
+                            child: Center(
+                              child: Text(
+                                (d['name'] as String? ?? '?')
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                                style: TextStyle(
+                                  color: AppColors.warning,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                d['name'] as String? ?? 'Unknown',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              if ((d['phone'] as String?)?.isNotEmpty == true)
+                          SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  d['phone'] as String,
+                                  d['name'] as String? ?? 'Unknown',
                                   style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
                                   ),
                                 ),
+                                if ((d['phone'] as String?)?.isNotEmpty == true)
+                                  Text(
+                                    d['phone'] as String,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  color: AppColors.warning,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '$openSales open ${openSales == 1 ? 'sale' : 'sales'}',
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${ShopSettings.currency}${balance.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                color: AppColors.warning,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                            Text(
-                              '$openSales open ${openSales == 1 ? 'sale' : 'sales'}',
-                              style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 10),
-                    // Share bar
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: share.clamp(0.0, 1.0),
-                        backgroundColor: AppColors.warning.withValues(
-                          alpha: 0.1,
-                        ),
-                        valueColor: AlwaysStoppedAnimation(AppColors.warning),
-                        minHeight: 5,
+                        ],
                       ),
-                    ),
-                    SizedBox(height: AppSpacing.xs),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        '${(share * 100).toStringAsFixed(1)}% of total',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 10,
+                      SizedBox(height: 10),
+                      // Share bar
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: share.clamp(0.0, 1.0),
+                          backgroundColor: AppColors.warning.withValues(
+                            alpha: 0.1,
+                          ),
+                          valueColor: AlwaysStoppedAnimation(AppColors.warning),
+                          minHeight: 5,
                         ),
                       ),
-                    ),
-                  ],
+                      SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${(share * 100).toStringAsFixed(1)}% of total',
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -1865,7 +1936,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
                               color: AppColors.warning,
-                              fontFeatures: const [FontFeature.tabularFigures()],
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
                             ),
                           ),
                         ],
@@ -1939,7 +2012,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                                     fontWeight: FontWeight.bold,
                                     color: b.color,
                                     fontSize: 15,
-                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -2033,7 +2108,9 @@ class _OverdueAgingTabState extends State<_OverdueAgingTab> {
                               style: TextStyle(
                                 color: bColor,
                                 fontWeight: FontWeight.bold,
-                                fontFeatures: const [FontFeature.tabularFigures()],
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                             ),
                             if (daysOverdue > 0)
@@ -2108,7 +2185,10 @@ class _StockMovementTabState extends State<_StockMovementTab> {
         // Period picker
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: AppSpacing.md,
+          ),
           child: Row(
             children: [
               ...[7, 14, 30, 90].map(
@@ -2132,7 +2212,10 @@ class _StockMovementTabState extends State<_StockMovementTab> {
         Divider(height: 1),
         // Legend
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.sm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: AppSpacing.sm,
+          ),
           child: Row(
             children: [
               _LegendDot(color: AppColors.success, label: 'Stock In'),
@@ -2152,7 +2235,12 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                   message: 'No stock movement in this period',
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xs, AppSpacing.xl, AppSpacing.xl),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.xs,
+                    AppSpacing.xl,
+                    AppSpacing.xl,
+                  ),
                   itemCount: _data.length,
                   separatorBuilder: (_, _) => SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
@@ -2169,84 +2257,89 @@ class _StockMovementTabState extends State<_StockMovementTab> {
                         : AppColors.success;
                     final unit = item['stock_unit'] as String? ?? 'pcs';
 
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outline,
+                    return StaggeredListAnimation(
+                      index: index,
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item['name'] as String? ?? '',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item['name'] as String? ?? '',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: AppSpacing.xs,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                                ),
-                                child: Text(
-                                  status == 'out'
-                                      ? 'Out of stock'
-                                      : status == 'low'
-                                      ? 'Low stock'
-                                      : '$current $unit left',
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: AppSpacing.xs,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    status == 'out'
+                                        ? 'Out of stock'
+                                        : status == 'low'
+                                        ? 'Low stock'
+                                        : '$current $unit left',
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 10),
-                          Row(
-                            children: [
-                              _MovementTile(
-                                label: 'In',
-                                value: qtyIn,
-                                unit: unit,
-                                color: AppColors.success,
-                                icon: Icons.add_circle_outline,
-                              ),
-                              SizedBox(width: AppSpacing.lg),
-                              _MovementTile(
-                                label: 'Out',
-                                value: qtyOut,
-                                unit: unit,
-                                color: AppColors.error,
-                                icon: Icons.remove_circle_outline,
-                              ),
-                              SizedBox(width: AppSpacing.lg),
-                              _MovementTile(
-                                label: 'Net',
-                                value: qtyIn - qtyOut,
-                                unit: unit,
-                                color: (qtyIn - qtyOut) >= 0
-                                    ? AppColors.primaryLight
-                                    : AppColors.error,
-                                icon: Icons.swap_vert_rounded,
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                            SizedBox(height: 10),
+                            Row(
+                              children: [
+                                _MovementTile(
+                                  label: 'In',
+                                  value: qtyIn,
+                                  unit: unit,
+                                  color: AppColors.success,
+                                  icon: Icons.add_circle_outline,
+                                ),
+                                SizedBox(width: AppSpacing.lg),
+                                _MovementTile(
+                                  label: 'Out',
+                                  value: qtyOut,
+                                  unit: unit,
+                                  color: AppColors.error,
+                                  icon: Icons.remove_circle_outline,
+                                ),
+                                SizedBox(width: AppSpacing.lg),
+                                _MovementTile(
+                                  label: 'Net',
+                                  value: qtyIn - qtyOut,
+                                  unit: unit,
+                                  color: (qtyIn - qtyOut) >= 0
+                                      ? AppColors.primaryLight
+                                      : AppColors.error,
+                                  icon: Icons.swap_vert_rounded,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -2774,7 +2867,9 @@ class _SalesTrendPanel extends StatelessWidget {
                                   color: value > 0
                                       ? AppColors.primary
                                       : context.appBorder,
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.sm,
+                                  ),
                                 ),
                               ),
                             ),
@@ -2963,7 +3058,11 @@ class _CashierStatTile extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()]),
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],
@@ -3161,7 +3260,10 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
         // Period selector
         Container(
           color: Theme.of(context).colorScheme.surface,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: AppSpacing.md,
+          ),
           child: Row(
             children: [
               ...[7, 14, 30, 90].map(
@@ -3197,7 +3299,8 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
               : ListView.separated(
                   padding: const EdgeInsets.all(AppSpacing.xl),
                   itemCount: _branches.length + 1,
-                  separatorBuilder: (context, _) => SizedBox(height: AppSpacing.md),
+                  separatorBuilder: (context, _) =>
+                      SizedBox(height: AppSpacing.md),
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       return _BranchComparisonSummary(
@@ -3232,142 +3335,152 @@ class _BranchComparisonTabState extends State<_BranchComparisonTab> {
                         ? AppColors.primaryLight
                         : Theme.of(context).colorScheme.onSurfaceVariant;
 
-                    return Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(
-                          color: rank == 1
-                              ? AppColors.primary.withValues(alpha: 0.3)
-                              : context.appBorder,
+                    return StaggeredListAnimation(
+                      index: index,
+                      child: Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                          border: Border.all(
+                            color: rank == 1
+                                ? AppColors.primary.withValues(alpha: 0.3)
+                                : context.appBorder,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Header
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: rankColor.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    '#$rank',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: rankColor,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header
+                            Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: rankColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '#$rank',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: rankColor,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              SizedBox(width: AppSpacing.md),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      Text(
+                                        '$saleCount sales · $_days day period',
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      name,
+                                      _money(revenue),
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primaryLight,
+                                        fontSize: 18,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                     Text(
-                                      '$saleCount sales · $_days day period',
+                                      'Revenue',
                                       style: TextStyle(
                                         color: Theme.of(
                                           context,
                                         ).colorScheme.onSurfaceVariant,
-                                        fontSize: 12,
+                                        fontSize: 11,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    _money(revenue),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primaryLight,
-                                      fontSize: 18,
-                                      fontFeatures: const [FontFeature.tabularFigures()],
-                                    ),
-                                  ),
-                                  Text(
-                                    'Revenue',
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: AppSpacing.lg),
-                          // Metrics grid
-                          Row(
-                            children: [
-                              _BranchMetric(
-                                label: 'Gross Profit',
-                                value: _money(grossProfit),
-                                color: grossProfit >= 0
-                                    ? AppColors.success
-                                    : AppColors.error,
-                              ),
-                              SizedBox(width: 10),
-                              _BranchMetric(
-                                label: 'Expenses',
-                                value: _money(expenses),
-                                color: AppColors.warning,
-                              ),
-                              SizedBox(width: 10),
-                              _BranchMetric(
-                                label: 'Net Profit',
-                                value: _money(netProfit),
-                                color: netProfit >= 0
-                                    ? AppColors.success
-                                    : AppColors.error,
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 10),
-                          Row(
-                            children: [
-                              _BranchMetric(
-                                label: 'Products',
-                                value: _money(productRev),
-                                color: AppColors.primary,
-                              ),
-                              SizedBox(width: 10),
-                              _BranchMetric(
-                                label: 'Services',
-                                value: _money(serviceRev),
-                                color: Theme.of(context).colorScheme.secondary,
-                              ),
-                              SizedBox(width: 10),
-                              _BranchMetric(
-                                label: 'Refunds',
-                                value: refundCount > 0
-                                    ? '$refundCount (${_money(refundTotal)})'
-                                    : '0',
-                                color: AppColors.error,
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                            SizedBox(height: AppSpacing.lg),
+                            // Metrics grid
+                            Row(
+                              children: [
+                                _BranchMetric(
+                                  label: 'Gross Profit',
+                                  value: _money(grossProfit),
+                                  color: grossProfit >= 0
+                                      ? AppColors.success
+                                      : AppColors.error,
+                                ),
+                                SizedBox(width: 10),
+                                _BranchMetric(
+                                  label: 'Expenses',
+                                  value: _money(expenses),
+                                  color: AppColors.warning,
+                                ),
+                                SizedBox(width: 10),
+                                _BranchMetric(
+                                  label: 'Net Profit',
+                                  value: _money(netProfit),
+                                  color: netProfit >= 0
+                                      ? AppColors.success
+                                      : AppColors.error,
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 10),
+                            Row(
+                              children: [
+                                _BranchMetric(
+                                  label: 'Products',
+                                  value: _money(productRev),
+                                  color: AppColors.primary,
+                                ),
+                                SizedBox(width: 10),
+                                _BranchMetric(
+                                  label: 'Services',
+                                  value: _money(serviceRev),
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.secondary,
+                                ),
+                                SizedBox(width: 10),
+                                _BranchMetric(
+                                  label: 'Refunds',
+                                  value: refundCount > 0
+                                      ? '$refundCount (${_money(refundTotal)})'
+                                      : '0',
+                                  color: AppColors.error,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -3469,12 +3582,12 @@ class _BranchComparisonSummary extends StatelessWidget {
                         ),
                       ),
                       Text(
-                          '${money(sales)} sales / ${money(profit)} profit',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
+                        '${money(sales)} sales / ${money(profit)} profit',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ],
                   ),

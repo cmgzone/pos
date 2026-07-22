@@ -10,7 +10,6 @@ import '../../../core/services/piki_ai_job_service.dart';
 import '../../../core/services/storefront_page_service.dart';
 import '../../../core/services/storefront_theme_service.dart';
 import '../../../core/utils/error_messages.dart';
-import '../../../widgets/piki_activity_panel.dart';
 import 'storefront_in_app_preview.dart';
 import 'storefront_section_editor.dart';
 import 'storefront_site_builder.dart';
@@ -274,7 +273,7 @@ class _StorefrontThemeSettingsSectionState
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: preset,
+                  initialValue: preset,
                   decoration: const InputDecoration(
                     labelText: 'Starting style',
                   ),
@@ -328,170 +327,6 @@ class _StorefrontThemeSettingsSectionState
     });
   }
 
-  Future<void> _customizeWithPiki(StorefrontTheme theme) async {
-    final controller = TextEditingController();
-    var fromScratch = true;
-    final request = await showDialog<_PikiStorefrontRequest>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(
-                Icons.auto_awesome_rounded,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Piki Website Designer'),
-                  SizedBox(height: 2),
-                  Text(
-                    'Professional storefront generation',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        content: StatefulBuilder(
-          builder: (context, setDialogState) => SizedBox(
-            width: _responsiveDialogWidth(context, 720),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerLowest,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.architecture_outlined),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Piki can direct storefront structure, category sidebars, section order, typography, colours, spacing, image placement, columns, cards, buttons, icons, and motion as one design system.',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SegmentedButton<bool>(
-                  expandedInsets: EdgeInsets.zero,
-                  segments: const [
-                    ButtonSegment<bool>(
-                      value: true,
-                      icon: Icon(Icons.dashboard_customize_rounded),
-                      label: Text('Build complete store'),
-                    ),
-                    ButtonSegment<bool>(
-                      value: false,
-                      icon: Icon(Icons.tune_rounded),
-                      label: Text('Refine current'),
-                    ),
-                  ],
-                  selected: {fromScratch},
-                  onSelectionChanged: (selection) =>
-                      setDialogState(() => fromScratch = selection.first),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children:
-                      [
-                            'Premium editorial store',
-                            'Bright image-first catalogue',
-                            'Minimal luxury layout',
-                            'Warm local brand story',
-                            'Catalogue with category sidebar',
-                          ]
-                          .map(
-                            (prompt) => ActionChip(
-                              avatar: const Icon(
-                                Icons.auto_awesome_rounded,
-                                size: 15,
-                              ),
-                              label: Text(prompt),
-                              onPressed: () => setDialogState(() {
-                                controller.text =
-                                    'Design a $prompt with a complete customer journey. Use professional typography, intentional spacing, strong product imagery, useful trust sections, and a polished checkout flow.';
-                              }),
-                            ),
-                          )
-                          .toList(),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  minLines: 6,
-                  maxLines: 10,
-                  decoration: InputDecoration(
-                    labelText: fromScratch
-                        ? 'Describe the complete storefront'
-                        : 'Describe the changes',
-                    hintText: fromScratch
-                        ? 'Example: Build a warm modern grocery store with a strong welcome, category shortcuts, featured products, trust benefits, and WhatsApp help.'
-                        : 'Example: Put product categories in a left sidebar. Keep my current colours and fonts.',
-                    helperText: fromScratch
-                        ? 'Piki builds the complete homepage in the cloud. You can close the app while it works.'
-                        : 'Piki preserves everything you do not ask to change.',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(
-              context,
-              _PikiStorefrontRequest(
-                instruction: controller.text.trim(),
-                fromScratch: fromScratch,
-              ),
-            ),
-            icon: const Icon(Icons.auto_awesome_rounded),
-            label: const Text('Build draft'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (!mounted) return;
-    if (request == null || request.instruction.length < 5) return;
-    await _startPikiThemeJob(
-      theme,
-      request.instruction,
-      fromScratch: request.fromScratch,
-      retry: () => _customizeWithPiki(theme),
-    );
-  }
 
   Future<void> _startPikiThemeJob(
     StorefrontTheme theme,
@@ -770,34 +605,6 @@ Preserve every unrelated website section, existing brand choice, checkout settin
     );
   }
 
-  Future<void> _retryPikiJob() async {
-    final job = _pikiJob;
-    if (job == null || !job.isFailed || _busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-      _errorRetry = null;
-    });
-    try {
-      final retried = await PikiAiJobService.retryJob(job.id);
-      if (!mounted) return;
-      setState(() {
-        _pikiJob = retried;
-        _pikiEvents = const [];
-      });
-      _syncPikiPolling();
-      unawaited(_refreshPikiJob());
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _error = _message(error);
-          _errorRetry = _retryPikiJob;
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _openWebsitePreview(StorefrontTheme theme) async {
     final uri = await StorefrontThemeService.previewUrl(theme);
@@ -1061,7 +868,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
           }) {
             return DropdownButtonFormField<String>(
               isExpanded: true,
-              value: value,
+              initialValue: value,
               decoration: InputDecoration(labelText: label),
               items: options
                   .map(
@@ -1181,7 +988,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<int>(
-                            value: productColumns,
+                            initialValue: productColumns,
                             decoration: const InputDecoration(
                               labelText: 'Product columns',
                             ),
@@ -1497,84 +1304,6 @@ Preserve every unrelated website section, existing brand choice, checkout settin
     await _run(() => StorefrontThemeService.delete(theme.id));
   }
 
-  Widget _buildPikiJobNotice() {
-    final job = _pikiJob!;
-    final colors = Theme.of(context).colorScheme;
-    final title = job.isRunning
-        ? 'Piki is building your storefront'
-        : job.status == 'completed'
-        ? 'Your storefront draft is ready'
-        : 'Piki could not finish the storefront';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PikiActivityPanel(job: job, events: _pikiEvents, title: title),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Icon(
-              job.isRunning
-                  ? Icons.cloud_done_outlined
-                  : job.status == 'completed'
-                  ? Icons.check_circle_outline_rounded
-                  : Icons.info_outline_rounded,
-              size: 18,
-              color: job.status == 'completed'
-                  ? colors.primary
-                  : colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                job.isRunning
-                    ? 'This task runs in Piki Cloud. It continues if you leave this page or close the app.'
-                    : job.status == 'completed'
-                    ? 'Open the exact customer website preview, then publish only when it looks right.'
-                    : (job.errorMessage ??
-                          'You can retry the same saved request.'),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (job.isRunning)
-              TextButton.icon(
-                onPressed: _pikiRefreshing ? null : _refreshPikiJob,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Refresh'),
-              )
-            else if (job.status == 'completed')
-              FilledButton.icon(
-                onPressed: _busy ? null : _previewPikiDraft,
-                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
-                label: Text(
-                  Platform.isWindows ? 'Preview in app' : 'Preview draft',
-                ),
-              )
-            else if (job.isFailed)
-              FilledButton.icon(
-                onPressed: _busy ? null : _retryPikiJob,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Retry'),
-              ),
-            if (!job.isRunning) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Dismiss',
-                onPressed: () => setState(() {
-                  _pikiJob = null;
-                  _pikiEvents = const [];
-                }),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -1627,7 +1356,7 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                   SizedBox(
                     width: 250,
                     child: DropdownButtonFormField<String>(
-                      value: _storefrontType,
+                      initialValue: _storefrontType,
                       decoration: const InputDecoration(
                         labelText: 'Storefront type',
                       ),
@@ -2143,14 +1872,4 @@ Widget _builderGroupTitle(BuildContext context, String label) {
       const Expanded(child: Divider()),
     ],
   );
-}
-
-class _PikiStorefrontRequest {
-  final String instruction;
-  final bool fromScratch;
-
-  const _PikiStorefrontRequest({
-    required this.instruction,
-    required this.fromScratch,
-  });
 }

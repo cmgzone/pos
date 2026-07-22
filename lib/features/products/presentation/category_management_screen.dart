@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pos_app/features/app/app_shell.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../core/utils/error_messages.dart';
@@ -35,13 +35,6 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text('Category Management'),
         actions: [
           TrainingAnchor(

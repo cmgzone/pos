@@ -182,4 +182,81 @@ void main() {
       );
     },
   );
+  test(
+    'createSale rejects combined product lines that exceed available stock',
+    () async {
+      final now = DateTime.now().toIso8601String();
+      const branchId = 'main_branch';
+
+      await DatabaseService.db.insert('products', {
+        'id': 'product-cable',
+        'branch_id': branchId,
+        'name': 'USB Cable',
+        'price': 10.0,
+        'cost': 4.0,
+        'stock': 5.0,
+        'low_stock': 1.0,
+        'unit': 'pcs',
+        'stock_unit': 'pcs',
+        'sale_unit': 'pcs',
+        'sale_to_stock_factor': 1.0,
+        'purchase_unit': 'pcs',
+        'purchase_to_stock_factor': 1.0,
+        'track_stock': 1,
+        'has_variants': 0,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+      await DatabaseService.db.insert('stock_batches', {
+        'id': 'batch-cable',
+        'product_id': 'product-cable',
+        'branch_id': branchId,
+        'quantity_received': 5.0,
+        'quantity_remaining': 5.0,
+        'unit_cost': 4.0,
+        'received_at': now,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+
+      await expectLater(
+        SaleRepository.createSale(
+          totalAmount: 60.0,
+          tax: 0.0,
+          discount: 0.0,
+          paymentType: 'cash',
+          userId: 'cashier-1',
+          items: const [
+            {
+              'product_id': 'product-cable',
+              'quantity': 3.0,
+              'unit_price': 10.0,
+            },
+            {
+              'product_id': 'product-cable',
+              'quantity': 3.0,
+              'unit_price': 10.0,
+            },
+          ],
+        ),
+        throwsA(isA<Exception>()),
+      );
+
+      final products = await DatabaseService.rawQuery(
+        'SELECT stock FROM products WHERE id = ?',
+        ['product-cable'],
+      );
+      final batches = await DatabaseService.rawQuery(
+        'SELECT quantity_remaining FROM stock_batches WHERE id = ?',
+        ['batch-cable'],
+      );
+      final sales = await DatabaseService.rawQuery('SELECT id FROM sales');
+
+      expect((products.single['stock'] as num).toDouble(), 5.0);
+      expect((batches.single['quantity_remaining'] as num).toDouble(), 5.0);
+      expect(sales, isEmpty);
+    },
+  );
 }

@@ -26,6 +26,7 @@ async function activateBusinessAccess({
   countryCode,
   currency,
   sellingMode,
+  verificationToken,
 }) {
   const normalizedDeviceId = normalizeText(deviceId);
   const normalizedBusinessName = normalizeText(businessName);
@@ -39,6 +40,9 @@ async function activateBusinessAccess({
   }
   if (!normalizedBusinessName) {
     throw new Error('businessName is required');
+  }
+  if (!verificationToken) {
+    throw new Error('Email verification is required before activating your account.');
   }
 
   return withTransaction(async (client) => {

@@ -1,612 +1,298 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#1b1714">
-    <title>Piki POS | Offline point of sale for shops, pharmacies, and service businesses</title>
-    <meta name="description" content="Piki POS is an offline-first point of sale built in Kenya for shops, pharmacies, wholesalers, salons, and car washes. Sell when the internet doesn't, track stock and Kopesha credit, take M-Pesa, and sync to the cloud.">
-    <meta name="keywords" content="POS, point of sale, offline POS, Kenya POS, retail POS, pharmacy POS, wholesale POS, M-Pesa, KRA eTIMS, Kopesha, cloud sync, inventory, car wash POS, service POS">
-    <meta name="author" content="Piki POS">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://pikipos.com/">
-    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
-
-    <!-- Favicon (inline SVG, no extra request) -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%231b1714'/><text x='32' y='44' font-family='Georgia,serif' font-size='40' font-weight='700' font-style='italic' text-anchor='middle' fill='%23d72668'>P</text></svg>">
-
-    <!-- Open Graph / Social sharing -->
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="Piki POS">
-    <meta property="og:title" content="Piki POS | Sell when the internet doesn't.">
-    <meta property="og:description" content="Offline-first point of sale built in Kenya. Checkout runs on the device, so a dropped connection never means a dropped sale.">
-    <meta property="og:url" content="https://pikipos.com/">
-    <meta property="og:image" content="assets/marketing/hero-product-showcase-rose.png?v=20260619-hero900">
-    <meta property="og:locale" content="en_KE">
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Piki POS | Sell when the internet doesn't.">
-    <meta name="twitter:description" content="Offline-first point of sale built in Kenya. Cloud sync, Kopesha credit, M-Pesa, and KRA eTIMs.">
-    <meta name="twitter:image" content="assets/marketing/hero-product-showcase-rose.png?v=20260619-hero900">
-
-    <!-- Performance hints -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="preload" as="image" href="assets/marketing/hero-product-showcase-rose.png?v=20260619-hero900" fetchpriority="high">
-
-    <!-- Fonts: Fraunces (display serif) + Inter (body) + JetBrains Mono (labels) -->
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,0..100;1,9..144,400..600,0..100&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- FontAwesome (functional icons only, never in gradient boxes) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=20260620-stores">
-
-    <!-- Structured data for rich search results -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Piki POS",
-      "applicationCategory": "BusinessApplication",
-      "operatingSystem": "Windows 10+, Android 8+",
-      "description": "Offline-first point of sale for retail and service businesses with cloud sync, Kopesha customer credit, M-Pesa, and KRA eTIMS support.",
-      "url": "https://pikipos.com/",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "KES"
-      }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#d8f4ed">
+  <title>Piki POS | Offline point of sale for Kenyan businesses</title>
+  <meta name="description" content="Piki POS keeps checkout, stock, customer credit, and cloud sync together for Kenyan shops and service businesses.">
+  <meta name="keywords" content="POS, offline POS, Kenya POS, M-Pesa, Kopesha, inventory, storefront, eTIMS">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://pikipos.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Piki POS">
+  <meta property="og:title" content="Piki POS | Built to keep business moving.">
+  <meta property="og:description" content="Sell locally, stay in control, and sync when the network comes back.">
+  <meta property="og:image" content="assets/piki-screens/piki-operations-hero.png">
+  <meta property="og:locale" content="en_KE">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" as="image" href="assets/piki-screens/piki-operations-hero.png" fetchpriority="high">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="landing.css?v=20260722-4">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js"
     }
-    </script>
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Piki POS",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Windows 10+, Android 8+",
+    "url": "https://pikipos.com/",
+    "description": "Offline-first point of sale for Kenyan retail and service businesses."
+  }
+  </script>
 </head>
-<body>
-    <!-- Header / Navigation -->
-    <header id="header">
-        <div class="header-container">
-            <a href="#" class="logo" aria-label="Piki POS home">
-                <img src="assets/logo.png?v=20260619-human" alt="Piki POS logo" class="logo-mark" width="34" height="34">
-                <span class="logo-text">Piki<em class="logo-pos">POS</em></span>
-            </a>
-
-            <nav class="nav-menu" id="navMenu" aria-label="Primary">
-                <a href="#product" class="nav-link">Product</a>
-                <a href="#storefront" class="nav-link">Storefront</a>
-                <a href="#downloads" class="nav-link">Downloads</a>
-                <a href="#pricing" class="nav-link">Pricing</a>
-                <a href="#faq" class="nav-link">FAQ</a>
-            </nav>
-
-            <div class="header-actions">
-                <button class="theme-toggle" id="themeToggle" aria-label="Toggle light or dark theme">
-                    <i class="fa-solid fa-sun"></i>
-                </button>
-                <a href="#contact" class="btn-link btn-link-sm">Get started <i class="fa-solid fa-arrow-right-long"></i></a>
-                <button class="mobile-menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <main>
-        <!-- Hero -->
-        <section class="hero-section" id="hero">
-            <div class="section-container hero-grid">
-                <div class="hero-content">
-                    <p class="eyebrow reveal">Offline-first point of sale</p>
-                    <h1 class="hero-title reveal stagger-1">Sell when the <em class="title-em">internet</em> doesn't.</h1>
-                    <p class="hero-lead reveal stagger-2">Piki POS is built for shops, pharmacies, wholesalers, salons, and car washes across Kenya. Checkout runs on the device, so a dropped connection never means a dropped sale. Stock, Kopesha credit, M-Pesa, and eTIMs all live in one till.</p>
-
-                    <div class="hero-actions reveal stagger-3">
-                        <a href="#downloads" class="btn btn-primary btn-lg">
-                            <i class="fa-solid fa-download"></i> Download Piki POS
-                        </a>
-                        <a href="#product" class="btn-link">See how it works <i class="fa-solid fa-arrow-right-long"></i></a>
-                    </div>
-
-                    <p class="hero-meta reveal stagger-4">Free to start &nbsp;·&nbsp; Works offline &nbsp;·&nbsp; Built in Nairobi</p>
-                </div>
-
-                <figure class="hero-visual reveal-right">
-                    <div class="frame">
-                        <img src="assets/marketing/hero-product-showcase-rose.png?v=20260619-hero900" alt="Piki POS shown on desktop and Android screens for dashboard and checkout work" class="hero-img" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high">
-                    </div>
-                    <figcaption class="frame-caption">Piki POS &nbsp;·&nbsp; counter view</figcaption>
-                </figure>
-            </div>
-        </section>
-
-        <!-- Proof line -->
-        <section class="proof-section" aria-label="Who Piki POS is built for">
-            <div class="section-container">
-                <p class="proof-line reveal">Built with shopkeepers in Nairobi, Eldoret, and Mombasa &mdash; pharmacies, supermarkets, wholesalers, car washes, and salons.</p>
-            </div>
-        </section>
-
-        <!-- What it does -->
-        <section class="work-section" id="product">
-            <div class="section-container">
-                <div class="section-head reveal">
-                    <p class="section-tag"><span class="tag-num">01</span><span class="tag-dash">&mdash;</span><span class="tag-label">What it does</span></p>
-                    <h2 class="section-title">One till for everything that happens at the counter.</h2>
-                    <p class="section-lede">Piki POS does the practical work: fast checkout, honest stock, clear customer balances, and records your team can review later. No dashboards for the sake of dashboards.</p>
-                </div>
-
-                <div class="work-grid">
-                    <article class="work-item reveal stagger-1">
-                        <p class="work-num">01</p>
-                        <h3 class="work-heading">Sell</h3>
-                        <p class="work-body">Offline checkout that keeps ringing when the network drops. Sell products, services, or both in one sale. Take cash, M-Pesa, and Kopesha credit. Scan barcodes, print receipts, and close the shift in seconds.</p>
-                        <ul class="work-list">
-                            <li>Products + services in one cart</li>
-                            <li>M-Pesa, cash, and credit</li>
-                            <li>Barcode + receipt printing</li>
-                            <li>Shift open and close</li>
-                        </ul>
-                    </article>
-
-                    <article class="work-item reveal stagger-2">
-                        <p class="work-num">02</p>
-                        <h3 class="work-heading">Track</h3>
-                        <p class="work-body">Know what you have and who owes you. Stock, variants, categories, and purchases stay accurate. Kopesha credit sits against each customer with a due date, separate from the cash drawer, so the books stay clean.</p>
-                        <ul class="work-list">
-                            <li>Stock, variants, categories</li>
-                            <li>Purchases and stock moves</li>
-                            <li>Kopesha credit with due dates</li>
-                            <li>Profit &amp; loss, shifts</li>
-                        </ul>
-                    </article>
-
-                    <article class="work-item reveal stagger-3">
-                        <p class="work-num">03</p>
-                        <h3 class="work-heading">Sync</h3>
-                        <p class="work-body">Sales save on the device first, then sync to the cloud when the line comes back. Review reports from your phone, import stock and sales from Excel, file eTIMs records, and open a storefront customers can order from by QR.</p>
-                        <ul class="work-list">
-                            <li>Encrypted cloud backup</li>
-                            <li>Excel / CSV imports</li>
-                            <li>KRA eTIMs reporting</li>
-                            <li>QR storefront + orders</li>
-                        </ul>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <!-- Product screens -->
-        <section class="screens-section" id="screens">
-            <div class="section-container">
-                <div class="section-head reveal">
-                    <p class="section-tag"><span class="tag-num">02</span><span class="tag-dash">&mdash;</span><span class="tag-label">Product screens</span></p>
-                    <h2 class="section-title">Real screens for the counter, the stock room, and the phone.</h2>
-                    <p class="section-lede">These are Piki POS working screens: desktop checkout for the counter, product control for stock, reports for owners, and Android selling when the till needs to move.</p>
-                </div>
-
-                <div class="screens-grid">
-                    <article class="screen-card screen-card-wide reveal stagger-1">
-                        <div class="screen-media">
-                            <img src="assets/marketing/screen-pos-desktop.png?v=20260619-hero900" alt="Piki POS desktop checkout screen with product cards and current sale panel" loading="lazy" decoding="async">
-                        </div>
-                        <div class="screen-copy">
-                            <h3>Fast counter checkout</h3>
-                            <p>Search, scan, add items, hold sales, and review the cart from one focused POS screen.</p>
-                        </div>
-                    </article>
-
-                    <article class="screen-card screen-card-wide reveal stagger-2">
-                        <div class="screen-media">
-                            <img src="assets/marketing/screen-products-desktop.png?v=20260619-hero900" alt="Piki POS product management screen with prices, stock status, and product actions" loading="lazy" decoding="async">
-                        </div>
-                        <div class="screen-copy">
-                            <h3>Products and stock</h3>
-                            <p>Track prices, units, product actions, and low-stock status without leaving the app.</p>
-                        </div>
-                    </article>
-
-                    <article class="screen-card screen-card-wide reveal stagger-3">
-                        <div class="screen-media">
-                            <img src="assets/marketing/screen-reports-desktop.png?v=20260619-hero900" alt="Piki POS reports dashboard with cashier summary, sales trend, and employee results" loading="lazy" decoding="async">
-                        </div>
-                        <div class="screen-copy">
-                            <h3>Owner-ready reports</h3>
-                            <p>Daily sales, counts, profit, refunds, shifts, and employee performance stay visible.</p>
-                        </div>
-                    </article>
-
-                    <article class="screen-card screen-card-phone reveal stagger-4">
-                        <div class="screen-media">
-                            <img src="assets/marketing/screen-mobile-pos-rose.png?v=20260619-hero900" alt="Piki POS Android checkout screen with products and review payment button" loading="lazy" decoding="async">
-                        </div>
-                        <div class="screen-copy">
-                            <h3>Android selling</h3>
-                            <p>Use the same checkout flow on a phone or tablet when the counter is not fixed.</p>
-                        </div>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <!-- The story -->
-        <section class="story-section" id="story">
-            <div class="section-container story-grid">
-                <div class="story-rail reveal-left">
-                    <p class="section-tag"><span class="tag-num">03</span><span class="tag-dash">&mdash;</span><span class="tag-label">A shift, uninterrupted</span></p>
-                </div>
-                <div class="story-body reveal stagger-1">
-                    <p class="story-pull">3:47&nbsp;PM. The power cuts.</p>
-                    <p>The router blinks off. A queue is forming at the counter. With Piki POS, the cashier keeps scanning &mdash; the till runs on the device, not the internet. The sale closes, the receipt prints, the customer leaves. Nobody waits.</p>
-                    <p>At 6:12&nbsp;PM the connection comes back. Three hours of sales sync to the cloud, and the owner checks the day's total from her phone on the matatu home.</p>
-                    <p class="story-note">An illustrative day, drawn from how shops actually use Piki POS through outages.</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- Storefront -->
-        <section class="storefront-section" id="storefront">
-            <div class="section-container storefront-grid">
-                <div class="storefront-copy reveal-left">
-                    <p class="section-tag"><span class="tag-num">04</span><span class="tag-dash">&mdash;</span><span class="tag-label">The storefront</span></p>
-                    <h2 class="section-title">Your shop, on every phone in the neighbourhood.</h2>
-                    <p class="section-lede">Piki POS gives each business a shareable link and a QR poster. Customers browse your catalog and order from their phones without waiting at the counter. Orders flow straight back to the till.</p>
-
-                    <ul class="storefront-list">
-                        <li><i class="fa-solid fa-qrcode"></i> Print a QR poster for the door, the receipt, or WhatsApp.</li>
-                        <li><i class="fa-solid fa-link"></i> Copy your store link and send it in seconds.</li>
-                        <li><i class="fa-solid fa-bag-shopping"></i> Orders land in the POS, ready to fulfil.</li>
-                    </ul>
-
-                    <div class="storefront-actions">
-                        <a href="#downloads" class="btn btn-primary">Download Piki POS</a>
-                        <a href="#contact" class="btn-link">Get setup help <i class="fa-solid fa-arrow-right-long"></i></a>
-                    </div>
-                </div>
-
-                <figure class="storefront-visual reveal-right stagger-2">
-                    <div class="frame">
-                        <img src="assets/marketing/storefront-showcase.png?v=20260619-hero900" alt="Piki POS storefront shown on a customer phone with catalog orders and QR sharing" width="1100" height="900" loading="lazy" decoding="async">
-                    </div>
-                    <figcaption class="frame-caption">Storefront sharing &nbsp;·&nbsp; QR + link</figcaption>
-                </figure>
-            </div>
-        </section>
-
-        <!-- Downloads -->
-        <section class="downloads-section" id="downloads">
-            <div class="section-container">
-                <div class="section-head reveal">
-                    <p class="section-tag"><span class="tag-num">05</span><span class="tag-dash">&mdash;</span><span class="tag-label">Get the app</span></p>
-                    <h2 class="section-title">Install once. Start selling in minutes.</h2>
-                    <p class="section-lede">Pick the right version for your hardware. Use Windows for a fixed counter, APK for Android direct installs, and watch for Google Play and iOS releases coming soon.</p>
-                </div>
-
-                <div class="downloads-grid">
-                    <article class="download-card reveal-left stagger-1" data-os="windows">
-                        <div class="download-platform">
-                            <span class="platform-glyph"><i class="fa-brands fa-windows"></i></span>
-                            <div>
-                                <h3 class="download-title">Windows</h3>
-                                <p class="download-sub">PC or tablet &nbsp;·&nbsp; 64-bit</p>
-                            </div>
-                        </div>
-                        <p class="download-description">Run Piki POS on Windows 10 or 11 at the counter. Works with barcode scanners, receipt printers, and cash drawers.</p>
-                        <ul class="download-specs">
-                            <li><i class="fa-solid fa-check"></i> Windows 10 version 1903+</li>
-                            <li><i class="fa-solid fa-check"></i> 64-bit installer</li>
-                            <li><i class="fa-solid fa-check"></i> Offline from first launch</li>
-                        </ul>
-                        <div class="download-actions">
-                            <a href="downloads/piki-pos-windows-setup.exe" class="btn btn-primary btn-block download-link" download>
-                                <i class="fa-solid fa-download"></i> Download for Windows
-                            </a>
-                            <span class="download-meta" id="windowsMeta">v1.0.0 &nbsp;·&nbsp; ~45 MB</span>
-                        </div>
-                    </article>
-
-                    <article class="download-card download-card-muted reveal-right stagger-2" data-os="google-play">
-                        <div class="download-platform">
-                            <span class="platform-glyph"><i class="fa-brands fa-google-play"></i></span>
-                            <div>
-                                <h3 class="download-title">Google Play</h3>
-                                <p class="download-sub">Android &nbsp;·&nbsp; Managed updates</p>
-                            </div>
-                        </div>
-                        <p class="download-description">The Google Play release is being prepared for smoother Android setup, automatic updates, and the same offline-first selling tools.</p>
-                        <ul class="download-specs">
-                            <li><i class="fa-solid fa-clock"></i> Play Store release in progress</li>
-                            <li><i class="fa-solid fa-check"></i> Automatic updates when live</li>
-                            <li><i class="fa-solid fa-check"></i> Bluetooth printers supported</li>
-                        </ul>
-                        <div class="download-actions">
-                            <span class="btn btn-ghost btn-block btn-disabled" aria-disabled="true">
-                                <i class="fa-brands fa-google-play"></i> Google Play coming soon
-                            </span>
-                            <span class="download-meta" id="playStoreMeta">Play Store &nbsp;·&nbsp; Not released yet</span>
-                        </div>
-                    </article>
-
-                    <article class="download-card reveal-left stagger-3" data-os="android">
-                        <div class="download-platform">
-                            <span class="platform-glyph"><i class="fa-brands fa-android"></i></span>
-                            <div>
-                                <h3 class="download-title">Android APK</h3>
-                                <p class="download-sub">Phone or tablet &nbsp;·&nbsp; Direct install</p>
-                            </div>
-                        </div>
-                        <p class="download-description">Use the APK when Play Store access is not available. It is still the full mobile POS for shop-floor and field selling.</p>
-                        <ul class="download-specs">
-                            <li><i class="fa-solid fa-check"></i> Android 8.0 (API 26)+</li>
-                            <li><i class="fa-solid fa-check"></i> Manual APK install</li>
-                            <li><i class="fa-solid fa-check"></i> Works offline after setup</li>
-                        </ul>
-                        <div class="download-actions">
-                            <a href="downloads/piki-pos-android.apk" class="btn btn-ghost btn-block download-link" download>
-                                <i class="fa-solid fa-download"></i> Download APK
-                            </a>
-                            <span class="download-meta" id="androidMeta">v1.0.0 &nbsp;·&nbsp; ~35 MB</span>
-                        </div>
-                    </article>
-
-                    <article class="download-card download-card-muted reveal-right stagger-4" data-os="ios">
-                        <div class="download-platform">
-                            <span class="platform-glyph"><i class="fa-brands fa-apple"></i></span>
-                            <div>
-                                <h3 class="download-title">iOS</h3>
-                                <p class="download-sub">iPhone and iPad &nbsp;·&nbsp; Coming soon</p>
-                            </div>
-                        </div>
-                        <p class="download-description">The iOS app is planned for teams that want Piki POS on Apple devices, with the same cloud sync and reporting flow.</p>
-                        <ul class="download-specs">
-                            <li><i class="fa-solid fa-clock"></i> App Store release in progress</li>
-                            <li><i class="fa-solid fa-check"></i> iPhone and iPad friendly</li>
-                            <li><i class="fa-solid fa-check"></i> Designed for cloud sync</li>
-                        </ul>
-                        <div class="download-actions">
-                            <span class="btn btn-ghost btn-block btn-disabled" aria-disabled="true">
-                                <i class="fa-solid fa-clock"></i> Coming soon
-                            </span>
-                            <span class="download-meta">App Store &nbsp;·&nbsp; Not released yet</span>
-                        </div>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <!-- Pricing -->
-        <section class="pricing-section" id="pricing">
-            <div class="section-container">
-                <div class="section-head reveal">
-                    <p class="section-tag"><span class="tag-num">06</span><span class="tag-dash">&mdash;</span><span class="tag-label">Plans</span></p>
-                    <h2 class="section-title">Pricing that fits the size of your shop.</h2>
-                    <p class="section-lede">Plans load live from Piki POS, so you always see current pricing for your market. Start with what you need today, then add users, branches, services, or Piki AI as you grow.</p>
-                </div>
-
-                <div class="pricing-toolbar reveal stagger-3">
-                    <div class="pricing-market">
-                        <label for="pricingMarket">Market</label>
-                        <select id="pricingMarket" class="pricing-market-select" aria-label="Choose pricing market" disabled>
-                            <option value="">Loading markets...</option>
-                        </select>
-                    </div>
-                    <div class="pricing-source">
-                        <i class="fa-solid fa-database"></i>
-                        <span id="pricingSourceText">Loading current plans...</span>
-                    </div>
-                </div>
-
-                <div class="pricing-grid" id="pricingPlans">
-                    <article class="pricing-card glass-card pricing-card-loading reveal">
-                        <div class="pricing-card-header">
-                            <span class="pricing-plan-code shimmer" style="display:inline-block;width:80px;height:14px;border-radius:4px;"></span>
-                            <h3 class="shimmer" style="height:28px;border-radius:6px;margin-top:0.8rem;"></h3>
-                            <p class="shimmer" style="height:16px;border-radius:4px;"></p>
-                            <p class="shimmer" style="height:16px;border-radius:4px;width:70%;"></p>
-                        </div>
-                        <div class="pricing-price-row">
-                            <span class="shimmer" style="width:120px;height:36px;border-radius:8px;"></span>
-                        </div>
-                        <div class="pricing-limits">
-                            <span class="shimmer" style="height:18px;border-radius:4px;"></span>
-                            <span class="shimmer" style="height:18px;border-radius:4px;"></span>
-                            <span class="shimmer" style="height:18px;border-radius:4px;"></span>
-                        </div>
-                        <ul class="pricing-feature-list">
-                            <li class="shimmer" style="height:16px;border-radius:4px;"></li>
-                            <li class="shimmer" style="height:16px;border-radius:4px;"></li>
-                            <li class="shimmer" style="height:16px;border-radius:4px;"></li>
-                        </ul>
-                        <span class="shimmer" style="width:100%;height:44px;border-radius:10px;"></span>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <!-- FAQ -->
-        <section class="faq-section" id="faq">
-            <div class="section-container">
-                <div class="section-head reveal">
-                    <p class="section-tag"><span class="tag-num">07</span><span class="tag-dash">&mdash;</span><span class="tag-label">Questions</span></p>
-                    <h2 class="section-title">Things people ask before they install.</h2>
-                </div>
-
-                <div class="faq-accordion-list reveal stagger-3">
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>Does it really work when the internet is down?</span>
-                            <i class="fa-solid fa-plus"></i>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Yes. Checkout runs on the device, so cashiers keep selling when the connection drops. When it comes back, pending sales sync to the cloud. No sale is lost to a dead router.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>Can it handle both products and services?</span>
-                            <i class="fa-solid fa-plus"></i>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Yes. Piki POS supports product inventory, variants, categories, and purchases alongside service orders, car wash queues, and salons. You can ring up products and services in the same sale.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>What about payments and KRA eTIMs?</span>
-                            <i class="fa-solid fa-plus"></i>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Cash, Kopesha credit, and configurable payment methods are built in. M-Pesa checkout and KRA eTIMs submission work once you add the relevant credentials. Receipts print or send by message.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>Can I import existing sales and stock from Excel?</span>
-                            <i class="fa-solid fa-plus"></i>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Yes. Import products, sales, customers, and expenses from <code>.xlsx</code> or <code>.csv</code>. Piki AI maps messy headers, skips note rows, and shows you a preview before anything is applied.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="toggleFaq(this)">
-                            <span>Is my data safe if a device is lost or broken?</span>
-                            <i class="fa-solid fa-plus"></i>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Sales are saved on the device first, then backed up to the cloud with encryption. Approved devices can recover records, so a lost or broken tablet doesn't take your business history with it.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Contact -->
-        <section class="contact-section" id="contact">
-            <div class="section-container contact-grid">
-                <div class="contact-info reveal-left">
-                    <p class="section-tag"><span class="tag-num">08</span><span class="tag-dash">&mdash;</span><span class="tag-label">Talk to us</span></p>
-                    <h2 class="section-title">Set up Piki POS for your shop.</h2>
-                    <p class="section-lede">Tell us about your business. We'll help you choose the right setup for products, services, payments, credit tracking, cloud sync, and reporting.</p>
-
-                    <div class="contact-methods">
-                        <div class="c-method">
-                            <i class="fa-solid fa-envelope"></i>
-                            <span>support@pikipos.com</span>
-                        </div>
-                        <div class="c-method">
-                            <i class="fa-solid fa-cash-register"></i>
-                            <span>Retail, wholesale, pharmacy, and services</span>
-                        </div>
-                        <div class="c-method">
-                            <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>Offline POS with optional cloud sync</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="contact-card-form reveal-right stagger-2">
-                    <h3 class="form-title">Request setup help</h3>
-                    <form id="contactForm" onsubmit="handleFormSubmit(event)">
-                        <div class="form-group">
-                            <label for="contactName">Full name</label>
-                            <input type="text" id="contactName" class="form-control" placeholder="Enter your name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="contactEmail">Email address</label>
-                            <input type="email" id="contactEmail" class="form-control" placeholder="name@company.com" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="storeType">Store type</label>
-                            <select id="storeType" class="form-control">
-                                <option value="retail">Supermarket / retail store</option>
-                                <option value="pharmacy">Pharmacy / chemist</option>
-                                <option value="wholesale">Wholesale warehouse</option>
-                                <option value="service">Service business / car wash</option>
-                                <option value="other">Other business</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="contactMessage">Additional notes</label>
-                            <textarea id="contactMessage" rows="3" class="form-control" placeholder="Tell us about your store..."></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-block">
-                            Send request <i class="fa-solid fa-paper-plane"></i>
-                        </button>
-                        <div class="form-error-message hidden" id="formError" role="alert"></div>
-                    </form>
-                    <div class="form-success-message hidden" id="formSuccess">
-                        <i class="fa-solid fa-circle-check text-success"></i>
-                        <h4>Request sent.</h4>
-                        <p>Your request has been saved. The team will follow up using the details you provided.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <!-- Footer -->
-    <footer>
-        <div class="section-container footer-grid">
-            <div class="footer-brand">
-                <a href="#" class="logo">
-                    <img src="assets/logo.png?v=20260619-human" alt="Piki POS logo" class="logo-mark" width="34" height="34" loading="lazy" decoding="async">
-                    <span class="logo-text">Piki<em class="logo-pos">POS</em></span>
-                </a>
-                <p class="footer-tagline">Offline-first point of sale for the shops that keep the lights on.</p>
-                <div class="social-links" aria-label="Social links">
-                    <a href="#" aria-label="Piki POS on Facebook"><i class="fa-brands fa-facebook-f"></i></a>
-                    <a href="#" aria-label="Piki POS on X (Twitter)"><i class="fa-brands fa-x-twitter"></i></a>
-                    <a href="#" aria-label="Piki POS on Instagram"><i class="fa-brands fa-instagram"></i></a>
-                    <a href="#" aria-label="Piki POS on LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
-                    <a href="mailto:support@pikipos.com" aria-label="Email Piki POS support"><i class="fa-solid fa-envelope"></i></a>
-                </div>
-            </div>
-
-            <div class="footer-links">
-                <h4>Product</h4>
-                <a href="#product">What it does</a>
-                <a href="#storefront">Storefront</a>
-                <a href="#downloads">Downloads</a>
-                <a href="#pricing">Pricing</a>
-                <a href="#story">The story</a>
-            </div>
-
-            <div class="footer-links">
-                <h4>Operations</h4>
-                <a href="#product">Offline checkout</a>
-                <a href="#storefront">QR storefront</a>
-                <a href="#product">M-Pesa &amp; eTIMs</a>
-                <a href="#faq">FAQs</a>
-                <a href="#contact">Contact</a>
-            </div>
-
-            <div class="footer-links">
-                <h4>Legal</h4>
-                <a href="/privacy.html">Privacy Policy</a>
-                <a href="/terms.html">Terms</a>
-                <a href="/data-deletion.html">Data Deletion</a>
-                <a href="#hero" class="back-to-top">Back to top &uarr;</a>
-            </div>
-        </div>
-
-        <div class="footer-bottom">
-            <div class="section-container footer-bottom-row">
-                <p>Built in Nairobi for the shops that keep the lights on.</p>
-                <p class="footer-mono">&copy; 2026 Piki POS &nbsp;·&nbsp; v1.0</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Sticky mobile CTA bar (conversion) -->
-    <div class="sticky-cta-bar" id="stickyCtaBar" aria-hidden="true">
-        <a href="#downloads" class="btn btn-primary btn-sm"><i class="fa-solid fa-download"></i> Download</a>
-        <a href="#contact" class="btn-ghost btn-sm"><i class="fa-solid fa-headset"></i> Setup help</a>
+<body class="theme-daylight">
+  <header class="site-header" id="siteHeader">
+    <div class="shell nav-shell">
+      <a class="brand" href="#top" aria-label="Piki POS home">
+        <img src="assets/logo.png" alt="" width="38" height="38">
+        <span>Piki <b>POS</b></span>
+      </a>
+      <nav class="site-nav" id="siteNav" aria-label="Primary navigation">
+        <a href="#features">Product</a>
+        <a href="#online-store">Storefront</a>
+        <a href="#downloads">Downloads</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button button-small button-ink" href="#contact">Get started <i data-lucide="arrow-up-right"></i></a>
+        <button class="icon-button menu-button" id="menuButton" type="button" aria-label="Open navigation" aria-controls="siteNav" aria-expanded="false">
+          <i data-lucide="menu"></i>
+        </button>
+      </div>
     </div>
+  </header>
 
-    <!-- Main JavaScript Logic -->
-    <script src="app.js?v=20260620-stores"></script>
+  <main id="top">
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero-grid-art" aria-hidden="true"></div>
+      <div class="hero-flow" id="heroFlow" data-stage="scan" aria-label="A guided view of Piki POS modules and business dashboard">
+        <div class="flow-caption">
+          <span class="flow-step-number" id="flowStepNumber">01</span>
+          <div>
+            <strong id="flowStepTitle">Open the counter</strong>
+            <span id="flowStepDetail">Keep the next sale and every essential tool within reach.</span>
+          </div>
+        </div>
+        <figure class="flow-screen">
+          <img src="assets/piki-screens/piki-operations-hero.png" alt="Piki POS retail modules and dashboard" width="1600" height="1000">
+          <span class="flow-scan" aria-hidden="true"></span>
+          <span class="flow-focus" aria-hidden="true"></span>
+          <span class="flow-cursor" aria-hidden="true"><i data-lucide="mouse-pointer-2"></i></span>
+        </figure>
+        <div class="flow-receipt" aria-hidden="true"><i data-lucide="check"></i><span>Your next action is ready</span></div>
+        <button class="flow-replay" id="flowReplay" type="button"><i data-lucide="rotate-ccw"></i> Replay guide</button>
+      </div>
+      <div class="shell hero-layout">
+        <div class="hero-copy" data-reveal>
+          <p class="kicker"><span></span> Point of sale for real-world business</p>
+          <h1 id="heroTitle">Piki POS keeps <em>business moving.</em></h1>
+          <p class="hero-lead">Checkout runs on the device. Your team can sell, track stock, and serve customers through a network drop, then sync the work when the connection returns.</p>
+          <div class="hero-actions">
+            <a class="button button-coral" href="#downloads">Download Piki POS <i data-lucide="download"></i></a>
+            <a class="text-link light-link" href="#features">Explore the system <i data-lucide="arrow-down-right"></i></a>
+          </div>
+          <ul class="hero-proof" aria-label="Core Piki POS benefits">
+            <li><i data-lucide="wifi-off"></i> Local checkout</li>
+            <li><i data-lucide="cloud"></i> Sync when ready</li>
+            <li><i data-lucide="map-pin"></i> Built in Kenya</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="ticker" aria-label="Piki POS capabilities">
+      <div class="shell ticker-row">
+        <span>Checkout</span><b></b><span>Inventory</span><b></b><span>Kopesha</span><b></b><span>M-Pesa</span><b></b><span>Cloud sync</span><b></b><span>Storefront</span>
+      </div>
+    </section>
+
+    <section class="capabilities section" id="features">
+      <div class="shell">
+        <div class="section-intro" data-reveal>
+          <p class="eyebrow-number">01 / The operating system for the till</p>
+          <h2>A calm counter makes the whole business feel sharper.</h2>
+          <p>Keep the work connected without making it complicated. Piki combines the essential counter tools in one place, with each part designed for repeated use.</p>
+        </div>
+        <div class="capability-grid">
+          <article class="capability" data-reveal>
+            <div class="capability-index">01</div>
+            <div class="three-icon" data-three-icon="scan" aria-hidden="true"><i data-lucide="scan-line"></i></div>
+            <h3>Sell without waiting</h3>
+            <p>Search, scan, hold a sale, take payment, print a receipt, and move to the next customer even while the line is down.</p>
+            <ul>
+              <li>Cash, M-Pesa, and credit</li>
+              <li>Products and services together</li>
+              <li>Shift-ready checkout</li>
+            </ul>
+          </article>
+          <article class="capability capability-teal" data-reveal>
+            <div class="capability-index">02</div>
+            <div class="three-icon" data-three-icon="inventory" aria-hidden="true"><i data-lucide="package-check"></i></div>
+            <h3>Know what is on hand</h3>
+            <p>Products, variants, units, purchases, transfers, and low-stock work stay attached to the real inventory your team handles.</p>
+            <ul>
+              <li>Variants and batch tracking</li>
+              <li>Stock takes and wastage</li>
+              <li>Purchases and suppliers</li>
+            </ul>
+          </article>
+          <article class="capability capability-yellow" data-reveal>
+            <div class="capability-index">03</div>
+            <div class="three-icon" data-three-icon="insights" aria-hidden="true"><i data-lucide="chart-no-axes-combined"></i></div>
+            <h3>See the day clearly</h3>
+            <p>Sales, Kopesha balances, refunds, margins, and team activity become records you can review instead of a story to piece together.</p>
+            <ul>
+              <li>Owner-ready reporting</li>
+              <li>Customer balances</li>
+              <li>Cloud backup and review</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="counter-scene section">
+      <div class="shell counter-layout">
+        <div class="counter-copy" data-reveal>
+          <p class="eyebrow-number">02 / Owner view without guesswork</p>
+          <h2>Know the day before it runs away from you.</h2>
+          <p>Sales, profit, open orders, and stock prompts stay in one direct dashboard view. See the business as it is, then decide what needs attention next.</p>
+          <a class="text-link" href="#downloads">Choose your device <i data-lucide="arrow-right"></i></a>
+        </div>
+        <div class="counter-media" data-reveal>
+          <img src="assets/piki-screens/owner-dashboard-orange.png" alt="Piki POS owner dashboard showing sales, profit, activity, and reorder suggestions" loading="lazy">
+          <div class="media-caption"><span>Owner dashboard</span><span>Today at a glance</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow section">
+      <div class="shell">
+        <div class="workflow-heading" data-reveal>
+          <p class="eyebrow-number">03 / One record, many decisions</p>
+          <h2>Everything after a sale stays useful.</h2>
+        </div>
+        <div class="workflow-grid">
+          <article class="workflow-step" data-reveal>
+            <span>01</span>
+            <h3>Counter</h3>
+            <p>Sell, split payments, capture a customer, and issue the receipt.</p>
+          </article>
+          <article class="workflow-step" data-reveal>
+            <span>02</span>
+            <h3>Back office</h3>
+            <p>Update stock, clear a balance, review a shift, or process a return.</p>
+          </article>
+          <article class="workflow-step" data-reveal>
+            <span>03</span>
+            <h3>Owner view</h3>
+            <p>Open the report, see what changed, and decide what needs attention.</p>
+          </article>
+        </div>
+        <div class="product-strip" data-reveal>
+          <figure><img src="assets/piki-screens/retail-modules.png" alt="Piki POS retail modules including sales, stock, and purchasing" loading="lazy"><figcaption>Retail modules</figcaption></figure>
+          <figure><img src="assets/piki-screens/online-store-manager.png" alt="Piki online store management overview" loading="lazy"><figcaption>Online store setup</figcaption></figure>
+          <figure><img src="assets/piki-screens/catalog-qr.png" alt="Piki catalog QR publishing dialog" loading="lazy"><figcaption>Share the catalog</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="storefront section" id="online-store">
+      <div class="shell storefront-layout">
+        <div class="storefront-media" data-reveal>
+          <img src="assets/piki-screens/piki-storefront-loop.png" alt="Piki online store manager, catalog QR, and customer storefront" loading="lazy">
+        </div>
+        <div class="storefront-copy" data-reveal>
+          <p class="eyebrow-number">04 / Your counter reaches the neighbourhood</p>
+          <h2>Give every customer a shorter way to your shelf.</h2>
+          <p>Publish your catalog to a shareable storefront, put the QR on a receipt or window, and bring new orders back to the same business system.</p>
+          <div class="storefront-list">
+            <div><i data-lucide="qr-code"></i><span><b>Share by QR</b> Put the store where customers already look.</span></div>
+            <div><i data-lucide="shopping-bag"></i><span><b>Receive orders</b> Keep online and counter work connected.</span></div>
+            <div><i data-lucide="send"></i><span><b>Send a link</b> Move the storefront through WhatsApp in seconds.</span></div>
+          </div>
+          <a class="button button-ink" href="#contact">Plan your storefront <i data-lucide="arrow-up-right"></i></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="downloads section" id="downloads">
+      <div class="shell">
+        <div class="section-intro compact" data-reveal>
+          <p class="eyebrow-number">05 / Start from the device you have</p>
+          <h2>Install Piki POS and set up the counter you need.</h2>
+        </div>
+        <div class="download-grid">
+          <article class="download-option" data-reveal>
+            <div class="platform-icon platform-icon-windows"><img src="assets/brands/windows.svg" alt="" width="25" height="25"></div>
+            <div><p class="download-label">Windows</p><h3>For the fixed counter</h3><p>Use a PC or Windows tablet with scanners, printers, and cash drawers.</p></div>
+            <a class="button button-ink download-link is-disabled" data-release="windows" data-ready-label="Download for Windows" aria-disabled="true" tabindex="-1">Checking Windows release <i data-lucide="loader-circle"></i></a>
+            <small data-release-meta="windows" aria-live="polite">Windows 10+ / 64-bit</small>
+          </article>
+          <article class="download-option secondary" data-reveal>
+            <div class="platform-icon platform-icon-android"><img src="assets/brands/android.svg" alt="" width="28" height="28"></div>
+            <div><p class="download-label">Android APK</p><h3>For mobile selling</h3><p>Use a phone or tablet for pop-ups, field sales, or a flexible counter.</p></div>
+            <a class="button button-outline download-link is-disabled" data-release="android" data-ready-label="Download APK" aria-disabled="true" tabindex="-1">Checking Android release <i data-lucide="loader-circle"></i></a>
+            <small data-release-meta="android" aria-live="polite">Android 8.0+ / Direct install</small>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="pricing section" id="pricing">
+      <div class="shell">
+        <div class="pricing-head" data-reveal>
+          <div><p class="eyebrow-number">06 / Subscription plans</p><h2>Start where the business is today.</h2></div>
+          <label class="market-select">Pricing market <select id="pricingMarket" disabled><option>Loading...</option></select></label>
+        </div>
+        <div class="pricing-grid" id="pricingPlans" aria-live="polite">
+          <article class="plan-card"><p class="plan-code">Trial</p><h3>Get moving</h3><p class="plan-price">Free</p><p class="plan-description">Set up the counter and see how Piki fits your business.</p><a class="plan-cta" href="#contact" data-plan="Trial">Ask about Trial <i data-lucide="arrow-down-right"></i></a></article>
+          <article class="plan-card plan-card-featured"><p class="plan-code">Business</p><h3>Run the day</h3><p class="plan-price">Loading</p><p class="plan-description">Current plans and local payment options will appear here.</p><a class="plan-cta" href="#contact" data-plan="Business">Plan with Piki <i data-lucide="arrow-down-right"></i></a></article>
+          <article class="plan-card"><p class="plan-code">Growth</p><h3>Scale the operation</h3><p class="plan-price">Flexible</p><p class="plan-description">Support for teams that need more control and more reach.</p><a class="plan-cta" href="#contact" data-plan="Growth">Ask about Growth <i data-lucide="arrow-down-right"></i></a></article>
+        </div>
+        <p class="pricing-source" id="pricingSource">Loading the latest plans for your market.</p>
+      </div>
+    </section>
+
+    <section class="faq-contact section" id="faq">
+      <div class="shell faq-contact-layout">
+        <div class="faq-column" data-reveal>
+          <p class="eyebrow-number">07 / A few useful answers</p>
+          <h2>What people ask before they install.</h2>
+          <div class="faq-list">
+            <article class="faq-item"><button type="button" aria-expanded="false"><span>Will the till keep working when the network drops?</span><i data-lucide="plus"></i></button><div><p>Yes. Piki POS saves checkout work on the device first and syncs it once a connection is available.</p></div></article>
+            <article class="faq-item"><button type="button" aria-expanded="false"><span>Can I use it for services as well as products?</span><i data-lucide="plus"></i></button><div><p>Yes. Piki supports product, service, and mixed business workflows from the same checkout.</p></div></article>
+            <article class="faq-item"><button type="button" aria-expanded="false"><span>Does it work with M-Pesa and customer credit?</span><i data-lucide="plus"></i></button><div><p>Payment and customer-balance tools are built into the wider Piki workflow, with setup options that match the business.</p></div></article>
+          </div>
+        </div>
+        <section class="contact-panel" id="contact" data-reveal aria-labelledby="contactTitle">
+          <p class="eyebrow-number">Talk to Piki</p>
+          <h2 id="contactTitle">Set up a better counter.</h2>
+          <p>Tell us what you sell and we will help you choose the right starting point.</p>
+          <form id="contactForm">
+            <label>Full name<input id="contactName" name="fullName" required autocomplete="name" placeholder="Your name"></label>
+            <label>Email<input id="contactEmail" name="email" required type="email" autocomplete="email" placeholder="you@business.com"></label>
+            <label>Business type<select id="storeType" name="storeType" required><option value="">Choose one</option><option>Retail shop</option><option>Pharmacy</option><option>Wholesale</option><option>Salon or service business</option><option>Restaurant</option><option>Other</option></select></label>
+            <label>What do you need?<textarea id="contactMessage" name="message" rows="3" placeholder="Tell us about your counter"></textarea></label>
+            <button class="button button-coral" type="submit">Request setup help <i data-lucide="arrow-up-right"></i></button>
+            <p class="form-message" id="formMessage" aria-live="polite"></p>
+          </form>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-main">
+      <a class="brand footer-brand" href="#top"><img src="assets/logo.png" alt="" width="38" height="38"><span>Piki <b>POS</b></span></a>
+      <p>Software for the actual rhythm of business.</p>
+      <div class="footer-links"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="data-deletion.html">Data deletion</a><a href="mailto:support@pikipos.com">Support</a></div>
+    </div>
+    <div class="shell footer-bottom"><span>Built in Nairobi, Kenya</span><span>&copy; <span id="year"></span> Piki POS</span></div>
+  </footer>
+  <script src="landing.js?v=20260722-2" defer></script>
+  <script type="module" src="three-icons.js?v=20260722-2"></script>
 </body>
 </html>

@@ -347,7 +347,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   20,
                   4,
                   20,
-                  20 + MediaQuery.viewInsetsOf(context).bottom,
+                  20 + MediaQuery.viewInsetsOf(sheetContext).bottom,
                 ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
@@ -448,6 +448,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         children: [
                           _buildHeader(),
                           const SizedBox(height: AppSpacing.xl),
+                          if (_lowStockProducts.isNotEmpty) ...[
+                            _buildStockNotice(),
+                            const SizedBox(height: AppSpacing.md),
+                          ],
                           _buildTradingPulse(),
                           const SizedBox(height: AppSpacing.xl),
                           _buildSearch(),
@@ -522,8 +526,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 right: 5,
                 top: 5,
                 child: Container(
-                  width: 17,
-                  height: 17,
+                  width: 20,
+                  height: 20,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     color: AppColors.error,
@@ -535,7 +539,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         : '${_lowStockProducts.length}',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -556,167 +560,144 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final theme = Theme.of(context);
         final compact = constraints.maxWidth < 720;
-        return Container(
-          width: double.infinity,
-          padding: EdgeInsets.all(compact ? AppSpacing.xl : 30),
-          decoration: BoxDecoration(
-            color: AppColors.ink,
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-            boxShadow: context.isDarkMode
-                ? const []
-                : [
-                    BoxShadow(
-                      color: AppColors.ink.withValues(alpha: 0.14),
-                      blurRadius: 34,
-                      offset: const Offset(0, 16),
-                    ),
-                  ],
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                right: compact ? -58 : 6,
-                top: compact ? -72 : -54,
-                child: Container(
-                  width: compact ? 170 : 210,
-                  height: compact ? 170 : 210,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.brandCoral.withValues(alpha: 0.11),
-                  ),
+        final summary = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _OperationHeading(shopName: ShopSettings.shopName),
+            const SizedBox(height: AppSpacing.md),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                sales,
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontSize: compact ? 32 : 38,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -1.4,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-              if (compact)
-                Column(
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              _isLoading ? 'Loading today\'s trade…' : 'Sales recorded today',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        );
+        final stats = Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            _OperationStat(label: 'Profit', value: profit),
+            _OperationStat(label: 'Orders waiting', value: '$_pendingOrders'),
+          ],
+        );
+        final action = FilledButton.icon(
+          onPressed: () => AppShell.selectIndex(canSell ? 0 : 4),
+          icon: Icon(
+            canSell ? Icons.arrow_forward_rounded : Icons.receipt_long_rounded,
+          ),
+          label: Text(canSell ? 'Start a sale' : 'View sales'),
+        );
+
+        return _Panel(
+          padding: EdgeInsets.all(compact ? AppSpacing.xl : 28),
+          child: compact
+              ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _PulseHeading(shopName: ShopSettings.shopName),
-                    const SizedBox(height: 11),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        sales,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 34,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -1.2,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _isLoading
-                          ? 'Loading today\'s trade…'
-                          : 'Sales recorded today',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.66),
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _PulseStat(label: 'Profit', value: profit),
-                        _PulseStat(
-                          label: 'Orders waiting',
-                          value: '$_pendingOrders',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => AppShell.selectIndex(canSell ? 0 : 4),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.brandCoral,
-                          foregroundColor: AppColors.ink,
-                        ),
-                        icon: Icon(
-                          canSell
-                              ? Icons.arrow_forward_rounded
-                              : Icons.receipt_long_rounded,
-                        ),
-                        label: Text(canSell ? 'Start a sale' : 'View sales'),
-                      ),
-                    ),
+                    summary,
+                    const SizedBox(height: AppSpacing.lg),
+                    stats,
+                    const SizedBox(height: AppSpacing.lg),
+                    SizedBox(width: double.infinity, child: action),
                   ],
                 )
-              else
-                Row(
+              : Row(
                   children: [
-                    Expanded(
-                      flex: 5,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _PulseHeading(shopName: ShopSettings.shopName),
-                          const SizedBox(height: 12),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              sales,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 42,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -1.7,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _isLoading
-                                ? 'Loading today\'s trade…'
-                                : 'Sales recorded today',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.66),
-                            ),
-                          ),
-                        ],
+                    Expanded(flex: 5, child: summary),
+                    const SizedBox(width: AppSpacing.xl),
+                    Expanded(flex: 4, child: stats),
+                    const SizedBox(width: AppSpacing.lg),
+                    action,
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStockNotice() {
+    final theme = Theme.of(context);
+    final count = _lowStockProducts.length;
+    return Semantics(
+      button: true,
+      label: '$count low stock ${count == 1 ? 'item' : 'items'}. Review stock.',
+      child: InkWell(
+        onTap: () => AppShell.selectIndex(12),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: context.warningPanelBackground(),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(
+              color: AppColors.warning.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: AppColors.warning,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Low stock needs attention',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      flex: 4,
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        alignment: WrapAlignment.end,
-                        children: [
-                          _PulseStat(label: 'Profit', value: profit),
-                          _PulseStat(
-                            label: 'Orders waiting',
-                            value: '$_pendingOrders',
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    FilledButton.icon(
-                      onPressed: () => AppShell.selectIndex(canSell ? 0 : 4),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.brandCoral,
-                        foregroundColor: AppColors.ink,
-                      ),
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                      label: Text(canSell ? 'Start a sale' : 'View sales'),
+                    Text(
+                      '$count ${count == 1 ? 'item is' : 'items are'} at or below the reorder level',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -741,10 +722,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             children: [
               TrainingAnchor(id: 'dashboard.kpis', child: _buildKpiGrid()),
               const SizedBox(height: AppSpacing.xl),
-              TrainingAnchor(
-                id: 'dashboard.insights',
-                child: _buildActions(crossAxisCount: 4),
-              ),
+              _buildSalesTrend(),
             ],
           ),
         ),
@@ -769,7 +747,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _buildCompactLayout(double width) {
-    final columns = width >= 700 ? 4 : 2;
     final hasProductAccess =
         SessionService.canUseProductPos &&
         (SessionService.canAccessFeature(UserAccessProfile.featureProducts) ||
@@ -781,10 +758,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       children: [
         TrainingAnchor(id: 'dashboard.kpis', child: _buildKpiGrid()),
         const SizedBox(height: AppSpacing.xl),
-        TrainingAnchor(
-          id: 'dashboard.insights',
-          child: _buildActions(crossAxisCount: columns),
-        ),
+        _buildSalesTrend(),
         const SizedBox(height: AppSpacing.xl),
         if (hasProductAccess) ...[
           _buildReorderSuggestionsCard(),
@@ -892,34 +866,83 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildActions({required int crossAxisCount}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionHeader(
-          title: 'Quick actions',
-          subtitle: 'Your most-used business tasks',
-        ),
-        const SizedBox(height: AppSpacing.md),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: AppSpacing.md,
-            mainAxisSpacing: AppSpacing.md,
-            mainAxisExtent: 148,
+  Widget _buildSalesTrend() {
+    final theme = Theme.of(context);
+    final values = _recentSales.reversed
+        .map((sale) => (sale['total_amount'] as num? ?? 0).toDouble())
+        .toList();
+    final chartValues = values.isEmpty
+        ? <double>[0, 0]
+        : values.length == 1
+        ? <double>[0, values.first]
+        : values;
+
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Sales trend', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'Recent completed sales',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Text(
+                  'LIVE',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ],
           ),
-          itemCount: _actions.length,
-          itemBuilder: (context, index) {
-            final action = _actions[index];
-            return _ActionTile(
-              action: action,
-              onTap: () => _openAction(action),
-            );
-          },
-        ),
-      ],
+          const SizedBox(height: AppSpacing.lg),
+          Semantics(
+            image: true,
+            label:
+                'Sales trend for ${values.length} recent completed ${values.length == 1 ? 'sale' : 'sales'}',
+            child: SizedBox(
+              height: 136,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _SalesTrendPainter(
+                  values: chartValues,
+                  lineColor: theme.colorScheme.primary,
+                  gridColor: theme.colorScheme.outline.withValues(alpha: 0.55),
+                  fillColor: theme.colorScheme.primary.withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Text('Oldest', style: theme.textTheme.labelSmall),
+              const Spacer(),
+              Text('Latest', style: theme.textTheme.labelSmall),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1136,35 +1159,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-class _PulseHeading extends StatelessWidget {
+class _OperationHeading extends StatelessWidget {
   final String shopName;
 
-  const _PulseHeading({required this.shopName});
+  const _OperationHeading({required this.shopName});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 8,
-          height: 8,
+          width: 7,
+          height: 7,
           decoration: const BoxDecoration(
             color: AppColors.signal,
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppSpacing.sm),
         Flexible(
           child: Text(
-            'TODAY • ${shopName.toUpperCase()}',
+            'TODAY · ${shopName.toUpperCase()}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.74),
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              letterSpacing: 0.65,
             ),
           ),
         ),
@@ -1173,21 +1195,22 @@ class _PulseHeading extends StatelessWidget {
   }
 }
 
-class _PulseStat extends StatelessWidget {
+class _OperationStat extends StatelessWidget {
   final String label;
   final String value;
 
-  const _PulseStat({required this.label, required this.value});
+  const _OperationStat({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       width: 146,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.075),
+        color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+        border: Border.all(color: theme.colorScheme.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1196,29 +1219,94 @@ class _PulseStat extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.58),
-              fontSize: 10.5,
-              fontWeight: FontWeight.w600,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                fontFeatures: [FontFeature.tabularFigures()],
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _SalesTrendPainter extends CustomPainter {
+  final List<double> values;
+  final Color lineColor;
+  final Color gridColor;
+  final Color fillColor;
+
+  const _SalesTrendPainter({
+    required this.values,
+    required this.lineColor,
+    required this.gridColor,
+    required this.fillColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    for (var index = 0; index < 4; index++) {
+      final y = size.height * index / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final highest = values.reduce((a, b) => a > b ? a : b);
+    final lowest = values.reduce((a, b) => a < b ? a : b);
+    final range = highest == lowest ? 1.0 : highest - lowest;
+    final points = <Offset>[];
+    for (var index = 0; index < values.length; index++) {
+      final x = values.length == 1
+          ? 0.0
+          : size.width * index / (values.length - 1);
+      final normalized = (values[index] - lowest) / range;
+      final y = size.height - (normalized * (size.height - 16)) - 8;
+      points.add(Offset(x, y));
+    }
+
+    final linePath = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      linePath.lineTo(point.dx, point.dy);
+    }
+    final fillPath = Path.from(linePath)
+      ..lineTo(points.last.dx, size.height)
+      ..lineTo(points.first.dx, size.height)
+      ..close();
+    canvas.drawPath(fillPath, Paint()..color = fillColor);
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = lineColor
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke,
+    );
+    for (final point in points) {
+      canvas.drawCircle(point, 3, Paint()..color = lineColor);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SalesTrendPainter oldDelegate) {
+    return oldDelegate.values != values ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.gridColor != gridColor ||
+        oldDelegate.fillColor != fillColor;
   }
 }
 
@@ -1276,32 +1364,42 @@ class _MetricTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: metric.color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Icon(metric.icon, size: 20, color: metric.color),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  metric.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Icon(metric.icon, size: 18, color: metric.color),
+            ],
           ),
           const Spacer(),
-          Text(
-            metric.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: AppSpacing.xs),
           Text(
             metric.value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
+            style: theme.textTheme.titleLarge?.copyWith(
               color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.w700,
+              letterSpacing: -0.45,
               fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Open details',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -1326,69 +1424,21 @@ class _HomeAction {
   });
 }
 
-class _ActionTile extends StatelessWidget {
-  final _HomeAction action;
-  final VoidCallback onTap;
-
-  const _ActionTile({required this.action, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return StitchCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      radius: AppRadius.md,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _ActionIcon(icon: action.icon, enabled: action.available),
-          const Spacer(),
-          Text(
-            action.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: action.available
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            action.available ? action.description : 'No access',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ActionIcon extends StatelessWidget {
   final IconData icon;
-  final bool enabled;
 
-  const _ActionIcon({required this.icon, this.enabled = true});
+  const _ActionIcon({required this.icon});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = enabled
-        ? theme.colorScheme.primary
-        : theme.colorScheme.onSurfaceVariant;
+    final color = theme.colorScheme.primary;
     return Container(
       width: 44,
       height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: enabled
-            ? theme.colorScheme.primaryContainer
-            : theme.colorScheme.surfaceContainerHighest,
+        color: theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Icon(icon, size: 22, color: color),
@@ -1422,7 +1472,7 @@ class _Panel extends StatelessWidget {
           color:
               borderColor ?? theme.colorScheme.outline.withValues(alpha: 0.72),
         ),
-        boxShadow: context.appPanelShadow,
+        boxShadow: const [],
       ),
       child: child,
     );

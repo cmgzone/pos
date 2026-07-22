@@ -9,7 +9,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../core/utils/category_icon_utils.dart';
 import '../../../widgets/empty_state_widget.dart';
-import '../../app/app_shell.dart';
 import '../data/restaurant_repository.dart';
 import 'restaurant_payment_screen.dart';
 
@@ -37,9 +36,10 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
   }
 
   void _reload() {
+    if (!mounted) return;
     _tablesFuture = RestaurantRepository.getTables();
     _billsFuture = RestaurantRepository.getBills();
-    if (mounted) setState(() {});
+    setState(() {});
   }
 
   @override
@@ -57,12 +57,6 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
           ? null
           : AppBar(
               toolbarHeight: compact ? 60 : 68,
-              leading: IconButton(
-                tooltip: 'Open navigation',
-                icon: const Icon(Icons.menu_rounded),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              ),
               titleSpacing: 4,
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,7 +265,7 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
                         label: 'In service',
                         value: '$occupied',
                         icon: Icons.room_service_rounded,
-                        color: AppColors.brandCoral,
+                        color: AppColors.warning,
                       ),
                       _ServiceStat(
                         label: 'Available',
@@ -334,7 +328,7 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
     final accent = checkout
         ? AppColors.secondary
         : hasOrder
-        ? AppColors.brandCoral
+        ? AppColors.warning
         : AppColors.success;
     final items = _items(table);
     final ready = items.where((item) => item['status'] == 'ready').length;
@@ -496,7 +490,7 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
                       child: _KitchenLane(
                         title: 'New',
                         subtitle: 'Waiting to start',
-                        color: AppColors.brandCoral,
+                        color: AppColors.warning,
                         tickets: groups['pending']!,
                         onAdvance: _advanceKitchen,
                       ),
@@ -531,7 +525,7 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
               children: [
                 _KitchenMobileGroup(
                   title: 'New',
-                  color: AppColors.brandCoral,
+                  color: AppColors.warning,
                   tickets: groups['pending']!,
                   onAdvance: _advanceKitchen,
                 ),
@@ -1286,9 +1280,7 @@ class _RestaurantOrderScreenState extends ConsumerState<RestaurantOrderScreen> {
                 label: draftCount > 0
                     ? '$draftCount unsent'
                     : 'Kitchen updated',
-                color: draftCount > 0
-                    ? AppColors.brandCoral
-                    : AppColors.success,
+                color: draftCount > 0 ? AppColors.warning : AppColors.success,
               ),
             ],
           ),
@@ -2223,7 +2215,7 @@ String _menuSection(Map<String, dynamic> item) {
 
 Color _sectionColor(String section) {
   final colors = <Color>[
-    AppColors.brandCoral,
+    AppColors.primary,
     AppColors.secondary,
     AppColors.warning,
     AppColors.fuchsia,
@@ -2234,7 +2226,7 @@ Color _sectionColor(String section) {
 }
 
 Color _kitchenStatusColor(String status) => switch (status) {
-  'pending' => AppColors.brandCoral,
+  'pending' => AppColors.warning,
   'preparing' => AppColors.warning,
   'ready' || 'served' => AppColors.success,
   _ => AppColors.secondary,

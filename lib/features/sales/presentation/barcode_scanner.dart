@@ -282,6 +282,8 @@ mixin HardwareScannerMixin<T extends StatefulWidget> on State<T> {
   /// Override this to handle scanned barcode
   void onBarcodeScanned(String barcode);
 
+  FocusNode? _scannerFocusNode;
+
   /// Call this in your build method to wrap your widget with the key listener
   Widget wrapWithScanner({required Widget child}) {
     // Only use hardware scanner on desktop platforms
@@ -289,12 +291,18 @@ mixin HardwareScannerMixin<T extends StatefulWidget> on State<T> {
       return child;
     }
 
+    _scannerFocusNode ??= FocusNode();
     return KeyboardListener(
-      focusNode: FocusNode(),
+      focusNode: _scannerFocusNode!,
       autofocus: true,
       onKeyEvent: _handleKeyEvent,
       child: child,
     );
+  }
+
+  void disposeScannerFocusNode() {
+    _scannerFocusNode?.dispose();
+    _scannerFocusNode = null;
   }
 
   void _handleKeyEvent(KeyEvent event) {

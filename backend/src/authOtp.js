@@ -290,11 +290,8 @@ async function consumeEmailOtpVerification({
   target = query,
 } = {}) {
   const cleanToken = String(verificationToken || '').trim();
-  // Optional OTP mode may allow a request with no token, but a token that was
-  // supplied must still be validated and consumed exactly once. Otherwise a
-  // successfully verified signup token can be replayed on account retries.
-  if (!config.emailOtpRequired && !cleanToken) {
-    return { ok: true, skipped: true };
+  if (!cleanToken) {
+    throw createOtpError(403, 'Verify your email before creating account.');
   }
 
   await ensureEmailOtpSchema(target);
@@ -394,7 +391,7 @@ async function resetPasswordWithVerifiedOtp({
         server_revision = nextval('sync_revision_seq')
     WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))
       AND deleted_at IS NULL
-    RETURNING id
+    RETURNING id, business_id
     `,
     [
       cleanEmail,
@@ -402,6 +399,15 @@ async function resetPasswordWithVerifiedOtp({
       now.toISOString(),
     ],
   );
+
+  const affectedBusinessIds = [...new Set(result.rows?.map((r) => r.business_id).filter(Boolean))];
+  if (affectedBusinessIds.length > 0) {
+    await runDbQuery(
+      target,
+      `DELETE FROM business_access_tokens WHERE business_id = ANY($1::uuid[])`,
+      [affectedBusinessIds],
+    );
+  }
 
   return {
     ok: true,

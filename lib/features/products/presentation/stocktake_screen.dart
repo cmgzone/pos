@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/unit_utils.dart';
-import '../../app/app_shell.dart';
 import '../data/stocktake_repository.dart';
 
 class StocktakeScreen extends StatefulWidget {
@@ -254,10 +253,6 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
     }
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu_rounded),
-          onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
-        ),
         title: const Text('Stocktake'),
         actions: [
           IconButton(

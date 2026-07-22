@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
@@ -116,15 +115,6 @@ class _PromotionScreenState extends State<PromotionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Promotions'),
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         actions: [
           IconButton(
             onPressed: _loadData,
@@ -429,8 +419,12 @@ class _PromotionEditorDialogState extends State<_PromotionEditorDialog> {
       title: Text(
         widget.promotion == null ? 'New Promotion' : 'Edit Promotion',
       ),
-      content: SizedBox(
-        width: 520,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width < 800
+              ? MediaQuery.of(context).size.width - 32
+              : 520,
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

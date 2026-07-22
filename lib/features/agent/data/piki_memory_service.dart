@@ -10,30 +10,16 @@ class PikiMemoryService {
     final now = DateTime.now().toIso8601String();
     final valueJson = jsonEncode(value);
 
-    // Try to find existing entry
-    final existing = await DatabaseService.rawQuery(
-      'SELECT id FROM $table WHERE key = ? LIMIT 1',
-      [key],
+    await DatabaseService.db.rawInsert(
+      '''
+      INSERT INTO $table (id, key, value_json, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value_json = excluded.value_json,
+        updated_at = excluded.updated_at
+      ''',
+      [_uuid.v4(), key, valueJson, now],
     );
-
-    if (existing.isNotEmpty) {
-      await DatabaseService.db.update(
-        table,
-        {
-          'value_json': valueJson,
-          'updated_at': now,
-        },
-        where: 'key = ?',
-        whereArgs: [key],
-      );
-    } else {
-      await DatabaseService.db.insert(table, {
-        'id': _uuid.v4(),
-        'key': key,
-        'value_json': valueJson,
-        'updated_at': now,
-      });
-    }
   }
 
   static Future<dynamic> getMemory(String key) async {

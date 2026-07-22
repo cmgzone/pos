@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/shop_settings.dart';
@@ -67,15 +66,6 @@ class _StockListScreenState extends ConsumerState<StockListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text('Stock List'),
         actions: [
           IconButton(

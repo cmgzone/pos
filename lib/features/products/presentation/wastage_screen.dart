@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/unit_utils.dart';
-import '../../app/app_shell.dart';
 import '../data/product_repository.dart';
 import '../data/wastage_repository.dart';
 
@@ -163,10 +162,6 @@ class _WastageScreenState extends State<WastageScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      leading: IconButton(
-        icon: const Icon(Icons.menu_rounded),
-        onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
-      ),
       title: const Text('Wastage & Spoilage'),
       actions: [
         IconButton(

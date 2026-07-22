@@ -886,7 +886,7 @@ How to use Piki POS:
       final vCnt = (variantCount.firstOrNull?['cnt'] as num? ?? 0).toInt();
 
       final categoryCount = await DatabaseService.rawQuery(
-        "SELECT COUNT(*) as cnt FROM product_categories WHERE deleted_at IS NULL",
+        "SELECT COUNT(*) as cnt FROM categories WHERE deleted_at IS NULL",
       );
       final cCnt = (categoryCount.firstOrNull?['cnt'] as num? ?? 0).toInt();
 

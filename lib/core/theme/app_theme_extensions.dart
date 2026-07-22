@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
@@ -39,14 +38,9 @@ extension AppThemeColors on BuildContext {
       ? const []
       : const [
           BoxShadow(
-            color: Color(0x0B0B1020),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-          BoxShadow(
-            color: Color(0x0D0B1020),
-            blurRadius: 30,
-            offset: Offset(0, 14),
+            color: Color(0x0A0B1020),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ];
 
@@ -106,13 +100,13 @@ extension AppThemeColors on BuildContext {
     fontWeight: FontWeight.w700,
     letterSpacing: 0.75,
     color: appTextSecondary,
-    fontFamily: GoogleFonts.hankenGrotesk().fontFamily,
+    fontFamily: 'Inter',
   );
 
   // ── Flat brand badge color (no gradient) ─────────────────────────────────
   // Used in AppBar logo badges instead of LinearGradient(primary, primaryLight).
   Color get brandBadgeColor =>
-      isDarkMode ? AppColors.darkAccent : AppColors.brandCoral;
+      isDarkMode ? AppColors.darkAccent : AppColors.primary;
 
   // ── Named metric colors for dashboard KPIs ───────────────────────────────
   // Centralizes the magic hex that used to live in dashboard_screen.dart so

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/number_utils.dart';
-import '../../app/app_shell.dart';
 import '../data/bi_repository.dart';
 
 class AdvancedBiScreen extends StatefulWidget {
@@ -44,16 +43,9 @@ class _AdvancedBiScreenState extends State<AdvancedBiScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mobile = MediaQuery.of(context).size.width < 800;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 54,
-        leading: mobile
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () => AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,

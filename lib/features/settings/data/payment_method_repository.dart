@@ -65,10 +65,22 @@ class PaymentMethodRepository {
   static Future<List<Map<String, dynamic>>> getAll({
     bool activeOnly = false,
   }) async {
-    final where = activeOnly ? 'is_active = 1' : null;
+    final columns = await DatabaseService.getColumnNames(_tableName);
+    final whereParts = <String>['deleted_at IS NULL'];
+    final whereArgs = <dynamic>[];
+
+    if (columns.contains('branch_id')) {
+      whereParts.add('COALESCE(branch_id, ?) = ?');
+      whereArgs
+        ..add(DatabaseService.defaultBranchId)
+        ..add(DatabaseService.currentBranchId);
+    }
+    if (activeOnly) whereParts.add('is_active = 1');
+
     return DatabaseService.queryAll(
       _tableName,
-      where: where,
+      where: whereParts.join(' AND '),
+      whereArgs: whereArgs,
       orderBy: 'sort_order ASC, name ASC',
     );
   }

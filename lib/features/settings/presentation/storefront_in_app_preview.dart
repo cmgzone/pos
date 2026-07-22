@@ -6,6 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_windows/webview_windows.dart';
 
+import '../../../core/services/piki_ai_job_service.dart';
+import '../../../core/utils/error_messages.dart';
+import '../../../widgets/piki_activity_panel.dart';
+
 class StorefrontComponentSelection {
   final String component;
   final String? binding;
@@ -103,6 +107,24 @@ class StorefrontPreviewEditRequest {
   });
 }
 
+class StorefrontPreviewJobCompletion {
+  final Uri previewUri;
+  final int? buildVersion;
+  final String buildName;
+
+  const StorefrontPreviewJobCompletion({
+    required this.previewUri,
+    required this.buildName,
+    this.buildVersion,
+  });
+}
+
+typedef StorefrontPreviewEditStarter =
+    Future<PikiAiJob> Function(StorefrontPreviewEditRequest request);
+
+typedef StorefrontPreviewJobCompletionResolver =
+    Future<StorefrontPreviewJobCompletion?> Function(PikiAiJob job);
+
 enum _PreviewViewport { desktop, tablet, mobile }
 
 class StorefrontInAppPreviewDialog extends StatefulWidget {
@@ -110,6 +132,8 @@ class StorefrontInAppPreviewDialog extends StatefulWidget {
   final int? buildVersion;
   final String buildName;
   final bool enablePointAndEdit;
+  final StorefrontPreviewEditStarter? onEditRequest;
+  final StorefrontPreviewJobCompletionResolver? onJobCompleted;
 
   const StorefrontInAppPreviewDialog({
     super.key,
@@ -117,6 +141,8 @@ class StorefrontInAppPreviewDialog extends StatefulWidget {
     required this.buildName,
     this.buildVersion,
     this.enablePointAndEdit = true,
+    this.onEditRequest,
+    this.onJobCompleted,
   });
 
   @override
@@ -129,26 +155,37 @@ class _StorefrontInAppPreviewDialogState
   final WebviewController _controller = WebviewController();
   final TextEditingController _instruction = TextEditingController();
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  late Uri _currentPreviewUri;
+  late String _currentBuildName;
+  int? _currentBuildVersion;
   StorefrontComponentSelection? _selection;
+  PikiAiJob? _job;
+  List<PikiAiJobEvent> _events = const [];
   _PreviewViewport _viewport = _PreviewViewport.desktop;
   bool _initializing = true;
   bool _loading = true;
   bool _inspectorReady = false;
   bool _inspecting = true;
+  bool _startingEdit = false;
   String? _error;
+  String? _jobError;
+  String? _watchingJobId;
 
   Uri get _loadUri => widget.enablePointAndEdit
-      ? widget.previewUri.replace(
+      ? _currentPreviewUri.replace(
           queryParameters: {
-            ...widget.previewUri.queryParameters,
+            ..._currentPreviewUri.queryParameters,
             'pikiInspect': '1',
           },
         )
-      : widget.previewUri;
+      : _currentPreviewUri;
 
   @override
   void initState() {
     super.initState();
+    _currentPreviewUri = widget.previewUri;
+    _currentBuildName = widget.buildName;
+    _currentBuildVersion = widget.buildVersion;
     unawaited(_initialize());
   }
 
@@ -238,10 +275,38 @@ class _StorefrontInAppPreviewDialogState
     };
   }
 
-  void _submit() {
+  bool get _isWorking => _startingEdit || _job?.isRunning == true;
+
+  Future<void> _submit() async {
     final selection = _selection;
     final instruction = _instruction.text.trim();
     if (selection == null || instruction.length < 4) return;
+    final starter = widget.onEditRequest;
+    if (starter != null) {
+      final request = StorefrontPreviewEditRequest(
+        instruction: instruction,
+        selection: selection,
+      );
+      setState(() {
+        _startingEdit = true;
+        _jobError = null;
+      });
+      try {
+        final job = await starter(request);
+        if (!mounted) return;
+        setState(() {
+          _job = job;
+          _events = const [];
+          _instruction.clear();
+        });
+        unawaited(_watchJob(job.id));
+      } catch (error) {
+        if (mounted) setState(() => _jobError = AppErrorMessage.from(error));
+      } finally {
+        if (mounted) setState(() => _startingEdit = false);
+      }
+      return;
+    }
     Navigator.pop(
       context,
       StorefrontPreviewEditRequest(
@@ -249,6 +314,56 @@ class _StorefrontInAppPreviewDialogState
         selection: selection,
       ),
     );
+  }
+
+  Future<void> _watchJob(String jobId) async {
+    if (_watchingJobId == jobId) return;
+    _watchingJobId = jobId;
+    try {
+      while (mounted) {
+        final results = await Future.wait([
+          PikiAiJobService.getJob(jobId),
+          PikiAiJobService.getEvents(jobId),
+        ]);
+        if (!mounted) return;
+        final job = results[0] as PikiAiJob;
+        final events = results[1] as List<PikiAiJobEvent>;
+        setState(() {
+          _job = job;
+          _events = events;
+        });
+        if (job.isDone) {
+          if (!job.isFailed) await _loadCompletedPreview(job);
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+    } catch (error) {
+      if (mounted) setState(() => _jobError = AppErrorMessage.from(error));
+    } finally {
+      if (_watchingJobId == jobId) _watchingJobId = null;
+    }
+  }
+
+  Future<void> _loadCompletedPreview(PikiAiJob job) async {
+    final resolver = widget.onJobCompleted;
+    if (resolver == null) return;
+    try {
+      final completion = await resolver(job);
+      if (!mounted || completion == null) return;
+      setState(() {
+        _currentPreviewUri = completion.previewUri;
+        _currentBuildName = completion.buildName;
+        _currentBuildVersion = completion.buildVersion;
+        _selection = null;
+        _inspectorReady = false;
+        _loading = true;
+      });
+      await _controller.loadUrl(_loadUri.toString());
+      await _sendInspectorMode();
+    } catch (error) {
+      if (mounted) setState(() => _jobError = AppErrorMessage.from(error));
+    }
   }
 
   @override
@@ -267,13 +382,13 @@ class _StorefrontInAppPreviewDialogState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.buildVersion == null
+                _currentBuildVersion == null
                     ? 'Exact storefront preview'
-                    : 'Exact storefront preview · v${widget.buildVersion}',
+                    : 'Exact storefront preview - v$_currentBuildVersion',
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               Text(
-                widget.buildName,
+                _currentBuildName,
                 style: TextStyle(
                   color: colors.onSurfaceVariant,
                   fontSize: 11,
@@ -318,7 +433,7 @@ class _StorefrontInAppPreviewDialogState
             IconButton(
               tooltip: 'Open in your browser',
               onPressed: () => launchUrl(
-                widget.previewUri,
+                _currentPreviewUri,
                 mode: LaunchMode.externalApplication,
               ),
               icon: const Icon(Icons.open_in_new_rounded),
@@ -407,7 +522,7 @@ class _StorefrontInAppPreviewDialogState
                 const SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: () => launchUrl(
-                    widget.previewUri,
+                    _currentPreviewUri,
                     mode: LaunchMode.externalApplication,
                   ),
                   icon: const Icon(Icons.open_in_new_rounded),
@@ -427,6 +542,7 @@ class _StorefrontInAppPreviewDialogState
 
   Widget _pikiPanel(ColorScheme colors) {
     final selected = _selection;
+    final job = _job;
     return Container(
       decoration: BoxDecoration(
         color: colors.surface,
@@ -477,6 +593,30 @@ class _StorefrontInAppPreviewDialogState
                   ],
                 ),
                 const SizedBox(height: 14),
+                if (job != null || _jobError != null) ...[
+                  if (job != null)
+                    PikiActivityPanel(
+                      job: job,
+                      events: _events,
+                      title: job.isRunning
+                          ? 'Piki is editing this page'
+                          : job.isFailed
+                          ? 'Piki needs attention'
+                          : 'Piki finished this edit',
+                    ),
+                  if (_jobError != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _jobError!,
+                      style: TextStyle(
+                        color: colors.error,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                ],
                 SegmentedButton<bool>(
                   showSelectedIcon: false,
                   segments: const [
@@ -632,7 +772,7 @@ class _StorefrontInAppPreviewDialogState
                 ],
                 TextField(
                   controller: _instruction,
-                  enabled: selected != null,
+                  enabled: selected != null && !_isWorking,
                   minLines: 5,
                   maxLines: 9,
                   onChanged: (_) => setState(() {}),
@@ -655,11 +795,21 @@ class _StorefrontInAppPreviewDialogState
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed:
-                      selected != null && _instruction.text.trim().length >= 4
+                      selected != null &&
+                          _instruction.text.trim().length >= 4 &&
+                          !_isWorking
                       ? _submit
                       : null,
-                  icon: const Icon(Icons.auto_fix_high_rounded),
-                  label: const Text('Edit selected element'),
+                  icon: _isWorking
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_fix_high_rounded),
+                  label: Text(
+                    _isWorking ? 'Piki is working' : 'Edit selected element',
+                  ),
                 ),
               ],
             ),

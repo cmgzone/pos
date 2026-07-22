@@ -18,6 +18,10 @@ if (config.databaseSsl !== null) {
 
 const pool = new Pool(poolOptions);
 
+pool.on('error', (err) => {
+  console.error('Unexpected PostgreSQL pool error:', err);
+});
+
 async function query(text, params) {
   return pool.query(text, params);
 }
@@ -59,4 +63,7 @@ module.exports = {
   query,
   withTransaction,
   withReadTransaction,
+  closePool: async () => {
+    await pool.end();
+  },
 };

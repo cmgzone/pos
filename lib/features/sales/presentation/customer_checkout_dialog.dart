@@ -203,6 +203,7 @@ class _CustomerCheckoutDialogState
     final contentHeight = math
         .max(320, math.min(520, viewportHeight - 240))
         .toDouble();
+    final isMobile = MediaQuery.of(context).size.width < 800;
 
     return AlertDialog(
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -246,9 +247,11 @@ class _CustomerCheckoutDialogState
           ),
         ],
       ),
-      content: SizedBox(
-        width: 560,
-        height: contentHeight,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: isMobile ? MediaQuery.of(context).size.width - 32 : 560,
+          maxHeight: contentHeight,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -97,7 +97,7 @@ class ProductColorDrawer extends StatelessWidget {
             right: Radius.circular(24),
           ),
           child: Material(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             child: SizedBox(
               width: drawerWidth,
               height: double.infinity,

@@ -1,6 +1,9 @@
 class AppConstants {
   static const String appName = 'Piki POS';
-  static const String appVersion = '1.0.0+1';
+  static const String appVersion = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: '1.0.0+1',
+  );
   static const String productionApiBaseUrl = 'https://pikipos.com/api';
   static const String productionPublicBaseUrl = 'https://pikipos.com';
   static const String debugApiBaseUrl = 'http://127.0.0.1:3000/api';
@@ -59,4 +62,16 @@ class AppConstants {
   static const String keySyncDeviceId = 'sync_device_id';
   static const String keyIsOfflineMode = 'is_offline_mode';
   static const String keyLocalBusinessId = 'local_business_id';
+
+  static const double mobileBreakpoint = 800;
+  static const double tabletBreakpoint = 1040;
+  static const double desktopBreakpoint = 1280;
+
+  static const double maxContentWidth = 1400;
+  static const double maxFormWidth = 480;
+  static const double maxDialogWidth = 560;
+
+  static const Duration animationFast = Duration(milliseconds: 150);
+  static const Duration animationNormal = Duration(milliseconds: 250);
+  static const Duration animationSlow = Duration(milliseconds: 400);
 }

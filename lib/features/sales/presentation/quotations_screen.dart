@@ -15,11 +15,49 @@ final _quotationStatusFilterProvider = StateProvider<String?>((ref) => null);
 class QuotationsScreen extends ConsumerWidget {
   const QuotationsScreen({super.key});
 
+  Future<void> _createQuotation(BuildContext context, WidgetRef ref) async {
+    final existingCart = ref.read(cartProvider);
+    if (existingCart.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Create a new quotation?'),
+          content: Text(
+            'This will clear ${existingCart.length} item${existingCart.length == 1 ? '' : 's'} '
+            'currently in the POS cart.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+    }
+
+    ref.read(cartProvider.notifier).clear();
+    ref.read(discountProvider.notifier).state = 0;
+    ref.read(quotationCustomerProvider.notifier).state = null;
+    ref.read(quotationExpiryProvider.notifier).state = null;
+    ref.read(quotationNotesProvider.notifier).state = '';
+    ref.read(lastSavedQuotationProvider.notifier).state = null;
+    ref.read(activeQuotationIdProvider.notifier).state = null;
+    ref.read(posModeProvider.notifier).state = PosMode.quotation;
+    AppShell.selectIndex(0);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final quotationsAsync = ref.watch(quotationsListProvider);
     final selectedStatus = ref.watch(_quotationStatusFilterProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isCompact = MediaQuery.sizeOf(context).width < 560;
 
     if (!ShopSettings.quotationsEnabled) {
       return Scaffold(
@@ -33,8 +71,18 @@ class QuotationsScreen extends ConsumerWidget {
         title: const Text('Quotations'),
         actions: [
           IconButton(
+            tooltip: 'Refresh quotations',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(quotationsListProvider),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton.icon(
+              key: const ValueKey('create-quotation-action'),
+              onPressed: () => _createQuotation(context, ref),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(isCompact ? 'Create' : 'Create quotation'),
+            ),
           ),
         ],
       ),
@@ -121,8 +169,17 @@ class QuotationsScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            'Create quotations from the POS screen.',
+                            'Create a quotation to share prices with a customer.',
                             textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            key: const ValueKey(
+                              'create-first-quotation-action',
+                            ),
+                            onPressed: () => _createQuotation(context, ref),
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Create quotation'),
                           ),
                         ],
                       ),
@@ -518,8 +575,12 @@ class _QuotationDetailDialog extends StatelessWidget {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 500,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width < 800
+              ? MediaQuery.of(context).size.width - 32
+              : 500,
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

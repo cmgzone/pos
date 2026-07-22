@@ -1594,7 +1594,7 @@ class _SignUpStoryPanel extends StatelessWidget {
               height: 350,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.brandCoral.withValues(alpha: 0.12),
+                color: AppColors.primary.withValues(alpha: 0.14),
               ),
             ),
           ),

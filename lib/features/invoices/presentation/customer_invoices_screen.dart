@@ -7,7 +7,7 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/services/etims_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/error_messages.dart';
-import '../../app/app_shell.dart';
+
 import '../../customers/data/customer_repository.dart';
 import '../../products/data/product_repository.dart';
 import '../../sales/presentation/receipt_service.dart';
@@ -91,17 +91,10 @@ class _CustomerInvoicesScreenState
 
     final isMobile = MediaQuery.sizeOf(context).width < 700;
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        leading: isMobile
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
-        title: Text('Invoices'),
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          title: Text('Invoices'),
         actions: [
           IconButton(
             tooltip: 'Refresh',

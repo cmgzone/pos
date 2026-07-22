@@ -18,8 +18,16 @@ class _PurchaseApprovalScreenState extends State<PurchaseApprovalScreen> {
   void _reload() =>
       setState(() => _orders = PurchaseRepository.getPendingApprovals());
   Future<void> _decide(String id, bool approved) async {
-    await PurchaseRepository.decidePurchaseOrder(id, approved: approved);
-    _reload();
+    try {
+      await PurchaseRepository.decidePurchaseOrder(id, approved: approved);
+      _reload();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update order: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -28,6 +36,12 @@ class _PurchaseApprovalScreenState extends State<PurchaseApprovalScreen> {
     body: FutureBuilder<List<Map<String, dynamic>>>(
       future: _orders,
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
         final rows = snapshot.data ?? [];
         if (rows.isEmpty) {
           return const Center(

@@ -122,7 +122,7 @@ class CashDrawerService {
     if (value.isEmpty) {
       return 'Add the printer share or port path in Settings first.';
     }
-    if (value.contains(RegExp(r'["&|<>^]'))) {
+    if (value.contains(RegExp(r'["&|<>^%]'))) {
       return 'Printer path contains unsafe characters.';
     }
     if (value.startsWith(r'\\') || _portPattern.hasMatch(value)) {

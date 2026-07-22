@@ -9,6 +9,7 @@ class SkeletonBox extends StatefulWidget {
   final double height;
   final double borderRadius;
   final EdgeInsetsGeometry? margin;
+  final Duration delay;
 
   const SkeletonBox({
     super.key,
@@ -16,6 +17,7 @@ class SkeletonBox extends StatefulWidget {
     this.height = 16,
     this.borderRadius = AppRadius.sm,
     this.margin,
+    this.delay = Duration.zero,
   });
 
   @override
@@ -26,6 +28,7 @@ class _SkeletonBoxState extends State<SkeletonBox>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _opacity;
+  bool _hasStarted = false;
 
   @override
   void initState() {
@@ -33,10 +36,22 @@ class _SkeletonBoxState extends State<SkeletonBox>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
+    );
     _opacity = Tween<double>(begin: 0.38, end: 0.82).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
+    
+    if (widget.delay == Duration.zero) {
+      _controller.repeat(reverse: true);
+      _hasStarted = true;
+    } else {
+      Future.delayed(widget.delay, () {
+        if (mounted) {
+          _controller.repeat(reverse: true);
+          _hasStarted = true;
+        }
+      });
+    }
   }
 
   @override
@@ -53,7 +68,7 @@ class _SkeletonBoxState extends State<SkeletonBox>
         : Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return FadeTransition(
-      opacity: _opacity,
+      opacity: _hasStarted ? _opacity : const AlwaysStoppedAnimation(0.38),
       child: Container(
         width: widget.width,
         height: widget.height,
@@ -73,6 +88,7 @@ class SkeletonList extends StatelessWidget {
   final double itemHeight;
   final EdgeInsetsGeometry padding;
   final double spacing;
+  final bool staggered;
 
   const SkeletonList({
     super.key,
@@ -80,6 +96,7 @@ class SkeletonList extends StatelessWidget {
     this.itemHeight = 100,
     this.padding = const EdgeInsets.all(AppSpacing.lg),
     this.spacing = AppSpacing.md,
+    this.staggered = true,
   });
 
   @override
@@ -88,10 +105,11 @@ class SkeletonList extends StatelessWidget {
       padding: padding,
       itemCount: itemCount,
       separatorBuilder: (_, _) => SizedBox(height: spacing),
-      itemBuilder: (_, _) => SkeletonBox(
+      itemBuilder: (_, index) => SkeletonBox(
         height: itemHeight,
         borderRadius: AppRadius.lg,
         width: double.infinity,
+        delay: staggered ? Duration(milliseconds: index * 80) : Duration.zero,
       ),
     );
   }
@@ -103,6 +121,7 @@ class SkeletonProductGrid extends StatelessWidget {
   final int itemCount;
   final double mainAxisExtent;
   final EdgeInsetsGeometry padding;
+  final bool staggered;
 
   const SkeletonProductGrid({
     super.key,
@@ -110,6 +129,7 @@ class SkeletonProductGrid extends StatelessWidget {
     this.itemCount = 8,
     this.mainAxisExtent = 144,
     this.padding = EdgeInsets.zero,
+    this.staggered = true,
   });
 
   @override
@@ -123,10 +143,11 @@ class SkeletonProductGrid extends StatelessWidget {
         mainAxisSpacing: AppSpacing.sm,
       ),
       itemCount: itemCount,
-      itemBuilder: (_, _) => const SkeletonBox(
+      itemBuilder: (_, index) => SkeletonBox(
         height: double.infinity,
         borderRadius: AppRadius.md,
         width: double.infinity,
+        delay: staggered ? Duration(milliseconds: index * 60) : Duration.zero,
       ),
     );
   }
@@ -135,17 +156,32 @@ class SkeletonProductGrid extends StatelessWidget {
 /// Dashboard KPI tile placeholders.
 class SkeletonKpiGrid extends StatelessWidget {
   final int itemCount;
+  final bool staggered;
 
-  const SkeletonKpiGrid({super.key, this.itemCount = 7});
+  const SkeletonKpiGrid({
+    super.key,
+    this.itemCount = 7,
+    this.staggered = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SkeletonBox(width: 160, height: 14, borderRadius: AppRadius.xs),
+        SkeletonBox(
+          width: 160,
+          height: 14,
+          borderRadius: AppRadius.xs,
+          delay: staggered ? const Duration(milliseconds: 0) : Duration.zero,
+        ),
         const SizedBox(height: AppSpacing.sm),
-        const SkeletonBox(width: 220, height: 12, borderRadius: AppRadius.xs),
+        SkeletonBox(
+          width: 220,
+          height: 12,
+          borderRadius: AppRadius.xs,
+          delay: staggered ? const Duration(milliseconds: 100) : Duration.zero,
+        ),
         const SizedBox(height: AppSpacing.md),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -164,10 +200,11 @@ class SkeletonKpiGrid extends StatelessWidget {
                 mainAxisExtent: 132,
               ),
               itemCount: itemCount,
-              itemBuilder: (_, _) => const SkeletonBox(
+              itemBuilder: (_, index) => SkeletonBox(
                 height: double.infinity,
                 borderRadius: AppRadius.lg,
                 width: double.infinity,
+                delay: staggered ? Duration(milliseconds: 200 + index * 80) : Duration.zero,
               ),
             );
           },

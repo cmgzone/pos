@@ -117,4 +117,9 @@ module.exports = {
   cacheIncrement,
   cacheSetJson,
   cacheStatus,
+  closeRedis: async () => {
+    if (client && client.isOpen) {
+      await client.quit();
+    }
+  },
 };

@@ -7,7 +7,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
 import '../../../widgets/stitch_kit.dart';
 import '../../../core/utils/error_messages.dart';
-import '../../app/app_shell.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
@@ -248,8 +247,12 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
           title: Text('Record Expense'),
-          content: SizedBox(
-            width: 540,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width < 800
+                  ? MediaQuery.of(context).size.width - 32
+                  : 540,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -589,13 +592,6 @@ class _ProfitLossScreenState extends ConsumerState<ProfitLossScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         toolbarHeight: 50,
-        leading: isMobile
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: Text(
           'Profit & Loss',

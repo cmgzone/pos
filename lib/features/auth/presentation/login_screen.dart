@@ -418,7 +418,11 @@ class _LoginScreenState extends State<LoginScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(Icons.business_outlined, size: 48, color: AppColors.primary),
+          Icon(
+            Icons.business_outlined,
+            size: 48,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           SizedBox(height: 24),
           Text(
             'Choose a business',
@@ -817,7 +821,7 @@ class _LoginStoryPanel extends StatelessWidget {
               height: 360,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.brandCoral.withValues(alpha: 0.12),
+                color: AppColors.primary.withValues(alpha: 0.14),
               ),
             ),
           ),
@@ -1191,7 +1195,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               border: Border.all(color: Theme.of(context).colorScheme.outline),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.08),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.08),
                   blurRadius: 40,
                   offset: const Offset(0, 16),
                 ),

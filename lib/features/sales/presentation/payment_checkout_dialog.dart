@@ -330,7 +330,7 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
   int _loyaltyPoints = 0;
   String? _loyaltyLedgerId;
   String? _loyaltyCustomerId;
-  bool _loyaltyCompleted = false;
+  final bool _loyaltyCompleted = false;
   bool _loyaltyRefunded = false;
   int? _customerPoints;
   Map<String, dynamic>? _loyaltyPreview;
@@ -389,7 +389,6 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
 
   Map<String, dynamic> get _loyaltyResult {
     if (_loyaltyLedgerId == null) return const <String, dynamic>{};
-    _loyaltyCompleted = true;
     return {
       'loyaltyLedgerId': _loyaltyLedgerId,
       'loyaltyPoints': _loyaltyPoints,
@@ -449,7 +448,9 @@ class _PaymentCheckoutDialogState extends ConsumerState<PaymentCheckoutDialog> {
           ledgerId: prevLedgerId,
           customerId: prevCustomerId,
           points: prevPoints,
-        ).catchError((_) {}),
+        ).catchError((e) {
+          debugPrint('Failed to refund loyalty points: $e');
+        }),
       );
     }
   }

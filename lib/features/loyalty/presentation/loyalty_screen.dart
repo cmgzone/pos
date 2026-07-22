@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/shop_settings.dart';
 import '../../../core/theme/app_colors.dart';
@@ -7,7 +6,10 @@ import '../../../core/utils/error_messages.dart';
 import '../data/loyalty_repository.dart';
 
 class LoyaltyScreen extends StatefulWidget {
-  const LoyaltyScreen({super.key});
+  final Future<Map<String, dynamic>?> Function()? loadRules;
+  final Future<List<Map<String, dynamic>>> Function()? loadCustomers;
+
+  const LoyaltyScreen({super.key, this.loadRules, this.loadCustomers});
 
   @override
   State<LoyaltyScreen> createState() => _LoyaltyScreenState();
@@ -31,12 +33,20 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
       _errorMessage = null;
     });
     try {
-      final rules = await LoyaltyRepository.getRules();
-      final customers = await LoyaltyRepository.getTopCustomersByPoints();
+      final rules =
+          await (widget.loadRules?.call() ?? LoyaltyRepository.getRules());
+      final customers =
+          await (widget.loadCustomers?.call() ??
+              LoyaltyRepository.getTopCustomersByPoints());
       if (!mounted) return;
       setState(() {
         _rules = rules;
-        _topCustomers = customers;
+        _topCustomers = customers
+            .where(
+              (customer) =>
+                  ((customer['loyalty_points'] as num?)?.toDouble() ?? 0) > 0,
+            )
+            .toList(growable: false);
         _loading = false;
       });
     } catch (e) {
@@ -49,15 +59,6 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
         _loading = false;
       });
     }
-  }
-
-  bool get _isLoyaltyActive {
-    final rules = _rules;
-    if (rules == null) return false;
-    final value = rules['is_active'];
-    if (value is int) return value != 0;
-    if (value is num) return value.toInt() != 0;
-    return int.tryParse(value?.toString() ?? '') != 0;
   }
 
   Future<void> _openRulesDialog() async {
@@ -75,15 +76,6 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Loyalty'),
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         actions: [
           FilledButton.icon(
             onPressed: _openRulesDialog,
@@ -107,151 +99,7 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
   Widget _buildContent() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      children: [
-        _buildStatusCard(),
-        const SizedBox(height: 20),
-        _buildHowItWorksCard(),
-        const SizedBox(height: 20),
-        _buildTopCustomersSection(),
-      ],
-    );
-  }
-
-  Widget _buildStatusCard() {
-    final isActive = _isLoyaltyActive;
-    final rules = _rules;
-    final pointsPerCurrency =
-        (rules?['points_per_currency'] as num?)?.toDouble() ?? 0;
-    final divisor = (rules?['currency_divisor'] as num?)?.toDouble() ?? 100;
-    final minRedemption =
-        (rules?['min_redemption_points'] as num?)?.toInt() ?? 0;
-    final factor =
-        (rules?['points_to_currency_factor'] as num?)?.toDouble() ?? 1;
-    final rewardEnabled =
-        ((rules?['gift_card_reward_enabled'] as num?)?.toInt() ?? 0) != 0;
-    final rewardThreshold =
-        (rules?['gift_card_reward_points_threshold'] as num?)?.toInt() ?? 0;
-    final rewardAmount =
-        (rules?['gift_card_reward_amount'] as num?)?.toDouble() ?? 0;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? AppColors.success.withValues(alpha: 0.12)
-                        : Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    isActive ? Icons.loyalty_rounded : Icons.loyalty_outlined,
-                    color: isActive ? AppColors.success : null,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isActive ? 'Loyalty is Active' : 'Loyalty is Off',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        rules == null
-                            ? 'Set up your rewards program to start earning customer points.'
-                            : 'Customers earn points on every purchase.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (rules != null) ...[
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 12),
-              _StatRow(
-                label: 'Earn rate',
-                value: pointsPerCurrency > 0 && divisor > 0
-                    ? '$pointsPerCurrency pts / ${ShopSettings.currency}${divisor.toStringAsFixed(0)} spent'
-                    : 'Not set',
-              ),
-              _StatRow(
-                label: 'Redemption',
-                value:
-                    '${ShopSettings.currency}${factor.toStringAsFixed(2)} per point',
-              ),
-              _StatRow(label: 'Min. to redeem', value: '$minRedemption points'),
-              _StatRow(
-                label: 'Gift card reward',
-                value: rewardEnabled && rewardThreshold > 0 && rewardAmount > 0
-                    ? '$rewardThreshold pts -> ${ShopSettings.currency}${rewardAmount.toStringAsFixed(2)}'
-                    : 'Off',
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHowItWorksCard() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'How it works',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            _HowItWorksStep(
-              icon: Icons.point_of_sale_outlined,
-              text:
-                  'Customers earn points automatically when they pay for a sale.',
-            ),
-            const SizedBox(height: 10),
-            _HowItWorksStep(
-              icon: Icons.redeem_outlined,
-              text: 'Points can be redeemed as a discount at checkout.',
-            ),
-            const SizedBox(height: 10),
-            _HowItWorksStep(
-              icon: Icons.card_giftcard_outlined,
-              text:
-                  'Optional gift card rewards can be created automatically when a customer reaches your point target.',
-            ),
-            const SizedBox(height: 10),
-            _HowItWorksStep(
-              icon: Icons.sync_outlined,
-              text: 'Points sync across all your devices and branches.',
-            ),
-          ],
-        ),
-      ),
+      children: [_buildTopCustomersSection()],
     );
   }
 
@@ -262,7 +110,7 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            'Top customers by points',
+            'Customers with points',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
@@ -279,7 +127,7 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
               padding: EdgeInsets.all(24),
               child: Center(
                 child: Text(
-                  'No customers have earned points yet. Once loyalty is active, your top point earners will appear here.',
+                  'No customers with points yet.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -289,53 +137,6 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
           ..._topCustomers.map(
             (customer) => _CustomerPointsTile(customer: customer),
           ),
-      ],
-    );
-  }
-}
-
-class _StatRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _StatRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          Text(
-            value,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HowItWorksStep extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _HowItWorksStep({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: AppColors.primaryLight),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
-        ),
       ],
     );
   }

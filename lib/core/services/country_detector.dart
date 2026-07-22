@@ -18,15 +18,20 @@ import 'sync_settings_service.dart';
 /// override the detected country via the country picker on the signup screen.
 class CountryDetector {
   static String? _cached;
-  static bool _attempted = false;
+  static Future<String?>? _pendingFuture;
 
-  static Future<String?> detect() async {
-    if (_attempted) return _cached;
-    _attempted = true;
+  static Future<String?> detect() {
+    if (_cached != null) return Future.value(_cached);
+    if (_pendingFuture != null) return _pendingFuture!;
+    _pendingFuture = _detectInternal();
+    return _pendingFuture!;
+  }
 
+  static Future<String?> _detectInternal() async {
     final fromLocale = fromLocaleString(Platform.localeName);
     if (fromLocale != null) {
       _cached = fromLocale;
+      _pendingFuture = null;
       return _cached;
     }
 
@@ -34,13 +39,14 @@ class CountryDetector {
     if (fromBackend != null) {
       _cached = fromBackend;
     }
+    _pendingFuture = null;
     return _cached;
   }
 
   @visibleForTesting
   static void resetForTesting() {
     _cached = null;
-    _attempted = false;
+    _pendingFuture = null;
   }
 
   /// Parses a locale identifier like `en_US` or `en-US` and returns the
@@ -56,7 +62,7 @@ class CountryDetector {
     return country;
   }
 
-  static String? _cachedSync() => _attempted ? _cached : null;
+  static String? _cachedSync() => _cached;
 
   /// Returns the cached detection result without triggering a new lookup.
   /// Useful for synchronous fallbacks after [detect] has been awaited at

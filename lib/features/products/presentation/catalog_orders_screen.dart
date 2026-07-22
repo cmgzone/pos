@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/catalog_order_service.dart';
 import '../../../core/services/branch_service.dart';
@@ -349,15 +348,6 @@ class _CatalogOrdersScreenState extends ConsumerState<CatalogOrdersScreen> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 50,
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text(
           'Catalog Orders',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),

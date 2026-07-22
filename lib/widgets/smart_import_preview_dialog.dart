@@ -17,8 +17,12 @@ Future<bool> showSmartImportPreviewDialog(
     builder: (context) => AlertDialog(
       backgroundColor: Theme.of(context).colorScheme.surface,
       title: Text(title),
-      content: SizedBox(
-        width: 620,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width < 800
+              ? MediaQuery.of(context).size.width - 32
+              : 620,
+        ),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -115,7 +115,7 @@ class _OnlineStoreScreenState extends State<OnlineStoreScreen> {
                 ),
               )
             else ...[
-              _OnlineStoreTabBar(
+              _OnlineStoreSectionPicker(
                 selectedSection: _selectedSection,
                 onSelected: _selectSection,
               ),
@@ -465,11 +465,11 @@ class _OnlineStoreNavButton extends StatelessWidget {
   }
 }
 
-class _OnlineStoreTabBar extends StatelessWidget {
+class _OnlineStoreSectionPicker extends StatelessWidget {
   final OnlineStoreSection selectedSection;
   final ValueChanged<OnlineStoreSection> onSelected;
 
-  const _OnlineStoreTabBar({
+  const _OnlineStoreSectionPicker({
     required this.selectedSection,
     required this.onSelected,
   });
@@ -477,25 +477,66 @@ class _OnlineStoreTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final selected = _sectionDetails[selectedSection]!;
     return ColoredBox(
       color: theme.colorScheme.surface,
-      child: SizedBox(
-        height: 58,
-        child: ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          scrollDirection: Axis.horizontal,
-          itemCount: OnlineStoreSection.values.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 8),
-          itemBuilder: (context, index) {
-            final section = OnlineStoreSection.values[index];
-            final details = _sectionDetails[section]!;
-            return ChoiceChip(
-              selected: selectedSection == section,
-              onSelected: (_) => onSelected(section),
-              avatar: Icon(details.icon, size: 18),
-              label: Text(details.label),
-            );
-          },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        child: PopupMenuButton<OnlineStoreSection>(
+          key: const ValueKey('online-store-section-selector'),
+          tooltip: 'Choose store section',
+          initialValue: selectedSection,
+          onSelected: onSelected,
+          itemBuilder: (context) => [
+            for (final section in OnlineStoreSection.values)
+              PopupMenuItem(
+                value: section,
+                child: Row(
+                  children: [
+                    Icon(_sectionDetails[section]!.icon, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(_sectionDetails[section]!.label)),
+                    if (section == selectedSection)
+                      Icon(
+                        Icons.check_rounded,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                  ],
+                ),
+              ),
+          ],
+          child: Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              border: Border.all(color: theme.colorScheme.outline),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(selected.icon, size: 19, color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    selected.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  'Change section',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.expand_more_rounded, size: 18),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -728,7 +769,8 @@ const _sectionDetails = <OnlineStoreSection, _OnlineStoreSectionDetails>{
   ),
   OnlineStoreSection.website: _OnlineStoreSectionDetails(
     label: 'Website & Checkout',
-    description: 'Choose premium themes, customize design, preview, and publish.',
+    description:
+        'Choose premium themes, customize design, preview, and publish.',
     icon: Icons.web_outlined,
   ),
   OnlineStoreSection.payments: _OnlineStoreSectionDetails(

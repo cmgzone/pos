@@ -48,7 +48,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('Online Store'), findsWidgets);
-    expect(find.byType(ChoiceChip), findsWidgets);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(
+      find.byKey(const ValueKey('online-store-section-selector')),
+      findsOneWidget,
+    );
+    expect(find.text('Change section'), findsOneWidget);
     expect(find.text('Share Store Link'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -72,13 +77,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Website studio'), findsOneWidget);
-    expect(find.text('Build'), findsOneWidget);
     expect(find.text('Manage'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.text('Manage'));
-    await tester.pump();
-
     expect(find.text('Homepage themes'), findsOneWidget);
     expect(find.text('Storefront type'), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import 'country_detector.dart';
 import 'external_app_launcher.dart';
 import 'license_service.dart';
 import 'sync_settings_service.dart';
@@ -118,7 +119,7 @@ class MessagingService {
       options: Options(headers: headers),
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
-    allowApiSend = allowApiSend; // preserve the value just saved
+    MessagingService.allowApiSend = allowApiSend;
     return data;
   }
 
@@ -277,7 +278,8 @@ class MessagingService {
   static String _normalizePhone(String value) {
     final digits = value.replaceAll(RegExp(r'[^\d]'), '');
     if (digits.startsWith('0') && digits.length == 10) {
-      return '254${digits.substring(1)}';
+      final countryCode = CountryDetector.cached ?? '254';
+      return '$countryCode${digits.substring(1)}';
     }
     return digits;
   }

@@ -22,6 +22,13 @@ final quotationExpiryProvider = StateProvider<String?>((ref) => null);
 
 final quotationNotesProvider = StateProvider<String>((ref) => '');
 
+/// The most recently saved quotation in the active builder. Keeping this with
+/// the rest of the form state lets both POS and the Quotations module start a
+/// genuinely fresh draft.
+final lastSavedQuotationProvider = StateProvider<Map<String, dynamic>?>(
+  (ref) => null,
+);
+
 final quotationsListProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {

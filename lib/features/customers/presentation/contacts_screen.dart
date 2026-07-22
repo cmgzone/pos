@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/sync_controller.dart';
 import '../../../core/services/messaging_service.dart';
@@ -28,6 +28,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _suppliers = [];
@@ -49,9 +50,17 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _load();
+    });
   }
 
   Future<void> _load() async {
@@ -759,15 +768,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text('Contacts'),
         actions: [
           if (_tabController.index == 0)
@@ -814,7 +814,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
             ),
             child: TextField(
               controller: _searchController,
-              onChanged: (_) => _load(),
+              onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Search by name, phone, or email…',
                 prefixIcon: Icon(

@@ -770,8 +770,12 @@ class ReceiptService {
         backgroundColor: Theme.of(context).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
-          width: 500,
-          height: 700,
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width < 800
+                ? MediaQuery.of(context).size.width - 24
+                : 500,
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [

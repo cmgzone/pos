@@ -272,6 +272,11 @@ class SaleRepository {
 
       final requiredBatches = <String, List<Map<String, dynamic>>>{};
       final tracksStockByProduct = <String, bool>{};
+      final requestedStockByProduct = <String, double>{};
+      final requestedNonVariantStockByProduct = <String, double>{};
+      final requestedStockByVariant = <String, double>{};
+      final requestedStockByColor = <String, double>{};
+      final claimedSerials = <String>{};
       for (final item in productItems) {
         final pid = item['product_id'] as String;
         final variantId = item['variant_id'] as String?;
@@ -281,7 +286,9 @@ class SaleRepository {
             .toDouble();
         final stockQty = qty * saleToStockFactor;
         final product = productsMap[pid];
-        if (product == null) throw Exception('Product not found');
+        if (product == null || product['deleted_at'] != null) {
+          throw Exception('Product not found');
+        }
         final tracksStock = UnitUtils.tracksStock(product);
         tracksStockByProduct[pid] = tracksStock;
         final serialNumbers = _serialNumbersFromItem(item);
@@ -309,6 +316,11 @@ class SaleRepository {
               (row['serial_number'] as String).toLowerCase(): row,
           };
           for (final serial in serialNumbers) {
+            if (!claimedSerials.add(serial.toLowerCase())) {
+              throw Exception(
+                'Serial number "$serial" was added more than once.',
+              );
+            }
             final row = serialsByNumber[serial.toLowerCase()];
             if (row == null || row['status'] != 'available') {
               throw Exception('Serial number "$serial" is not available.');
@@ -333,31 +345,78 @@ class SaleRepository {
           continue;
         }
 
+        requestedStockByProduct.update(
+          pid,
+          (quantity) => quantity + stockQty,
+          ifAbsent: () => stockQty,
+        );
+
         if (variantId != null) {
-          // Variant: validate stock directly, no FIFO batch lookup.
           final variant = variantsMap[variantId];
-          if (variant == null) throw Exception('Product variant not found');
-          final variantStock = (variant['stock'] as num? ?? 0).toDouble();
-          if (variantStock < stockQty - 0.001) {
-            throw Exception(
-              'Not enough stock for variant "${variant['name']}"',
-            );
+          if (variant == null || variant['deleted_at'] != null) {
+            throw Exception('Product variant not found');
           }
+          if (variant['product_id'] != pid) {
+            throw Exception('Product variant does not match this product');
+          }
+
+          requestedStockByVariant.update(
+            variantId,
+            (quantity) => quantity + stockQty,
+            ifAbsent: () => stockQty,
+          );
           if (variantColorId != null) {
             final color = variantColorsMap[variantColorId];
-            if (color == null) throw Exception('Product color not found');
+            if (color == null || color['deleted_at'] != null) {
+              throw Exception('Product color not found');
+            }
             if (color['variant_id'] != variantId ||
                 color['product_id'] != pid) {
               throw Exception('Product color does not match this variant');
             }
-            final colorStock = (color['stock'] as num? ?? 0).toDouble();
-            if (colorStock < stockQty - 0.001) {
-              throw Exception('Not enough stock for color "${color['name']}"');
-            }
+            requestedStockByColor.update(
+              variantColorId,
+              (quantity) => quantity + stockQty,
+              ifAbsent: () => stockQty,
+            );
           }
           continue;
         }
 
+        requestedNonVariantStockByProduct.update(
+          pid,
+          (quantity) => quantity + stockQty,
+          ifAbsent: () => stockQty,
+        );
+      }
+
+      for (final entry in requestedStockByProduct.entries) {
+        final product = productsMap[entry.key]!;
+        final available = (product['stock'] as num? ?? 0).toDouble();
+        if (available < entry.value - 0.001) {
+          throw Exception('Not enough stock for product "${product['name']}"');
+        }
+      }
+
+      for (final entry in requestedStockByVariant.entries) {
+        final variant = variantsMap[entry.key]!;
+        final available = (variant['stock'] as num? ?? 0).toDouble();
+        if (available < entry.value - 0.001) {
+          throw Exception('Not enough stock for variant "${variant['name']}"');
+        }
+      }
+
+      for (final entry in requestedStockByColor.entries) {
+        final color = variantColorsMap[entry.key]!;
+        final available = (color['stock'] as num? ?? 0).toDouble();
+        if (available < entry.value - 0.001) {
+          throw Exception('Not enough stock for color "${color['name']}"');
+        }
+      }
+
+      for (final entry in requestedNonVariantStockByProduct.entries) {
+        final pid = entry.key;
+        final product = productsMap[pid]!;
         final batches = batchesMap[pid] ?? [];
 
         final mutableBatches = List<Map<String, dynamic>>.from(batches);
@@ -377,6 +436,14 @@ class SaleRepository {
             'unit_cost': costPerStockUnit.isFinite ? costPerStockUnit : 0.0,
             'is_fallback': 1,
           });
+        }
+        final availableStock = mutableBatches.fold<double>(
+          0.0,
+          (sum, batch) =>
+              sum + ((batch['quantity_remaining'] as num? ?? 0).toDouble()),
+        );
+        if (availableStock < entry.value - 0.001) {
+          throw Exception('Not enough stock remaining for this sale');
         }
         requiredBatches[pid] = mutableBatches;
       }
@@ -509,6 +576,7 @@ class SaleRepository {
           if (availableInBatch <= remainingToFulfill) {
             totalCostAccumulated += availableInBatch * bCost;
             remainingToFulfill -= availableInBatch;
+            b['quantity_remaining'] = 0.0;
             if (!isFallback) {
               await txn.rawUpdate(
                 'UPDATE stock_batches SET quantity_remaining = 0, finished_at = ?, updated_at = ? WHERE id = ?',
@@ -517,6 +585,7 @@ class SaleRepository {
             }
           } else {
             totalCostAccumulated += remainingToFulfill * bCost;
+            b['quantity_remaining'] = availableInBatch - remainingToFulfill;
             if (!isFallback) {
               await txn.rawUpdate(
                 'UPDATE stock_batches SET quantity_remaining = quantity_remaining - ?, updated_at = ? WHERE id = ?',

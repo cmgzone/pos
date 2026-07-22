@@ -43,10 +43,19 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         ],
       ),
     );
-    if (ok == true) {
-      await DeliveryRepository.addZone(name: c.text);
-      setState(_reload);
+    if (ok == true && c.text.trim().isNotEmpty) {
+      try {
+        await DeliveryRepository.addZone(name: c.text.trim());
+        setState(_reload);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to add zone: $e')),
+          );
+        }
+      }
     }
+    c.dispose();
   }
 
   @override
@@ -66,17 +75,25 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         ),
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _zones,
-          builder: (context, s) => Column(
-            children: (s.data ?? [])
-                .map(
-                  (z) => ListTile(
-                    leading: const Icon(Icons.map_outlined),
-                    title: Text(z['name'].toString()),
-                    subtitle: Text('Fee ${z['fee']}'),
-                  ),
-                )
-                .toList(),
-          ),
+          builder: (context, s) {
+            if (s.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (s.hasError) {
+              return Center(child: Text('Error: ${s.error}'));
+            }
+            return Column(
+              children: (s.data ?? [])
+                  .map(
+                    (z) => ListTile(
+                      leading: const Icon(Icons.map_outlined),
+                      title: Text(z['name'].toString()),
+                      subtitle: Text('Fee ${z['fee']}'),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
         ),
         const Divider(),
         const Padding(
@@ -88,39 +105,55 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         ),
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _deliveries,
-          builder: (context, s) => Column(
-            children: (s.data ?? [])
-                .map(
-                  (d) => ListTile(
-                    title: Text(d['tracking_code'].toString()),
-                    subtitle: Text(d['status'].toString()),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (v) async {
-                        await DeliveryRepository.updateStatus(
-                          d['id'].toString(),
-                          v,
-                        );
-                        setState(_reload);
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: 'assigned',
-                          child: Text('Assigned'),
-                        ),
-                        PopupMenuItem(
-                          value: 'out_for_delivery',
-                          child: Text('Out for delivery'),
-                        ),
-                        PopupMenuItem(
-                          value: 'delivered',
-                          child: Text('Delivered'),
-                        ),
-                      ],
+          builder: (context, s) {
+            if (s.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (s.hasError) {
+              return Center(child: Text('Error: ${s.error}'));
+            }
+            return Column(
+              children: (s.data ?? [])
+                  .map(
+                    (d) => ListTile(
+                      title: Text(d['tracking_code'].toString()),
+                      subtitle: Text(d['status'].toString()),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (v) async {
+                          try {
+                            await DeliveryRepository.updateStatus(
+                              d['id'].toString(),
+                              v,
+                            );
+                            setState(_reload);
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to update: $e')),
+                              );
+                            }
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'assigned',
+                            child: Text('Assigned'),
+                          ),
+                          PopupMenuItem(
+                            value: 'out_for_delivery',
+                            child: Text('Out for delivery'),
+                          ),
+                          PopupMenuItem(
+                            value: 'delivered',
+                            child: Text('Delivered'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                )
-                .toList(),
-          ),
+                  )
+                  .toList(),
+            );
+          },
         ),
       ],
     ),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/data/spreadsheet_import_reader.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme_extensions.dart';
@@ -18,6 +19,7 @@ import '../../../widgets/compact_header_actions.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../../widgets/piki_activity_panel.dart';
 import '../../../widgets/skeleton.dart';
+import '../../../widgets/staggered_animations.dart';
 import '../../../widgets/stitch_kit.dart';
 import '../../../widgets/smart_import_preview_dialog.dart';
 import '../../training/widgets/training_anchor.dart';
@@ -31,7 +33,7 @@ import 'product_batches_screen.dart';
 import 'category_management_screen.dart';
 import 'product_variants_screen.dart';
 import 'stock_list_screen.dart';
-import '../../app/app_shell.dart';
+
 
 enum _MobileProductPageAction {
   importProducts,
@@ -84,24 +86,17 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
         }
       },
     );
-    final isMobile = MediaQuery.of(context).size.width <= 800;
+    final isMobile = MediaQuery.of(context).size.width < AppConstants.mobileBreakpoint;
     final categoriesAsync = ref.watch(categoriesProvider);
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         toolbarHeight: 50,
-        leading: isMobile
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: Text(
           isMobile ? 'Products' : 'Product Management',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
         ),
         actions: [
           if (!isMobile)
@@ -111,7 +106,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               label: 'Catalog Orders',
               filled: false,
             ),
-          if (!isMobile) SizedBox(width: 6),
+          if (!isMobile) SizedBox(width: AppSpacing.sm),
           if (!isMobile)
             CompactHeaderButton(
               onPressed: _openStockList,
@@ -119,7 +114,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               label: 'Stock List',
               filled: false,
             ),
-          if (!isMobile) SizedBox(width: 4),
+          if (!isMobile) SizedBox(width: AppSpacing.xs),
           if (!isMobile)
             CompactHeaderIconButton(
               icon: Icons.local_shipping_outlined,
@@ -132,7 +127,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
               tooltip: 'Manage Categories',
               onPressed: _openCategories,
             ),
-          if (!isMobile) SizedBox(width: 4),
+          if (!isMobile) SizedBox(width: AppSpacing.xs),
           if (!isMobile)
             CompactHeaderButton(
               onPressed: _isImporting ? null : _importProductsFromFile,
@@ -278,23 +273,26 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                                 )['name']
                                 as String?
                           : null;
-                      return _ProductRow(
-                        product: product,
-                        categoryName: catName,
-                        onEdit: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ProductFormScreen(product: product),
-                            ),
-                          );
-                          if (result == true) _refreshProducts();
-                        },
-                        onAdjustStock: () =>
-                            _showStockAdjustmentDialog(product),
-                        onViewBatches: () => _viewBatches(context, product),
-                        onDelete: () => _confirmDelete(product),
+                      return StaggeredListAnimation(
+                        index: index,
+                        child: _ProductRow(
+                          product: product,
+                          categoryName: catName,
+                          onEdit: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ProductFormScreen(product: product),
+                              ),
+                            );
+                            if (result == true) _refreshProducts();
+                          },
+                          onAdjustStock: () =>
+                              _showStockAdjustmentDialog(product),
+                          onViewBatches: () => _viewBatches(context, product),
+                          onDelete: () => _confirmDelete(product),
+                        ),
                       );
                     },
                   );

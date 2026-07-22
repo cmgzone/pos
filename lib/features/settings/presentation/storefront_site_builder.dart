@@ -194,6 +194,60 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
     }
   }
 
+  bool _isRestoreCandidate(StorefrontSiteBuild build) {
+    final live = _publishedSiteBuild;
+    return !build.isPublished &&
+        (build.status == 'archived' ||
+            (live != null && build.version < live.version));
+  }
+
+  Future<PikiAiJob> _createPreviewSiteEditJob(
+    StorefrontSiteBuild build,
+    StorefrontPreviewEditRequest edit,
+  ) async {
+    final selection = edit.selection;
+    final job = await PikiAiJobService.createStorefrontSiteJob(
+      edit.instruction,
+      branchId: _branchId,
+      storefrontType: widget.storefrontType,
+      parentBuildId: selection.siteBuildId ?? build.id,
+      siteMode:
+          selection.siteMode ??
+          (build.singleProductId == null ? 'catalog' : 'single_product'),
+      selectedProductId: selection.selectedProductId ?? build.singleProductId,
+      selectionContext: selection.toJson(),
+    );
+    if (mounted) {
+      setState(() {
+        _siteJob = job;
+        _siteEvents = const [];
+      });
+      unawaited(_watchSiteJob(job.id));
+    }
+    return job;
+  }
+
+  Future<StorefrontPreviewJobCompletion?> _resolveSitePreviewEditCompletion(
+    PikiAiJob job,
+  ) async {
+    final value = job.result?['build'];
+    if (value is! Map) {
+      throw Exception(
+        'Piki finished, but the generated site build is missing.',
+      );
+    }
+    final build = StorefrontSiteBuild.fromJson(
+      Map<String, dynamic>.from(value),
+    );
+    await _refreshSiteBuilds();
+    final uri = await StorefrontPageService.siteBuildPreviewUrl(build.id);
+    return StorefrontPreviewJobCompletion(
+      previewUri: uri,
+      buildVersion: build.version,
+      buildName: build.name,
+    );
+  }
+
   Future<void> _previewSiteBuild(StorefrontSiteBuild build) async {
     Uri? uri;
     await _run(() async {
@@ -217,6 +271,8 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
         previewUri: uri!,
         buildVersion: build.version,
         buildName: build.name,
+        onEditRequest: (edit) => _createPreviewSiteEditJob(build, edit),
+        onJobCompleted: _resolveSitePreviewEditCompletion,
       ),
     );
     if (edit == null || !mounted) return;
@@ -233,7 +289,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
 
   Future<void> _publishSiteBuild(StorefrontSiteBuild build) async {
     final current = _publishedSiteBuild;
-    final restoring = build.status == 'archived';
+    final restoring = _isRestoreCandidate(build);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -770,7 +826,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
   }
 
   Widget _siteBuildCard(StorefrontSiteBuild build, ColorScheme colors) {
-    final isArchived = build.status == 'archived';
+    final isRestore = _isRestoreCandidate(build);
     final shortHash = build.codeHash.length > 8
         ? build.codeHash.substring(0, 8)
         : build.codeHash;
@@ -827,7 +883,7 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                 label: Text(
                   build.isPublished
                       ? 'Live'
-                      : isArchived
+                      : isRestore
                       ? 'History'
                       : 'Draft',
                 ),
@@ -877,17 +933,17 @@ class _StorefrontSiteBuilderState extends State<StorefrontSiteBuilder> {
                 FilledButton.icon(
                   onPressed: _busy ? null : () => _publishSiteBuild(build),
                   icon: Icon(
-                    isArchived ? Icons.history_rounded : Icons.publish_rounded,
+                    isRestore ? Icons.history_rounded : Icons.publish_rounded,
                     size: 17,
                   ),
-                  label: Text(isArchived ? 'Restore' : 'Publish'),
+                  label: Text(isRestore ? 'Restore' : 'Publish'),
                 ),
               IconButton.filledTonal(
                 tooltip: 'Refine this version with Piki',
                 onPressed: _busy ? null : () => _openSiteCompiler(build),
                 icon: const Icon(Icons.auto_awesome_outlined),
               ),
-              if (build.isDraft)
+              if (build.isDraft && !isRestore)
                 IconButton(
                   tooltip: 'Delete draft',
                   onPressed: _busy ? null : () => _deleteSiteBuild(build),

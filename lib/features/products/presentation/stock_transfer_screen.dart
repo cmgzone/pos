@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/branch_service.dart';
 import '../../../core/services/sync_controller.dart';
@@ -293,15 +292,6 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         title: Text('Stock Transfers'),
         actions: [
           IconButton(

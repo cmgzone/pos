@@ -822,14 +822,6 @@ class _PikiAgentScreenState extends ConsumerState<PikiAgentScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        leading: isMobile
-            ? IconButton(
-                icon: Icon(Icons.menu),
-                onPressed: () {
-                  AppShell.scaffoldKey.currentState?.openDrawer();
-                },
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: isMobile
             ? _AiIndicator(status: status, compact: true)

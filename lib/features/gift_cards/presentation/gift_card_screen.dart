@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:pos_app/core/services/shop_settings.dart';
 import 'package:pos_app/core/theme/app_colors.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
-import 'package:pos_app/features/app/app_shell.dart';
+
 import 'package:pos_app/features/customers/data/customer_repository.dart';
 import 'package:pos_app/features/customers/presentation/customer_message_dialog.dart';
 import '../data/gift_card_repository.dart';
@@ -87,15 +87,6 @@ class _GiftCardScreenState extends State<GiftCardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gift Cards'),
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         actions: [
           FilledButton.icon(
             onPressed: _openCreateDialog,

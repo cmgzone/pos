@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pos_app/features/app/app_shell.dart';
 
 import '../../../core/services/branch_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -184,15 +183,6 @@ class _BranchManagementScreenState extends State<BranchManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Branches'),
-        leading:
-            !Navigator.of(context).canPop() &&
-                MediaQuery.of(context).size.width <= 800
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () =>
-                    AppShell.scaffoldKey.currentState?.openDrawer(),
-              )
-            : null,
         actions: [
           FilledButton.icon(
             onPressed: () => _showBranchDialog(),

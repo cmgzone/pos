@@ -122,8 +122,12 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text(isEditing ? 'Edit Variant' : 'Add Variant'),
-          content: SizedBox(
-            width: 460,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width < 800
+                  ? MediaQuery.of(context).size.width - 32
+                  : 460,
+            ),
             child: Form(
               key: formKey,
               child: SingleChildScrollView(
@@ -556,8 +560,12 @@ class _ProductVariantsScreenState extends ConsumerState<ProductVariantsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text(isEditing ? 'Edit Color' : 'Add Color'),
-          content: SizedBox(
-            width: 500,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width < 800
+                  ? MediaQuery.of(context).size.width - 32
+                  : 500,
+            ),
             child: Form(
               key: formKey,
               child: SingleChildScrollView(
