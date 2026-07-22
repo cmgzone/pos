@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   Sparkles,
   Sun,
+  X,
 } from "lucide-react";
 import type {
   Branch,
@@ -31,6 +32,8 @@ interface AtelierStorefrontProps {
   items: CatalogItem[];
   category: string;
   onCategoryChange: (category: string) => void;
+  search: string;
+  onSearchChange: (search: string) => void;
   selectedBranch: Branch | null;
   onBranchChange: (branchId: string) => void;
   onTrackOrder: () => void;
@@ -43,6 +46,8 @@ export function AtelierStorefront({
   items,
   category,
   onCategoryChange,
+  search,
+  onSearchChange,
   selectedBranch,
   onBranchChange,
   onTrackOrder,
@@ -53,11 +58,14 @@ export function AtelierStorefront({
   const [quickViewItem, setQuickViewItem] = useState<CatalogItem | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant>();
   const mode = resolveAtelierMode(catalog);
-  const sourceItems = items.length ? items : catalog.products;
+  // Keep the hero and grid in sync with the active category and search query.
+  // Falling back to the full catalog here made an empty search look as though it
+  // still had results.
+  const sourceItems = items;
   const featuredItem = sourceItems.find((item) => item.isFeatured) || sourceItems[0];
   const media = useMemo(
-    () => collectMedia(catalog, featuredItem),
-    [catalog, featuredItem],
+    () => collectMedia(catalog, featuredItem, sourceItems),
+    [catalog, featuredItem, sourceItems],
   );
   const isServiceStore = mode === "services";
   const browseLabel = isServiceStore ? "Explore services" : "Shop the store";
@@ -202,7 +210,7 @@ export function AtelierStorefront({
             <div className="atelier-hero-stage">
               <div className="atelier-hero-stage-meta">
                 <span>{isServiceStore ? "Now booking" : "Featured today"}</span>
-                <span>01 / 01</span>
+                <span>{sourceItems.length} {isServiceStore ? "options" : "items"}</span>
               </div>
               {media[0] ? (
                 <img src={media[0]} alt="" className="atelier-hero-image" />
@@ -233,16 +241,30 @@ export function AtelierStorefront({
           <ServicePractice
             catalog={catalog}
             items={sourceItems}
+            category={category}
+            onCategoryChange={onCategoryChange}
+            search={search}
+            onSearchChange={onSearchChange}
             onOpen={openItem}
           />
         ) : mode === "portfolio" ? (
-          <PortfolioGrid catalog={catalog} items={sourceItems} onOpen={openItem} />
+          <PortfolioGrid
+            catalog={catalog}
+            items={sourceItems}
+            category={category}
+            onCategoryChange={onCategoryChange}
+            search={search}
+            onSearchChange={onSearchChange}
+            onOpen={openItem}
+          />
         ) : (
           <CollectionGrid
             catalog={catalog}
             items={sourceItems}
             category={category}
             onCategoryChange={onCategoryChange}
+            search={search}
+            onSearchChange={onSearchChange}
             onOpen={openItem}
           />
         )}
@@ -343,20 +365,38 @@ function SingleProductFeature({
 function ServicePractice({
   catalog,
   items,
+  category,
+  onCategoryChange,
+  search,
+  onSearchChange,
   onOpen,
 }: {
   catalog: Catalog;
   items: CatalogItem[];
+  category: string;
+  onCategoryChange: (category: string) => void;
+  search: string;
+  onSearchChange: (search: string) => void;
   onOpen: (item: CatalogItem) => void;
 }) {
+  const { visibleItems, hasMore, showMore } = useVisibleItems(items, category, search, 8);
   return (
     <section id="atelier-collection" className="atelier-practice" data-piki-component="service-list">
       <div className="atelier-section-heading">
         <p className="atelier-kicker"><span /> The practice</p>
         <p>Clear choices, thoughtful timing, no unnecessary steps.</p>
       </div>
+      <AtelierBrowseControls
+        catalog={catalog}
+        category={category}
+        onCategoryChange={onCategoryChange}
+        search={search}
+        onSearchChange={onSearchChange}
+        itemCount={items.length}
+        itemLabel="services"
+      />
       <div className="atelier-service-list">
-        {items.map((item, index) => (
+        {visibleItems.map((item, index) => (
           <article key={item.id} className="atelier-service" data-piki-component="service-card">
             <div className="atelier-service-number">{String(index + 1).padStart(2, "0")}</div>
             <div>
@@ -372,8 +412,9 @@ function ServicePractice({
             </button>
           </article>
         ))}
-        {!items.length && <EmptyAtelierState label="Services are being prepared." />}
+        {!items.length && <EmptyAtelierState label={emptySelectionLabel("Services are being prepared.", search, category)} />}
       </div>
+      <LoadMoreButton remaining={items.length - visibleItems.length} hasMore={hasMore} onClick={showMore} />
     </section>
   );
 }
@@ -381,20 +422,38 @@ function ServicePractice({
 function PortfolioGrid({
   catalog,
   items,
+  category,
+  onCategoryChange,
+  search,
+  onSearchChange,
   onOpen,
 }: {
   catalog: Catalog;
   items: CatalogItem[];
+  category: string;
+  onCategoryChange: (category: string) => void;
+  search: string;
+  onSearchChange: (search: string) => void;
   onOpen: (item: CatalogItem) => void;
 }) {
+  const { visibleItems, hasMore, showMore } = useVisibleItems(items, category, search, 9);
   return (
     <section id="atelier-collection" className="atelier-portfolio" data-piki-component="portfolio-grid">
       <div className="atelier-section-heading">
         <p className="atelier-kicker"><span /> Selected work</p>
         <p>Objects, editions, and ideas arranged as a living portfolio.</p>
       </div>
+      <AtelierBrowseControls
+        catalog={catalog}
+        category={category}
+        onCategoryChange={onCategoryChange}
+        search={search}
+        onSearchChange={onSearchChange}
+        itemCount={items.length}
+        itemLabel="pieces"
+      />
       <div className="atelier-portfolio-grid">
-        {items.map((item, index) => (
+        {visibleItems.map((item, index) => (
           <AtelierTile
             key={item.id}
             item={item}
@@ -403,8 +462,9 @@ function PortfolioGrid({
             onOpen={() => onOpen(item)}
           />
         ))}
-        {!items.length && <EmptyAtelierState label="Work is being curated." />}
+        {!items.length && <EmptyAtelierState label={emptySelectionLabel("Work is being curated.", search, category)} />}
       </div>
+      <LoadMoreButton remaining={items.length - visibleItems.length} hasMore={hasMore} onClick={showMore} />
     </section>
   );
 }
@@ -414,14 +474,19 @@ function CollectionGrid({
   items,
   category,
   onCategoryChange,
+  search,
+  onSearchChange,
   onOpen,
 }: {
   catalog: Catalog;
   items: CatalogItem[];
   category: string;
   onCategoryChange: (category: string) => void;
+  search: string;
+  onSearchChange: (search: string) => void;
   onOpen: (item: CatalogItem) => void;
 }) {
+  const { visibleItems, hasMore, showMore } = useVisibleItems(items, category, search, 12);
   return (
     <section id="atelier-collection" className="atelier-collection" data-piki-component="product-collection">
       <div className="atelier-section-heading atelier-section-heading--split">
@@ -429,17 +494,18 @@ function CollectionGrid({
           <p className="atelier-kicker"><span /> The collection</p>
           <p>Useful things, selected with intention.</p>
         </div>
-        {catalog.categories.length > 1 && (
-          <div className="atelier-category-rail" aria-label="Product categories">
-            <button type="button" data-active={category === "all"} onClick={() => onCategoryChange("all")}>All</button>
-            {catalog.categories.map((value) => (
-              <button key={value} type="button" data-active={category === value} onClick={() => onCategoryChange(value)}>{value}</button>
-            ))}
-          </div>
-        )}
       </div>
+      <AtelierBrowseControls
+        catalog={catalog}
+        category={category}
+        onCategoryChange={onCategoryChange}
+        search={search}
+        onSearchChange={onSearchChange}
+        itemCount={items.length}
+        itemLabel="items"
+      />
       <div className="atelier-collection-grid">
-        {items.map((item, index) => (
+        {visibleItems.map((item, index) => (
           <AtelierTile
             key={item.id}
             item={item}
@@ -448,10 +514,106 @@ function CollectionGrid({
             onOpen={() => onOpen(item)}
           />
         ))}
-        {!items.length && <EmptyAtelierState label="Nothing in this selection just yet." />}
+        {!items.length && <EmptyAtelierState label={emptySelectionLabel("Nothing in this selection just yet.", search, category)} />}
       </div>
+      <LoadMoreButton remaining={items.length - visibleItems.length} hasMore={hasMore} onClick={showMore} />
     </section>
   );
+}
+
+function AtelierBrowseControls({
+  catalog,
+  category,
+  onCategoryChange,
+  search,
+  onSearchChange,
+  itemCount,
+  itemLabel,
+}: {
+  catalog: Catalog;
+  category: string;
+  onCategoryChange: (category: string) => void;
+  search: string;
+  onSearchChange: (search: string) => void;
+  itemCount: number;
+  itemLabel: string;
+}) {
+  const categories = Array.from(
+    new Set([
+      ...catalog.categories,
+      ...catalog.products.map((item) => item.category || "").filter(Boolean),
+    ]),
+  );
+  const useSelect = categories.length > 7;
+
+  return (
+    <div className="atelier-browse-controls" data-piki-component="catalog-controls">
+      <label className="atelier-search-field">
+        <Search aria-hidden="true" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder={`Search ${itemLabel}`}
+          aria-label={`Search ${itemLabel}`}
+        />
+        {search && (
+          <button type="button" onClick={() => onSearchChange("")} aria-label="Clear search">
+            <X aria-hidden="true" />
+          </button>
+        )}
+      </label>
+      <div className="atelier-browse-category">
+        {categories.length > 1 && useSelect ? (
+          <label className="atelier-category-select">
+            <span>Category</span>
+            <select value={category} onChange={(event) => onCategoryChange(event.target.value)}>
+              <option value="all">All categories</option>
+              {categories.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+        ) : categories.length > 1 ? (
+          <div className="atelier-category-rail" aria-label="Product categories">
+            <button type="button" data-active={category === "all"} onClick={() => onCategoryChange("all")}>All</button>
+            {categories.map((value) => (
+              <button key={value} type="button" data-active={category === value} onClick={() => onCategoryChange(value)}>{value}</button>
+            ))}
+          </div>
+        ) : (
+          <span className="atelier-browse-all">All {itemLabel}</span>
+        )}
+        <span className="atelier-result-count">{itemCount} {itemLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function useVisibleItems(items: CatalogItem[], category: string, search: string, initialCount: number) {
+  const [visibleCount, setVisibleCount] = useState(initialCount);
+  useEffect(() => {
+    setVisibleCount(initialCount);
+  }, [category, initialCount, search]);
+
+  return {
+    visibleItems: items.slice(0, visibleCount),
+    hasMore: items.length > visibleCount,
+    showMore: () => setVisibleCount((count) => count + initialCount),
+  };
+}
+
+function LoadMoreButton({ remaining, hasMore, onClick }: { remaining: number; hasMore: boolean; onClick: () => void }) {
+  if (!hasMore) return null;
+  return (
+    <div className="atelier-load-more">
+      <button type="button" onClick={onClick}>See more <span>({remaining} remaining)</span> <ArrowDown /></button>
+    </div>
+  );
+}
+
+function emptySelectionLabel(fallback: string, search: string, category: string) {
+  if (search.trim()) return `No results for “${search.trim()}”. Try another search or category.`;
+  if (category !== "all") return `Nothing in ${category} just yet. Choose another category to keep browsing.`;
+  return fallback;
 }
 
 function AtelierTile({
@@ -502,10 +664,10 @@ function resolveAtelierMode(catalog: Catalog): AtelierMode {
   return "collection";
 }
 
-function collectMedia(catalog: Catalog, featuredItem?: CatalogItem): string[] {
+function collectMedia(catalog: Catalog, featuredItem?: CatalogItem, items: CatalogItem[] = catalog.products): string[] {
   const urls = [
     ...getCatalogItemImages(featuredItem || ({} as CatalogItem)),
-    ...catalog.products.flatMap((item) => getCatalogItemImages(item)).slice(0, 4),
+    ...items.flatMap((item) => getCatalogItemImages(item)).slice(0, 4),
     ...(catalog.business.brand.coverUrls || []),
     catalog.business.brand.coverUrl || "",
   ];

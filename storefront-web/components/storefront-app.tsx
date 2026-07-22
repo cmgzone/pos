@@ -294,6 +294,7 @@ function StorefrontInner() {
   } = useStore();
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
+  const [search, setSearch] = useState("");
   const [showCheckout, setShowCheckout] = useState(false);
   const [showTracker, setShowTracker] = useState(false);
   const [appearance, setAppearance] = useState<StorefrontAppearance>("light");
@@ -535,13 +536,21 @@ function StorefrontInner() {
     if (category !== "all") {
       items = items.filter((item) => item.category === category);
     }
+    const query = search.trim().toLocaleLowerCase();
+    if (query) {
+      items = items.filter((item) =>
+        [item.name, item.brand, item.category, item.description].some((value) =>
+          value?.toLocaleLowerCase().includes(query),
+        ),
+      );
+    }
     items.sort((first, second) => {
       if (first.isFeatured && !second.isFeatured) return -1;
       if (!first.isFeatured && second.isFeatured) return 1;
       return (second.soldQty || 0) - (first.soldQty || 0);
     });
     return items;
-  }, [catalog, category]);
+  }, [catalog, category, search]);
 
   if (error) return <ErrorState message={error} />;
 
@@ -586,6 +595,8 @@ function StorefrontInner() {
           items={filteredItems}
           category={category}
           onCategoryChange={setCategory}
+          search={search}
+          onSearchChange={setSearch}
           selectedBranch={selectedBranch}
           onBranchChange={handleBranchChange}
           onTrackOrder={() => setShowTracker(true)}

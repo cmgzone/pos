@@ -249,10 +249,29 @@ body {
 .atelier-tile-buy button { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--atelier-line); border-radius: 50%; transition: background-color 160ms ease, color 160ms ease; }
 .atelier-tile-buy button:hover { background: var(--atelier-ink); color: var(--atelier-paper); }
 .atelier-tile-buy svg { width: 13px; height: 13px; }
-.atelier-category-rail { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.atelier-browse-controls { display: flex; align-items: center; justify-content: space-between; gap: 18px 28px; margin: -18px 0 clamp(34px, 5vw, 64px); padding: 16px 0; border-top: 1px solid var(--atelier-line); border-bottom: 1px solid var(--atelier-line); }
+.atelier-search-field { display: flex; align-items: center; width: min(100%, 390px); gap: 10px; color: var(--atelier-muted); }
+.atelier-search-field > svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.atelier-search-field input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--atelier-ink); font: inherit; font-size: 14px; }
+.atelier-search-field input::placeholder { color: var(--atelier-muted); opacity: .9; }
+.atelier-search-field button { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border: 1px solid var(--atelier-line); border-radius: 50%; color: var(--atelier-muted); transition: color 160ms ease, background-color 160ms ease; }
+.atelier-search-field button:hover { background: var(--atelier-ink); color: var(--atelier-paper); }
+.atelier-search-field button svg { width: 13px; height: 13px; }
+.atelier-browse-category { display: flex; align-items: center; justify-content: flex-end; gap: 18px; min-width: 0; }
+.atelier-category-select { display: flex; align-items: center; gap: 10px; color: var(--atelier-muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.atelier-category-select select { max-width: 220px; border: 0; border-bottom: 1px solid var(--atelier-ink); border-radius: 0; outline: 0; background: transparent; color: var(--atelier-ink); padding: 5px 22px 5px 0; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.atelier-browse-all,
+.atelier-result-count { color: var(--atelier-muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+.atelier-result-count { color: var(--atelier-ink); }
+.atelier-category-rail { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
 .atelier-category-rail button { padding: 8px 0; border-bottom: 1px solid transparent; color: var(--atelier-muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .atelier-category-rail button + button { margin-left: 13px; }
 .atelier-category-rail button[data-active="true"] { border-color: var(--atelier-ink); color: var(--atelier-ink); }
+.atelier-load-more { display: flex; justify-content: center; padding-top: clamp(36px, 5vw, 68px); }
+.atelier-load-more button { display: inline-flex; align-items: center; gap: 9px; padding: 12px 0; border-bottom: 1px solid var(--atelier-ink); color: var(--atelier-ink); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; transition: color 160ms ease, border-color 160ms ease; }
+.atelier-load-more button:hover { border-color: var(--atelier-accent); color: var(--atelier-accent); }
+.atelier-load-more button span { color: var(--atelier-muted); letter-spacing: .06em; }
+.atelier-load-more svg { width: 15px; height: 15px; }
 .atelier-empty { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 9px; min-height: 180px; margin: 0; color: var(--atelier-muted); font-size: 14px; }
 .atelier-empty svg { width: 18px; height: 18px; color: var(--atelier-accent); }
 
@@ -310,6 +329,10 @@ body {
   .atelier-collection { padding: 68px 16px; }
   .atelier-section-heading,
   .atelier-section-heading--split { flex-direction: column; align-items: flex-start; margin-bottom: 42px; }
+  .atelier-browse-controls { align-items: stretch; flex-direction: column; gap: 14px; margin-top: -18px; }
+  .atelier-browse-category { align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; }
+  .atelier-category-select { justify-content: space-between; width: 100%; }
+  .atelier-category-select select { max-width: 72%; }
   .atelier-category-rail { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; max-width: calc(100vw - 32px); }
   .atelier-category-rail button { flex: 0 0 auto; }
   .atelier-tile { grid-column: span 12; }
