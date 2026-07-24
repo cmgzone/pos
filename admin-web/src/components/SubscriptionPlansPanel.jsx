@@ -155,6 +155,26 @@ function isHttpsUrl(value) {
   }
 }
 
+// Flutterwave's REST API only exists under /v3. The dashboard/docs advertise a
+// "v4.0.0" label that is a documentation version, NOT an API URL — pointing the
+// gateway at .../v4 makes every checkout 404. Force the standard host to /v3
+// while leaving any custom/proxy endpoint untouched.
+function normalizeFlutterwaveBaseUrl(value) {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return { url: trimmed, adjusted: false }
+  let parsed
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return { url: trimmed, adjusted: false }
+  }
+  if (parsed.host.toLowerCase() !== 'api.flutterwave.com') {
+    return { url: trimmed, adjusted: false }
+  }
+  const canonical = `${parsed.protocol}//api.flutterwave.com/v3`
+  return { url: canonical, adjusted: trimmed !== canonical }
+}
+
 function gatewayConfigurationError(gateway) {
   if (!gateway?.isActive) return ''
 
@@ -711,7 +731,17 @@ export default function SubscriptionPlansPanel({ token }) {
     setSavingGateway(provider)
     setMessage('')
     try {
-      const validationError = gatewayConfigurationError(gateway)
+      let publicConfig = gateway.publicConfig || {}
+      let urlAdjusted = false
+      if (provider === 'flutterwave') {
+        const normalized = normalizeFlutterwaveBaseUrl(publicConfig.baseUrl)
+        urlAdjusted = normalized.adjusted
+        if (urlAdjusted) {
+          publicConfig = { ...publicConfig, baseUrl: normalized.url }
+          updateGatewayConfig('flutterwave', 'publicConfig', 'baseUrl', normalized.url)
+        }
+      }
+      const validationError = gatewayConfigurationError({ ...gateway, publicConfig })
       if (validationError) {
         throw new Error(validationError)
       }
@@ -728,7 +758,7 @@ export default function SubscriptionPlansPanel({ token }) {
             .split(',')
             .map((item) => item.trim())
             .filter(Boolean),
-          publicConfig: gateway.publicConfig || {},
+          publicConfig,
           secretConfig: gateway.secretConfig || {},
         }),
       })
@@ -746,7 +776,11 @@ export default function SubscriptionPlansPanel({ token }) {
         ...current,
         [nextGateway.provider]: cloneGateway(nextGateway),
       }))
-      setMessage('Payment gateway saved')
+      setMessage(
+        urlAdjusted
+          ? 'Payment gateway saved. Flutterwave API URL was corrected to https://api.flutterwave.com/v3 (the current API version).'
+          : 'Payment gateway saved',
+      )
     } catch (error) {
       setMessage(friendlyError(error, 'Could not save payment gateway.'))
     } finally {
