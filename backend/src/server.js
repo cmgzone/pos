@@ -5699,8 +5699,9 @@ app.get('/api/subscription/plans', async (req, res, next) => {
     );
     const requestedProvider = normalizeOptionalText(req.query?.provider);
     const platform = normalizeSubscriptionPlatform(req.query?.platform);
+    const publicMarkets = await listPublicMarkets();
     const markets = subscriptionMarketsForPlatform(
-      await listPublicMarkets(),
+      publicMarkets,
       platform,
       requestedCountry,
     );
@@ -5712,6 +5713,22 @@ app.get('/api/subscription/plans', async (req, res, next) => {
     const plans = selectedMarket
       ? await listPublicPlans({ countryCode })
       : [];
+    const availableCountries = [];
+    const seenCountries = new Set();
+    for (const market of publicMarkets) {
+      if (!subscriptionProviderAllowedForPlatform(market.provider, platform)) {
+        continue;
+      }
+      if (seenCountries.has(market.countryCode)) {
+        continue;
+      }
+      seenCountries.add(market.countryCode);
+      availableCountries.push({
+        countryCode: market.countryCode,
+        label: market.label,
+        currency: market.currency,
+      });
+    }
     res.json({
       ok: true,
       countryCode,
@@ -5719,6 +5736,7 @@ app.get('/api/subscription/plans', async (req, res, next) => {
       provider: selectedMarket?.provider || null,
       selectedMarket,
       markets,
+      availableCountries,
       plans,
     });
   } catch (error) {

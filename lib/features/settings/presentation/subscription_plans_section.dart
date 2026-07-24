@@ -124,6 +124,9 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
   Completer<PurchaseDetails>? _pendingPlayPurchase;
   String? _pendingPlayProductId;
 
+  final LayerLink _countryLink = LayerLink();
+  OverlayEntry? _countryEntry;
+
   late final AnimationController _reveal;
 
   @override
@@ -154,6 +157,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
 
   @override
   void dispose() {
+    _closeCountryPicker();
     _reveal.dispose();
     _purchaseUpdates?.cancel();
     super.dispose();
@@ -864,52 +868,127 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
         widget.initialCountryCode ??
         _detectedCountryCode ??
         'KE';
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: _Ledger.counterRaised,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _Ledger.counterLine),
-      ),
-      child: Row(
-        children: [
-          Text(_countryFlag(countryCode), style: const TextStyle(fontSize: 22)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+    final canChange = _availableCountries().length > 1 && !_busy;
+    return CompositedTransformTarget(
+      link: _countryLink,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: canChange ? _toggleCountryPicker : null,
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: _Ledger.counterRaised,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: _countryEntry != null
+                    ? _Ledger.stamp.withValues(alpha: 0.6)
+                    : _Ledger.counterLine,
+              ),
+            ),
+            child: Row(
               children: [
                 Text(
-                  'MARKET',
-                  style: _Ledger.mono(
-                    9,
-                    color: _Ledger.paper.withValues(alpha: 0.4),
-                    weight: FontWeight.w600,
-                    letterSpacing: 1.8,
+                  _countryFlag(countryCode),
+                  style: const TextStyle(fontSize: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'MARKET',
+                        style: _Ledger.mono(
+                          9,
+                          color: _Ledger.paper.withValues(alpha: 0.4),
+                          weight: FontWeight.w600,
+                          letterSpacing: 1.8,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _Ledger.display(
+                          15,
+                          color: _Ledger.paper,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _Ledger.display(
-                    15,
-                    color: _Ledger.paper,
-                    weight: FontWeight.w600,
+                AnimatedRotation(
+                  turns: _countryEntry != null ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: canChange
+                        ? _Ledger.paper.withValues(alpha: 0.7)
+                        : _Ledger.paper.withValues(alpha: 0.3),
                   ),
                 ),
               ],
             ),
           ),
-          Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: _Ledger.paper.withValues(alpha: 0.5),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+
+  List<SubscriptionCountry> _availableCountries() {
+    return _catalog?.availableCountries ?? const <SubscriptionCountry>[];
+  }
+
+  void _toggleCountryPicker() {
+    if (_countryEntry != null) {
+      _closeCountryPicker();
+    } else {
+      _openCountryPicker();
+    }
+  }
+
+  void _openCountryPicker() {
+    final countries = _availableCountries();
+    if (countries.length <= 1) return;
+    _countryEntry = OverlayEntry(
+      builder: (_) => _CountryPickerOverlay(
+        link: _countryLink,
+        countries: countries,
+        selectedCode: _selectedMarket()?.countryCode,
+        flagFor: _countryFlag,
+        onPick: _selectCountry,
+        onDismiss: _closeCountryPicker,
+      ),
+    );
+    Overlay.of(context).insert(_countryEntry!);
+    setState(() {});
+  }
+
+  void _closeCountryPicker() {
+    final entry = _countryEntry;
+    if (entry == null) return;
+    _countryEntry = null;
+    entry.remove();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _selectCountry(SubscriptionCountry country) {
+    _closeCountryPicker();
+    final provider = _selectedMarket()?.provider;
+    _load(
+      countryCode: country.countryCode,
+      marketKey: provider == null
+          ? null
+          : '${country.countryCode}:$provider',
     );
   }
 
@@ -2600,6 +2679,180 @@ class _PlanReceiptCardState extends State<_PlanReceiptCard> {
           color: color.withValues(alpha: 0.95),
           weight: FontWeight.w700,
           letterSpacing: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// Anchored dropdown listing the selectable markets (countries).
+class _CountryPickerOverlay extends StatelessWidget {
+  final LayerLink link;
+  final List<SubscriptionCountry> countries;
+  final String? selectedCode;
+  final String Function(String) flagFor;
+  final ValueChanged<SubscriptionCountry> onPick;
+  final VoidCallback onDismiss;
+
+  const _CountryPickerOverlay({
+    required this.link,
+    required this.countries,
+    required this.selectedCode,
+    required this.flagFor,
+    required this.onPick,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onDismiss,
+            child: const ColoredBox(color: Colors.transparent),
+          ),
+        ),
+        CompositedTransformFollower(
+          link: link,
+          showWhenUnlinked: false,
+          offset: const Offset(0, 62),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 288,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _Ledger.counterRaised,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _Ledger.counterLine),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.42),
+                      blurRadius: 26,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                      child: Text(
+                        'SELECT MARKET',
+                        style: _Ledger.mono(
+                          9.5,
+                          color: _Ledger.paper.withValues(alpha: 0.45),
+                          weight: FontWeight.w700,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ),
+                    for (final country in countries)
+                      _CountryRow(
+                        country: country,
+                        flag: flagFor(country.countryCode),
+                        selected: country.countryCode == selectedCode,
+                        onTap: () => onPick(country),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CountryRow extends StatefulWidget {
+  final SubscriptionCountry country;
+  final String flag;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CountryRow({
+    required this.country,
+    required this.flag,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  State<_CountryRow> createState() => _CountryRowState();
+}
+
+class _CountryRowState extends State<_CountryRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.selected;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected
+                ? _Ledger.paper.withValues(alpha: 0.1)
+                : (_hovered ? _Ledger.paper.withValues(alpha: 0.05) : Colors.transparent),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: selected
+                  ? _Ledger.stamp.withValues(alpha: 0.5)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            children: [
+              Text(widget.flag, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.country.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _Ledger.display(
+                        14,
+                        color: _Ledger.paper,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      widget.country.currency.toUpperCase(),
+                      style: _Ledger.mono(
+                        9,
+                        color: _Ledger.paper.withValues(alpha: 0.45),
+                        weight: FontWeight.w600,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_rounded,
+                  size: 18,
+                  color: _Ledger.stamp,
+                ),
+            ],
+          ),
         ),
       ),
     );

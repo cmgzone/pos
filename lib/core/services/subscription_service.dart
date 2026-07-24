@@ -108,6 +108,26 @@ class SubscriptionMarket {
   String get displayLabel => '$label - $providerLabel';
 }
 
+class SubscriptionCountry {
+  final String countryCode;
+  final String label;
+  final String currency;
+
+  const SubscriptionCountry({
+    required this.countryCode,
+    required this.label,
+    required this.currency,
+  });
+
+  factory SubscriptionCountry.fromJson(Map<String, dynamic> json) {
+    return SubscriptionCountry(
+      countryCode: json['countryCode']?.toString() ?? 'GLOBAL',
+      label: json['label']?.toString() ?? 'Other Countries',
+      currency: json['currency']?.toString() ?? 'USD',
+    );
+  }
+}
+
 class SubscriptionPlanSummary {
   final String code;
   final String name;
@@ -215,6 +235,7 @@ class SubscriptionCatalog {
   final String? provider;
   final SubscriptionMarket? selectedMarket;
   final List<SubscriptionMarket> markets;
+  final List<SubscriptionCountry> availableCountries;
   final List<SubscriptionPlanSummary> plans;
   final String platform;
 
@@ -224,6 +245,7 @@ class SubscriptionCatalog {
     required this.provider,
     required this.selectedMarket,
     required this.markets,
+    required this.availableCountries,
     required this.plans,
     required this.platform,
   });
@@ -301,6 +323,13 @@ class SubscriptionService {
             body['selectedMarket'] as Map<String, dynamic>,
           )
         : null;
+    final rawCountries = body['availableCountries'];
+    final availableCountries = rawCountries is List
+        ? rawCountries
+              .whereType<Map<String, dynamic>>()
+              .map(SubscriptionCountry.fromJson)
+              .toList()
+        : <SubscriptionCountry>[];
     return SubscriptionCatalog(
       backendUrl: _sourceBackendUrl(response),
       countryCode: body['countryCode']?.toString(),
@@ -311,6 +340,7 @@ class SubscriptionService {
           ? (markets.isEmpty ? null : markets.first)
           : parsedSelectedMarket,
       markets: markets,
+      availableCountries: availableCountries,
       plans: rawPlans is List
           ? rawPlans
                 .whereType<Map<String, dynamic>>()
