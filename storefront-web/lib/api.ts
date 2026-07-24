@@ -98,7 +98,8 @@ export async function fetchCatalog(
   params.set("storefront", storefrontType);
   const query = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(
-    buildUrl(`/public/catalog/${encodeURIComponent(businessId)}${query}`)
+    buildUrl(`/public/catalog/${encodeURIComponent(businessId)}${query}`),
+    { signal: AbortSignal.timeout(15000) }
   );
   const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
@@ -128,6 +129,7 @@ export async function placeOrder(
         storefrontType: payload.storefrontType || storefrontTypeFromPath(),
         businessId,
       }),
+      signal: AbortSignal.timeout(30000),
     }
   );
   const json = await readApiJson(res);
@@ -163,7 +165,8 @@ export async function trackOrder(
       `/public/catalog/${encodeURIComponent(businessId)}/orders/${encodeURIComponent(
         cleanOrderNumber
       )}?${params.toString()}`
-    )
+    ),
+    { signal: AbortSignal.timeout(15000) }
   );
   const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
@@ -202,6 +205,13 @@ export async function signInCustomerPortal(
   return json as { token: string; customer: CustomerPortalStatement['customer'] };
 }
 
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Your session has expired. Please sign in again.');
+    this.name = 'SessionExpiredError';
+  }
+}
+
 async function customerPortalRequest(path: string, token: string, init?: RequestInit) {
   const res = await fetch(buildUrl(path), {
     ...init,
@@ -209,7 +219,11 @@ async function customerPortalRequest(path: string, token: string, init?: Request
       Authorization: `Bearer ${token}`,
       ...(init?.headers || {}),
     },
+    signal: AbortSignal.timeout(15000),
   });
+  if (res.status === 401) {
+    throw new SessionExpiredError();
+  }
   const json = await readApiJson(res);
   if (!res.ok || !json.ok) {
     throw new Error(json?.message || json?.error || 'Customer portal request failed.');

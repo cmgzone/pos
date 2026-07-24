@@ -917,9 +917,10 @@ function toIsoString(value) {
     return null;
   }
   if (value instanceof Date) {
-    return value.toISOString();
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
   }
-  return new Date(value).toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 module.exports = {

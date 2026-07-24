@@ -297,9 +297,6 @@ async function consumeEmailOtpVerification({
   await ensureEmailOtpSchema(target);
   const cleanEmail = normalizeEmail(email);
   const cleanPurpose = normalizePurpose(purpose);
-  if (!cleanToken) {
-    throw createOtpError(403, 'Verify your email before creating account.');
-  }
 
   const result = await runDbQuery(
     target,
@@ -352,6 +349,15 @@ async function resetPasswordWithVerifiedOtp({
   }
 
   await ensureEmailOtpSchema(target);
+
+  await consumeEmailOtpVerification({
+    email: cleanEmail,
+    purpose: 'password_reset',
+    verificationToken,
+    now,
+    target,
+  });
+
   const users = await runDbQuery(
     target,
     `
@@ -373,14 +379,6 @@ async function resetPasswordWithVerifiedOtp({
       'This email is used in more than one business. Ask an admin to reset the staff password.',
     );
   }
-
-  await consumeEmailOtpVerification({
-    email: cleanEmail,
-    purpose: 'password_reset',
-    verificationToken,
-    now,
-    target,
-  });
 
   const result = await runDbQuery(
     target,

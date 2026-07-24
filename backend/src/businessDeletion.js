@@ -45,6 +45,12 @@ async function deleteBusinessAccount(
   );
   await runQuery(
     target,
+    `DELETE FROM business_payment_gateways
+     WHERE business_id = $1`,
+    [cleanBusinessId],
+  );
+  await runQuery(
+    target,
     `UPDATE subscriptions
      SET status = 'canceled',
          updated_at = $2
@@ -60,6 +66,27 @@ async function deleteBusinessAccount(
          server_revision = nextval('sync_revision_seq')
      WHERE business_id = $1
        AND deleted_at IS NULL`,
+    [cleanBusinessId, deletedAt],
+  );
+  await runQuery(
+    target,
+    `UPDATE storefront_themes
+     SET deleted_at = $2, updated_at = $2
+     WHERE business_id = $1 AND deleted_at IS NULL`,
+    [cleanBusinessId, deletedAt],
+  );
+  await runQuery(
+    target,
+    `UPDATE storefront_pages
+     SET deleted_at = $2, updated_at = $2
+     WHERE business_id = $1 AND deleted_at IS NULL`,
+    [cleanBusinessId, deletedAt],
+  );
+  await runQuery(
+    target,
+    `UPDATE storefront_campaigns
+     SET deleted_at = $2, updated_at = $2
+     WHERE business_id = $1 AND deleted_at IS NULL`,
     [cleanBusinessId, deletedAt],
   );
 

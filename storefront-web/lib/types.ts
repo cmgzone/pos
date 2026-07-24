@@ -332,10 +332,10 @@ export interface Order {
   paymentStatus?: string;
   deliveryStatus?: string;
   trackingCode?: string;
+  paymentRequestId?: string;
   createdAt: string;
   items: {
     productName: string;
-  paymentRequestId?: string;
     quantity: number;
     unitPrice: number;
     lineTotal: number;

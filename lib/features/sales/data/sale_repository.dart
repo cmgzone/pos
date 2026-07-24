@@ -1303,8 +1303,9 @@ class SaleRepository {
             ? ((quantity * unitCost) / stockQuantity)
             : unitCost;
 
+        final refundItemId = _uuid.v4();
         await txn.insert(_itemsTable, {
-          'id': _uuid.v4(),
+          'id': refundItemId,
           'quantity': -quantity,
           'unit_price': item['unit_price'],
           'unit_cost': unitCost,
@@ -1318,6 +1319,28 @@ class SaleRepository {
           'updated_at': now,
           'sync_status': 'pending',
         });
+
+        final refundSerials = _serialNumbersFromItem(item);
+        if (refundSerials.isNotEmpty) {
+          final placeholders = List.filled(refundSerials.length, '?').join(',');
+          await txn.rawUpdate(
+            '''
+            UPDATE product_serials
+            SET status = 'available',
+                sale_id = NULL,
+                sale_item_id = NULL,
+                updated_at = ?,
+                sync_status = 'pending'
+            WHERE LOWER(serial_number) IN ($placeholders)
+              AND status = 'sold'
+              AND deleted_at IS NULL
+            ''',
+            [
+              now,
+              ...refundSerials.map((serial) => serial.toLowerCase()),
+            ],
+          );
+        }
 
         if (!UnitUtils.tracksStock(product)) {
           continue;

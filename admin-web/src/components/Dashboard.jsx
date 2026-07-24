@@ -189,7 +189,11 @@ export default function Dashboard({ token, onLogout }) {
 
   const exportContacts = () => {
     const rows = [['Name', 'Phone', 'Email', 'Business', 'Role', 'Joined'], ...filteredUsers.map((u) => [u.name, u.phone, u.email, u.business_name, u.role, u.created_at])]
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell || '').replaceAll('"', '""')}"`).join(',')).join('\n')
+    const csv = rows.map((row) => row.map((cell) => {
+      const text = String(cell || '').replaceAll('"', '""')
+      const safe = /^[=+\-@]/.test(text) ? `\t${text}` : text
+      return `"${safe}"`
+    }).join(',')).join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a'); link.href = url; link.download = `piki-contacts-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url)
   }

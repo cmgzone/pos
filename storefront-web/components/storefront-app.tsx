@@ -481,7 +481,7 @@ function StorefrontInner() {
       loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken, sitePreviewToken);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [loadCatalog, setCatalog, setSelectedBranch]);
+  }, [loadCatalog, setCatalog, setSelectedBranch, previewToken, pagePreviewToken, sitePreviewToken, businessId, branchId, storefrontType, campaignSlug, pageSlug]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
@@ -807,20 +807,40 @@ function resolveAppearancePalette(
 }
 
 function colorLuminance(color?: string): number {
-  const match = color?.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
-  if (!match) return 0;
-  const normalized =
-    match[1].length === 3
-      ? match[1]
-          .split("")
-          .map((character) => `${character}${character}`)
-          .join("")
-      : match[1].slice(0, 6);
-  const value = Number.parseInt(normalized, 16);
-  const red = (value >> 16) & 255;
-  const green = (value >> 8) & 255;
-  const blue = value & 255;
-  return (red * 0.2126 + green * 0.7152 + blue * 0.0722) / 255;
+  if (!color) return 0;
+  const trimmed = color.trim();
+
+  const hexMatch = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (hexMatch) {
+    const normalized =
+      hexMatch[1].length === 3
+        ? hexMatch[1]
+            .split("")
+            .map((character) => `${character}${character}`)
+            .join("")
+        : hexMatch[1].slice(0, 6);
+    const value = Number.parseInt(normalized, 16);
+    const red = (value >> 16) & 255;
+    const green = (value >> 8) & 255;
+    const blue = value & 255;
+    return (red * 0.2126 + green * 0.7152 + blue * 0.0722) / 255;
+  }
+
+  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgbMatch) {
+    const red = Number(rgbMatch[1]);
+    const green = Number(rgbMatch[2]);
+    const blue = Number(rgbMatch[3]);
+    return (red * 0.2126 + green * 0.7152 + blue * 0.0722) / 255;
+  }
+
+  const hslMatch = trimmed.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/i);
+  if (hslMatch) {
+    const lightness = Number(hslMatch[3]) / 100;
+    return lightness;
+  }
+
+  return 0;
 }
 
 function readableTextOn(color: string): string {

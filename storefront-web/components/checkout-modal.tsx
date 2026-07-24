@@ -84,6 +84,10 @@ export function CheckoutModal({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!customerName.trim() || !phone.trim()) return;
+    if (paymentMethod === "mpesa" && !/^\+?\d{10,15}$/.test(phone.trim())) {
+      setError("Enter a valid phone number for M-Pesa (e.g. 254712345678)");
+      return;
+    }
 
     const payload: OrderPayload = {
       branchId: business.selectedBranch.id,
@@ -114,6 +118,10 @@ export function CheckoutModal({
     setError(null);
     try {
       const data = await placeOrder(business.id, payload);
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
       setResult(data);
       clearCart();
     } catch (err) {

@@ -733,6 +733,7 @@ async function handleMpesaC2BCallback({ payload, persist = true }) {
           last_name = COALESCE(EXCLUDED.last_name, received_mpesa_payments.last_name),
           raw_payload_json = received_mpesa_payments.raw_payload_json || EXCLUDED.raw_payload_json,
           updated_at = NOW()
+      WHERE received_mpesa_payments.status = 'unclaimed'
       RETURNING *
       `,
       [

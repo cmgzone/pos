@@ -8,7 +8,9 @@ function normalizeCursor(value) {
     return null;
   }
   if (!/^\d+$/.test(trimmed)) {
-    throw new Error('Invalid cursor');
+    const error = new Error('Invalid cursor');
+    error.statusCode = 400;
+    throw error;
   }
 
   return BigInt(trimmed).toString();

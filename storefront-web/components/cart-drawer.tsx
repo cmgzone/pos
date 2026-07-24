@@ -132,7 +132,8 @@ export function CartDrawer({ onCheckout, currencySymbol, currencyCode }: CartDra
                                 </span>
                                 <button
                                   onClick={() => updateQuantity(key, quantity + 1)}
-                                  className="flex h-7 w-7 items-center justify-center text-muted transition hover:text-foreground"
+                                  disabled={variant ? quantity >= (variant.stock ?? Infinity) : quantity >= (item.stock ?? Infinity)}
+                                  className="flex h-7 w-7 items-center justify-center text-muted transition hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                                   aria-label="Increase quantity"
                                 >
                                   <Plus className="h-3 w-3" />

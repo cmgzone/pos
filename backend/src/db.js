@@ -34,7 +34,11 @@ async function withTransaction(callback) {
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('ROLLBACK failed after transaction error:', rollbackError);
+    }
     throw error;
   } finally {
     client.release();
@@ -51,7 +55,11 @@ async function withReadTransaction(callback) {
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('ROLLBACK failed after read transaction error:', rollbackError);
+    }
     throw error;
   } finally {
     client.release();

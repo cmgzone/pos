@@ -13771,8 +13771,25 @@ function applySecurityHeaders(req, res, next) {
 
 function createRateLimiter({ windowMs, max, keyPrefix }) {
   const buckets = new Map();
+  let lastCleanup = Date.now();
+  const CLEANUP_INTERVAL_MS = 60000;
+  const MAX_BUCKETS = 50000;
+
+  function cleanupExpired(now) {
+    if (now - lastCleanup < CLEANUP_INTERVAL_MS && buckets.size < MAX_BUCKETS) {
+      return;
+    }
+    lastCleanup = now;
+    for (const [key, value] of buckets.entries()) {
+      if (value.resetAt <= now) {
+        buckets.delete(key);
+      }
+    }
+  }
+
   return (req, res, next) => {
     const now = Date.now();
+    cleanupExpired(now);
     const identifier = [
       keyPrefix,
       req.ip || req.socket?.remoteAddress || 'unknown',
@@ -13792,13 +13809,6 @@ function createRateLimiter({ windowMs, max, keyPrefix }) {
       return;
     }
 
-    if (buckets.size > 10000) {
-      for (const [key, value] of buckets.entries()) {
-        if (value.resetAt <= now) {
-          buckets.delete(key);
-        }
-      }
-    }
     next();
   };
 }

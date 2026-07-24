@@ -229,7 +229,8 @@ if (config.nodeEnv !== 'production' && config.allowedOrigins.length === 0) {
   config.allowedOrigins = DEFAULT_DEV_ALLOWED_ORIGINS;
 }
 
-if (config.nodeEnv === 'production') {
+const isProduction = config.nodeEnv === 'production' || config.nodeEnv === 'prod';
+if (isProduction) {
   assertNonDefaultSecret(
     'LICENSE_SIGNING_SECRET',
     config.licenseSigningSecret,
@@ -266,6 +267,19 @@ if (config.nodeEnv === 'production') {
   if (config.allowedOrigins.length === 0) {
     throw new Error(
       'PLATFORM_ALLOWED_ORIGINS or CORS_ALLOWED_ORIGINS must be set in production',
+    );
+  }
+}
+
+if (config.publicBaseUrl && !isProduction) {
+  const hasDefaultSecrets =
+    config.licenseSigningSecret === DEFAULT_LICENSE_SIGNING_SECRET ||
+    config.platformAdminPassword === DEFAULT_PLATFORM_ADMIN_PASSWORD ||
+    config.platformJwtSecret === DEFAULT_PLATFORM_JWT_SECRET;
+  if (hasDefaultSecrets) {
+    console.warn(
+      'WARNING: PUBLIC_BASE_URL is set but default development secrets are in use. ' +
+        'Set NODE_ENV=production or override LICENSE_SIGNING_SECRET, PLATFORM_ADMIN_PASSWORD, and PLATFORM_JWT_SECRET.',
     );
   }
 }
