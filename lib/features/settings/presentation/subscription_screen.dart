@@ -20,7 +20,17 @@ class SubscriptionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: const Color(0xFFF7F7F5),
+      appBar: AppBar(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: const Text(
+          'Plans & billing',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+      ),
       body: SubscriptionPlansSection(
         fullPage: true,
         afterSignup: afterSignup,

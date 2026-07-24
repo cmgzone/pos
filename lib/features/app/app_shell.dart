@@ -2688,7 +2688,7 @@ class _SubscriptionPlansPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Subscription plans')),
+      appBar: AppBar(title: const Text('Plans & billing')),
       body: SubscriptionPlansSection(
         fullPage: true,
         onOpenApp: () => Navigator.of(context).pop(),
