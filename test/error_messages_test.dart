@@ -2,6 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_app/core/utils/error_messages.dart';
 
 void main() {
+  test('hides public base URL deployment details from customers', () {
+    expect(
+      AppErrorMessage.from(
+        Exception('PUBLIC_BASE_URL must be a public HTTPS URL.'),
+      ),
+      'Cloud services are not set up on this device. Contact support to finish setup.',
+    );
+  });
   group('AppErrorMessage', () {
     test('keeps simple customer-facing validation messages', () {
       expect(

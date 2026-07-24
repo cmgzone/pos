@@ -190,7 +190,9 @@ class AppErrorMessage {
     return lower.contains('cloud backend url is not configured') ||
         lower.contains('cloud backend is not configured') ||
         lower.contains('cloud sync is not configured') ||
-        lower.contains('backend url is not configured');
+        lower.contains('backend url is not configured') ||
+        lower.contains('public_base_url') ||
+        lower.contains('public base url');
   }
 
   static bool _looksTechnical(String lower, String message) {
