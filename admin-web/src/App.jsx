@@ -16,37 +16,19 @@ function App() {
   const [token, setToken] = useState(
     sessionStorage.getItem('platform_token') || null,
   )
-  const [tokenVerified, setTokenVerified] = useState(false)
   const isWhatsAppConnect = CONNECT_PATHS.has(window.location.pathname)
   const isWhatsAppCallback = CALLBACK_PATHS.has(window.location.pathname)
 
   const handleLogin = (newToken) => {
     sessionStorage.setItem('platform_token', newToken)
     setToken(newToken)
-    setTokenVerified(true)
   }
 
   const handleLogout = () => {
     sessionStorage.removeItem('platform_token')
     localStorage.removeItem('platform_token')
     setToken(null)
-    setTokenVerified(false)
   }
-
-  useEffect(() => {
-    if (!token) return
-    fetch(apiUrl('/api/platform/stats'), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (res.ok) {
-          setTokenVerified(true)
-        } else {
-          handleLogout()
-        }
-      })
-      .catch(() => setTokenVerified(true))
-  }, [token])
 
   // Intercept api errors globally to handle token expiration
   useEffect(() => {
@@ -75,10 +57,8 @@ function App() {
         <WhatsAppConnectLauncher />
       ) : isWhatsAppCallback ? (
         <WhatsAppConnectCallback />
-      ) : token && tokenVerified ? (
-        <Dashboard token={token} onLogout={handleLogout} />
       ) : token ? (
-        <Login onLogin={handleLogin} />
+        <Dashboard token={token} onLogout={handleLogout} />
       ) : (
         <Login onLogin={handleLogin} />
       )}
