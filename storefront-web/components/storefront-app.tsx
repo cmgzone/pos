@@ -481,7 +481,7 @@ function StorefrontInner() {
       loadCatalog(businessId, branchId, storefrontType, previewToken, campaignSlug, pageSlug, pagePreviewToken, sitePreviewToken);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [loadCatalog, setCatalog, setSelectedBranch, previewToken, pagePreviewToken, sitePreviewToken, businessId, branchId, storefrontType, campaignSlug, pageSlug]);
+  }, [loadCatalog, setCatalog, setSelectedBranch]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
