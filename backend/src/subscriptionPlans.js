@@ -804,6 +804,7 @@ async function listPublicMarkets(target = query) {
         p.provider,
         g.display_name,
         g.public_config_json,
+        g.secret_config_json,
         g.is_active AS gateway_active,
         (
           g.is_active = true
@@ -827,6 +828,7 @@ async function listPublicMarkets(target = query) {
   return result.rows
     .map((row) => {
       const provider = normalizeProvider(row.provider);
+      const secretConfig = parseJsonValue(row.secret_config_json, {});
       return {
         countryCode: normalizeCountryCode(row.country_code),
         label: countryLabel(row.country_code),
@@ -834,7 +836,8 @@ async function listPublicMarkets(target = query) {
         provider,
         providerLabel: row.display_name || providerLabel(row.provider),
         paymentActive:
-          Boolean(row.payment_active) && isProviderRuntimeReady(provider),
+          Boolean(row.payment_active) &&
+          isProviderRuntimeReady(provider, { secretConfig }),
         publicConfig: parseJsonValue(row.public_config_json, {}),
       };
     })
@@ -843,11 +846,24 @@ async function listPublicMarkets(target = query) {
 
 function isProviderRuntimeReady(
   provider,
-  { publicBaseUrl = config.publicBaseUrl } = {},
+  {
+    publicBaseUrl = config.publicBaseUrl,
+    secretConfig = {
+      secretKey: config.flutterwaveSecretKey,
+      webhookHash: config.flutterwaveWebhookSecretHash,
+    },
+  } = {},
 ) {
   const cleanProvider = normalizeProvider(provider);
-  if (cleanProvider === 'paypal' || cleanProvider === 'flutterwave') {
+  if (cleanProvider === 'paypal') {
     return isHttpsUrl(publicBaseUrl);
+  }
+  if (cleanProvider === 'flutterwave') {
+    return Boolean(
+      isHttpsUrl(publicBaseUrl) &&
+        secretConfig?.secretKey &&
+        secretConfig?.webhookHash,
+    );
   }
   return true;
 }
@@ -993,9 +1009,12 @@ function defaultPaymentGateways() {
       provider: 'flutterwave',
       displayName: 'Flutterwave',
       isActive: Boolean(
-        config.flutterwaveSecretKey &&
+        (config.flutterwaveSecretKey &&
           config.flutterwaveWebhookSecretHash &&
-          config.publicBaseUrl,
+          config.publicBaseUrl) ||
+          (config.flutterwaveClientId &&
+            config.flutterwaveClientSecret &&
+            config.flutterwaveEncryptionKey),
       ),
       countries: ['KE', 'GLOBAL'],
       publicConfig: removeEmptyValues({ baseUrl: config.flutterwaveBaseUrl }),
@@ -1225,20 +1244,35 @@ function validatePaymentGatewayConfiguration(gateway) {
   if (gateway.provider === 'flutterwave') {
     const publicConfig = gateway.publicConfig || {};
     const secretConfig = gateway.secretConfig || {};
-    if (!isHttpsUrl(publicConfig.baseUrl)) {
-      throw createError(400, 'Flutterwave base URL must be a valid HTTPS URL.');
-    }
-    if (!secretConfig.secretKey) {
-      throw createError(400, 'Flutterwave secret key is required.');
-    }
-    if (!secretConfig.webhookHash) {
-      throw createError(400, 'Flutterwave webhook secret hash is required.');
-    }
+    const hasV3Credentials = Boolean(
+      secretConfig.secretKey || secretConfig.webhookHash,
+    );
     const hasV4Credentials = Boolean(
       secretConfig.clientId ||
         secretConfig.clientSecret ||
         secretConfig.encryptionKey,
     );
+    if (!hasV3Credentials && !hasV4Credentials) {
+      throw createError(
+        400,
+        'Enter either Flutterwave v3 credentials or a complete v4 credential set.',
+      );
+    }
+    if (
+      hasV3Credentials &&
+      (!secretConfig.secretKey || !secretConfig.webhookHash)
+    ) {
+      throw createError(
+        400,
+        'Complete both Flutterwave v3 fields: Secret Key and Webhook Secret Hash.',
+      );
+    }
+    if (hasV3Credentials && !isHttpsUrl(publicConfig.baseUrl)) {
+      throw createError(
+        400,
+        'Flutterwave v3 base URL must be a valid HTTPS URL.',
+      );
+    }
     if (
       hasV4Credentials &&
       (!secretConfig.clientId ||

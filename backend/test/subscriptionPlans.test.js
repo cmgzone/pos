@@ -33,6 +33,21 @@ test('Flutterwave accepts complete v3 and v4 credential sets together', () => {
   );
 });
 
+test('Flutterwave accepts a complete v4 credential set without v3 credentials', () => {
+  assert.doesNotThrow(() =>
+    validatePaymentGatewayConfiguration({
+      provider: 'flutterwave',
+      isActive: true,
+      publicConfig: {},
+      secretConfig: {
+        clientId: 'v4-client-id',
+        clientSecret: 'v4-client-secret',
+        encryptionKey: 'v4-encryption-key',
+      },
+    }),
+  );
+});
+
 test('Flutterwave rejects an incomplete v4 credential set', () => {
   assert.throws(
     () =>
@@ -51,21 +66,41 @@ test('Flutterwave rejects an incomplete v4 credential set', () => {
 });
 
 test('hosted subscription providers require a public HTTPS return origin', () => {
+  const flutterwaveV3Credentials = {
+    secretKey: 'FLWSECK_TEST-example',
+    webhookHash: 'webhook-secret',
+  };
   assert.equal(
-    isProviderRuntimeReady('flutterwave', { publicBaseUrl: '' }),
+    isProviderRuntimeReady('flutterwave', {
+      publicBaseUrl: '',
+      secretConfig: flutterwaveV3Credentials,
+    }),
     false,
   );
   assert.equal(
     isProviderRuntimeReady('flutterwave', {
       publicBaseUrl: 'http://localhost:3000',
+      secretConfig: flutterwaveV3Credentials,
     }),
     false,
   );
   assert.equal(
     isProviderRuntimeReady('flutterwave', {
       publicBaseUrl: 'https://pikipos.com',
+      secretConfig: flutterwaveV3Credentials,
     }),
     true,
+  );
+  assert.equal(
+    isProviderRuntimeReady('flutterwave', {
+      publicBaseUrl: 'https://pikipos.com',
+      secretConfig: {
+        clientId: 'v4-client-id',
+        clientSecret: 'v4-client-secret',
+        encryptionKey: 'v4-encryption-key',
+      },
+    }),
+    false,
   );
   assert.equal(
     isProviderRuntimeReady('google_play', { publicBaseUrl: '' }),

@@ -200,18 +200,26 @@ function gatewayConfigurationError(gateway) {
   }
 
   if (gateway.provider === 'flutterwave') {
-    if (!isHttpsUrl(gateway.publicConfig?.baseUrl)) {
-      return 'Flutterwave API URL must use HTTPS.'
-    }
-    if (!gateway.secretConfig?.secretKey) return 'Flutterwave secret key is required.'
-    if (!gateway.secretConfig?.webhookHash) {
-      return 'Flutterwave webhook secret hash is required.'
-    }
+    const hasV3Credentials = Boolean(
+      gateway.secretConfig?.secretKey || gateway.secretConfig?.webhookHash,
+    )
     const hasV4Credentials = Boolean(
       gateway.secretConfig?.clientId ||
         gateway.secretConfig?.clientSecret ||
         gateway.secretConfig?.encryptionKey,
     )
+    if (!hasV3Credentials && !hasV4Credentials) {
+      return 'Enter either Flutterwave v3 credentials or a complete v4 credential set.'
+    }
+    if (
+      hasV3Credentials &&
+      (!gateway.secretConfig?.secretKey || !gateway.secretConfig?.webhookHash)
+    ) {
+      return 'Complete both Flutterwave v3 fields: Secret Key and Webhook Secret Hash.'
+    }
+    if (hasV3Credentials && !isHttpsUrl(gateway.publicConfig?.baseUrl)) {
+      return 'Flutterwave v3 API URL must use HTTPS.'
+    }
     if (
       hasV4Credentials &&
       (!gateway.secretConfig?.clientId ||
@@ -1693,8 +1701,8 @@ export default function SubscriptionPlansPanel({ token }) {
                   <div className="gateway-help">
                     <strong>Dual API credentials:</strong> v3 Secret Key powers the current
                     hosted recurring subscription checkout. v4 Client ID, Client Secret, and
-                    Encryption Key are stored separately for Flutterwave v4 direct APIs. Do not
-                    paste a v4 Client Secret into the v3 Secret Key field.
+                    Encryption Key can be saved on their own for Flutterwave v4 direct APIs.
+                    Do not paste a v4 Client Secret into the v3 Secret Key field.
                     <br />
                     <br />
                     <strong>Webhook URL:</strong>{' '}
