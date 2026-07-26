@@ -48,6 +48,22 @@ test('Flutterwave accepts a complete v4 credential set without v3 credentials', 
   );
 });
 
+test('Flutterwave accepts complete v4 credentials alongside partial legacy v3 settings', () => {
+  assert.doesNotThrow(() =>
+    validatePaymentGatewayConfiguration({
+      provider: 'flutterwave',
+      isActive: true,
+      publicConfig: {},
+      secretConfig: {
+        webhookHash: 'legacy-webhook-only',
+        clientId: 'v4-client-id',
+        clientSecret: 'v4-client-secret',
+        encryptionKey: 'v4-encryption-key',
+      },
+    }),
+  );
+});
+
 test('Flutterwave rejects an incomplete v4 credential set', () => {
   assert.throws(
     () =>

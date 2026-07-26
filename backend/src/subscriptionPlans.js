@@ -1244,44 +1244,44 @@ function validatePaymentGatewayConfiguration(gateway) {
   if (gateway.provider === 'flutterwave') {
     const publicConfig = gateway.publicConfig || {};
     const secretConfig = gateway.secretConfig || {};
+    const hasCompleteV3Credentials = Boolean(
+      secretConfig.secretKey && secretConfig.webhookHash,
+    );
     const hasV3Credentials = Boolean(
       secretConfig.secretKey || secretConfig.webhookHash,
+    );
+    const hasCompleteV4Credentials = Boolean(
+      secretConfig.clientId &&
+        secretConfig.clientSecret &&
+        secretConfig.encryptionKey,
     );
     const hasV4Credentials = Boolean(
       secretConfig.clientId ||
         secretConfig.clientSecret ||
         secretConfig.encryptionKey,
     );
-    if (!hasV3Credentials && !hasV4Credentials) {
+    if (hasV4Credentials && !hasCompleteV4Credentials) {
       throw createError(
         400,
-        'Enter either Flutterwave v3 credentials or a complete v4 credential set.',
+        'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.',
       );
     }
-    if (
-      hasV3Credentials &&
-      (!secretConfig.secretKey || !secretConfig.webhookHash)
-    ) {
-      throw createError(
-        400,
-        'Complete both Flutterwave v3 fields: Secret Key and Webhook Secret Hash.',
-      );
-    }
-    if (hasV3Credentials && !isHttpsUrl(publicConfig.baseUrl)) {
+    if (hasCompleteV3Credentials && !isHttpsUrl(publicConfig.baseUrl)) {
       throw createError(
         400,
         'Flutterwave v3 base URL must be a valid HTTPS URL.',
       );
     }
-    if (
-      hasV4Credentials &&
-      (!secretConfig.clientId ||
-        !secretConfig.clientSecret ||
-        !secretConfig.encryptionKey)
-    ) {
+    if (!hasCompleteV3Credentials && !hasCompleteV4Credentials) {
+      if (hasV3Credentials) {
+        throw createError(
+          400,
+          'Complete both Flutterwave v3 fields: Secret Key and Webhook Secret Hash.',
+        );
+      }
       throw createError(
         400,
-        'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.',
+        'Enter either Flutterwave v3 credentials or a complete v4 credential set.',
       );
     }
   }

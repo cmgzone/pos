@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiUrl, apiBaseUrl } from '../utils/api'
+import { apiUrl, apiBaseUrl, readApiJson } from '../utils/api'
 import { friendlyError } from '../utils/errors'
 
 const FEATURE_LABELS = {
@@ -200,33 +200,33 @@ function gatewayConfigurationError(gateway) {
   }
 
   if (gateway.provider === 'flutterwave') {
+    const hasCompleteV3Credentials = Boolean(
+      gateway.secretConfig?.secretKey && gateway.secretConfig?.webhookHash,
+    )
     const hasV3Credentials = Boolean(
       gateway.secretConfig?.secretKey || gateway.secretConfig?.webhookHash,
+    )
+    const hasCompleteV4Credentials = Boolean(
+      gateway.secretConfig?.clientId &&
+        gateway.secretConfig?.clientSecret &&
+        gateway.secretConfig?.encryptionKey,
     )
     const hasV4Credentials = Boolean(
       gateway.secretConfig?.clientId ||
         gateway.secretConfig?.clientSecret ||
         gateway.secretConfig?.encryptionKey,
     )
-    if (!hasV3Credentials && !hasV4Credentials) {
-      return 'Enter either Flutterwave v3 credentials or a complete v4 credential set.'
+    if (hasV4Credentials && !hasCompleteV4Credentials) {
+      return 'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.'
     }
-    if (
-      hasV3Credentials &&
-      (!gateway.secretConfig?.secretKey || !gateway.secretConfig?.webhookHash)
-    ) {
-      return 'Complete both Flutterwave v3 fields: Secret Key and Webhook Secret Hash.'
-    }
-    if (hasV3Credentials && !isHttpsUrl(gateway.publicConfig?.baseUrl)) {
+    if (hasCompleteV3Credentials && !isHttpsUrl(gateway.publicConfig?.baseUrl)) {
       return 'Flutterwave v3 API URL must use HTTPS.'
     }
-    if (
-      hasV4Credentials &&
-      (!gateway.secretConfig?.clientId ||
-        !gateway.secretConfig?.clientSecret ||
-        !gateway.secretConfig?.encryptionKey)
-    ) {
-      return 'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.'
+    if (!hasCompleteV3Credentials && !hasCompleteV4Credentials) {
+      if (hasV3Credentials) {
+        return 'Complete both Flutterwave v3 fields: Secret Key and Webhook Secret Hash.'
+      }
+      return 'Enter either Flutterwave v3 credentials or a complete v4 credential set.'
     }
   }
 
@@ -314,6 +314,11 @@ export default function SubscriptionPlansPanel({ token }) {
   const [savingMessageGateway, setSavingMessageGateway] = useState('')
   const [savingEtimsConfig, setSavingEtimsConfig] = useState(false)
   const [message, setMessage] = useState('')
+  const [gatewayFeedback, setGatewayFeedback] = useState({
+    provider: '',
+    message: '',
+    ok: false,
+  })
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === selectedCode) || plans[0] || null,
@@ -778,6 +783,7 @@ export default function SubscriptionPlansPanel({ token }) {
     if (!gateway) return
     setSavingGateway(provider)
     setMessage('')
+    setGatewayFeedback({ provider, message: '', ok: false })
     try {
       let publicConfig = gateway.publicConfig || {}
       let urlAdjusted = false
@@ -810,7 +816,7 @@ export default function SubscriptionPlansPanel({ token }) {
           secretConfig: gateway.secretConfig || {},
         }),
       })
-      const body = await response.json()
+      const body = await readApiJson(response)
       if (!response.ok || body.ok !== true) {
         throw new Error(body.error || 'Could not save payment gateway')
       }
@@ -824,13 +830,15 @@ export default function SubscriptionPlansPanel({ token }) {
         ...current,
         [nextGateway.provider]: cloneGateway(nextGateway),
       }))
-      setMessage(
-        urlAdjusted
-          ? 'Payment gateway saved. Flutterwave API URL was corrected to https://api.flutterwave.com/v3 (the current API version).'
-          : 'Payment gateway saved',
-      )
+      const successMessage = urlAdjusted
+        ? 'Payment gateway saved. Flutterwave API URL was corrected to https://api.flutterwave.com/v3.'
+        : 'Payment gateway saved successfully.'
+      setMessage(successMessage)
+      setGatewayFeedback({ provider, message: successMessage, ok: true })
     } catch (error) {
-      setMessage(friendlyError(error, 'Could not save payment gateway.'))
+      const errorMessage = friendlyError(error, 'Could not save payment gateway.')
+      setMessage(errorMessage)
+      setGatewayFeedback({ provider, message: errorMessage, ok: false })
     } finally {
       setSavingGateway('')
     }
@@ -1789,12 +1797,24 @@ export default function SubscriptionPlansPanel({ token }) {
                   </span>
                   <button
                     className="btn btn-primary"
+                    type="button"
                     disabled={savingGateway === gateway.provider}
                     onClick={() => saveGateway(gateway.provider)}
                   >
                     {savingGateway === gateway.provider ? 'Saving...' : 'Save Gateway'}
                   </button>
                 </div>
+                {gatewayFeedback.provider === gateway.provider &&
+                  gatewayFeedback.message && (
+                    <div
+                      className={`gateway-save-feedback ${
+                        gatewayFeedback.ok ? 'is-success' : 'is-error'
+                      }`}
+                      role="status"
+                    >
+                      {gatewayFeedback.message}
+                    </div>
+                  )}
               </div>
             )
           })}

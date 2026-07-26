@@ -702,6 +702,26 @@ select.compact-input {
   font-size: 0.875rem;
 }
 
+.gateway-save-feedback {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.8rem;
+  font-size: 0.8125rem;
+}
+
+.gateway-save-feedback.is-success {
+  border-color: rgba(46, 160, 112, 0.4);
+  color: var(--accent-success);
+  background: rgba(46, 160, 112, 0.08);
+}
+
+.gateway-save-feedback.is-error {
+  border-color: rgba(220, 76, 76, 0.4);
+  color: var(--accent-danger);
+  background: rgba(220, 76, 76, 0.08);
+}
+
 .gateway-panel {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
