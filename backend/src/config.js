@@ -106,6 +106,8 @@ const config = {
   paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET?.trim() || '',
   flutterwaveBaseUrl:
     process.env.FLUTTERWAVE_BASE_URL?.trim() || 'https://api.flutterwave.com/v3',
+  flutterwaveV4BaseUrl:
+    process.env.FLUTTERWAVE_V4_BASE_URL?.trim().replace(/\/+$/, '') || '',
   flutterwaveSecretKey:
     process.env.FLUTTERWAVE_SECRET_KEY?.trim() ||
     process.env.FLW_SECRET_KEY?.trim() ||

@@ -2,8 +2,8 @@
 # that contains the .exe plus all required plugin DLLs and the data folder.
 #
 # Usage:
-#   .\scripts\package-windows.ps1                    # uses AppConstants.appVersion
-#   .\scripts\package-windows.ps1 -Version 1.2.0     # explicit version
+#   .\scripts\package-windows.ps1                    # uses pubspec.yaml version
+#   .\scripts\package-windows.ps1 -Version 1.2.0+7   # explicit version
 #   .\scripts\package-windows.ps1 -OutputDir C:\releases
 #
 # A bare Flutter .exe will fail at runtime with errors like
@@ -22,21 +22,25 @@ Set-Location $ProjectRoot
 
 # --- Determine version -------------------------------------------------------
 if (-not $Version) {
-  $constantsPath = Join-Path $ProjectRoot "lib\core\constants\app_constants.dart"
-  if (Test-Path $constantsPath) {
-    $match = Select-String -Path $constantsPath -Pattern "appVersion\s*=\s*'([^']+)'"
+  $pubspecPath = Join-Path $ProjectRoot "pubspec.yaml"
+  if (Test-Path $pubspecPath) {
+    $match = Select-String -Path $pubspecPath -Pattern "^\s*version:\s*([^\s#]+)"
     if ($match) {
       $Version = $match.Matches[0].Groups[1].Value
     }
   }
 }
-if (-not $Version) { $Version = "1.0.0" }
+if (-not $Version) { $Version = "1.0.0+1" }
 $cleanVersion = $Version -replace "\+.*$", ""
+$buildNumber = if ($Version -match "\+(\d+)$") { $Matches[1] } else { "1" }
 Write-Host "Building Piki POS Windows release v$cleanVersion..." -ForegroundColor Cyan
 
 # --- Build -------------------------------------------------------------------
-Write-Host "Running flutter build windows --release..." -ForegroundColor Yellow
-flutter build windows --release
+Write-Host "Running flutter build windows --release --build-name $cleanVersion --build-number $buildNumber..." -ForegroundColor Yellow
+flutter build windows --release `
+  --build-name $cleanVersion `
+  --build-number $buildNumber `
+  --dart-define "APP_VERSION=$Version"
 if ($LASTEXITCODE -ne 0) {
   Write-Error "flutter build windows failed with exit code $LASTEXITCODE"
   exit 1
@@ -116,14 +120,22 @@ if ($innoPath) {
   Write-Host "Building Windows installer with Inno Setup..." -ForegroundColor Yellow
   $issPath = Join-Path $ProjectRoot "scripts\piki-pos-windows.iss"
   if (Test-Path $issPath) {
+    $installerName = "piki-pos-windows-$cleanVersion-setup.exe"
+    $installerPath = Join-Path (Join-Path $ProjectRoot "build\windows-packages") $installerName
+    if (Test-Path $installerPath) {
+      Remove-Item $installerPath -Force
+    }
+
     # Update the version in the .iss file so the installer matches
     $issContent = Get-Content $issPath -Raw
     $issContent = $issContent -replace '#define MyAppVersion "[^"]*"', "#define MyAppVersion `"$cleanVersion`""
     Set-Content -Path $issPath -Value $issContent -NoNewline
 
     & $innoPath $issPath 2>&1 | ForEach-Object { Write-Host $_ }
-    $installerName = "piki-pos-windows-$cleanVersion-setup.exe"
-    $installerPath = Join-Path $OutputDir $installerName
+    if ($LASTEXITCODE -ne 0) {
+      Write-Error "Inno Setup failed with exit code $LASTEXITCODE"
+      exit 1
+    }
     if (Test-Path $installerPath) {
       Write-Host "Installer created successfully." -ForegroundColor Green
     } else {

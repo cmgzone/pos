@@ -35,8 +35,9 @@ const SELLING_MODE_LABELS = {
 
 const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
 const META_API_VERSION_PATTERN = /^v\d+\.\d+$/
-const FLUTTERWAVE_WEBHOOK_PATH = '/api/subscription/flutterwave/webhook'
 const FLUTTERWAVE_DASHBOARD_WEBHOOK_URL = 'https://dashboard.flutterwave.com'
+const FLUTTERWAVE_WEBHOOK_SETUP_STAGES =
+  'Setup order: keep the gateway inactive; configure credentials and save a secret hash; copy the canonical URL into Flutterwave Dashboard; send a signed Dashboard test webhook; reload or run the readiness test until the webhook is verified; then enable and save the gateway.'
 const APP_RELEASE_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
 const GATEWAY_FIELDS = {
@@ -56,7 +57,9 @@ const GATEWAY_FIELDS = {
   },
   flutterwave: {
     public: [
+      ['apiVersion', 'Checkout API Version (v4/v3)'],
       ['baseUrl', 'v3 Standard API Base URL'],
+      ['v4BaseUrl', 'v4 API Base URL'],
       ['environment', 'Environment (production/sandbox)'],
     ],
     secret: [
@@ -157,6 +160,37 @@ function isHttpsUrl(value) {
   }
 }
 
+function flutterwaveWebhookStatusFrom(...sources) {
+  const status = {}
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue
+    const candidate = String(source.webhookUrl || source.callbackUrl || '').trim()
+    if (!status.webhookUrl && isHttpsUrl(candidate)) {
+      status.webhookUrl = candidate
+    }
+    if (
+      status.webhookVerified === undefined &&
+      Object.prototype.hasOwnProperty.call(source, 'webhookVerified')
+    ) {
+      status.webhookVerified = source.webhookVerified === true
+    }
+    if (
+      status.webhookLastVerifiedAt === undefined &&
+      Object.prototype.hasOwnProperty.call(source, 'webhookLastVerifiedAt')
+    ) {
+      status.webhookLastVerifiedAt =
+        String(source.webhookLastVerifiedAt || '').trim() || null
+    }
+  }
+  return status
+}
+
+function formatWebhookVerifiedAt(value) {
+  if (!value) return 'Never'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
+}
+
 // Flutterwave's REST API only exists under /v3. The dashboard/docs advertise a
 // "v4.0.0" label that is a documentation version, NOT an API URL — pointing the
 // gateway at .../v4 makes every checkout 404. Force the standard host to /v3
@@ -175,6 +209,14 @@ function normalizeFlutterwaveBaseUrl(value) {
   }
   const canonical = `${parsed.protocol}//api.flutterwave.com/v3`
   return { url: canonical, adjusted: trimmed !== canonical }
+}
+
+function flutterwaveV4BaseUrlForEnvironment(environment) {
+  return ['sandbox', 'test', 'testing'].includes(
+    String(environment || '').trim().toLowerCase(),
+  )
+    ? 'https://developersandbox-api.flutterwave.com'
+    : 'https://f4bexperience.flutterwave.com'
 }
 
 function gatewayConfigurationError(gateway) {
@@ -200,6 +242,12 @@ function gatewayConfigurationError(gateway) {
   }
 
   if (gateway.provider === 'flutterwave') {
+    const apiVersion = String(gateway.publicConfig?.apiVersion || '')
+      .trim()
+      .toLowerCase()
+    if (apiVersion && !['v3', 'v4'].includes(apiVersion)) {
+      return 'Flutterwave Checkout API Version must be v4 or v3.'
+    }
     const hasCompleteV3Credentials = Boolean(
       gateway.secretConfig?.secretKey && gateway.secretConfig?.webhookHash,
     )
@@ -216,11 +264,47 @@ function gatewayConfigurationError(gateway) {
         gateway.secretConfig?.clientSecret ||
         gateway.secretConfig?.encryptionKey,
     )
+    if (hasCompleteV3Credentials && hasCompleteV4Credentials && !apiVersion) {
+      return 'Choose Flutterwave Checkout API Version v4 or v3 when both credential sets are saved.'
+    }
     if (hasV4Credentials && !hasCompleteV4Credentials) {
       return 'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.'
     }
-    if (hasCompleteV3Credentials && !isHttpsUrl(gateway.publicConfig?.baseUrl)) {
+    if (apiVersion === 'v4' && !hasCompleteV4Credentials) {
+      return 'Complete all Flutterwave v4 credentials before selecting v4 checkout.'
+    }
+    if (apiVersion === 'v3' && !hasCompleteV3Credentials) {
+      return 'Complete both Flutterwave v3 fields before selecting v3 checkout.'
+    }
+    const usesV3Checkout =
+      apiVersion === 'v3' ||
+      (!apiVersion && hasCompleteV3Credentials && !hasCompleteV4Credentials)
+    if (usesV3Checkout && !isHttpsUrl(gateway.publicConfig?.baseUrl)) {
       return 'Flutterwave v3 API URL must use HTTPS.'
+    }
+    const environment = String(
+      gateway.publicConfig?.environment || 'sandbox',
+    )
+      .trim()
+      .toLowerCase()
+    if (!['sandbox', 'test', 'testing', 'production', 'live'].includes(environment)) {
+      return 'Flutterwave environment must be sandbox or production.'
+    }
+    const v4BaseUrl = String(gateway.publicConfig?.v4BaseUrl || '')
+      .trim()
+      .replace(/\/+$/, '')
+    const expectedV4BaseUrl = flutterwaveV4BaseUrlForEnvironment(environment)
+    if (
+      v4BaseUrl &&
+      ![
+        'https://developersandbox-api.flutterwave.com',
+        'https://f4bexperience.flutterwave.com',
+      ].includes(v4BaseUrl)
+    ) {
+      return 'Flutterwave v4 API URL must use the official sandbox or production host.'
+    }
+    if (apiVersion === 'v4' && v4BaseUrl && v4BaseUrl !== expectedV4BaseUrl) {
+      return 'Flutterwave v4 API URL does not match the selected environment.'
     }
     if (!hasCompleteV3Credentials && !hasCompleteV4Credentials) {
       if (hasV3Credentials) {
@@ -319,6 +403,12 @@ export default function SubscriptionPlansPanel({ token }) {
     message: '',
     ok: false,
   })
+  const [flutterwaveWebhookStatus, setFlutterwaveWebhookStatus] = useState({
+    webhookUrl: '',
+    webhookVerified: false,
+    webhookLastVerifiedAt: null,
+  })
+  const flutterwaveWebhookUrl = flutterwaveWebhookStatus.webhookUrl
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === selectedCode) || plans[0] || null,
@@ -381,6 +471,15 @@ export default function SubscriptionPlansPanel({ token }) {
             nextGateways.map((gateway) => [gateway.provider, cloneGateway(gateway)]),
           ),
         )
+        setFlutterwaveWebhookStatus({
+          webhookUrl: '',
+          webhookVerified: false,
+          webhookLastVerifiedAt: null,
+          ...flutterwaveWebhookStatusFrom(
+            nextGateways.find((gateway) => gateway.provider === 'flutterwave'),
+            gatewayResult.value,
+          ),
+        })
       }
       if (messageGatewayResult.status === 'fulfilled') {
         const nextMessageGateways = messageGatewayResult.value.data || []
@@ -693,6 +792,17 @@ export default function SubscriptionPlansPanel({ token }) {
   }
 
   const updateGatewayConfig = (provider, group, key, value) => {
+    if (
+      provider === 'flutterwave' &&
+      group === 'secretConfig' &&
+      key === 'webhookHash'
+    ) {
+      setFlutterwaveWebhookStatus((current) => ({
+        ...current,
+        webhookVerified: false,
+        webhookLastVerifiedAt: null,
+      }))
+    }
     setGatewayDrafts((current) => {
       const gateway = current[provider] || {}
       return {
@@ -732,21 +842,21 @@ export default function SubscriptionPlansPanel({ token }) {
   }
 
   const generateFlutterwaveWebhookHash = async (copySetup = false) => {
-    if (!apiBaseUrl || !isHttpsUrl(apiBaseUrl)) {
-      setMessage('Set PIKI_API_BASE_URL to the public HTTPS backend URL first.')
-      return
-    }
     const bytes = new Uint8Array(32)
     window.crypto.getRandomValues(bytes)
     const hash = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-    const webhookUrl = apiUrl(FLUTTERWAVE_WEBHOOK_PATH)
     updateGatewayConfig('flutterwave', 'secretConfig', 'webhookHash', hash)
-    if (copySetup) {
+    if (copySetup && flutterwaveWebhookUrl) {
       await copyGatewayValue(
         'Flutterwave webhook setup',
-        `Webhook URL:\n${webhookUrl}\n\nWebhook Secret Hash:\n${hash}`,
+        `Webhook URL:\n${flutterwaveWebhookUrl}\n\nWebhook Secret Hash:\n${hash}`,
       )
       setMessage('Webhook URL and secret hash copied. Save the gateway afterward.')
+    } else if (copySetup) {
+      await copyGatewayValue('Flutterwave webhook secret hash', hash)
+      setMessage(
+        'Webhook secret hash generated and copied, but the canonical webhook URL is unavailable. Save the hash, then reload or test after the backend supplies the URL.',
+      )
     } else {
       await copyGatewayValue('Flutterwave webhook secret hash', hash)
       setMessage('Webhook secret hash generated and copied. Save the gateway afterward.')
@@ -756,6 +866,7 @@ export default function SubscriptionPlansPanel({ token }) {
   const testFlutterwaveV4Credentials = async () => {
     setSavingGateway('flutterwave-v4-test')
     setMessage('')
+    setGatewayFeedback({ provider: 'flutterwave', message: '', ok: false })
     try {
       const response = await fetch(
         apiUrl('/api/platform/payment-gateways/flutterwave/test-v4'),
@@ -765,14 +876,92 @@ export default function SubscriptionPlansPanel({ token }) {
         },
       )
       const body = await response.json()
+      const data = body.data || {}
+      const testedWebhookStatus = flutterwaveWebhookStatusFrom(data, body)
+      const testedGatewayActive =
+        typeof data.gatewayActive === 'boolean'
+          ? data.gatewayActive
+          : typeof data.isActive === 'boolean'
+            ? data.isActive
+            : undefined
+      if (
+        Object.keys(testedWebhookStatus).length > 0 ||
+        testedGatewayActive !== undefined
+      ) {
+        setFlutterwaveWebhookStatus((current) => ({
+          ...current,
+          ...testedWebhookStatus,
+        }))
+        const gatewayPatch = {
+          ...testedWebhookStatus,
+          ...(testedGatewayActive === undefined
+            ? {}
+            : { isActive: testedGatewayActive }),
+        }
+        setGateways((current) =>
+          current.map((gateway) =>
+            gateway.provider === 'flutterwave'
+              ? { ...gateway, ...gatewayPatch }
+              : gateway,
+          ),
+        )
+        setGatewayDrafts((current) => ({
+          ...current,
+          flutterwave: {
+            ...(current.flutterwave || {}),
+            ...gatewayPatch,
+          },
+        }))
+      }
       if (!response.ok || body.ok !== true) {
         throw new Error(body.error || 'Flutterwave v4 authentication failed')
       }
-      setMessage(
-        `Flutterwave v4 credentials authenticated. OAuth token lifetime: ${body.data?.expiresIn || 600} seconds.`,
-      )
+      const gatewayActive =
+        testedGatewayActive ??
+        Boolean(gatewayDrafts.flutterwave?.isActive)
+      const webhookVerified = data.webhookVerified === true
+      const checkoutReady = data.checkoutReady === true
+      const fullyReady = checkoutReady && webhookVerified && gatewayActive
+      const feedbackMessage = fullyReady
+        ? data.message ||
+          `Flutterwave v4 checkout is ready. OAuth token lifetime: ${
+            data.expiresIn || 600
+          } seconds.`
+        : [
+            data.apiAccessReady === true || data.authenticated === true
+              ? 'Flutterwave API access works, but checkout is not ready.'
+              : 'Flutterwave checkout is not ready.',
+            webhookVerified
+              ? ''
+              : 'The signed webhook has not been verified.',
+            gatewayActive ? '' : 'The gateway is currently inactive.',
+            FLUTTERWAVE_WEBHOOK_SETUP_STAGES,
+          ]
+            .filter(Boolean)
+            .join(' ')
+      setMessage(feedbackMessage)
+      setGatewayFeedback({
+        provider: 'flutterwave',
+        message: feedbackMessage,
+        ok: fullyReady,
+      })
     } catch (error) {
-      setMessage(friendlyError(error, 'Could not authenticate Flutterwave v4 credentials.'))
+      let errorMessage = friendlyError(
+        error,
+        'Could not authenticate Flutterwave v4 credentials.',
+      )
+      if (
+        !gatewayDrafts.flutterwave?.isActive ||
+        /inactive|webhook|callback/i.test(errorMessage)
+      ) {
+        errorMessage = `${errorMessage} ${FLUTTERWAVE_WEBHOOK_SETUP_STAGES}`
+      }
+      setMessage(errorMessage)
+      setGatewayFeedback({
+        provider: 'flutterwave',
+        message: errorMessage,
+        ok: false,
+      })
     } finally {
       setSavingGateway('')
     }
@@ -788,11 +977,42 @@ export default function SubscriptionPlansPanel({ token }) {
       let publicConfig = gateway.publicConfig || {}
       let urlAdjusted = false
       if (provider === 'flutterwave') {
-        const normalized = normalizeFlutterwaveBaseUrl(publicConfig.baseUrl)
-        urlAdjusted = normalized.adjusted
-        if (urlAdjusted) {
-          publicConfig = { ...publicConfig, baseUrl: normalized.url }
-          updateGatewayConfig('flutterwave', 'publicConfig', 'baseUrl', normalized.url)
+        const hasV3Credentials = Boolean(
+          gateway.secretConfig?.secretKey || gateway.secretConfig?.webhookHash,
+        )
+        if (hasV3Credentials) {
+          const normalized = normalizeFlutterwaveBaseUrl(publicConfig.baseUrl)
+          urlAdjusted = normalized.adjusted
+          if (urlAdjusted) {
+            publicConfig = { ...publicConfig, baseUrl: normalized.url }
+            updateGatewayConfig('flutterwave', 'publicConfig', 'baseUrl', normalized.url)
+          }
+        }
+        const hasCompleteV4Credentials = Boolean(
+          gateway.secretConfig?.clientId &&
+            gateway.secretConfig?.clientSecret &&
+            gateway.secretConfig?.encryptionKey,
+        )
+        const hasCompleteV3Credentials = Boolean(
+          gateway.secretConfig?.secretKey && gateway.secretConfig?.webhookHash,
+        )
+        if (
+          !String(publicConfig.apiVersion || '').trim() &&
+          hasCompleteV4Credentials !== hasCompleteV3Credentials
+        ) {
+          const apiVersion = hasCompleteV4Credentials ? 'v4' : 'v3'
+          publicConfig = { ...publicConfig, apiVersion }
+          updateGatewayConfig(
+            'flutterwave',
+            'publicConfig',
+            'apiVersion',
+            apiVersion,
+          )
+        }
+        if (hasCompleteV4Credentials && !String(publicConfig.v4BaseUrl || '').trim()) {
+          const v4BaseUrl = flutterwaveV4BaseUrlForEnvironment(publicConfig.environment)
+          publicConfig = { ...publicConfig, v4BaseUrl }
+          updateGatewayConfig('flutterwave', 'publicConfig', 'v4BaseUrl', v4BaseUrl)
         }
       }
       const validationError = gatewayConfigurationError({ ...gateway, publicConfig })
@@ -821,6 +1041,16 @@ export default function SubscriptionPlansPanel({ token }) {
         throw new Error(body.error || 'Could not save payment gateway')
       }
       const nextGateway = body.data
+      if (provider === 'flutterwave') {
+        const savedWebhookStatus = flutterwaveWebhookStatusFrom(
+          nextGateway,
+          body,
+        )
+        setFlutterwaveWebhookStatus((current) => ({
+          ...current,
+          ...savedWebhookStatus,
+        }))
+      }
       setGateways((current) =>
         current.map((item) =>
           item.provider === nextGateway.provider ? nextGateway : item,
@@ -1709,12 +1939,26 @@ export default function SubscriptionPlansPanel({ token }) {
                   <div className="gateway-help">
                     <strong>Dual API credentials:</strong> v3 Secret Key powers the current
                     hosted recurring subscription checkout. v4 Client ID, Client Secret, and
-                    Encryption Key can be saved on their own for Flutterwave v4 direct APIs.
+                    Encryption Key power the direct card checkout. Set Checkout API Version to
+                    the version enabled on your Flutterwave account; Flutterwave accounts cannot
+                    process v3 and v4 at the same time.
                     Do not paste a v4 Client Secret into the v3 Secret Key field.
+                    <br />
+                    v4 direct card checkout places the Piki app and backend in PCI DSS
+                    scope. Complete the applicable compliance review before enabling it in
+                    production.
                     <br />
                     <br />
                     <strong>Webhook URL:</strong>{' '}
-                    <code>{apiUrl('/api/subscription/flutterwave/webhook')}</code>
+                    {flutterwaveWebhookUrl ? (
+                      <code>{flutterwaveWebhookUrl}</code>
+                    ) : (
+                      <span>
+                        Unavailable until the backend supplies the canonical HTTPS
+                        webhook URL. Reload this page after deploying the backend, or
+                        run the v4 readiness test after saving the gateway.
+                      </span>
+                    )}
                     <br />
                     Set this URL and the same random secret hash in Flutterwave Dashboard →
                     Settings → Webhooks. The server verifies the current
@@ -1724,21 +1968,49 @@ export default function SubscriptionPlansPanel({ token }) {
 
                 {gateway.provider === 'flutterwave' && (
                   <div className="gateway-help-tools">
+                    <div
+                      className={`gateway-save-feedback ${
+                        flutterwaveWebhookStatus.webhookVerified &&
+                        gatewayDraft.isActive
+                          ? 'is-success'
+                          : 'is-error'
+                      }`}
+                      role="status"
+                    >
+                      <strong>
+                        Webhook verified:{' '}
+                        {flutterwaveWebhookStatus.webhookVerified ? 'Yes' : 'No'}
+                      </strong>
+                      <br />
+                      Webhook last verified:{' '}
+                      {formatWebhookVerifiedAt(
+                        flutterwaveWebhookStatus.webhookLastVerifiedAt,
+                      )}
+                      {(!flutterwaveWebhookStatus.webhookVerified ||
+                        !gatewayDraft.isActive) && (
+                        <>
+                          <br />
+                          {flutterwaveWebhookStatus.webhookVerified
+                            ? 'The signed webhook is verified. Enable and save the gateway to finish checkout setup.'
+                            : FLUTTERWAVE_WEBHOOK_SETUP_STAGES}
+                        </>
+                      )}
+                    </div>
                     <div className="gateway-copy-row">
-                      <code>{apiUrl(FLUTTERWAVE_WEBHOOK_PATH)}</code>
+                      <code>
+                        {flutterwaveWebhookUrl ||
+                          'Canonical webhook URL unavailable from backend'}
+                      </code>
                       <button
                         className="btn btn-secondary"
                         type="button"
-                        onClick={() => {
-                          if (!apiBaseUrl || !isHttpsUrl(apiBaseUrl)) {
-                            setMessage('Set PIKI_API_BASE_URL to the public HTTPS backend URL.')
-                            return
-                          }
+                        disabled={!flutterwaveWebhookUrl}
+                        onClick={() =>
                           copyGatewayValue(
                             'Flutterwave webhook URL',
-                            apiUrl(FLUTTERWAVE_WEBHOOK_PATH),
+                            flutterwaveWebhookUrl,
                           )
-                        }}
+                        }
                       >
                         Copy URL
                       </button>
@@ -1768,8 +2040,8 @@ export default function SubscriptionPlansPanel({ token }) {
                         onClick={testFlutterwaveV4Credentials}
                       >
                         {savingGateway === 'flutterwave-v4-test'
-                          ? 'Testing v4...'
-                          : 'Test v4 Credentials'}
+                          ? 'Testing checkout...'
+                          : 'Test v4 Checkout Readiness'}
                       </button>
                       <button
                         className="btn btn-secondary"
@@ -1787,7 +2059,12 @@ export default function SubscriptionPlansPanel({ token }) {
                         Open Flutterwave Dashboard
                       </a>
                     </div>
-                    <small>Save Gateway after generating a new hash.</small>
+                    <small>
+                      Save Gateway before testing. The readiness test verifies OAuth,
+                      encryption-key format, selected API access, environment, activation,
+                      and the public payment return URL. Webhook setup is shown only when
+                      the backend returns its canonical callback URL.
+                    </small>
                   </div>
                 )}
 

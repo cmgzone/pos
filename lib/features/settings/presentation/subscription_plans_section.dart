@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -48,41 +49,38 @@ class _Ledger {
     Color color = paper,
     FontWeight weight = FontWeight.w700,
     double? height,
-  }) =>
-      GoogleFonts.spaceGrotesk(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        letterSpacing: size * -0.02,
-        height: height ?? 1.05,
-      );
+  }) => GoogleFonts.spaceGrotesk(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    letterSpacing: size * -0.02,
+    height: height ?? 1.05,
+  );
 
   static TextStyle mono(
     double size, {
     Color color = paperInk,
     FontWeight weight = FontWeight.w600,
     double? letterSpacing,
-  }) =>
-      GoogleFonts.ibmPlexMono(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        letterSpacing: letterSpacing,
-      );
+  }) => GoogleFonts.ibmPlexMono(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    letterSpacing: letterSpacing,
+  );
 
   static TextStyle body(
     double size, {
     Color color = paperFaded,
     FontWeight weight = FontWeight.w500,
     double? height,
-  }) =>
-      TextStyle(
-        fontFamily: 'Inter',
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        height: height ?? 1.4,
-      );
+  }) => TextStyle(
+    fontFamily: 'Inter',
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    height: height ?? 1.4,
+  );
 }
 
 class SubscriptionPlansSection extends StatefulWidget {
@@ -320,6 +318,8 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
       });
       if (result.status == 'paid') {
         await _refreshLicenseAndReload(market);
+      } else if (result.isFlutterwaveV4) {
+        await _openFlutterwaveV4Checkout(result, market, price);
       } else if (result.provider == 'google_play') {
         await _purchaseWithGooglePlay(result, market, price);
       } else if (result.provider == 'paypal' ||
@@ -338,6 +338,43 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
       if (mounted) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<void> _openFlutterwaveV4Checkout(
+    SubscriptionCheckoutResult checkout,
+    SubscriptionMarket market,
+    SubscriptionPlanPrice price,
+  ) async {
+    final backendUrl = checkout.backendUrl;
+    final backendUri = Uri.tryParse(backendUrl ?? '');
+    if (backendUri == null ||
+        backendUri.scheme.toLowerCase() != 'https' ||
+        backendUri.host.isEmpty ||
+        backendUri.userInfo.isNotEmpty) {
+      throw Exception(
+        'Flutterwave v4 checkout requires a secure HTTPS Piki backend.',
+      );
+    }
+    final activated = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _FlutterwaveV4PaymentDialog(
+        checkout: checkout,
+        backendUrl: backendUrl!,
+        amountLabel: price.displayAmountWithCode,
+        countryCode: market.countryCode,
+      ),
+    );
+    if (!mounted) return;
+    if (activated == true) {
+      setState(() => _message = 'Subscription activated.');
+      await _refreshLicenseAndReload(market);
+    } else {
+      setState(() {
+        _message =
+            'Flutterwave payment was not completed. You can try again when ready.';
+      });
     }
   }
 
@@ -573,12 +610,16 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
               FadeTransition(
                 opacity: _reveal,
                 child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.12),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic),
-                  ),
+                  position:
+                      Tween<Offset>(
+                        begin: const Offset(0, 0.12),
+                        end: Offset.zero,
+                      ).animate(
+                        CurvedAnimation(
+                          parent: _reveal,
+                          curve: Curves.easeOutCubic,
+                        ),
+                      ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -609,10 +650,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                 ),
               ),
               SizedBox(height: desktop ? 26 : 20),
-              FadeTransition(
-                opacity: _reveal,
-                child: _licenseStrip(license),
-              ),
+              FadeTransition(opacity: _reveal, child: _licenseStrip(license)),
             ],
           ),
         ),
@@ -659,9 +697,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              border: Border.all(
-                color: _Ledger.paper.withValues(alpha: 0.28),
-              ),
+              border: Border.all(color: _Ledger.paper.withValues(alpha: 0.28)),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
@@ -677,7 +713,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(icon, size: 14, color: _Ledger.paper.withValues(alpha: 0.9)),
+                Icon(
+                  icon,
+                  size: 14,
+                  color: _Ledger.paper.withValues(alpha: 0.9),
+                ),
               ],
             ),
           ),
@@ -764,10 +804,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
         Container(
           width: 7,
           height: 7,
-          decoration: BoxDecoration(
-            color: valueColor,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: valueColor, shape: BoxShape.circle),
         ),
         const SizedBox(width: 10),
         Flexible(
@@ -789,7 +826,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _Ledger.mono(12.5, color: valueColor, weight: FontWeight.w700),
+                style: _Ledger.mono(
+                  12.5,
+                  color: valueColor,
+                  weight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -817,10 +858,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
           ),
         ),
         const SizedBox(width: 22),
-        SizedBox(
-          width: 340,
-          child: _orderRail(sticky: true),
-        ),
+        SizedBox(width: 340, child: _orderRail(sticky: true)),
       ],
     );
   }
@@ -986,9 +1024,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
     final provider = _selectedMarket()?.provider;
     _load(
       countryCode: country.countryCode,
-      marketKey: provider == null
-          ? null
-          : '${country.countryCode}:$provider',
+      marketKey: provider == null ? null : '${country.countryCode}:$provider',
     );
   }
 
@@ -1078,9 +1114,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                                 ? _Ledger.paperInk
                                 : _Ledger.paper.withValues(alpha: 0.55),
                           ),
-                          child: Text(
-                            _periodLabel(period).toUpperCase(),
-                          ),
+                          child: Text(_periodLabel(period).toUpperCase()),
                         ),
                       ),
                     ),
@@ -1159,10 +1193,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 760 ? plans.length.clamp(2, 4) : 2;
+        final columns = constraints.maxWidth >= 760
+            ? plans.length.clamp(2, 4)
+            : 2;
         const gap = 18.0;
-        final width =
-            (constraints.maxWidth - gap * (columns - 1)) / columns;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -1449,14 +1484,10 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: selected
-                      ? _Ledger.paperInk
-                      : _Ledger.paperDeep,
+                  color: selected ? _Ledger.paperInk : _Ledger.paperDeep,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: selected
-                        ? _Ledger.paperInk
-                        : _Ledger.paperRule,
+                    color: selected ? _Ledger.paperInk : _Ledger.paperRule,
                   ),
                 ),
                 child: Row(
@@ -1465,18 +1496,14 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                     Icon(
                       _providerIcon(market.provider),
                       size: 14,
-                      color: selected
-                          ? _Ledger.gold
-                          : _Ledger.paperFaded,
+                      color: selected ? _Ledger.gold : _Ledger.paperFaded,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       market.providerLabel,
                       style: _Ledger.mono(
                         10.5,
-                        color: selected
-                            ? _Ledger.paper
-                            : _Ledger.paperInk,
+                        color: selected ? _Ledger.paper : _Ledger.paperInk,
                         weight: FontWeight.w700,
                       ),
                     ),
@@ -1560,7 +1587,11 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
       ),
       child: Row(
         children: [
-          const Icon(Icons.receipt_long_rounded, color: _Ledger.stampDeep, size: 16),
+          const Icon(
+            Icons.receipt_long_rounded,
+            color: _Ledger.stampDeep,
+            size: 16,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1630,9 +1661,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
                         curve: Curves.easeOutCubic,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
-                          color: selected
-                              ? _Ledger.paper
-                              : Colors.transparent,
+                          color: selected ? _Ledger.paper : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: selected
@@ -1802,10 +1831,7 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
     return const SizedBox(
       height: 220,
       child: Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2.6,
-          color: _Ledger.mint,
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2.6, color: _Ledger.mint),
       ),
     );
   }
@@ -2167,6 +2193,1123 @@ class _SubscriptionPlansSectionState extends State<SubscriptionPlansSection>
 /// ───────────────────────────────────────────────────────────────────────────
 
 /// Staggered entrance for a receipt on the rack.
+enum _FlutterwaveV4Stage { card, pin, otp, avs, waiting, terminal }
+
+class _FlutterwaveV4PaymentDialog extends StatefulWidget {
+  final SubscriptionCheckoutResult checkout;
+  final String backendUrl;
+  final String amountLabel;
+  final String countryCode;
+
+  const _FlutterwaveV4PaymentDialog({
+    required this.checkout,
+    required this.backendUrl,
+    required this.amountLabel,
+    required this.countryCode,
+  });
+
+  @override
+  State<_FlutterwaveV4PaymentDialog> createState() =>
+      _FlutterwaveV4PaymentDialogState();
+}
+
+class _FlutterwaveV4PaymentDialogState
+    extends State<_FlutterwaveV4PaymentDialog> {
+  final _cardFormKey = GlobalKey<FormState>();
+  final _authorizationFormKey = GlobalKey<FormState>();
+  final _avsFormKey = GlobalKey<FormState>();
+  final _cardNumberController = TextEditingController();
+  final _expiryMonthController = TextEditingController();
+  final _expiryYearController = TextEditingController();
+  final _cvvController = TextEditingController();
+  final _authorizationController = TextEditingController();
+  final _addressLine1Controller = TextEditingController();
+  final _addressLine2Controller = TextEditingController();
+  final _cityController = TextEditingController();
+  final _stateController = TextEditingController();
+  final _countryController = TextEditingController();
+  final _postalCodeController = TextEditingController();
+
+  late _FlutterwaveV4Stage _stage;
+  bool _processing = false;
+  bool _obscureCvv = true;
+  bool _obscureAuthorization = true;
+  String? _error;
+  String? _openedRedirectUrl;
+  String? _terminalMessage;
+  bool _terminalCancelled = false;
+
+  bool get _canCancel =>
+      !_processing ||
+      _stage == _FlutterwaveV4Stage.waiting ||
+      _stage == _FlutterwaveV4Stage.terminal;
+
+  @override
+  void initState() {
+    super.initState();
+    _stage = widget.checkout.requiresPin
+        ? _FlutterwaveV4Stage.pin
+        : widget.checkout.requiresOtp
+        ? _FlutterwaveV4Stage.otp
+        : widget.checkout.requiresAvs
+        ? _FlutterwaveV4Stage.avs
+        : _FlutterwaveV4Stage.card;
+    final countryCode = widget.countryCode.trim().toUpperCase();
+    if (countryCode.length == 2 && countryCode != 'GLOBAL') {
+      _countryController.text = countryCode;
+    }
+  }
+
+  @override
+  void dispose() {
+    _clearCardFields();
+    _authorizationController.clear();
+    _clearAvsFields();
+    _cardNumberController.dispose();
+    _expiryMonthController.dispose();
+    _expiryYearController.dispose();
+    _cvvController.dispose();
+    _authorizationController.dispose();
+    _addressLine1Controller.dispose();
+    _addressLine2Controller.dispose();
+    _cityController.dispose();
+    _stateController.dispose();
+    _countryController.dispose();
+    _postalCodeController.dispose();
+    super.dispose();
+  }
+
+  void _clearCardFields() {
+    _cardNumberController.clear();
+    _expiryMonthController.clear();
+    _expiryYearController.clear();
+    _cvvController.clear();
+  }
+
+  void _clearAvsFields() {
+    _addressLine1Controller.clear();
+    _addressLine2Controller.clear();
+    _cityController.clear();
+    _stateController.clear();
+    _countryController.clear();
+    _postalCodeController.clear();
+  }
+
+  Future<void> _submitCard() async {
+    if (!(_cardFormKey.currentState?.validate() ?? false)) return;
+    final cardNumber = _digits(_cardNumberController.text);
+    final expiryMonth = _digits(_expiryMonthController.text).padLeft(2, '0');
+    var expiryYear = _digits(_expiryYearController.text);
+    if (expiryYear.length == 4) expiryYear = expiryYear.substring(2);
+    final cvv = _digits(_cvvController.text);
+
+    setState(() {
+      _processing = true;
+      _error = null;
+    });
+    try {
+      final request = SubscriptionService.submitFlutterwaveV4Card(
+        backendUrl: widget.backendUrl,
+        paymentId: widget.checkout.paymentId,
+        cardNumber: cardNumber,
+        expiryMonth: expiryMonth,
+        expiryYear: expiryYear,
+        cvv: cvv,
+      );
+      _clearCardFields();
+      final result = await request;
+      if (mounted) await _handleResult(result);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = AppErrorMessage.from(
+            error,
+            fallback: 'Flutterwave could not process this card.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Future<void> _submitAuthorization() async {
+    if (!(_authorizationFormKey.currentState?.validate() ?? false)) return;
+    final type = _stage == _FlutterwaveV4Stage.pin ? 'pin' : 'otp';
+    final value = type == 'pin'
+        ? _digits(_authorizationController.text)
+        : _authorizationController.text.trim();
+    _authorizationController.clear();
+    setState(() {
+      _processing = true;
+      _error = null;
+    });
+    try {
+      final result = await SubscriptionService.authorizeFlutterwaveV4(
+        backendUrl: widget.backendUrl,
+        paymentId: widget.checkout.paymentId,
+        type: type,
+        value: value,
+      );
+      if (mounted) await _handleResult(result);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = AppErrorMessage.from(
+            error,
+            fallback: 'Flutterwave could not verify the $type.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Future<void> _submitAvs() async {
+    if (!(_avsFormKey.currentState?.validate() ?? false)) return;
+    final address = <String, String>{
+      'line1': _addressLine1Controller.text.trim(),
+      if (_addressLine2Controller.text.trim().isNotEmpty)
+        'line2': _addressLine2Controller.text.trim(),
+      'city': _cityController.text.trim(),
+      'state': _stateController.text.trim(),
+      'country': _countryController.text.trim().toUpperCase(),
+      'postalCode': _postalCodeController.text.trim(),
+    };
+    setState(() {
+      _processing = true;
+      _error = null;
+    });
+    try {
+      final request = SubscriptionService.authorizeFlutterwaveV4(
+        backendUrl: widget.backendUrl,
+        paymentId: widget.checkout.paymentId,
+        type: 'avs',
+        address: address,
+      );
+      _clearAvsFields();
+      final result = await request;
+      if (mounted) await _handleResult(result);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = AppErrorMessage.from(
+            error,
+            fallback: 'Flutterwave could not verify the billing address.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Future<void> _handleResult(SubscriptionCheckoutResult result) async {
+    if (result.isPaid) {
+      _completePayment();
+      return;
+    }
+    if (result.isTerminalFailure) {
+      _showTerminalResult(result);
+      return;
+    }
+    if (result.requiresPin || result.requiresOtp || result.requiresAvs) {
+      setState(() {
+        _stage = result.requiresPin
+            ? _FlutterwaveV4Stage.pin
+            : result.requiresOtp
+            ? _FlutterwaveV4Stage.otp
+            : _FlutterwaveV4Stage.avs;
+        _error = result.message;
+        _obscureAuthorization = true;
+      });
+      return;
+    }
+
+    final checkoutUrl = result.checkoutUrl;
+    if (checkoutUrl != null && checkoutUrl != _openedRedirectUrl) {
+      final uri = Uri.tryParse(checkoutUrl);
+      if (uri == null || uri.scheme.toLowerCase() != 'https') {
+        throw Exception(
+          'Flutterwave returned an unsafe verification URL. HTTPS is required.',
+        );
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        throw Exception('Could not open Flutterwave verification.');
+      }
+      _openedRedirectUrl = checkoutUrl;
+    }
+    await _pollForPayment();
+  }
+
+  Future<void> _pollForPayment() async {
+    if (!mounted) return;
+    setState(() {
+      _stage = _FlutterwaveV4Stage.waiting;
+      _error = null;
+    });
+    for (var attempt = 0; attempt < 100; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+      SubscriptionCheckoutResult payment;
+      try {
+        payment = await SubscriptionService.fetchPayment(
+          paymentId: widget.checkout.paymentId,
+          backendUrl: widget.backendUrl,
+        );
+      } catch (_) {
+        if (attempt < 99) continue;
+        rethrow;
+      }
+      if (!mounted) return;
+      if (payment.isPaid) {
+        _completePayment();
+        return;
+      }
+      if (payment.isTerminalFailure) {
+        _showTerminalResult(payment);
+        return;
+      }
+      if (payment.requiresPin || payment.requiresOtp || payment.requiresAvs) {
+        setState(() {
+          _stage = payment.requiresPin
+              ? _FlutterwaveV4Stage.pin
+              : payment.requiresOtp
+              ? _FlutterwaveV4Stage.otp
+              : _FlutterwaveV4Stage.avs;
+          _error = payment.message;
+        });
+        return;
+      }
+      final redirectUrl = payment.checkoutUrl;
+      if (redirectUrl != null && redirectUrl != _openedRedirectUrl) {
+        final uri = Uri.tryParse(redirectUrl);
+        if (uri == null || uri.scheme.toLowerCase() != 'https') {
+          setState(() {
+            _stage = _FlutterwaveV4Stage.card;
+            _error =
+                'Flutterwave returned an unsafe verification URL. HTTPS is required.';
+          });
+          return;
+        }
+        final opened = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (opened) _openedRedirectUrl = redirectUrl;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _stage = _FlutterwaveV4Stage.card;
+        _error =
+            'The payment is still pending. Check your bank confirmation, then try again.';
+      });
+    }
+  }
+
+  void _showTerminalResult(SubscriptionCheckoutResult result) {
+    if (!mounted) return;
+    _clearCardFields();
+    _authorizationController.clear();
+    _clearAvsFields();
+    setState(() {
+      _processing = false;
+      _stage = _FlutterwaveV4Stage.terminal;
+      _terminalCancelled = result.isCancelled;
+      _terminalMessage =
+          result.message ??
+          (result.isCancelled
+              ? 'The payment was cancelled.'
+              : 'Flutterwave could not complete the payment.');
+      _error = null;
+    });
+  }
+
+  void _completePayment() {
+    if (!mounted) return;
+    _clearCardFields();
+    _authorizationController.clear();
+    _clearAvsFields();
+    Navigator.of(context).pop(true);
+  }
+
+  void _cancel() {
+    if (!_canCancel) return;
+    _clearCardFields();
+    _authorizationController.clear();
+    _clearAvsFields();
+    Navigator.of(context).pop(false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _canCancel,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 520,
+            maxHeight: math.max(420.0, MediaQuery.sizeOf(context).height - 48),
+          ),
+          child: Material(
+            color: _Ledger.paper,
+            borderRadius: BorderRadius.circular(20),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _dialogHeader(),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: _stageBody(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogHeader() {
+    return Container(
+      color: _Ledger.counterRaised,
+      padding: const EdgeInsets.fromLTRB(22, 16, 12, 16),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: _Ledger.stamp.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(
+              Icons.lock_outline_rounded,
+              color: _Ledger.stamp,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SECURE FLUTTERWAVE CHECKOUT',
+                  style: _Ledger.mono(
+                    9,
+                    color: _Ledger.paper.withValues(alpha: 0.55),
+                    weight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  widget.amountLabel,
+                  style: _Ledger.display(20, color: _Ledger.paper),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Cancel payment',
+            onPressed: _canCancel ? _cancel : null,
+            icon: Icon(
+              Icons.close_rounded,
+              color: _Ledger.paper.withValues(alpha: 0.72),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stageBody() {
+    switch (_stage) {
+      case _FlutterwaveV4Stage.pin:
+        return _authorizationBody(isPin: true);
+      case _FlutterwaveV4Stage.otp:
+        return _authorizationBody(isPin: false);
+      case _FlutterwaveV4Stage.avs:
+        return _avsBody();
+      case _FlutterwaveV4Stage.waiting:
+        return _waitingBody();
+      case _FlutterwaveV4Stage.terminal:
+        return _terminalBody();
+      case _FlutterwaveV4Stage.card:
+        return _cardBody();
+    }
+  }
+
+  Widget _cardBody() {
+    return Form(
+      key: _cardFormKey,
+      child: Column(
+        key: const ValueKey('flutterwave-v4-card'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _stageHeading(
+            'PAY WITH CARD',
+            'Enter your card details to start the Flutterwave payment.',
+          ),
+          const SizedBox(height: 20),
+          TextFormField(
+            controller: _cardNumberController,
+            keyboardType: TextInputType.number,
+            autofillHints: const [],
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            enableInteractiveSelection: false,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(19),
+            ],
+            decoration: _fieldDecoration(
+              label: 'Card number',
+              hint: '1234 5678 9012 3456',
+              icon: Icons.credit_card_rounded,
+            ),
+            validator: _validateCardNumber,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _expiryMonthController,
+                  keyboardType: TextInputType.number,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(2),
+                  ],
+                  decoration: _fieldDecoration(label: 'Month', hint: 'MM'),
+                  validator: _validateExpiryMonth,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _expiryYearController,
+                  keyboardType: TextInputType.number,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
+                  decoration: _fieldDecoration(label: 'Year', hint: 'YY'),
+                  validator: _validateExpiryYear,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _cvvController,
+                  keyboardType: TextInputType.number,
+                  obscureText: _obscureCvv,
+                  obscuringCharacter: '•',
+                  autofillHints: const [],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  enableInteractiveSelection: false,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
+                  decoration: _fieldDecoration(
+                    label: 'CVV',
+                    hint: '•••',
+                    suffixIcon: _visibilityButton(
+                      visible: !_obscureCvv,
+                      onPressed: () {
+                        setState(() => _obscureCvv = !_obscureCvv);
+                      },
+                    ),
+                  ),
+                  validator: _validateCvv,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _securityNotice(),
+          if (_error != null) ...[const SizedBox(height: 14), _errorNotice()],
+          const SizedBox(height: 20),
+          _primaryButton(
+            label: 'Pay ${widget.amountLabel}',
+            onPressed: _processing ? null : _submitCard,
+          ),
+          const SizedBox(height: 8),
+          _cancelButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _authorizationBody({required bool isPin}) {
+    return Form(
+      key: _authorizationFormKey,
+      child: Column(
+        key: ValueKey(isPin ? 'flutterwave-v4-pin' : 'flutterwave-v4-otp'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _stageHeading(
+            isPin ? 'CARD PIN' : 'ONE-TIME PASSWORD',
+            isPin
+                ? 'Your bank requires your card PIN to authorize this payment.'
+                : 'Enter the verification code sent by your bank.',
+          ),
+          const SizedBox(height: 20),
+          TextFormField(
+            controller: _authorizationController,
+            autofocus: true,
+            keyboardType: isPin ? TextInputType.number : TextInputType.text,
+            obscureText: _obscureAuthorization,
+            obscuringCharacter: '•',
+            autofillHints: const [],
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            enableInteractiveSelection: false,
+            inputFormatters: isPin
+                ? [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ]
+                : [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                    LengthLimitingTextInputFormatter(12),
+                  ],
+            decoration: _fieldDecoration(
+              label: isPin ? 'PIN' : 'Verification code',
+              hint: isPin ? '••••' : 'Enter code',
+              icon: isPin ? Icons.pin_outlined : Icons.sms_outlined,
+              suffixIcon: _visibilityButton(
+                visible: !_obscureAuthorization,
+                onPressed: () {
+                  setState(() {
+                    _obscureAuthorization = !_obscureAuthorization;
+                  });
+                },
+              ),
+            ),
+            validator: (value) {
+              final text = value?.trim() ?? '';
+              if (isPin && (text.length < 4 || text.length > 6)) {
+                return 'Enter the 4–6 digit card PIN.';
+              }
+              if (!isPin && (text.length < 4 || text.length > 12)) {
+                return 'Enter the code sent by your bank.';
+              }
+              return null;
+            },
+            onFieldSubmitted: (_) {
+              if (!_processing) _submitAuthorization();
+            },
+          ),
+          if (_error != null) ...[const SizedBox(height: 14), _errorNotice()],
+          const SizedBox(height: 20),
+          _primaryButton(
+            label: isPin ? 'Authorize payment' : 'Verify code',
+            onPressed: _processing ? null : _submitAuthorization,
+          ),
+          const SizedBox(height: 8),
+          _cancelButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _avsBody() {
+    return Form(
+      key: _avsFormKey,
+      child: Column(
+        key: const ValueKey('flutterwave-v4-avs'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _stageHeading(
+            'BILLING ADDRESS',
+            'Your bank needs the address registered to this card.',
+          ),
+          const SizedBox(height: 20),
+          TextFormField(
+            controller: _addressLine1Controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            autofillHints: const [],
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            inputFormatters: [LengthLimitingTextInputFormatter(120)],
+            decoration: _fieldDecoration(
+              label: 'Address line 1',
+              hint: 'Street and building',
+              icon: Icons.home_outlined,
+            ),
+            validator: (value) => _requiredText(value, 'Enter the address.'),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _addressLine2Controller,
+            textCapitalization: TextCapitalization.words,
+            autofillHints: const [],
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            inputFormatters: [LengthLimitingTextInputFormatter(120)],
+            decoration: _fieldDecoration(
+              label: 'Address line 2 (optional)',
+              hint: 'Apartment or suite',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _cityController,
+                  textCapitalization: TextCapitalization.words,
+                  autofillHints: const [],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  inputFormatters: [LengthLimitingTextInputFormatter(80)],
+                  decoration: _fieldDecoration(label: 'City', hint: 'City'),
+                  validator: (value) => _requiredText(value, 'Enter the city.'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _stateController,
+                  textCapitalization: TextCapitalization.words,
+                  autofillHints: const [],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  inputFormatters: [LengthLimitingTextInputFormatter(80)],
+                  decoration: _fieldDecoration(
+                    label: 'State / county',
+                    hint: 'Region',
+                  ),
+                  validator: (value) =>
+                      _requiredText(value, 'Enter the region.'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _countryController,
+                  textCapitalization: TextCapitalization.characters,
+                  autofillHints: const [],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]')),
+                    LengthLimitingTextInputFormatter(2),
+                  ],
+                  decoration: _fieldDecoration(label: 'Country', hint: 'KE'),
+                  validator: (value) =>
+                      _digitsAndLetters(value ?? '').length == 2
+                      ? null
+                      : 'Use 2 letters.',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _postalCodeController,
+                  textCapitalization: TextCapitalization.characters,
+                  autofillHints: const [],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 -]')),
+                    LengthLimitingTextInputFormatter(16),
+                  ],
+                  decoration: _fieldDecoration(
+                    label: 'Postal code',
+                    hint: 'Postal code',
+                  ),
+                  validator: (value) =>
+                      _requiredText(value, 'Enter the postal code.'),
+                ),
+              ),
+            ],
+          ),
+          if (_error != null) ...[const SizedBox(height: 14), _errorNotice()],
+          const SizedBox(height: 20),
+          _primaryButton(
+            label: 'Verify billing address',
+            onPressed: _processing ? null : _submitAvs,
+          ),
+          const SizedBox(height: 8),
+          _cancelButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _waitingBody() {
+    return Column(
+      key: const ValueKey('flutterwave-v4-waiting'),
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          width: 66,
+          height: 66,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: _Ledger.mint.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const CircularProgressIndicator(
+            color: _Ledger.mint,
+            strokeWidth: 3,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _stageHeading(
+          'VERIFYING PAYMENT',
+          _openedRedirectUrl == null
+              ? 'Waiting for secure confirmation from Flutterwave.'
+              : 'Complete the bank verification in your browser. This window will update automatically.',
+          centered: true,
+        ),
+        const SizedBox(height: 18),
+        _cancelButton(label: 'Cancel and check later'),
+      ],
+    );
+  }
+
+  Widget _terminalBody() {
+    const failureColor = Color(0xFFC64232);
+    final title = _terminalCancelled
+        ? 'PAYMENT CANCELLED'
+        : 'PAYMENT UNSUCCESSFUL';
+    return Column(
+      key: const ValueKey('flutterwave-v4-terminal'),
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          width: 66,
+          height: 66,
+          decoration: BoxDecoration(
+            color: failureColor.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            _terminalCancelled
+                ? Icons.cancel_outlined
+                : Icons.error_outline_rounded,
+            color: failureColor,
+            size: 34,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _stageHeading(
+          title,
+          '${_terminalMessage ?? 'Flutterwave could not complete the payment.'}\n\n'
+          'This checkout is closed. Close it and select Subscribe again to start a new payment.',
+          centered: true,
+        ),
+        const SizedBox(height: 22),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: FilledButton.icon(
+            key: const ValueKey('flutterwave-v4-terminal-close'),
+            style: FilledButton.styleFrom(
+              backgroundColor: _Ledger.paperInk,
+              foregroundColor: _Ledger.paper,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            onPressed: _cancel,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text(
+              'Close and start again',
+              style: _Ledger.mono(
+                11,
+                color: _Ledger.paper,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _stageHeading(
+    String title,
+    String description, {
+    bool centered = false,
+  }) {
+    return Column(
+      crossAxisAlignment: centered
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          textAlign: centered ? TextAlign.center : TextAlign.start,
+          style: _Ledger.mono(
+            11,
+            color: _Ledger.paperInk,
+            weight: FontWeight.w700,
+            letterSpacing: 1.8,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          description,
+          textAlign: centered ? TextAlign.center : TextAlign.start,
+          style: _Ledger.body(13, color: _Ledger.paperFaded),
+        ),
+      ],
+    );
+  }
+
+  Widget _securityNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _Ledger.mint.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _Ledger.mint.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.verified_user_outlined,
+            size: 18,
+            color: _Ledger.mint,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'Card details are sent securely for this payment and cleared from this device immediately after submission.',
+              style: _Ledger.body(
+                11.5,
+                color: _Ledger.paperInk.withValues(alpha: 0.74),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFC64232).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFFC64232).withValues(alpha: 0.28),
+        ),
+      ),
+      child: Text(
+        _error!,
+        style: _Ledger.body(
+          12,
+          color: const Color(0xFF8D261D),
+          weight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _primaryButton({
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: _Ledger.stamp,
+          disabledBackgroundColor: _Ledger.stamp.withValues(alpha: 0.55),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
+          ),
+        ),
+        onPressed: onPressed,
+        icon: _processing
+            ? const SizedBox(
+                width: 17,
+                height: 17,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : const Icon(Icons.lock_rounded, size: 18),
+        label: Text(
+          _processing ? 'Processing securely…' : label,
+          style: _Ledger.mono(11, color: Colors.white, weight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _cancelButton({String label = 'Cancel payment'}) {
+    return SizedBox(
+      width: double.infinity,
+      child: TextButton(
+        onPressed: _canCancel ? _cancel : null,
+        child: Text(
+          label,
+          style: _Ledger.mono(
+            10.5,
+            color: _Ledger.paperFaded,
+            weight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _visibilityButton({
+    required bool visible,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      tooltip: visible ? 'Hide value' : 'Show value',
+      onPressed: onPressed,
+      icon: Icon(
+        visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+        size: 18,
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    required String hint,
+    IconData? icon,
+    Widget? suffixIcon,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) {
+      return OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: icon == null ? null : Icon(icon, size: 19),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.58),
+      labelStyle: _Ledger.body(12, color: _Ledger.paperFaded),
+      hintStyle: _Ledger.mono(
+        12,
+        color: _Ledger.paperFaded.withValues(alpha: 0.55),
+        weight: FontWeight.w500,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+      enabledBorder: border(_Ledger.paperRule),
+      focusedBorder: border(_Ledger.stamp, 1.5),
+      errorBorder: border(const Color(0xFFC64232)),
+      focusedErrorBorder: border(const Color(0xFFC64232), 1.5),
+    );
+  }
+
+  String? _validateCardNumber(String? value) {
+    final cardNumber = _digits(value ?? '');
+    if (cardNumber.length < 12 || cardNumber.length > 19) {
+      return 'Enter a valid card number.';
+    }
+    return _passesLuhn(cardNumber) ? null : 'Check the card number.';
+  }
+
+  String? _validateExpiryMonth(String? value) {
+    final month = int.tryParse(_digits(value ?? ''));
+    return month != null && month >= 1 && month <= 12 ? null : 'Use 01–12.';
+  }
+
+  String? _validateExpiryYear(String? value) {
+    final digits = _digits(value ?? '');
+    if (digits.length != 2 && digits.length != 4) {
+      return 'Use YY or YYYY.';
+    }
+    final entered = int.tryParse(digits);
+    if (entered == null) return 'Invalid year.';
+    final fullYear = digits.length == 2 ? 2000 + entered : entered;
+    final now = DateTime.now();
+    final month = int.tryParse(_digits(_expiryMonthController.text));
+    if (fullYear < now.year ||
+        (fullYear == now.year && month != null && month < now.month)) {
+      return 'Card is expired.';
+    }
+    return fullYear <= now.year + 30 ? null : 'Check the year.';
+  }
+
+  String? _validateCvv(String? value) {
+    final cvv = _digits(value ?? '');
+    return cvv.length >= 3 && cvv.length <= 4 ? null : 'Use 3–4 digits.';
+  }
+
+  bool _passesLuhn(String value) {
+    var sum = 0;
+    var doubleDigit = false;
+    for (var index = value.length - 1; index >= 0; index--) {
+      var digit = int.parse(value[index]);
+      if (doubleDigit) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+      sum += digit;
+      doubleDigit = !doubleDigit;
+    }
+    return sum % 10 == 0;
+  }
+
+  String? _requiredText(String? value, String message) {
+    return value?.trim().isNotEmpty == true ? null : message;
+  }
+
+  String _digitsAndLetters(String value) {
+    return value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+  }
+
+  String _digits(String value) => value.replaceAll(RegExp(r'\D'), '');
+}
+
 class _ReceiptReveal extends StatelessWidget {
   final int index;
   final AnimationController controller;
@@ -2183,7 +3326,11 @@ class _ReceiptReveal extends StatelessWidget {
     final start = (index * 0.09).clamp(0.0, 0.5);
     final curved = CurvedAnimation(
       parent: controller,
-      curve: Interval(start, (start + 0.55).clamp(0.0, 1.0), curve: Curves.easeOutCubic),
+      curve: Interval(
+        start,
+        (start + 0.55).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
     );
     return FadeTransition(
       opacity: curved,
@@ -2624,12 +3771,7 @@ class _PlanReceiptCardState extends State<_PlanReceiptCard> {
                     ),
                   ),
                 ),
-              if (selected)
-                Positioned(
-                  top: 14,
-                  right: 12,
-                  child: _StampMark(),
-                ),
+              if (selected) Positioned(top: 14, right: 12, child: _StampMark()),
             ],
           ),
         ),
@@ -2806,7 +3948,9 @@ class _CountryRowState extends State<_CountryRow> {
           decoration: BoxDecoration(
             color: selected
                 ? _Ledger.paper.withValues(alpha: 0.1)
-                : (_hovered ? _Ledger.paper.withValues(alpha: 0.05) : Colors.transparent),
+                : (_hovered
+                      ? _Ledger.paper.withValues(alpha: 0.05)
+                      : Colors.transparent),
             borderRadius: BorderRadius.circular(9),
             border: Border.all(
               color: selected
@@ -2846,11 +3990,7 @@ class _CountryRowState extends State<_CountryRow> {
                 ),
               ),
               if (selected)
-                const Icon(
-                  Icons.check_rounded,
-                  size: 18,
-                  color: _Ledger.stamp,
-                ),
+                const Icon(Icons.check_rounded, size: 18, color: _Ledger.stamp),
             ],
           ),
         ),

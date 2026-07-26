@@ -22,7 +22,18 @@ const {
   isFlutterwaveSuccessfulWebhook,
   isFlutterwaveWebhookSignatureValid,
 } = require('./flutterwave');
-const { requestFlutterwaveV4AccessToken } = require('./flutterwaveV4');
+const {
+  createFlutterwaveV4CardPaymentMethod,
+  createFlutterwaveV4Charge,
+  createFlutterwaveV4Customer,
+  createFlutterwaveV4PinAuthorization,
+  encryptFlutterwaveV4Value,
+  requestFlutterwaveV4AccessToken,
+  requestFlutterwaveV4Api,
+  resolveFlutterwaveV4ApiBaseUrl,
+  retrieveFlutterwaveV4Charge,
+  updateFlutterwaveV4ChargeAuthorization,
+} = require('./flutterwaveV4');
 const { query, withTransaction, withReadTransaction, closePool } = require('./db');
 const dashscopeProvider = require('./dashscopeProvider');
 const {
@@ -90,6 +101,7 @@ const {
 const {
   FEATURE_KEYS,
   applySellingModeToEntitlements,
+  buildFlutterwaveWebhookUrl,
   ensureSubscriptionSchema,
   isHttpsUrl,
   isPlausibleMpesaPasskey,
@@ -104,7 +116,9 @@ const {
   normalizePlanInput,
   normalizePriceInput,
   normalizeProvider,
+  normalizePublicHttpsOrigin,
   normalizeSellingMode,
+  recordFlutterwaveWebhookVerification,
   renewalBaseDate,
   resolvePlanPrice,
   savePaymentGateway,
@@ -285,6 +299,13 @@ const publicWriteRateLimit = createRateLimiter({
   max: 30,
   keyPrefix: 'public-write',
 });
+const flutterwaveV4CheckoutRateLimit = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  keyPrefix: 'flutterwave-v4-checkout',
+});
+const flutterwaveV4AccessTokenCache = new Map();
+const flutterwaveV4ReconciliationState = new Map();
 const mpesaCheckoutRateLimit = createRateLimiter({
   windowMs: 60 * 1000,
   max: 12,
@@ -5221,16 +5242,112 @@ app.post(
     try {
       const gateway = await loadPaymentGateway('flutterwave');
       const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+      if (
+        flutterwaveConfig.apiVersion &&
+        flutterwaveConfig.apiVersion !== 'v4'
+      ) {
+        throw createHttpError(
+          400,
+          'Select v4 as the Flutterwave Checkout API Version before testing v4 checkout.',
+        );
+      }
+      if (
+        !flutterwaveConfig.apiVersion &&
+        flutterwaveConfig.secretKey &&
+        flutterwaveConfig.webhookHash &&
+        hasCompleteFlutterwaveV4Credentials(flutterwaveConfig)
+      ) {
+        throw createHttpError(
+          400,
+          'Select v4 as the Flutterwave Checkout API Version before testing v4 checkout.',
+        );
+      }
+      if (!hasCompleteFlutterwaveV4Credentials(flutterwaveConfig)) {
+        throw createHttpError(
+          400,
+          'Flutterwave v4 Client ID, Client Secret, and Encryption Key are required.',
+        );
+      }
+      const webhookUrl =
+        gateway?.webhookUrl ||
+        buildFlutterwaveWebhookUrl(config.publicBaseUrl);
+      const gatewayActive = Boolean(gateway?.isActive);
+      const publicReturnUrlReady = Boolean(webhookUrl);
+      const webhookConfigured = Boolean(
+        publicReturnUrlReady && flutterwaveConfig.webhookHash,
+      );
+      const webhookVerified = Boolean(
+        webhookConfigured && gateway?.webhookVerified,
+      );
+      try {
+        encryptFlutterwaveV4Value({
+          value: 'piki-checkout-readiness',
+          encryptionKey: flutterwaveConfig.encryptionKey,
+          nonce: 'piki-v4-test',
+        });
+      } catch (error) {
+        throw createHttpError(
+          400,
+          error?.message || 'Flutterwave v4 Encryption Key is invalid.',
+        );
+      }
       const token = await requestFlutterwaveV4AccessToken({
         clientId: flutterwaveConfig.clientId,
         clientSecret: flutterwaveConfig.clientSecret,
       });
+      await requestFlutterwaveV4Api({
+        apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+        accessToken: token.accessToken,
+        path: '/customers?page=1&size=10',
+        method: 'GET',
+        traceId: crypto.randomUUID(),
+      });
+      const configurationReady = webhookConfigured;
+      const checkoutReady = Boolean(
+        gatewayActive && configurationReady && webhookVerified,
+      );
+      const requiredActions = [];
+      if (!publicReturnUrlReady) {
+        requiredActions.push(
+          'Set PUBLIC_BASE_URL to the public HTTPS backend origin.',
+        );
+      }
+      if (!flutterwaveConfig.webhookHash) {
+        requiredActions.push('Save the Flutterwave Webhook Secret Hash.');
+      } else if (!webhookVerified && webhookUrl) {
+        requiredActions.push(
+          `Run a signed webhook test from the Flutterwave Dashboard to ${webhookUrl}.`,
+        );
+      }
+      if (!gatewayActive) {
+        requiredActions.push('Enable the Flutterwave gateway after verification.');
+      }
       res.json({
         ok: true,
         data: {
           authenticated: true,
+          checkoutReady,
+          configurationReady,
+          credentialsReady: true,
+          encryptionReady: true,
+          apiAccessReady: true,
+          publicReturnUrlReady,
+          webhookConfigured,
+          webhookVerified,
+          webhookLastVerifiedAt: webhookVerified
+            ? gateway.webhookLastVerifiedAt || null
+            : null,
+          gatewayActive,
+          webhookUrl,
+          callbackUrl: webhookUrl,
+          apiVersion: 'v4',
+          environment: flutterwaveConfig.environment,
+          apiBaseUrl: flutterwaveConfig.v4BaseUrl,
           tokenType: token.tokenType,
           expiresIn: token.expiresIn,
+          message: checkoutReady
+            ? `Flutterwave v4 checkout is ready in ${flutterwaveConfig.environment} mode.`
+            : `Flutterwave v4 credentials and API access work in ${flutterwaveConfig.environment} mode, but checkout remains disabled. ${requiredActions.join(' ')}`,
         },
       });
     } catch (error) {
@@ -5805,7 +5922,39 @@ app.get('/api/subscription/payments/:paymentId', async (req, res, next) => {
     if (!payment) {
       throw createHttpError(404, 'Subscription payment was not found');
     }
-    res.json({ ok: true, data: payment });
+    if (
+      payment.status === 'pending' &&
+      payment.metadata?.flutterwaveApiVersion === 'v4' &&
+      payment.metadata?.flutterwaveV4ChargeId
+    ) {
+      try {
+        const reconciled = await reconcilePendingFlutterwaveV4Payment(payment);
+        return res.json({ ok: true, data: reconciled });
+      } catch (error) {
+        const latestPayment = await loadSubscriptionPayment(
+          businessContext.businessId,
+          req.params.paymentId,
+        );
+        if (latestPayment && latestPayment.status !== 'pending') {
+          return res.json({
+            ok: true,
+            data: subscriptionPaymentClientDto(latestPayment),
+          });
+        }
+        if (isTransientFlutterwaveV4Error(error)) {
+          return res.json({
+            ok: true,
+            data: {
+              ...subscriptionPaymentClientDto(latestPayment || payment),
+              message:
+                'Flutterwave confirmation is temporarily delayed. Piki will keep checking.',
+            },
+          });
+        }
+        throw error;
+      }
+    }
+    res.json({ ok: true, data: subscriptionPaymentClientDto(payment) });
   } catch (error) {
     next(normalizeRouteError(error));
   }
@@ -5882,6 +6031,12 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
 
     const gateway = await loadPaymentGateway(provider);
     const isFreePlan = Number(price.amountMinor || 0) === 0;
+    if (!isFreePlan && market.paymentActive !== true) {
+      throw createHttpError(
+        400,
+        'This subscription payment method is not ready for checkout.',
+      );
+    }
     if (!isFreePlan && (!gateway || !gateway.isActive)) {
       throw createHttpError(400, 'This payment gateway is not active');
     }
@@ -5943,6 +6098,322 @@ app.post('/api/subscription/checkout', async (req, res, next) => {
     next(normalizeRouteError(error));
   }
 });
+
+app.post(
+  '/api/subscription/flutterwave/v4/card',
+  flutterwaveV4CheckoutRateLimit,
+  async (req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      const businessContext = await requireBusinessContext(req, {
+        allowExpired: true,
+      });
+    const payment = await requirePendingFlutterwaveV4Payment({
+      businessId: businessContext.businessId,
+      paymentId: req.body?.paymentId,
+    });
+    if (payment.status === 'paid') {
+      return res.json({
+        ok: true,
+        data: {
+          id: payment.id,
+          paymentId: payment.id,
+          provider: 'flutterwave',
+          checkoutMode: 'flutterwave_v4',
+          status: 'paid',
+          activated: true,
+          message: 'Subscription is already active.',
+        },
+      });
+    }
+    const gateway = await loadPaymentGateway('flutterwave');
+    const flutterwaveConfig = requireFlutterwaveV4GatewayConfig(gateway);
+    const accessToken = await getFlutterwaveV4AccessToken(flutterwaveConfig);
+    const existingChargeId = normalizeOptionalText(
+      payment.metadata?.flutterwaveV4ChargeId,
+    );
+    if (existingChargeId) {
+      const existingCharge = await retrieveFlutterwaveV4Charge({
+        apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+        accessToken,
+        chargeId: existingChargeId,
+        traceId: crypto.randomUUID(),
+      });
+      const response = await processFlutterwaveV4ChargeResult({
+        payment,
+        chargeResult: existingCharge,
+        flutterwaveConfig,
+        accessToken,
+        alreadyVerified: true,
+      });
+      return res.json({ ok: true, data: response });
+    }
+    const card = normalizeFlutterwaveV4CardInput(req.body || {});
+    const customer = await loadSubscriptionCustomer(payment.businessId);
+    let customerId = normalizeOptionalText(
+      payment.metadata?.flutterwaveV4CustomerId,
+    );
+    if (!customerId) {
+      const customerResult = await createFlutterwaveV4Customer({
+        apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+        accessToken,
+        customer: flutterwaveV4CustomerPayload(customer),
+        traceId: crypto.randomUUID(),
+        idempotencyKey: `piki-${payment.id}-customer`,
+      });
+      customerId = normalizeOptionalText(customerResult.data?.id);
+      if (!customerId) {
+        throw createHttpError(
+          502,
+          customerResult.message || 'Flutterwave could not create the customer.',
+        );
+      }
+      await setSubscriptionProviderReference(
+        payment.id,
+        payment.metadata?.flutterwaveV4Reference || `sub-${payment.id}`,
+        {
+          flutterwaveApiVersion: 'v4',
+          flutterwaveV4CustomerId: customerId,
+        },
+      );
+    }
+
+    let paymentMethodId = normalizeOptionalText(
+      payment.metadata?.flutterwaveV4PaymentMethodId,
+    );
+    let paymentMethodResult = null;
+    if (!paymentMethodId) {
+      const cardRequestIdentity = flutterwaveV4SensitiveRequestIdentity({
+        paymentId: payment.id,
+        type: 'card',
+        value: JSON.stringify(card),
+      });
+      paymentMethodResult = await createFlutterwaveV4CardPaymentMethod({
+        apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+        accessToken,
+        encryptionKey: flutterwaveConfig.encryptionKey,
+        customerId,
+        card,
+        nonce: cardRequestIdentity.nonce,
+        traceId: crypto.randomUUID(),
+        idempotencyKey:
+          `piki-${payment.id}-card-${cardRequestIdentity.fingerprint}`,
+      });
+      paymentMethodId = normalizeOptionalText(paymentMethodResult.data?.id);
+    }
+    if (!paymentMethodId) {
+      throw createHttpError(
+        502,
+        paymentMethodResult?.message ||
+          'Flutterwave could not create the card payment method.',
+      );
+    }
+    await setSubscriptionProviderReference(
+      payment.id,
+      payment.metadata?.flutterwaveV4Reference || `sub-${payment.id}`,
+      {
+        flutterwaveApiVersion: 'v4',
+        flutterwaveV4CustomerId: customerId,
+        flutterwaveV4PaymentMethodId: paymentMethodId,
+        flutterwaveV4Card:
+          paymentMethodResult?.data?.card &&
+          typeof paymentMethodResult.data.card === 'object'
+            ? {
+                first6:
+                  normalizeOptionalText(paymentMethodResult.data.card.first6) ||
+                  null,
+                last4:
+                  normalizeOptionalText(paymentMethodResult.data.card.last4) ||
+                  null,
+                network:
+                  normalizeOptionalText(paymentMethodResult.data.card.network) ||
+                  null,
+              }
+            : payment.metadata?.flutterwaveV4Card || null,
+      },
+    );
+
+    const chargeResult = await createFlutterwaveV4Charge({
+      apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+      accessToken,
+      charge: {
+        amount: Number(minorAmountToMajor(payment.amountMinor)),
+        currency: String(payment.currency || '').toUpperCase(),
+        reference:
+          payment.metadata?.flutterwaveV4Reference || `sub-${payment.id}`,
+        customerId,
+        paymentMethodId,
+        recurring: false,
+        redirectUrl:
+          `${config.publicBaseUrl}/api/subscription/flutterwave/return` +
+          `?paymentId=${encodeURIComponent(payment.id)}`,
+        meta: {
+          paymentId: payment.id,
+          planCode: payment.planCode,
+          billingPeriod: payment.billingPeriod,
+        },
+      },
+      traceId: crypto.randomUUID(),
+      idempotencyKey: `piki-${payment.id}-charge`,
+    });
+    const response = await processFlutterwaveV4ChargeResult({
+      payment: {
+        ...payment,
+        metadata: {
+          ...(payment.metadata || {}),
+          flutterwaveV4CustomerId: customerId,
+          flutterwaveV4PaymentMethodId: paymentMethodId,
+        },
+      },
+      chargeResult,
+      flutterwaveConfig,
+      accessToken,
+    });
+    res.json({ ok: true, data: response });
+    } catch (error) {
+      next(normalizeRouteError(error));
+    }
+  },
+);
+
+app.post(
+  '/api/subscription/flutterwave/v4/authorize',
+  flutterwaveV4CheckoutRateLimit,
+  async (req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      const businessContext = await requireBusinessContext(req, {
+        allowExpired: true,
+      });
+      const payment = await requirePendingFlutterwaveV4Payment({
+        businessId: businessContext.businessId,
+        paymentId: req.body?.paymentId,
+      });
+      if (payment.status === 'paid') {
+        return res.json({
+          ok: true,
+          data: {
+            id: payment.id,
+            paymentId: payment.id,
+            provider: 'flutterwave',
+            checkoutMode: 'flutterwave_v4',
+            status: 'paid',
+            activated: true,
+            message: 'Subscription is already active.',
+          },
+        });
+      }
+      const chargeId = normalizeOptionalText(
+        payment.metadata?.flutterwaveV4ChargeId,
+      );
+      if (!chargeId) {
+        throw createHttpError(
+          400,
+          'Start the Flutterwave card payment before authorizing it.',
+        );
+      }
+      const gateway = await loadPaymentGateway('flutterwave');
+      const flutterwaveConfig = requireFlutterwaveV4GatewayConfig(gateway);
+      const accessToken = await getFlutterwaveV4AccessToken(flutterwaveConfig);
+      const authorizationType = normalizeOptionalText(
+        req.body?.type,
+      )?.toLowerCase();
+      const expectedAuthorizationType = normalizeOptionalText(
+        payment.metadata?.flutterwaveV4NextAction,
+      )?.toLowerCase();
+      if (
+        expectedAuthorizationType &&
+        ['pin', 'otp', 'avs'].includes(expectedAuthorizationType) &&
+        authorizationType !== expectedAuthorizationType
+      ) {
+        throw createHttpError(
+          400,
+          `Flutterwave requires ${expectedAuthorizationType.toUpperCase()} authorization for this payment.`,
+        );
+      }
+      const authorizationAttempts =
+        Number(payment.metadata?.flutterwaveV4AuthorizationAttempts || 0) + 1;
+      if (authorizationAttempts > 6) {
+        throw createHttpError(
+          429,
+          'Too many Flutterwave authorization attempts. Start a new checkout.',
+        );
+      }
+      let authorization;
+      let authorizationIdempotencyMaterial;
+      let authorizationRequestIdentity;
+      if (authorizationType === 'pin') {
+        const pin = normalizeOptionalText(req.body?.value || req.body?.pin);
+        if (!pin || !/^\d{4,6}$/.test(pin)) {
+          throw createHttpError(400, 'Enter a valid card PIN.');
+        }
+        authorizationRequestIdentity = flutterwaveV4SensitiveRequestIdentity({
+          paymentId: payment.id,
+          type: authorizationType,
+          value: pin,
+        });
+        authorization = createFlutterwaveV4PinAuthorization({
+          pin,
+          encryptionKey: flutterwaveConfig.encryptionKey,
+          nonce: authorizationRequestIdentity.nonce,
+        });
+        authorizationIdempotencyMaterial = pin;
+      } else if (authorizationType === 'otp') {
+        const code = normalizeOptionalText(req.body?.value || req.body?.otp);
+        if (!code || !/^[A-Za-z0-9-]{4,12}$/.test(code)) {
+          throw createHttpError(400, 'Enter a valid Flutterwave OTP.');
+        }
+        authorization = {
+          type: 'otp',
+          otp: { code },
+        };
+        authorizationIdempotencyMaterial = code;
+      } else if (authorizationType === 'avs') {
+        authorization = normalizeFlutterwaveV4AvsAuthorization(
+          req.body?.address,
+        );
+        authorizationIdempotencyMaterial = JSON.stringify(authorization);
+      } else {
+        throw createHttpError(
+          400,
+          'Flutterwave authorization type must be pin, otp, or avs.',
+        );
+      }
+      authorizationRequestIdentity ||=
+        flutterwaveV4SensitiveRequestIdentity({
+          paymentId: payment.id,
+          type: authorizationType,
+          value: authorizationIdempotencyMaterial,
+        });
+      await setSubscriptionProviderReference(
+        payment.id,
+        payment.providerReference,
+        {
+          flutterwaveV4AuthorizationAttempts: authorizationAttempts,
+        },
+      );
+      const chargeResult = await updateFlutterwaveV4ChargeAuthorization({
+        apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+        accessToken,
+        chargeId,
+        authorization,
+        traceId: crypto.randomUUID(),
+        idempotencyKey:
+          `piki-${payment.id}-${authorizationType}-` +
+          authorizationRequestIdentity.fingerprint,
+      });
+      const response = await processFlutterwaveV4ChargeResult({
+        payment,
+        chargeResult,
+        flutterwaveConfig,
+        accessToken,
+      });
+      res.json({ ok: true, data: response });
+    } catch (error) {
+      next(normalizeRouteError(error));
+    }
+  },
+);
 
 app.post('/api/subscription/google-play/confirm', async (req, res, next) => {
   try {
@@ -6016,10 +6487,22 @@ app.get('/api/subscription/paypal/cancel', async (req, res) => {
 app.get('/api/subscription/flutterwave/return', async (req, res) => {
   try {
     const paymentId = normalizeOptionalText(req.query?.paymentId);
-    const transactionId = normalizeOptionalText(req.query?.transaction_id);
-    const transactionReference = normalizeOptionalText(req.query?.tx_ref);
-    const status = normalizeOptionalText(req.query?.status);
-    if (status !== 'successful') {
+    const payment = paymentId
+      ? await loadSubscriptionPaymentById(paymentId)
+      : null;
+    const isV4Payment = payment?.metadata?.flutterwaveApiVersion === 'v4';
+    const transactionId = isV4Payment
+      ? normalizeOptionalText(payment?.metadata?.flutterwaveV4ChargeId)
+      : normalizeOptionalText(req.query?.transaction_id);
+    const transactionReference = isV4Payment
+      ? normalizeOptionalText(
+          payment?.providerReference ||
+            payment?.metadata?.flutterwaveV4Reference,
+        )
+      : normalizeOptionalText(req.query?.tx_ref);
+    const status = normalizeOptionalText(req.query?.status)?.toLowerCase();
+    const failedStatus = ['failed', 'cancelled', 'canceled'].includes(status);
+    if (!isV4Payment && (status !== 'successful' || failedStatus)) {
       if (paymentId) {
         await markSubscriptionPaymentStatus(paymentId, 'cancelled', {
           message: 'Flutterwave checkout was not completed.',
@@ -11653,10 +12136,23 @@ app.post('/api/subscription/flutterwave/webhook', async (req, res, next) => {
       signature,
       flutterwaveConfig.webhookHash,
     );
+    const usesFlutterwaveV4 =
+      flutterwaveConfig.apiVersion === 'v4' ||
+      (!flutterwaveConfig.apiVersion &&
+        hasCompleteFlutterwaveV4Credentials(flutterwaveConfig));
     const validLegacySignature =
-      !signature && legacyHash && safeEquals(legacyHash, flutterwaveConfig.webhookHash);
+      !usesFlutterwaveV4 &&
+      !signature &&
+      legacyHash &&
+      safeEquals(legacyHash, flutterwaveConfig.webhookHash);
     if (!validSignature && !validLegacySignature) {
       throw createHttpError(401, 'Invalid Flutterwave webhook signature');
+    }
+    if (validSignature) {
+      await recordFlutterwaveWebhookVerification({
+        webhookHash: flutterwaveConfig.webhookHash,
+        publicBaseUrl: config.publicBaseUrl,
+      });
     }
     const event = req.body || {};
     const { transactionId, transactionReference } = flutterwaveWebhookTransaction(event);
@@ -14900,6 +15396,54 @@ async function processPayPalReturn({ paymentId, orderId }) {
 async function initiateFlutterwaveCheckout(payment, gateway) {
   assertPublicPaymentReturnUrl();
   const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+  const useV4 =
+    flutterwaveConfig.apiVersion === 'v4' ||
+    (!flutterwaveConfig.apiVersion &&
+      hasCompleteFlutterwaveV4Credentials(flutterwaveConfig));
+  if (useV4) {
+    if (!gateway?.isActive) {
+      throw createHttpError(503, 'Flutterwave is not active.');
+    }
+    if (!hasCompleteFlutterwaveV4Credentials(flutterwaveConfig)) {
+      throw createHttpError(
+        503,
+        'Flutterwave v4 checkout credentials are incomplete.',
+      );
+    }
+    if (!flutterwaveConfig.webhookHash) {
+      throw createHttpError(
+        503,
+        `Flutterwave v4 Webhook Secret Hash is required. Configure ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)} as the callback URL.`,
+      );
+    }
+    if (!gateway?.webhookVerified) {
+      throw createHttpError(
+        503,
+        `Flutterwave v4 checkout is disabled until a signed Dashboard webhook test verifies ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)}.`,
+      );
+    }
+    const flutterwaveV4Reference = `sub-${payment.id}`;
+    await setSubscriptionProviderReference(
+      payment.id,
+      flutterwaveV4Reference,
+      {
+        flutterwaveApiVersion: 'v4',
+        flutterwaveCheckoutMode: 'direct_card',
+        flutterwaveV4Reference,
+      },
+    );
+    return {
+      checkoutMode: 'flutterwave_v4',
+      requiresCard: true,
+      message: 'Enter your card details to continue with Flutterwave.',
+    };
+  }
+  if (!flutterwaveConfig.secretKey || !flutterwaveConfig.webhookHash) {
+    throw createHttpError(
+      503,
+      'Flutterwave checkout credentials are incomplete.',
+    );
+  }
   const customer = await loadSubscriptionCustomer(payment.businessId);
   const fetch = (await import('node-fetch')).default;
   const amount = minorAmountToMajor(payment.amountMinor);
@@ -14951,6 +15495,482 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
     flutterwaveCustomerEmail: customer.email,
   });
   return { checkoutUrl, message: 'Continue in Flutterwave to complete payment.' };
+}
+
+function hasCompleteFlutterwaveV4Credentials(flutterwaveConfig) {
+  return Boolean(
+    flutterwaveConfig?.clientId &&
+      flutterwaveConfig?.clientSecret &&
+      flutterwaveConfig?.encryptionKey,
+  );
+}
+
+async function getFlutterwaveV4AccessToken(flutterwaveConfig) {
+  if (!hasCompleteFlutterwaveV4Credentials(flutterwaveConfig)) {
+    throw createHttpError(
+      503,
+      'Flutterwave v4 Client ID, Client Secret, and Encryption Key are required.',
+    );
+  }
+  const cacheKey = crypto
+    .createHash('sha256')
+    .update(
+      `${flutterwaveConfig.clientId}\u0000${flutterwaveConfig.clientSecret}`,
+      'utf8',
+    )
+    .digest('hex');
+  const now = Date.now();
+  const cached = flutterwaveV4AccessTokenCache.get(cacheKey);
+  if (cached?.accessToken && cached.expiresAt > now + 60_000) {
+    return cached.accessToken;
+  }
+  const token = await requestFlutterwaveV4AccessToken({
+    clientId: flutterwaveConfig.clientId,
+    clientSecret: flutterwaveConfig.clientSecret,
+  });
+  const lifetimeSeconds = Math.max(1, Number(token.expiresIn || 600));
+  flutterwaveV4AccessTokenCache.set(cacheKey, {
+    accessToken: token.accessToken,
+    expiresAt: now + lifetimeSeconds * 1000,
+  });
+  if (flutterwaveV4AccessTokenCache.size > 50) {
+    for (const [key, entry] of flutterwaveV4AccessTokenCache.entries()) {
+      if (!entry?.expiresAt || entry.expiresAt <= now + 60_000) {
+        flutterwaveV4AccessTokenCache.delete(key);
+      }
+    }
+  }
+  return token.accessToken;
+}
+
+function requireFlutterwaveV4GatewayConfig(gateway) {
+  if (!gateway?.isActive) {
+    throw createHttpError(503, 'Flutterwave is not active.');
+  }
+  const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+  if (!hasCompleteFlutterwaveV4Credentials(flutterwaveConfig)) {
+    throw createHttpError(
+      503,
+      'Flutterwave v4 Client ID, Client Secret, and Encryption Key are required.',
+    );
+  }
+  if (!flutterwaveConfig.webhookHash) {
+    throw createHttpError(
+      503,
+      `Flutterwave v4 Webhook Secret Hash is required. Configure ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)} as the callback URL.`,
+    );
+  }
+  if (!gateway?.webhookVerified) {
+    throw createHttpError(
+      503,
+      `Flutterwave v4 checkout is disabled until a signed Dashboard webhook test verifies ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)}.`,
+    );
+  }
+  return flutterwaveConfig;
+}
+
+async function requirePendingFlutterwaveV4Payment({
+  businessId,
+  paymentId,
+}) {
+  const payment = await loadSubscriptionPayment(businessId, paymentId);
+  if (!payment || payment.provider !== 'flutterwave') {
+    throw createHttpError(404, 'Flutterwave subscription payment was not found.');
+  }
+  if (payment.status === 'paid') {
+    return payment;
+  }
+  if (payment.status !== 'pending') {
+    throw createHttpError(
+      400,
+      'This Flutterwave subscription payment is no longer pending.',
+    );
+  }
+  if (payment.metadata?.flutterwaveApiVersion !== 'v4') {
+    throw createHttpError(
+      400,
+      'This payment was not created for Flutterwave v4 checkout.',
+    );
+  }
+  return payment;
+}
+
+function flutterwaveV4SensitiveRequestIdentity({
+  paymentId,
+  type,
+  value,
+}) {
+  const digest = crypto
+    .createHmac('sha256', config.platformJwtSecret)
+    .update(
+      `${normalizeOptionalText(paymentId) || ''}\u0000` +
+        `${normalizeOptionalText(type) || ''}\u0000${String(value || '')}`,
+      'utf8',
+    )
+    .digest();
+  return {
+    fingerprint: digest.subarray(0, 12).toString('hex'),
+    nonce: digest.subarray(12, 21).toString('base64url'),
+  };
+}
+
+function normalizeFlutterwaveV4CardInput(input = {}) {
+  const cardNumber = String(input.cardNumber || input.number || '')
+    .replace(/[\s-]+/g, '');
+  const expiryMonth = String(input.expiryMonth || '').trim().padStart(2, '0');
+  let expiryYear = String(input.expiryYear || '').trim();
+  if (/^\d{4}$/.test(expiryYear)) {
+    expiryYear = expiryYear.slice(-2);
+  }
+  const cvv = String(input.cvv || '').trim();
+  if (
+    !/^\d{12,19}$/.test(cardNumber) ||
+    !passesLuhnCheck(cardNumber)
+  ) {
+    throw createHttpError(400, 'Enter a valid card number.');
+  }
+  if (
+    !/^\d{2}$/.test(expiryMonth) ||
+    Number(expiryMonth) < 1 ||
+    Number(expiryMonth) > 12
+  ) {
+    throw createHttpError(400, 'Enter a valid card expiry month.');
+  }
+  if (!/^\d{2}$/.test(expiryYear)) {
+    throw createHttpError(400, 'Enter a valid card expiry year.');
+  }
+  const now = new Date();
+  const fullExpiryYear = 2000 + Number(expiryYear);
+  if (
+    fullExpiryYear < now.getUTCFullYear() ||
+    (fullExpiryYear === now.getUTCFullYear() &&
+      Number(expiryMonth) < now.getUTCMonth() + 1) ||
+    fullExpiryYear > now.getUTCFullYear() + 30
+  ) {
+    throw createHttpError(400, 'Enter a card that has not expired.');
+  }
+  if (!/^\d{3,4}$/.test(cvv)) {
+    throw createHttpError(400, 'Enter a valid card security code.');
+  }
+  return {
+    number: cardNumber,
+    expiryMonth,
+    expiryYear,
+    cvv,
+  };
+}
+
+function normalizeFlutterwaveV4AvsAuthorization(value) {
+  const address = value && typeof value === 'object' ? value : {};
+  const line1 = normalizeOptionalText(address.line1);
+  const line2 = normalizeOptionalText(address.line2);
+  const city = normalizeOptionalText(address.city);
+  const state = normalizeOptionalText(address.state);
+  const country = normalizeOptionalText(
+    address.country || address.countryCode,
+  )?.toUpperCase();
+  const postalCode = normalizeOptionalText(
+    address.postalCode || address.postal_code,
+  );
+  if (!line1 || !city || !state || !country || !postalCode) {
+    throw createHttpError(
+      400,
+      'Address line, city, state, country, and postal code are required for AVS.',
+    );
+  }
+  if (!/^[A-Z]{2}$/.test(country)) {
+    throw createHttpError(400, 'Use a two-letter country code for AVS.');
+  }
+  for (const [label, item] of [
+    ['address line', line1],
+    ['city', city],
+    ['state', state],
+    ['postal code', postalCode],
+  ]) {
+    if (item.length > 120) {
+      throw createHttpError(400, `Flutterwave AVS ${label} is too long.`);
+    }
+  }
+  return {
+    type: 'avs',
+    avs: {
+      address: {
+        line1,
+        ...(line2 ? { line2: line2.slice(0, 120) } : {}),
+        city,
+        state,
+        country,
+        postal_code: postalCode,
+      },
+    },
+  };
+}
+
+function passesLuhnCheck(value) {
+  let sum = 0;
+  let doubleDigit = false;
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    let digit = Number(value[index]);
+    if (doubleDigit) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    doubleDigit = !doubleDigit;
+  }
+  return sum > 0 && sum % 10 === 0;
+}
+
+function flutterwaveV4CustomerPayload(customer = {}) {
+  const nameParts = String(customer.name || 'Piki customer')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const first = nameParts.shift() || 'Piki';
+  const last = nameParts.pop() || 'Customer';
+  const middle = nameParts.join(' ') || undefined;
+  return {
+    email: customer.email,
+    name: {
+      first,
+      ...(middle ? { middle } : {}),
+      last,
+    },
+  };
+}
+
+function normalizeFlutterwaveV4NextAction(data = {}) {
+  const nextAction =
+    data.nextAction && typeof data.nextAction === 'object'
+      ? data.nextAction
+      : data.next_action && typeof data.next_action === 'object'
+        ? data.next_action
+        : {};
+  const authorization =
+    nextAction.authorization && typeof nextAction.authorization === 'object'
+      ? nextAction.authorization
+      : {};
+  const authorizationType = normalizeOptionalText(
+    nextAction.authorizationType || authorization.type,
+  )?.toLowerCase();
+  const rawType = normalizeOptionalText(
+    nextAction.type || authorizationType,
+  )?.toLowerCase();
+  const redirectUrl = normalizeOptionalText(
+    nextAction.redirectUrl?.url ||
+      nextAction.redirect_url?.url ||
+      nextAction.redirectUrl ||
+      nextAction.url ||
+      data.redirectUrl ||
+      data.redirect_url,
+  );
+  if (redirectUrl) {
+    return { type: 'redirect', checkoutUrl: redirectUrl };
+  }
+  if (
+    rawType === 'requires_pin' ||
+    rawType === 'pin' ||
+    (rawType === 'authorize' && authorizationType === 'pin')
+  ) {
+    return { type: 'pin', checkoutUrl: null };
+  }
+  if (
+    rawType === 'requires_otp' ||
+    rawType === 'otp' ||
+    (rawType === 'authorize' && authorizationType === 'otp')
+  ) {
+    return { type: 'otp', checkoutUrl: null };
+  }
+  if (
+    rawType === 'requires_additional_fields' ||
+    rawType === 'avs' ||
+    authorizationType === 'avs'
+  ) {
+    return { type: 'avs', checkoutUrl: null };
+  }
+  return { type: rawType || 'pending', checkoutUrl: null };
+}
+
+async function processFlutterwaveV4ChargeResult({
+  payment,
+  chargeResult,
+  flutterwaveConfig,
+  accessToken,
+  alreadyVerified = false,
+}) {
+  const data = chargeResult?.data || {};
+  const chargeId = normalizeOptionalText(
+    data.id || payment.metadata?.flutterwaveV4ChargeId,
+  );
+  if (!chargeId) {
+    throw createHttpError(
+      502,
+      chargeResult?.message || 'Flutterwave v4 did not return a charge ID.',
+    );
+  }
+  const status = String(data.status || '').trim().toLowerCase();
+  const nextAction = normalizeFlutterwaveV4NextAction(data);
+  const flutterwaveV4Reference =
+    normalizeOptionalText(payment.metadata?.flutterwaveV4Reference) ||
+    `sub-${payment.id}`;
+  const metadata = {
+    flutterwaveApiVersion: 'v4',
+    flutterwaveV4Reference,
+    flutterwaveV4ChargeId: chargeId,
+    flutterwaveV4CustomerId:
+      payment.metadata?.flutterwaveV4CustomerId || null,
+    flutterwaveV4PaymentMethodId:
+      payment.metadata?.flutterwaveV4PaymentMethodId || null,
+    flutterwaveV4ChargeStatus: status || 'pending',
+    flutterwaveV4NextAction: nextAction.type,
+    flutterwaveV4CheckoutUrl: nextAction.checkoutUrl,
+    flutterwaveV4LastCheckedAt: new Date().toISOString(),
+  };
+  await setSubscriptionProviderReference(
+    payment.id,
+    flutterwaveV4Reference,
+    metadata,
+  );
+
+  if (['succeeded', 'successful', 'success', 'completed'].includes(status)) {
+    const verification = alreadyVerified
+      ? chargeResult
+      : await retrieveFlutterwaveV4Charge({
+          apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+          accessToken,
+          chargeId,
+          traceId: crypto.randomUUID(),
+        });
+    await completeVerifiedFlutterwaveTransaction({
+      payment: {
+        ...payment,
+        providerReference: flutterwaveV4Reference,
+        metadata: { ...(payment.metadata || {}), ...metadata },
+      },
+      verification: {
+        body: verification,
+        data: verification.data || {},
+        transactionId: chargeId,
+      },
+      transactionReference: flutterwaveV4Reference,
+    });
+    return {
+      id: payment.id,
+      paymentId: payment.id,
+      provider: 'flutterwave',
+      checkoutMode: 'flutterwave_v4',
+      status: 'paid',
+      activated: true,
+      message: 'Subscription activated.',
+    };
+  }
+  if (['failed', 'cancelled', 'canceled'].includes(status)) {
+    await markSubscriptionPaymentStatus(payment.id, 'failed', metadata);
+    throw createHttpError(
+      400,
+      chargeResult?.message || 'Flutterwave declined the card payment.',
+    );
+  }
+  return {
+    id: payment.id,
+    paymentId: payment.id,
+    provider: 'flutterwave',
+    checkoutMode: 'flutterwave_v4',
+    status: 'pending',
+    nextActionType: nextAction.type,
+    requiresPin: nextAction.type === 'pin',
+    requiresOtp: nextAction.type === 'otp',
+    requiresAvs: nextAction.type === 'avs',
+    checkoutUrl: nextAction.checkoutUrl,
+    message:
+      nextAction.type === 'pin'
+        ? 'Enter your card PIN to continue.'
+        : nextAction.type === 'otp'
+          ? 'Enter the OTP sent by your bank.'
+          : nextAction.type === 'avs'
+            ? 'Enter the billing address registered to this card.'
+          : nextAction.type === 'redirect'
+            ? 'Continue in your browser to authorize the card payment.'
+            : chargeResult?.message || 'Flutterwave is processing the payment.',
+  };
+}
+
+async function reconcilePendingFlutterwaveV4Payment(payment) {
+  const chargeId = normalizeOptionalText(
+    payment?.metadata?.flutterwaveV4ChargeId,
+  );
+  if (!chargeId) {
+    return subscriptionPaymentClientDto(payment);
+  }
+  const now = Date.now();
+  const lastDatabaseCheck = Date.parse(
+    payment.metadata?.flutterwaveV4LastCheckedAt || '',
+  );
+  if (
+    Number.isFinite(lastDatabaseCheck) &&
+    lastDatabaseCheck > now - 5_000
+  ) {
+    return subscriptionPaymentClientDto(payment);
+  }
+
+  const state = flutterwaveV4ReconciliationState.get(payment.id);
+  if (state?.promise) {
+    return state.promise;
+  }
+  if (state?.lastAttemptAt > now - 5_000) {
+    return subscriptionPaymentClientDto(payment);
+  }
+
+  const promise = (async () => {
+    const gateway = await loadPaymentGateway('flutterwave');
+    const flutterwaveConfig = requireFlutterwaveV4GatewayConfig(gateway);
+    const accessToken = await getFlutterwaveV4AccessToken(flutterwaveConfig);
+    const chargeResult = await retrieveFlutterwaveV4Charge({
+      apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+      accessToken,
+      chargeId,
+      traceId: crypto.randomUUID(),
+    });
+    return processFlutterwaveV4ChargeResult({
+      payment,
+      chargeResult,
+      flutterwaveConfig,
+      accessToken,
+      alreadyVerified: true,
+    });
+  })();
+  flutterwaveV4ReconciliationState.set(payment.id, {
+    lastAttemptAt: now,
+    promise,
+  });
+  try {
+    return await promise;
+  } finally {
+    flutterwaveV4ReconciliationState.set(payment.id, {
+      lastAttemptAt: now,
+      promise: null,
+    });
+    if (flutterwaveV4ReconciliationState.size > 1_000) {
+      for (const [paymentId, entry] of flutterwaveV4ReconciliationState) {
+        if (!entry?.promise && entry?.lastAttemptAt < Date.now() - 60_000) {
+          flutterwaveV4ReconciliationState.delete(paymentId);
+        }
+      }
+    }
+  }
+}
+
+function isTransientFlutterwaveV4Error(error) {
+  if (error?.name === 'FlutterwaveV4ApiError') {
+    const status = Number(error.httpStatus || 0);
+    return !status || status === 429 || status >= 500;
+  }
+  return (
+    ['AbortError', 'FetchError'].includes(error?.name) ||
+    ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(
+      error?.code,
+    )
+  );
 }
 
 async function createFlutterwavePaymentPlan({
@@ -15007,6 +16027,7 @@ async function processFlutterwaveReturn({
   const verification = await verifyFlutterwaveTransaction({
     transactionId,
     transactionReference,
+    payment,
   });
   return completeVerifiedFlutterwaveTransaction({
     payment,
@@ -15070,9 +16091,40 @@ async function processFlutterwaveWebhook({
   });
 }
 
-async function verifyFlutterwaveTransaction({ transactionId, transactionReference }) {
+async function verifyFlutterwaveTransaction({
+  transactionId,
+  transactionReference,
+  payment,
+}) {
   const gateway = await loadPaymentGateway('flutterwave');
   const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+  const isV4Payment =
+    payment?.metadata?.flutterwaveApiVersion === 'v4' ||
+    String(transactionId || '').startsWith('chg_');
+  if (isV4Payment) {
+    const chargeId =
+      normalizeOptionalText(transactionId) ||
+      normalizeOptionalText(payment?.metadata?.flutterwaveV4ChargeId);
+    if (!chargeId) {
+      throw createHttpError(400, 'Flutterwave v4 charge ID is missing.');
+    }
+    const accessToken = await getFlutterwaveV4AccessToken(flutterwaveConfig);
+    const verification = await retrieveFlutterwaveV4Charge({
+      apiBaseUrl: flutterwaveConfig.v4BaseUrl,
+      accessToken,
+      chargeId,
+      traceId: crypto.randomUUID(),
+    });
+    const data = verification.data || {};
+    if (normalizeOptionalText(data.id) !== chargeId) {
+      throw createHttpError(400, 'Flutterwave v4 charge ID did not match.');
+    }
+    return {
+      body: verification,
+      data,
+      transactionId: chargeId,
+    };
+  }
   const fetch = (await import('node-fetch')).default;
   const verifyUrl = transactionId && /^\d+$/.test(String(transactionId))
     ? `${flutterwaveConfig.baseUrl}/transactions/${encodeURIComponent(transactionId)}/verify`
@@ -15109,11 +16161,49 @@ async function completeVerifiedFlutterwaveTransaction({
     payment.metadata?.flutterwaveCustomerEmail,
   );
   const verifiedSubscription = flutterwaveWebhookSubscription({ data });
+  const verifiedStatus = String(data.status || '').trim().toLowerCase();
+  const isV4Payment = payment.metadata?.flutterwaveApiVersion === 'v4';
+  const expectedChargeId = normalizeOptionalText(
+    payment.metadata?.flutterwaveV4ChargeId,
+  );
+  const expectedCustomerId = normalizeOptionalText(
+    payment.metadata?.flutterwaveV4CustomerId,
+  );
+  const expectedPaymentMethodId = normalizeOptionalText(
+    payment.metadata?.flutterwaveV4PaymentMethodId,
+  );
+  const verifiedChargeId = normalizeOptionalText(
+    data.id || verification.transactionId,
+  );
+  const verifiedCustomerId = normalizeOptionalText(
+    data.customerId ||
+      data.customer_id ||
+      (data.customer && typeof data.customer === 'object'
+        ? data.customer.id
+        : data.customer),
+  );
+  const verifiedPaymentMethodId = normalizeOptionalText(
+    data.paymentMethodId ||
+      data.payment_method_id ||
+      data.paymentMethod?.id ||
+      data.payment_method?.id ||
+      data.payment_method_details?.id,
+  );
   if (
-    data.status !== 'successful' ||
+    !['successful', 'succeeded', 'success', 'completed'].includes(
+      verifiedStatus,
+    ) ||
     verifiedCurrency !== expectedCurrency ||
     majorAmountToMinor(data.amount) !== payment.amountMinor ||
     (!isRecurring && verifiedReference !== payment.providerReference) ||
+    (isV4Payment &&
+      (!expectedChargeId ||
+        verifiedChargeId !== expectedChargeId ||
+        String(verification.transactionId || '') !== expectedChargeId ||
+        !expectedCustomerId ||
+        verifiedCustomerId !== expectedCustomerId ||
+        !expectedPaymentMethodId ||
+        verifiedPaymentMethodId !== expectedPaymentMethodId)) ||
     (isRecurring &&
       (!expectedPlanId || !expectedEmail)) ||
     (expectedPlanId &&
@@ -15301,9 +16391,12 @@ function majorAmountToMinor(amount) {
 }
 
 function assertPublicPaymentReturnUrl() {
-  if (!isHttpsUrl(config.publicBaseUrl)) {
-    throw createHttpError(400, 'PUBLIC_BASE_URL must be a public HTTPS URL');
-  }
+  const publicOrigin = normalizePublicHttpsOrigin(config.publicBaseUrl);
+  if (publicOrigin) return publicOrigin;
+  throw createHttpError(
+    400,
+    'PUBLIC_BASE_URL must be a public HTTPS origin without credentials, query, fragment, or path',
+  );
 }
 
 function sendPaymentReturnPage(
@@ -16705,8 +17798,20 @@ function resolvePayPalGatewayConfig(gateway) {
 function resolveFlutterwaveGatewayConfig(gateway) {
   const publicConfig = gateway?.publicConfig || {};
   const secretConfig = gateway?.secretConfig || {};
+  const environment =
+    normalizeOptionalText(publicConfig.environment)?.toLowerCase() ||
+    (config.nodeEnv === 'production' || config.nodeEnv === 'prod'
+      ? 'production'
+      : 'sandbox');
   return {
+    apiVersion:
+      normalizeOptionalText(publicConfig.apiVersion)?.toLowerCase() || '',
     baseUrl: String(publicConfig.baseUrl || config.flutterwaveBaseUrl).replace(/\/+$/, ''),
+    v4BaseUrl: resolveFlutterwaveV4ApiBaseUrl({
+      apiBaseUrl: publicConfig.v4BaseUrl || config.flutterwaveV4BaseUrl,
+      environment,
+    }),
+    environment,
     publicKey: secretConfig.publicKey || '',
     secretKey: secretConfig.secretKey || config.flutterwaveSecretKey,
     clientId: secretConfig.clientId || config.flutterwaveClientId,
@@ -16739,6 +17844,41 @@ function normalizePaymentRow(row) {
     message: paymentMetadataMessage(metadata),
     metadata,
     createdAt: toIsoString(row.created_at),
+  };
+}
+
+function subscriptionPaymentClientDto(payment) {
+  const isFlutterwaveV4 =
+    payment?.provider === 'flutterwave' &&
+    payment?.metadata?.flutterwaveApiVersion === 'v4';
+  const nextActionType = isFlutterwaveV4
+    ? normalizeOptionalText(payment.metadata?.flutterwaveV4NextAction)
+    : null;
+  const checkoutUrl =
+    isFlutterwaveV4 &&
+    isHttpsUrl(payment.metadata?.flutterwaveV4CheckoutUrl)
+      ? payment.metadata.flutterwaveV4CheckoutUrl
+      : null;
+  return {
+    id: payment.id,
+    paymentId: payment.id,
+    provider: payment.provider,
+    status: payment.status,
+    activated: payment.status === 'paid',
+    message: payment.message,
+    ...(isFlutterwaveV4
+      ? {
+          checkoutMode: 'flutterwave_v4',
+          nextActionType,
+          requiresCard:
+            payment.status === 'pending' &&
+            !payment.metadata?.flutterwaveV4ChargeId,
+          requiresPin: nextActionType === 'pin',
+          requiresOtp: nextActionType === 'otp',
+          requiresAvs: nextActionType === 'avs',
+          checkoutUrl,
+        }
+      : {}),
   };
 }
 
@@ -22034,6 +23174,17 @@ function normalizeRouteError(error) {
   }
 
   const message = String(error?.message || '');
+  if (error?.name === 'FlutterwaveV4ApiError') {
+    const upstreamStatus = Number(error.httpStatus || 0);
+    return createHttpError(
+      upstreamStatus >= 400 && upstreamStatus < 500 ? 400 : 502,
+      message || 'Flutterwave v4 request failed.',
+      { exposeMessage: true },
+    );
+  }
+  if (message.startsWith('Flutterwave v4')) {
+    return createHttpError(400, message);
+  }
   if (message.endsWith('is required')) {
     return createHttpError(400, message);
   }

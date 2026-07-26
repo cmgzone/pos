@@ -127,6 +127,93 @@ void main() {
     expect(checkout.checkoutUrl, startsWith('https://'));
   });
 
+  test('subscription checkout parses Flutterwave v4 card and auth stages', () {
+    final card = SubscriptionCheckoutResult.fromJson({
+      'id': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'pending',
+      'checkoutMode': 'flutterwave_v4',
+      'requiresCard': true,
+    }, backendUrl: 'https://pikipos.com/api');
+    final pin = SubscriptionCheckoutResult.fromJson({
+      'paymentId': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'pending',
+      'checkoutMode': 'flutterwave_v4',
+      'nextActionType': 'requires_pin',
+    });
+    final otp = SubscriptionCheckoutResult.fromJson({
+      'paymentId': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'pending',
+      'checkoutMode': 'flutterwave_v4',
+      'nextAction': {'type': 'requires_otp'},
+    });
+    final avs = SubscriptionCheckoutResult.fromJson({
+      'paymentId': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'pending',
+      'checkoutMode': 'flutterwave_v4',
+      'nextActionType': 'requires_additional_fields',
+    });
+
+    expect(card.isFlutterwaveV4, isTrue);
+    expect(card.backendUrl, 'https://pikipos.com/api');
+    expect(card.requiresCard, isTrue);
+    expect(pin.requiresPin, isTrue);
+    expect(otp.requiresOtp, isTrue);
+    expect(avs.requiresAvs, isTrue);
+  });
+
+  test('subscription checkout parses Flutterwave v4 redirect action', () {
+    final checkout = SubscriptionCheckoutResult.fromJson({
+      'paymentId': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'pending',
+      'checkoutMode': 'flutterwave_v4',
+      'nextActionType': 'redirect',
+      'checkoutUrl': 'https://flutterwave.example/authorize',
+    });
+
+    expect(checkout.checkoutUrl, 'https://flutterwave.example/authorize');
+    expect(checkout.requiresPin, isFalse);
+    expect(checkout.requiresOtp, isFalse);
+    expect(checkout.requiresAvs, isFalse);
+  });
+
+  test('terminal checkout statuses require a new checkout', () {
+    for (final status in const [
+      'failed',
+      'cancelled',
+      'canceled',
+      'declined',
+    ]) {
+      final checkout = SubscriptionCheckoutResult.fromJson({
+        'paymentId': 'payment-v4',
+        'provider': 'flutterwave',
+        'status': status,
+      });
+
+      expect(checkout.isTerminalFailure, isTrue, reason: status);
+      expect(checkout.isPaid, isFalse, reason: status);
+    }
+
+    final pending = SubscriptionCheckoutResult.fromJson({
+      'paymentId': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'pending',
+    });
+    final paid = SubscriptionCheckoutResult.fromJson({
+      'paymentId': 'payment-v4',
+      'provider': 'flutterwave',
+      'status': 'paid',
+    });
+
+    expect(pending.isTerminalFailure, isFalse);
+    expect(paid.isTerminalFailure, isFalse);
+    expect(paid.isPaid, isTrue);
+  });
+
   test('subscription plans discard legacy subscription providers', () {
     final plan = SubscriptionPlanSummary.fromJson({
       'code': 'pro',

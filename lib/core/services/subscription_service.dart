@@ -252,32 +252,91 @@ class SubscriptionCatalog {
 }
 
 class SubscriptionCheckoutResult {
+  final String? backendUrl;
   final String paymentId;
   final String provider;
   final String status;
   final String? message;
   final String? checkoutUrl;
   final String? storeProductId;
+  final String? checkoutMode;
+  final String? nextActionType;
+  final bool requiresCard;
+  final bool requiresPin;
+  final bool requiresOtp;
+  final bool requiresAvs;
 
   const SubscriptionCheckoutResult({
+    required this.backendUrl,
     required this.paymentId,
     required this.provider,
     required this.status,
     required this.message,
     required this.checkoutUrl,
     required this.storeProductId,
+    required this.checkoutMode,
+    required this.nextActionType,
+    required this.requiresCard,
+    required this.requiresPin,
+    required this.requiresOtp,
+    required this.requiresAvs,
   });
 
-  factory SubscriptionCheckoutResult.fromJson(Map<String, dynamic> json) {
+  factory SubscriptionCheckoutResult.fromJson(
+    Map<String, dynamic> json, {
+    String? backendUrl,
+  }) {
+    final nextAction = json['nextAction'];
+    final nextActionMap = nextAction is Map
+        ? Map<String, dynamic>.from(nextAction)
+        : const <String, dynamic>{};
+    final nextActionType =
+        _readText(json['nextActionType']) ??
+        _readText(nextActionMap['type']) ??
+        _readText(nextAction);
+    final normalizedAction = nextActionType?.trim().toLowerCase() ?? '';
     return SubscriptionCheckoutResult(
-      paymentId: json['id']?.toString() ?? '',
+      backendUrl: _readText(backendUrl),
+      paymentId: _readText(json['id']) ?? _readText(json['paymentId']) ?? '',
       provider: json['provider']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
       message: json['message']?.toString(),
-      checkoutUrl: _readText(json['checkoutUrl']),
+      checkoutUrl:
+          _readText(json['checkoutUrl']) ??
+          _readText(json['redirectUrl']) ??
+          _readText(nextActionMap['url']),
       storeProductId: _readText(json['storeProductId']),
+      checkoutMode: _readText(json['checkoutMode']),
+      nextActionType: nextActionType,
+      requiresCard:
+          json['requiresCard'] == true || normalizedAction.contains('card'),
+      requiresPin:
+          json['requiresPin'] == true || normalizedAction.contains('pin'),
+      requiresOtp:
+          json['requiresOtp'] == true || normalizedAction.contains('otp'),
+      requiresAvs:
+          json['requiresAvs'] == true ||
+          json['requiresAdditionalFields'] == true ||
+          normalizedAction.contains('additional_fields') ||
+          normalizedAction.contains('avs'),
     );
   }
+
+  bool get isFlutterwaveV4 =>
+      provider.trim().toLowerCase() == 'flutterwave' &&
+      checkoutMode?.trim().toLowerCase() == 'flutterwave_v4';
+
+  String get normalizedStatus => status.trim().toLowerCase();
+
+  bool get isPaid => normalizedStatus == 'paid';
+
+  bool get isCancelled =>
+      normalizedStatus == 'cancelled' || normalizedStatus == 'canceled';
+
+  bool get isTerminalFailure =>
+      isCancelled ||
+      normalizedStatus == 'failed' ||
+      normalizedStatus == 'declined';
 }
 
 class SubscriptionService {
@@ -397,7 +456,10 @@ class SubscriptionService {
       options: Options(headers: headers),
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
-    return SubscriptionCheckoutResult.fromJson(data);
+    return SubscriptionCheckoutResult.fromJson(
+      data,
+      backendUrl: _sourceBackendUrl(response),
+    );
   }
 
   static Future<Map<String, dynamic>> confirmGooglePlay({
@@ -420,18 +482,92 @@ class SubscriptionService {
     return _requireOk(response)['data'] as Map<String, dynamic>;
   }
 
-  static Future<SubscriptionCheckoutResult> fetchPayment({
+  static Future<SubscriptionCheckoutResult> submitFlutterwaveV4Card({
+    required String backendUrl,
     required String paymentId,
+    required String cardNumber,
+    required String expiryMonth,
+    required String expiryYear,
+    required String cvv,
   }) async {
     final headers = await _authHeaders();
     final deviceId = await SyncSettingsService.getOrCreateDeviceId();
-    final response = await _getWithFallback(
-      'subscription/payments/${Uri.encodeComponent(paymentId)}',
-      queryParameters: {'deviceId': deviceId},
+    final response = await _postToPaymentBackend(
+      backendUrl,
+      'subscription/flutterwave/v4/card',
+      data: {
+        'deviceId': deviceId,
+        'paymentId': paymentId,
+        'cardNumber': cardNumber,
+        'expiryMonth': expiryMonth,
+        'expiryYear': expiryYear,
+        'cvv': cvv,
+      },
       options: Options(headers: headers),
     );
     final data = _requireOk(response)['data'] as Map<String, dynamic>;
-    return SubscriptionCheckoutResult.fromJson(data);
+    return SubscriptionCheckoutResult.fromJson(data, backendUrl: backendUrl);
+  }
+
+  static Future<SubscriptionCheckoutResult> authorizeFlutterwaveV4({
+    required String backendUrl,
+    required String paymentId,
+    required String type,
+    String? value,
+    Map<String, String>? address,
+  }) async {
+    final authorizationType = type.trim().toLowerCase();
+    if (!const {'pin', 'otp', 'avs'}.contains(authorizationType)) {
+      throw ArgumentError.value(type, 'type', 'Must be pin, otp, or avs.');
+    }
+    final authorizationValue = value?.trim() ?? '';
+    if (authorizationType != 'avs' && authorizationValue.isEmpty) {
+      throw ArgumentError.value(value, 'value', 'Authorization is required.');
+    }
+    if (authorizationType == 'avs' && (address == null || address.isEmpty)) {
+      throw ArgumentError.value(address, 'address', 'Address is required.');
+    }
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = await _postToPaymentBackend(
+      backendUrl,
+      'subscription/flutterwave/v4/authorize',
+      data: {
+        'deviceId': deviceId,
+        'paymentId': paymentId,
+        'type': authorizationType,
+        if (authorizationType == 'avs') 'address': address,
+        if (authorizationType != 'avs') 'value': authorizationValue,
+      },
+      options: Options(headers: headers),
+    );
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    return SubscriptionCheckoutResult.fromJson(data, backendUrl: backendUrl);
+  }
+
+  static Future<SubscriptionCheckoutResult> fetchPayment({
+    required String paymentId,
+    String? backendUrl,
+  }) async {
+    final headers = await _authHeaders();
+    final deviceId = await SyncSettingsService.getOrCreateDeviceId();
+    final response = backendUrl == null
+        ? await _getWithFallback(
+            'subscription/payments/${Uri.encodeComponent(paymentId)}',
+            queryParameters: {'deviceId': deviceId},
+            options: Options(headers: headers),
+          )
+        : await _getFromPaymentBackend(
+            backendUrl,
+            'subscription/payments/${Uri.encodeComponent(paymentId)}',
+            queryParameters: {'deviceId': deviceId},
+            options: Options(headers: headers),
+          );
+    final data = _requireOk(response)['data'] as Map<String, dynamic>;
+    return SubscriptionCheckoutResult.fromJson(
+      data,
+      backendUrl: backendUrl ?? _sourceBackendUrl(response),
+    );
   }
 
   static String get currentPlatform {
@@ -476,6 +612,72 @@ class SubscriptionService {
         options: _withSourceBackend(options, backendUrl),
       ),
     );
+  }
+
+  static Future<Response<Map<String, dynamic>>> _postToPaymentBackend(
+    String backendUrl,
+    String path, {
+    Object? data,
+    Options? options,
+  }) {
+    final secureBackendUrl = _securePaymentBackendUrl(backendUrl);
+    return _requestPaymentBackend(
+      secureBackendUrl,
+      () => _dio.post<Map<String, dynamic>>(
+        _urlFor(secureBackendUrl, path),
+        data: data,
+        options: _withSourceBackend(options, secureBackendUrl),
+      ),
+    );
+  }
+
+  static Future<Response<Map<String, dynamic>>> _getFromPaymentBackend(
+    String backendUrl,
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) {
+    final secureBackendUrl = _securePaymentBackendUrl(backendUrl);
+    return _requestPaymentBackend(
+      secureBackendUrl,
+      () => _dio.get<Map<String, dynamic>>(
+        _urlFor(secureBackendUrl, path),
+        queryParameters: queryParameters,
+        options: _withSourceBackend(options, secureBackendUrl),
+      ),
+    );
+  }
+
+  static Future<Response<Map<String, dynamic>>> _requestPaymentBackend(
+    String backendUrl,
+    Future<Response<Map<String, dynamic>>> Function() request,
+  ) async {
+    try {
+      return await request();
+    } catch (error) {
+      final responseError = _responseErrorMessage(error);
+      if (responseError != null) {
+        throw Exception(responseError);
+      }
+      if (_isRetryableConnectionError(error)) {
+        throw Exception(_connectionErrorMessage(error, [backendUrl]));
+      }
+      rethrow;
+    }
+  }
+
+  static String _securePaymentBackendUrl(String value) {
+    final normalized = value.trim().replaceFirst(RegExp(r'/+$'), '');
+    final uri = Uri.tryParse(normalized);
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      throw Exception(
+        'Flutterwave v4 checkout requires the same secure HTTPS backend that created the payment.',
+      );
+    }
+    return normalized;
   }
 
   static Future<Response<Map<String, dynamic>>> _requestWithFallback(

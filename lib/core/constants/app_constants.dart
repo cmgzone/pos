@@ -2,7 +2,7 @@ class AppConstants {
   static const String appName = 'Piki POS';
   static const String appVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.0.0+1',
+    defaultValue: '1.0.5+6',
   );
   static const String productionApiBaseUrl = 'https://pikipos.com/api';
   static const String productionPublicBaseUrl = 'https://pikipos.com';

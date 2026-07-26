@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const net = require('node:net');
 
 const { config } = require('./config');
 const { query } = require('./db');
@@ -50,6 +51,12 @@ const ALLOWED_SUBSCRIPTION_PROVIDERS = new Set([
   'paypal',
   'flutterwave',
 ]);
+const FLUTTERWAVE_WEBHOOK_PATH =
+  '/api/subscription/flutterwave/webhook';
+const FLUTTERWAVE_WEBHOOK_FINGERPRINT_KEY =
+  'webhookVerificationFingerprint';
+const FLUTTERWAVE_WEBHOOK_VERIFIED_AT_KEY =
+  'webhookLastVerifiedAt';
 
 const BASE_FEATURES = [
   FEATURE_KEYS.pos,
@@ -795,6 +802,7 @@ async function listPublicMarkets(target = query) {
       provider,
       display_name,
       public_config_json,
+      secret_config_json,
       gateway_active,
       payment_active
     FROM (
@@ -829,6 +837,7 @@ async function listPublicMarkets(target = query) {
     .map((row) => {
       const provider = normalizeProvider(row.provider);
       const secretConfig = parseJsonValue(row.secret_config_json, {});
+      const publicConfig = parseJsonValue(row.public_config_json, {});
       return {
         countryCode: normalizeCountryCode(row.country_code),
         label: countryLabel(row.country_code),
@@ -837,8 +846,8 @@ async function listPublicMarkets(target = query) {
         providerLabel: row.display_name || providerLabel(row.provider),
         paymentActive:
           Boolean(row.payment_active) &&
-          isProviderRuntimeReady(provider, { secretConfig }),
-        publicConfig: parseJsonValue(row.public_config_json, {}),
+          isProviderRuntimeReady(provider, { secretConfig, publicConfig }),
+        publicConfig,
       };
     })
     .filter((market) => isSubscriptionPaymentProviderAllowed(market.provider));
@@ -851,18 +860,46 @@ function isProviderRuntimeReady(
     secretConfig = {
       secretKey: config.flutterwaveSecretKey,
       webhookHash: config.flutterwaveWebhookSecretHash,
+      clientId: config.flutterwaveClientId,
+      clientSecret: config.flutterwaveClientSecret,
+      encryptionKey: config.flutterwaveEncryptionKey,
     },
+    publicConfig = {},
   } = {},
 ) {
   const cleanProvider = normalizeProvider(provider);
+  const publicOrigin = normalizePublicHttpsOrigin(publicBaseUrl);
   if (cleanProvider === 'paypal') {
-    return isHttpsUrl(publicBaseUrl);
+    return Boolean(publicOrigin);
   }
   if (cleanProvider === 'flutterwave') {
-    return Boolean(
-      isHttpsUrl(publicBaseUrl) &&
-        secretConfig?.secretKey &&
+    const hasV3Checkout = Boolean(
+      secretConfig?.secretKey && secretConfig?.webhookHash,
+    );
+    const hasV4Checkout = Boolean(
+      secretConfig?.clientId &&
+        secretConfig?.clientSecret &&
+        isValidFlutterwaveV4EncryptionKey(secretConfig?.encryptionKey) &&
         secretConfig?.webhookHash,
+    );
+    const hasVerifiedV4Webhook = Boolean(
+      hasV4Checkout &&
+        resolveFlutterwaveWebhookStatus({
+          publicBaseUrl: publicOrigin,
+          publicConfig,
+          webhookHash: secretConfig?.webhookHash,
+        }).webhookVerified,
+    );
+    const apiVersion = (
+      normalizeText(publicConfig?.apiVersion) || ''
+    ).toLowerCase();
+    return Boolean(
+      publicOrigin &&
+        (apiVersion === 'v4'
+          ? hasVerifiedV4Webhook
+          : apiVersion === 'v3'
+            ? hasV3Checkout
+            : hasV3Checkout || hasVerifiedV4Webhook),
     );
   }
   return true;
@@ -922,6 +959,35 @@ async function savePaymentGateway(provider, input = {}, target = query) {
     ...(existing || {}),
     provider: cleanProvider,
   });
+  if (cleanProvider === 'flutterwave') {
+    for (const key of [
+      FLUTTERWAVE_WEBHOOK_FINGERPRINT_KEY,
+      FLUTTERWAVE_WEBHOOK_VERIFIED_AT_KEY,
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(existing?.publicConfig || {}, key)) {
+        normalized.publicConfig[key] = existing.publicConfig[key];
+      } else {
+        delete normalized.publicConfig[key];
+      }
+    }
+    const hasCompleteV3Credentials = Boolean(
+      normalized.secretConfig?.secretKey &&
+        normalized.secretConfig?.webhookHash,
+    );
+    const hasCompleteV4Credentials = Boolean(
+      normalized.secretConfig?.clientId &&
+        normalized.secretConfig?.clientSecret &&
+        normalized.secretConfig?.encryptionKey,
+    );
+    const apiVersion = normalizeText(
+      normalized.publicConfig?.apiVersion,
+    )?.toLowerCase();
+    if (!apiVersion && hasCompleteV4Credentials !== hasCompleteV3Credentials) {
+      normalized.publicConfig.apiVersion = hasCompleteV4Credentials
+        ? 'v4'
+        : 'v3';
+    }
+  }
   validatePaymentGatewayConfiguration(normalized);
 
   const result = await runQuery(
@@ -1014,10 +1080,25 @@ function defaultPaymentGateways() {
           config.publicBaseUrl) ||
           (config.flutterwaveClientId &&
             config.flutterwaveClientSecret &&
-            config.flutterwaveEncryptionKey),
+            config.flutterwaveEncryptionKey &&
+            config.flutterwaveWebhookSecretHash &&
+            normalizePublicHttpsOrigin(config.publicBaseUrl)),
       ),
       countries: ['KE', 'GLOBAL'],
-      publicConfig: removeEmptyValues({ baseUrl: config.flutterwaveBaseUrl }),
+      publicConfig: removeEmptyValues({
+        apiVersion:
+          config.flutterwaveClientId &&
+          config.flutterwaveClientSecret &&
+          config.flutterwaveEncryptionKey
+            ? 'v4'
+            : 'v3',
+        baseUrl: config.flutterwaveBaseUrl,
+        v4BaseUrl: config.flutterwaveV4BaseUrl,
+        environment:
+          config.nodeEnv === 'production' || config.nodeEnv === 'prod'
+            ? 'production'
+            : 'sandbox',
+      }),
       secretConfig: removeEmptyValues({
         secretKey: config.flutterwaveSecretKey,
         clientId: config.flutterwaveClientId,
@@ -1072,14 +1153,28 @@ function normalizePaymentGatewayInput(input, existing = {}) {
 
 function normalizePaymentGatewayRow(row, { includeSecrets = false } = {}) {
   const secretConfig = parseJsonValue(row.secret_config_json, {});
+  const provider = normalizeProvider(row.provider);
+  const storedPublicConfig = parseJsonValue(row.public_config_json, {});
+  const publicConfig = { ...storedPublicConfig };
+  if (!includeSecrets) {
+    delete publicConfig[FLUTTERWAVE_WEBHOOK_FINGERPRINT_KEY];
+  }
+  const webhookStatus =
+    provider === 'flutterwave'
+      ? resolveFlutterwaveWebhookStatus({
+          publicConfig: storedPublicConfig,
+          webhookHash: secretConfig.webhookHash,
+        })
+      : null;
   return {
-    provider: normalizeProvider(row.provider),
+    provider,
     displayName: row.display_name || providerLabel(row.provider),
     isActive: Boolean(row.is_active),
     countries: normalizeCountryList(parseJsonValue(row.countries_json, [])),
-    publicConfig: parseJsonValue(row.public_config_json, {}),
+    publicConfig,
     secretConfig: includeSecrets ? secretConfig : maskConfigObject(secretConfig),
     updatedAt: toIsoString(row.updated_at),
+    ...(webhookStatus || {}),
   };
 }
 
@@ -1244,6 +1339,15 @@ function validatePaymentGatewayConfiguration(gateway) {
   if (gateway.provider === 'flutterwave') {
     const publicConfig = gateway.publicConfig || {};
     const secretConfig = gateway.secretConfig || {};
+    const apiVersion = (
+      normalizeText(publicConfig.apiVersion) || ''
+    ).toLowerCase();
+    if (apiVersion && !['v3', 'v4'].includes(apiVersion)) {
+      throw createError(
+        400,
+        'Flutterwave Checkout API Version must be v4 or v3.',
+      );
+    }
     const hasCompleteV3Credentials = Boolean(
       secretConfig.secretKey && secretConfig.webhookHash,
     );
@@ -1260,16 +1364,100 @@ function validatePaymentGatewayConfiguration(gateway) {
         secretConfig.clientSecret ||
         secretConfig.encryptionKey,
     );
+    if (hasCompleteV3Credentials && hasCompleteV4Credentials && !apiVersion) {
+      throw createError(
+        400,
+        'Choose Flutterwave Checkout API Version v4 or v3 when both credential sets are saved.',
+      );
+    }
     if (hasV4Credentials && !hasCompleteV4Credentials) {
       throw createError(
         400,
         'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.',
       );
     }
-    if (hasCompleteV3Credentials && !isHttpsUrl(publicConfig.baseUrl)) {
+    if (
+      hasCompleteV4Credentials &&
+      !isValidFlutterwaveV4EncryptionKey(secretConfig.encryptionKey)
+    ) {
+      throw createError(
+        400,
+        'Flutterwave v4 Encryption Key must be a valid base64-encoded 256-bit key.',
+      );
+    }
+    if (apiVersion === 'v4' && !hasCompleteV4Credentials) {
+      throw createError(
+        400,
+        'Complete all Flutterwave v4 credentials before selecting v4 checkout.',
+      );
+    }
+    const usesV4Checkout =
+      apiVersion === 'v4' ||
+      (!apiVersion &&
+        hasCompleteV4Credentials &&
+        !hasCompleteV3Credentials);
+    if (usesV4Checkout && !secretConfig.webhookHash) {
+      const webhookUrl = buildFlutterwaveWebhookUrl();
+      throw createError(
+        400,
+        webhookUrl
+          ? `Flutterwave v4 Webhook Secret Hash is required before enabling checkout. Configure ${webhookUrl} as the callback URL.`
+          : 'Flutterwave v4 Webhook Secret Hash is required before enabling checkout, and PUBLIC_BASE_URL must be public HTTPS.',
+      );
+    }
+    if (apiVersion === 'v3' && !hasCompleteV3Credentials) {
+      throw createError(
+        400,
+        'Complete both Flutterwave v3 fields before selecting v3 checkout.',
+      );
+    }
+    const usesV3Checkout =
+      apiVersion === 'v3' ||
+      (!apiVersion &&
+        hasCompleteV3Credentials &&
+        !hasCompleteV4Credentials);
+    if (usesV3Checkout && !isHttpsUrl(publicConfig.baseUrl)) {
       throw createError(
         400,
         'Flutterwave v3 base URL must be a valid HTTPS URL.',
+      );
+    }
+    const environment = (
+      normalizeText(publicConfig.environment) || 'sandbox'
+    ).toLowerCase();
+    if (!['sandbox', 'test', 'testing', 'production', 'live'].includes(environment)) {
+      throw createError(
+        400,
+        'Flutterwave environment must be sandbox or production.',
+      );
+    }
+    const v4BaseUrl = (normalizeText(publicConfig.v4BaseUrl) || '').replace(
+      /\/+$/,
+      '',
+    );
+    if (
+      v4BaseUrl &&
+      ![
+        'https://developersandbox-api.flutterwave.com',
+        'https://f4bexperience.flutterwave.com',
+      ].includes(v4BaseUrl)
+    ) {
+      throw createError(
+        400,
+        'Flutterwave v4 API URL must use the official sandbox or production host.',
+      );
+    }
+    if (
+      apiVersion === 'v4' &&
+      v4BaseUrl &&
+      ((['sandbox', 'test', 'testing'].includes(environment) &&
+        v4BaseUrl !== 'https://developersandbox-api.flutterwave.com') ||
+        (['production', 'live'].includes(environment) &&
+          v4BaseUrl !== 'https://f4bexperience.flutterwave.com'))
+    ) {
+      throw createError(
+        400,
+        'Flutterwave v4 API URL does not match the selected environment.',
       );
     }
     if (!hasCompleteV3Credentials && !hasCompleteV4Credentials) {
@@ -1287,12 +1475,188 @@ function validatePaymentGatewayConfiguration(gateway) {
   }
 }
 
+function isValidFlutterwaveV4EncryptionKey(value) {
+  const encoded = String(value || '').replace(/\s+/g, '');
+  if (!encoded) return false;
+  const key = Buffer.from(encoded, 'base64');
+  return (
+    key.length === 32 &&
+    key.toString('base64').replace(/=+$/, '') === encoded.replace(/=+$/, '')
+  );
+}
+
 function isHttpsUrl(value) {
   try {
     return new URL(String(value || '')).protocol === 'https:';
   } catch (_) {
     return false;
   }
+}
+
+function normalizePublicHttpsOrigin(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.includes('?') || raw.includes('#')) return null;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch (_) {
+    return null;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    return null;
+  }
+
+  let hostname = url.hostname.toLowerCase();
+  if (hostname.endsWith('.')) {
+    hostname = hostname.slice(0, -1);
+    url.hostname = hostname;
+  }
+  const unwrappedHost = hostname.replace(/^\[|\]$/g, '');
+  if (
+    !unwrappedHost ||
+    unwrappedHost === 'localhost' ||
+    unwrappedHost.endsWith('.localhost') ||
+    unwrappedHost === 'local' ||
+    unwrappedHost.endsWith('.local')
+  ) {
+    return null;
+  }
+
+  const ipVersion = net.isIP(unwrappedHost);
+  if (ipVersion === 4 && isNonPublicIpv4(unwrappedHost)) return null;
+  if (ipVersion === 6 && isNonPublicIpv6(unwrappedHost)) return null;
+  if (!ipVersion && !unwrappedHost.includes('.')) return null;
+  return url.origin;
+}
+
+function isNonPublicIpv4(value) {
+  const octets = String(value).split('.').map(Number);
+  if (
+    octets.length !== 4 ||
+    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+  ) {
+    return true;
+  }
+  const [first, second] = octets;
+  return Boolean(
+    first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      (first === 100 && second >= 64 && second <= 127) ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 198 && second >= 18 && second <= 19) ||
+      first >= 224
+  );
+}
+
+function isNonPublicIpv6(value) {
+  const address = String(value).toLowerCase();
+  if (
+    address === '::' ||
+    address === '::1' ||
+    /^f[cd]/.test(address) ||
+    /^fe[89ab]/.test(address) ||
+    /^fe[c-f]/.test(address) ||
+    /^ff/.test(address) ||
+    /^2001:db8(?::|$)/.test(address)
+  ) {
+    return true;
+  }
+  const mapped = address.match(
+    /^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/,
+  );
+  if (!mapped) return false;
+  const high = Number.parseInt(mapped[1], 16);
+  const low = Number.parseInt(mapped[2], 16);
+  return isNonPublicIpv4(
+    `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`,
+  );
+}
+
+function buildFlutterwaveWebhookUrl(publicBaseUrl = config.publicBaseUrl) {
+  const origin = normalizePublicHttpsOrigin(publicBaseUrl);
+  return origin
+    ? new URL(FLUTTERWAVE_WEBHOOK_PATH, `${origin}/`).toString()
+    : null;
+}
+
+function flutterwaveWebhookFingerprint({ webhookUrl, webhookHash } = {}) {
+  const url = buildFlutterwaveWebhookUrl(
+    webhookUrl
+      ? new URL(webhookUrl).origin
+      : config.publicBaseUrl,
+  );
+  const secret = normalizeText(webhookHash);
+  if (!url || !secret) return null;
+  return crypto
+    .createHash('sha256')
+    .update(`${url}\u0000${secret}`, 'utf8')
+    .digest('hex');
+}
+
+function resolveFlutterwaveWebhookStatus({
+  publicConfig = {},
+  webhookHash,
+  publicBaseUrl = config.publicBaseUrl,
+} = {}) {
+  const webhookUrl = buildFlutterwaveWebhookUrl(publicBaseUrl);
+  const currentFingerprint = flutterwaveWebhookFingerprint({
+    webhookUrl,
+    webhookHash,
+  });
+  const verifiedAt = toIsoString(
+    publicConfig?.[FLUTTERWAVE_WEBHOOK_VERIFIED_AT_KEY],
+  );
+  const webhookVerified = Boolean(
+    verifiedAt &&
+      currentFingerprint &&
+      currentFingerprint ===
+        normalizeText(publicConfig?.[FLUTTERWAVE_WEBHOOK_FINGERPRINT_KEY]),
+  );
+  return {
+    webhookUrl,
+    callbackUrl: webhookUrl,
+    webhookConfigured: Boolean(webhookUrl && normalizeText(webhookHash)),
+    webhookVerified,
+    webhookLastVerifiedAt: webhookVerified ? verifiedAt : null,
+  };
+}
+
+async function recordFlutterwaveWebhookVerification({
+  webhookHash,
+  publicBaseUrl = config.publicBaseUrl,
+  target = query,
+} = {}) {
+  const webhookUrl = buildFlutterwaveWebhookUrl(publicBaseUrl);
+  const fingerprint = flutterwaveWebhookFingerprint({
+    webhookUrl,
+    webhookHash,
+  });
+  if (!fingerprint) return null;
+  const verifiedAt = new Date().toISOString();
+  await runQuery(
+    target,
+    `UPDATE platform_payment_gateways
+     SET public_config_json = public_config_json || $2::jsonb
+     WHERE provider = $1`,
+    [
+      'flutterwave',
+      JSON.stringify({
+        [FLUTTERWAVE_WEBHOOK_FINGERPRINT_KEY]: fingerprint,
+        [FLUTTERWAVE_WEBHOOK_VERIFIED_AT_KEY]: verifiedAt,
+      }),
+    ],
+  );
+  return { webhookUrl, webhookLastVerifiedAt: verifiedAt };
 }
 
 async function migrateMpesaSubscriptionPrices(target = query) {
@@ -1836,6 +2200,8 @@ module.exports = {
   SELLING_MODES,
   applySellingModeToEntitlements,
   availableSellingModesForEntitlements,
+  buildFlutterwaveWebhookUrl,
+  flutterwaveWebhookFingerprint,
   ensureSubscriptionSchema,
   listPaymentGateways,
   listPlans,
@@ -1855,11 +2221,14 @@ module.exports = {
   normalizePriceInput,
   normalizePriceRow,
   normalizeProvider,
+  normalizePublicHttpsOrigin,
   normalizeSellingMode,
   normalizeGraceDays,
   normalizeTrialDays,
   providerForCountry,
   renewalBaseDate,
+  recordFlutterwaveWebhookVerification,
+  resolveFlutterwaveWebhookStatus,
   resolvePlanPrice,
   savePaymentGateway,
   savePlatformSubscriptionSettings,

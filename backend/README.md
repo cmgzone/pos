@@ -88,12 +88,28 @@ shown in the platform admin plan editor (for example
 `piki_starter_monthly`) as subscriptions in Play Console, then give the
 configured service account access to the Android Publisher API.
 
-Windows subscriptions open PayPal or Flutterwave hosted checkout. Set
-`PUBLIC_BASE_URL` to this backend's public HTTPS origin so those providers can
-return to the verification endpoints. Use PayPal's live API base URL when
-moving out of sandbox. In Flutterwave Dashboard → Settings → Webhooks, register
+Windows subscriptions use PayPal hosted checkout, Flutterwave v3 hosted
+checkout, or Flutterwave v4 direct card checkout in the app. In the platform
+admin, select the Flutterwave API version enabled on the merchant account.
+Flutterwave v4 requires the Client ID, Client Secret, and a valid
+base64-encoded 32-byte Encryption Key.
+
+Set `PUBLIC_BASE_URL` to this backend's public HTTPS origin so payment
+authorization can return to the verification endpoints. Use PayPal's live API
+base URL when moving out of sandbox. In Flutterwave Dashboard → Settings →
+Webhooks, register
 `https://your-api-host.example.com/api/subscription/flutterwave/webhook` and use
-the same value as `FLUTTERWAVE_WEBHOOK_SECRET_HASH`.
+the same value as `FLUTTERWAVE_WEBHOOK_SECRET_HASH`. Keep the gateway inactive
+while configuring it, send a signed test webhook from the Flutterwave Dashboard,
+then reload or run **Test v4 Checkout Readiness** until the admin shows the
+webhook as verified. Checkout remains disabled until the current callback URL
+and secret hash have passed that signed test; changing either invalidates the
+verification.
+
+Flutterwave v4 direct checkout sends PAN, CVV, PIN, and AVS data through the
+Piki app and backend for immediate encrypted forwarding. Never log or store
+those values. Complete the applicable PCI DSS assessment with the acquirer or
+QSA before enabling v4 direct card checkout in production.
 
 Coolify production variables should include:
 
@@ -118,6 +134,7 @@ PAYPAL_BASE_URL=https://api-m.paypal.com
 PAYPAL_CLIENT_ID=your-live-paypal-client-id
 PAYPAL_CLIENT_SECRET=your-live-paypal-client-secret
 FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
+FLUTTERWAVE_V4_BASE_URL=https://f4bexperience.flutterwave.com
 FLUTTERWAVE_SECRET_KEY=your-live-flutterwave-secret-key
 FLUTTERWAVE_CLIENT_ID=your-flutterwave-v4-client-id
 FLUTTERWAVE_CLIENT_SECRET=your-flutterwave-v4-client-secret
