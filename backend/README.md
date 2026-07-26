@@ -99,12 +99,13 @@ authorization can return to the verification endpoints. Use PayPal's live API
 base URL when moving out of sandbox. In Flutterwave Dashboard → Settings →
 Webhooks, register
 `https://your-api-host.example.com/api/subscription/flutterwave/webhook` and use
-the same value as `FLUTTERWAVE_WEBHOOK_SECRET_HASH`. Keep the gateway inactive
-while configuring it, send a signed test webhook from the Flutterwave Dashboard,
-then reload or run **Test v4 Checkout Readiness** until the admin shows the
-webhook as verified. Checkout remains disabled until the current callback URL
-and secret hash have passed that signed test; changing either invalidates the
-verification.
+the same value as `FLUTTERWAVE_WEBHOOK_SECRET_HASH`. Save the gateway, run
+**Test v4 Checkout Readiness**, and enable it after the credentials, API access,
+public callback URL, and hash are ready. Webhook verification is an operational
+status rather than a checkout prerequisite: the first valid HMAC-signed payment
+event records verification automatically. Changing the callback URL or secret
+hash resets that status, but checkout completion still requires an exact
+server-to-server charge verification.
 
 Flutterwave v4 direct checkout sends PAN, CVV, PIN, and AVS data through the
 Piki app and backend for immediate encrypted forwarding. Never log or store

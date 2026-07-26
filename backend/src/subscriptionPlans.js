@@ -857,13 +857,8 @@ function isProviderRuntimeReady(
   provider,
   {
     publicBaseUrl = config.publicBaseUrl,
-    secretConfig = {
-      secretKey: config.flutterwaveSecretKey,
-      webhookHash: config.flutterwaveWebhookSecretHash,
-      clientId: config.flutterwaveClientId,
-      clientSecret: config.flutterwaveClientSecret,
-      encryptionKey: config.flutterwaveEncryptionKey,
-    },
+    secretConfig = {},
+    environmentSecretConfig,
     publicConfig = {},
   } = {},
 ) {
@@ -873,22 +868,18 @@ function isProviderRuntimeReady(
     return Boolean(publicOrigin);
   }
   if (cleanProvider === 'flutterwave') {
+    const effectiveSecretConfig = resolveFlutterwaveEffectiveSecretConfig(
+      secretConfig,
+      environmentSecretConfig,
+    );
     const hasV3Checkout = Boolean(
-      secretConfig?.secretKey && secretConfig?.webhookHash,
+      effectiveSecretConfig.secretKey && effectiveSecretConfig.webhookHash,
     );
     const hasV4Checkout = Boolean(
-      secretConfig?.clientId &&
-        secretConfig?.clientSecret &&
-        isValidFlutterwaveV4EncryptionKey(secretConfig?.encryptionKey) &&
-        secretConfig?.webhookHash,
-    );
-    const hasVerifiedV4Webhook = Boolean(
-      hasV4Checkout &&
-        resolveFlutterwaveWebhookStatus({
-          publicBaseUrl: publicOrigin,
-          publicConfig,
-          webhookHash: secretConfig?.webhookHash,
-        }).webhookVerified,
+      effectiveSecretConfig.clientId &&
+        effectiveSecretConfig.clientSecret &&
+        isValidFlutterwaveV4EncryptionKey(effectiveSecretConfig.encryptionKey) &&
+        effectiveSecretConfig.webhookHash,
     );
     const apiVersion = (
       normalizeText(publicConfig?.apiVersion) || ''
@@ -896,10 +887,10 @@ function isProviderRuntimeReady(
     return Boolean(
       publicOrigin &&
         (apiVersion === 'v4'
-          ? hasVerifiedV4Webhook
+          ? hasV4Checkout
           : apiVersion === 'v3'
             ? hasV3Checkout
-            : hasV3Checkout || hasVerifiedV4Webhook),
+            : hasV3Checkout || hasV4Checkout),
     );
   }
   return true;
@@ -1159,11 +1150,15 @@ function normalizePaymentGatewayRow(row, { includeSecrets = false } = {}) {
   if (!includeSecrets) {
     delete publicConfig[FLUTTERWAVE_WEBHOOK_FINGERPRINT_KEY];
   }
+  const effectiveSecretConfig =
+    provider === 'flutterwave'
+      ? resolveFlutterwaveEffectiveSecretConfig(secretConfig)
+      : secretConfig;
   const webhookStatus =
     provider === 'flutterwave'
       ? resolveFlutterwaveWebhookStatus({
           publicConfig: storedPublicConfig,
-          webhookHash: secretConfig.webhookHash,
+          webhookHash: effectiveSecretConfig.webhookHash,
         })
       : null;
   return {
@@ -1305,7 +1300,10 @@ function isPriceVisibleInPublicCatalog(price) {
   return Boolean(price?.isActive);
 }
 
-function validatePaymentGatewayConfiguration(gateway) {
+function validatePaymentGatewayConfiguration(
+  gateway,
+  { environmentSecretConfig } = {},
+) {
   if (!gateway?.isActive) {
     return;
   }
@@ -1338,7 +1336,10 @@ function validatePaymentGatewayConfiguration(gateway) {
 
   if (gateway.provider === 'flutterwave') {
     const publicConfig = gateway.publicConfig || {};
-    const secretConfig = gateway.secretConfig || {};
+    const secretConfig = resolveFlutterwaveEffectiveSecretConfig(
+      gateway.secretConfig,
+      environmentSecretConfig,
+    );
     const apiVersion = (
       normalizeText(publicConfig.apiVersion) || ''
     ).toLowerCase();
@@ -1483,6 +1484,47 @@ function isValidFlutterwaveV4EncryptionKey(value) {
     key.length === 32 &&
     key.toString('base64').replace(/=+$/, '') === encoded.replace(/=+$/, '')
   );
+}
+
+function resolveFlutterwaveEffectiveSecretConfig(
+  secretConfig = {},
+  environmentSecretConfig,
+) {
+  const stored =
+    secretConfig && typeof secretConfig === 'object' && !Array.isArray(secretConfig)
+      ? secretConfig
+      : {};
+  const fallback =
+    environmentSecretConfig &&
+    typeof environmentSecretConfig === 'object' &&
+    !Array.isArray(environmentSecretConfig)
+      ? environmentSecretConfig
+      : {
+          secretKey: config.flutterwaveSecretKey,
+          clientId: config.flutterwaveClientId,
+          clientSecret: config.flutterwaveClientSecret,
+          encryptionKey: config.flutterwaveEncryptionKey,
+          webhookHash: config.flutterwaveWebhookSecretHash,
+        };
+  return {
+    ...stored,
+    secretKey:
+      normalizeText(stored.secretKey) || normalizeText(fallback.secretKey) || '',
+    clientId:
+      normalizeText(stored.clientId) || normalizeText(fallback.clientId) || '',
+    clientSecret:
+      normalizeText(stored.clientSecret) ||
+      normalizeText(fallback.clientSecret) ||
+      '',
+    encryptionKey:
+      normalizeText(stored.encryptionKey) ||
+      normalizeText(fallback.encryptionKey) ||
+      '',
+    webhookHash:
+      normalizeText(stored.webhookHash) ||
+      normalizeText(fallback.webhookHash) ||
+      '',
+  };
 }
 
 function isHttpsUrl(value) {
@@ -2228,6 +2270,7 @@ module.exports = {
   providerForCountry,
   renewalBaseDate,
   recordFlutterwaveWebhookVerification,
+  resolveFlutterwaveEffectiveSecretConfig,
   resolveFlutterwaveWebhookStatus,
   resolvePlanPrice,
   savePaymentGateway,

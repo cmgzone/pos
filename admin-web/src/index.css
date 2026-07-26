@@ -722,6 +722,12 @@ select.compact-input {
   background: rgba(220, 76, 76, 0.08);
 }
 
+.gateway-save-feedback.is-warning {
+  border-color: rgba(210, 145, 35, 0.45);
+  color: #d99b32;
+  background: rgba(210, 145, 35, 0.09);
+}
+
 .gateway-panel {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);

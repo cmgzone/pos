@@ -37,7 +37,7 @@ const defaultSellingModes = Object.keys(SELLING_MODE_LABELS)
 const META_API_VERSION_PATTERN = /^v\d+\.\d+$/
 const FLUTTERWAVE_DASHBOARD_WEBHOOK_URL = 'https://dashboard.flutterwave.com'
 const FLUTTERWAVE_WEBHOOK_SETUP_STAGES =
-  'Setup order: keep the gateway inactive; configure credentials and save a secret hash; copy the canonical URL into Flutterwave Dashboard; send a signed Dashboard test webhook; reload or run the readiness test until the webhook is verified; then enable and save the gateway.'
+  'Setup: configure and save the v4 credentials and secret hash; copy the canonical URL and matching hash into Flutterwave Dashboard; enable and save the gateway; then run a test payment. The first valid signed payment event verifies the webhook automatically.'
 const APP_RELEASE_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
 const GATEWAY_FIELDS = {
@@ -919,9 +919,8 @@ export default function SubscriptionPlansPanel({ token }) {
       const gatewayActive =
         testedGatewayActive ??
         Boolean(gatewayDrafts.flutterwave?.isActive)
-      const webhookVerified = data.webhookVerified === true
       const checkoutReady = data.checkoutReady === true
-      const fullyReady = checkoutReady && webhookVerified && gatewayActive
+      const fullyReady = checkoutReady && gatewayActive
       const feedbackMessage = fullyReady
         ? data.message ||
           `Flutterwave v4 checkout is ready. OAuth token lifetime: ${
@@ -931,9 +930,6 @@ export default function SubscriptionPlansPanel({ token }) {
             data.apiAccessReady === true || data.authenticated === true
               ? 'Flutterwave API access works, but checkout is not ready.'
               : 'Flutterwave checkout is not ready.',
-            webhookVerified
-              ? ''
-              : 'The signed webhook has not been verified.',
             gatewayActive ? '' : 'The gateway is currently inactive.',
             FLUTTERWAVE_WEBHOOK_SETUP_STAGES,
           ]
@@ -1970,9 +1966,10 @@ export default function SubscriptionPlansPanel({ token }) {
                   <div className="gateway-help-tools">
                     <div
                       className={`gateway-save-feedback ${
-                        flutterwaveWebhookStatus.webhookVerified &&
                         gatewayDraft.isActive
-                          ? 'is-success'
+                          ? flutterwaveWebhookStatus.webhookVerified
+                            ? 'is-success'
+                            : 'is-warning'
                           : 'is-error'
                       }`}
                       role="status"
@@ -1992,7 +1989,9 @@ export default function SubscriptionPlansPanel({ token }) {
                           <br />
                           {flutterwaveWebhookStatus.webhookVerified
                             ? 'The signed webhook is verified. Enable and save the gateway to finish checkout setup.'
-                            : FLUTTERWAVE_WEBHOOK_SETUP_STAGES}
+                            : gatewayDraft.isActive
+                              ? 'Checkout can run now. The webhook is awaiting its first valid signed payment event and will verify automatically.'
+                              : FLUTTERWAVE_WEBHOOK_SETUP_STAGES}
                         </>
                       )}
                     </div>
@@ -2062,8 +2061,8 @@ export default function SubscriptionPlansPanel({ token }) {
                     <small>
                       Save Gateway before testing. The readiness test verifies OAuth,
                       encryption-key format, selected API access, environment, activation,
-                      and the public payment return URL. Webhook setup is shown only when
-                      the backend returns its canonical callback URL.
+                      and the public payment return URL. Webhook verification is reported
+                      separately and does not block the first checkout.
                     </small>
                   </div>
                 )}

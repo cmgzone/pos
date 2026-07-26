@@ -17,11 +17,53 @@ const {
   normalizeGraceDays,
   normalizePublicHttpsOrigin,
   normalizeTrialDays,
+  resolveFlutterwaveEffectiveSecretConfig,
   resolveFlutterwaveWebhookStatus,
   renewalBaseDate,
   validatePaymentGatewayConfiguration,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
+
+const ENV_V4_SECRETS = Object.freeze({
+  secretKey: 'FLWSECK_TEST-environment',
+  clientId: 'environment-client-id',
+  clientSecret: 'environment-client-secret',
+  encryptionKey: VALID_V4_ENCRYPTION_KEY,
+  webhookHash: 'environment-webhook-secret',
+});
+
+test('Flutterwave effective secrets prefer admin values and fill only missing fields', () => {
+  assert.deepEqual(
+    resolveFlutterwaveEffectiveSecretConfig(
+      {
+        clientId: 'admin-client-id',
+        webhookHash: 'admin-webhook-secret',
+      },
+      ENV_V4_SECRETS,
+    ),
+    {
+      secretKey: ENV_V4_SECRETS.secretKey,
+      clientId: 'admin-client-id',
+      clientSecret: ENV_V4_SECRETS.clientSecret,
+      encryptionKey: ENV_V4_SECRETS.encryptionKey,
+      webhookHash: 'admin-webhook-secret',
+    },
+  );
+});
+
+test('Flutterwave active validation uses environment fallback for missing admin secrets', () => {
+  assert.doesNotThrow(() =>
+    validatePaymentGatewayConfiguration(
+      {
+        provider: 'flutterwave',
+        isActive: true,
+        publicConfig: { apiVersion: 'v4' },
+        secretConfig: {},
+      },
+      { environmentSecretConfig: ENV_V4_SECRETS },
+    ),
+  );
+});
 
 test('public market readiness query projects gateway secrets for server-side checks', async () => {
   let publicMarketsSql = '';
@@ -189,7 +231,7 @@ test('hosted subscription providers require a public HTTPS return origin', () =>
       },
       publicConfig: { apiVersion: 'v4' },
     }),
-    false,
+    true,
   );
   const verifiedWebhookFingerprint = flutterwaveWebhookFingerprint({
     webhookUrl:
@@ -228,10 +270,47 @@ test('hosted subscription providers require a public HTTPS return origin', () =>
         webhookLastVerifiedAt: '2026-07-27T10:00:00.000Z',
       },
     }),
-    false,
+    true,
   );
   assert.equal(
     isProviderRuntimeReady('google_play', { publicBaseUrl: '' }),
+    true,
+  );
+});
+
+test('Flutterwave runtime readiness uses environment fallback without waiting for a webhook event', () => {
+  const publicBaseUrl = 'https://pikipos.com';
+  const webhookUrl =
+    'https://pikipos.com/api/subscription/flutterwave/webhook';
+  const webhookVerificationFingerprint = flutterwaveWebhookFingerprint({
+    webhookUrl,
+    webhookHash: ENV_V4_SECRETS.webhookHash,
+  });
+
+  assert.equal(
+    isProviderRuntimeReady('flutterwave', {
+      publicBaseUrl,
+      secretConfig: {},
+      environmentSecretConfig: ENV_V4_SECRETS,
+      publicConfig: {
+        apiVersion: 'v4',
+        webhookVerificationFingerprint,
+        webhookLastVerifiedAt: '2026-07-27T10:00:00.000Z',
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    isProviderRuntimeReady('flutterwave', {
+      publicBaseUrl,
+      secretConfig: { webhookHash: 'admin-webhook-secret' },
+      environmentSecretConfig: ENV_V4_SECRETS,
+      publicConfig: {
+        apiVersion: 'v4',
+        webhookVerificationFingerprint,
+        webhookLastVerifiedAt: '2026-07-27T10:00:00.000Z',
+      },
+    }),
     true,
   );
 });

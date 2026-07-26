@@ -5304,9 +5304,10 @@ app.post(
       });
       const configurationReady = webhookConfigured;
       const checkoutReady = Boolean(
-        gatewayActive && configurationReady && webhookVerified,
+        gatewayActive && configurationReady,
       );
       const requiredActions = [];
+      const warnings = [];
       if (!publicReturnUrlReady) {
         requiredActions.push(
           'Set PUBLIC_BASE_URL to the public HTTPS backend origin.',
@@ -5315,12 +5316,12 @@ app.post(
       if (!flutterwaveConfig.webhookHash) {
         requiredActions.push('Save the Flutterwave Webhook Secret Hash.');
       } else if (!webhookVerified && webhookUrl) {
-        requiredActions.push(
-          `Run a signed webhook test from the Flutterwave Dashboard to ${webhookUrl}.`,
+        warnings.push(
+          `The webhook is configured at ${webhookUrl} and is awaiting its first valid signed payment event.`,
         );
       }
       if (!gatewayActive) {
-        requiredActions.push('Enable the Flutterwave gateway after verification.');
+        requiredActions.push('Enable the Flutterwave gateway.');
       }
       res.json({
         ok: true,
@@ -5345,8 +5346,9 @@ app.post(
           apiBaseUrl: flutterwaveConfig.v4BaseUrl,
           tokenType: token.tokenType,
           expiresIn: token.expiresIn,
+          warnings,
           message: checkoutReady
-            ? `Flutterwave v4 checkout is ready in ${flutterwaveConfig.environment} mode.`
+            ? `Flutterwave v4 checkout is ready in ${flutterwaveConfig.environment} mode.${warnings.length > 0 ? ` ${warnings.join(' ')}` : ''}`
             : `Flutterwave v4 credentials and API access work in ${flutterwaveConfig.environment} mode, but checkout remains disabled. ${requiredActions.join(' ')}`,
         },
       });
@@ -15416,12 +15418,6 @@ async function initiateFlutterwaveCheckout(payment, gateway) {
         `Flutterwave v4 Webhook Secret Hash is required. Configure ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)} as the callback URL.`,
       );
     }
-    if (!gateway?.webhookVerified) {
-      throw createHttpError(
-        503,
-        `Flutterwave v4 checkout is disabled until a signed Dashboard webhook test verifies ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)}.`,
-      );
-    }
     const flutterwaveV4Reference = `sub-${payment.id}`;
     await setSubscriptionProviderReference(
       payment.id,
@@ -15558,12 +15554,6 @@ function requireFlutterwaveV4GatewayConfig(gateway) {
     throw createHttpError(
       503,
       `Flutterwave v4 Webhook Secret Hash is required. Configure ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)} as the callback URL.`,
-    );
-  }
-  if (!gateway?.webhookVerified) {
-    throw createHttpError(
-      503,
-      `Flutterwave v4 checkout is disabled until a signed Dashboard webhook test verifies ${buildFlutterwaveWebhookUrl(config.publicBaseUrl)}.`,
     );
   }
   return flutterwaveConfig;
