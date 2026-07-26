@@ -22,6 +22,7 @@ const {
   isFlutterwaveSuccessfulWebhook,
   isFlutterwaveWebhookSignatureValid,
 } = require('./flutterwave');
+const { requestFlutterwaveV4AccessToken } = require('./flutterwaveV4');
 const { query, withTransaction, withReadTransaction, closePool } = require('./db');
 const dashscopeProvider = require('./dashscopeProvider');
 const {
@@ -5212,6 +5213,31 @@ app.put('/api/platform/payment-gateways/:provider', requirePlatformAdmin, async 
     next(normalizeRouteError(error));
   }
 });
+
+app.post(
+  '/api/platform/payment-gateways/flutterwave/test-v4',
+  requirePlatformAdmin,
+  async (req, res, next) => {
+    try {
+      const gateway = await loadPaymentGateway('flutterwave');
+      const flutterwaveConfig = resolveFlutterwaveGatewayConfig(gateway);
+      const token = await requestFlutterwaveV4AccessToken({
+        clientId: flutterwaveConfig.clientId,
+        clientSecret: flutterwaveConfig.clientSecret,
+      });
+      res.json({
+        ok: true,
+        data: {
+          authenticated: true,
+          tokenType: token.tokenType,
+          expiresIn: token.expiresIn,
+        },
+      });
+    } catch (error) {
+      next(normalizeRouteError(error));
+    }
+  },
+);
 
 app.get('/api/platform/message-gateways', requirePlatformAdmin, async (req, res, next) => {
   try {
@@ -16683,7 +16709,11 @@ function resolveFlutterwaveGatewayConfig(gateway) {
     baseUrl: String(publicConfig.baseUrl || config.flutterwaveBaseUrl).replace(/\/+$/, ''),
     publicKey: secretConfig.publicKey || '',
     secretKey: secretConfig.secretKey || config.flutterwaveSecretKey,
-    encryptionKey: secretConfig.encryptionKey || '',
+    clientId: secretConfig.clientId || config.flutterwaveClientId,
+    clientSecret:
+      secretConfig.clientSecret || config.flutterwaveClientSecret,
+    encryptionKey:
+      secretConfig.encryptionKey || config.flutterwaveEncryptionKey,
     webhookHash:
       secretConfig.webhookHash || config.flutterwaveWebhookSecretHash,
   };

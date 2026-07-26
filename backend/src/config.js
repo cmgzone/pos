@@ -110,6 +110,18 @@ const config = {
     process.env.FLUTTERWAVE_SECRET_KEY?.trim() ||
     process.env.FLW_SECRET_KEY?.trim() ||
     '',
+  flutterwaveClientId:
+    process.env.FLUTTERWAVE_CLIENT_ID?.trim() ||
+    process.env.FLW_CLIENT_ID?.trim() ||
+    '',
+  flutterwaveClientSecret:
+    process.env.FLUTTERWAVE_CLIENT_SECRET?.trim() ||
+    process.env.FLW_CLIENT_SECRET?.trim() ||
+    '',
+  flutterwaveEncryptionKey:
+    process.env.FLUTTERWAVE_ENCRYPTION_KEY?.trim() ||
+    process.env.FLW_ENCRYPTION_KEY?.trim() ||
+    '',
   flutterwaveWebhookSecretHash:
     process.env.FLUTTERWAVE_WEBHOOK_SECRET_HASH?.trim() ||
     process.env.FLUTTERWAVE_SECRET_HASH?.trim() ||

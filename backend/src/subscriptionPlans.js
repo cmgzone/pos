@@ -1001,6 +1001,9 @@ function defaultPaymentGateways() {
       publicConfig: removeEmptyValues({ baseUrl: config.flutterwaveBaseUrl }),
       secretConfig: removeEmptyValues({
         secretKey: config.flutterwaveSecretKey,
+        clientId: config.flutterwaveClientId,
+        clientSecret: config.flutterwaveClientSecret,
+        encryptionKey: config.flutterwaveEncryptionKey,
         webhookHash: config.flutterwaveWebhookSecretHash,
       }),
     },
@@ -1230,6 +1233,22 @@ function validatePaymentGatewayConfiguration(gateway) {
     }
     if (!secretConfig.webhookHash) {
       throw createError(400, 'Flutterwave webhook secret hash is required.');
+    }
+    const hasV4Credentials = Boolean(
+      secretConfig.clientId ||
+        secretConfig.clientSecret ||
+        secretConfig.encryptionKey,
+    );
+    if (
+      hasV4Credentials &&
+      (!secretConfig.clientId ||
+        !secretConfig.clientSecret ||
+        !secretConfig.encryptionKey)
+    ) {
+      throw createError(
+        400,
+        'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.',
+      );
     }
   }
 }

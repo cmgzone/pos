@@ -119,6 +119,9 @@ PAYPAL_CLIENT_ID=your-live-paypal-client-id
 PAYPAL_CLIENT_SECRET=your-live-paypal-client-secret
 FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
 FLUTTERWAVE_SECRET_KEY=your-live-flutterwave-secret-key
+FLUTTERWAVE_CLIENT_ID=your-flutterwave-v4-client-id
+FLUTTERWAVE_CLIENT_SECRET=your-flutterwave-v4-client-secret
+FLUTTERWAVE_ENCRYPTION_KEY=your-flutterwave-encryption-key
 FLUTTERWAVE_WEBHOOK_SECRET_HASH=replace-with-a-random-flutterwave-webhook-secret
 MPESA_CALLBACK_URL=https://your-api-host.example.com/api/payments/mpesa/stk-callback?secret=replace-with-a-long-random-callback-secret
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret

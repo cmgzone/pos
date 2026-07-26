@@ -12,8 +12,43 @@ const {
   normalizeGraceDays,
   normalizeTrialDays,
   renewalBaseDate,
+  validatePaymentGatewayConfiguration,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
+
+test('Flutterwave accepts complete v3 and v4 credential sets together', () => {
+  assert.doesNotThrow(() =>
+    validatePaymentGatewayConfiguration({
+      provider: 'flutterwave',
+      isActive: true,
+      publicConfig: { baseUrl: 'https://api.flutterwave.com/v3' },
+      secretConfig: {
+        secretKey: 'FLWSECK_TEST-example',
+        clientId: 'v4-client-id',
+        clientSecret: 'v4-client-secret',
+        encryptionKey: 'v4-encryption-key',
+        webhookHash: 'webhook-secret',
+      },
+    }),
+  );
+});
+
+test('Flutterwave rejects an incomplete v4 credential set', () => {
+  assert.throws(
+    () =>
+      validatePaymentGatewayConfiguration({
+        provider: 'flutterwave',
+        isActive: true,
+        publicConfig: { baseUrl: 'https://api.flutterwave.com/v3' },
+        secretConfig: {
+          secretKey: 'FLWSECK_TEST-example',
+          clientId: 'v4-client-id',
+          webhookHash: 'webhook-secret',
+        },
+      }),
+    /Complete all Flutterwave v4 credentials/,
+  );
+});
 
 test('hosted subscription providers require a public HTTPS return origin', () => {
   assert.equal(

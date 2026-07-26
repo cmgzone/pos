@@ -56,12 +56,14 @@ const GATEWAY_FIELDS = {
   },
   flutterwave: {
     public: [
-      ['baseUrl', 'Flutterwave API Base URL'],
+      ['baseUrl', 'v3 Standard API Base URL'],
       ['environment', 'Environment (production/sandbox)'],
     ],
     secret: [
-      ['publicKey', 'Public Key'],
-      ['secretKey', 'Secret Key'],
+      ['publicKey', 'v3 Public Key'],
+      ['secretKey', 'v3 Secret Key (hosted subscriptions)'],
+      ['clientId', 'v4 Client ID'],
+      ['clientSecret', 'v4 Client Secret'],
       ['encryptionKey', 'Encryption Key'],
       ['webhookHash', 'Webhook Secret Hash (HMAC-SHA256)'],
     ],
@@ -204,6 +206,19 @@ function gatewayConfigurationError(gateway) {
     if (!gateway.secretConfig?.secretKey) return 'Flutterwave secret key is required.'
     if (!gateway.secretConfig?.webhookHash) {
       return 'Flutterwave webhook secret hash is required.'
+    }
+    const hasV4Credentials = Boolean(
+      gateway.secretConfig?.clientId ||
+        gateway.secretConfig?.clientSecret ||
+        gateway.secretConfig?.encryptionKey,
+    )
+    if (
+      hasV4Credentials &&
+      (!gateway.secretConfig?.clientId ||
+        !gateway.secretConfig?.clientSecret ||
+        !gateway.secretConfig?.encryptionKey)
+    ) {
+      return 'Complete all Flutterwave v4 credentials: Client ID, Client Secret, and Encryption Key.'
     }
   }
 
@@ -722,6 +737,31 @@ export default function SubscriptionPlansPanel({ token }) {
     } else {
       await copyGatewayValue('Flutterwave webhook secret hash', hash)
       setMessage('Webhook secret hash generated and copied. Save the gateway afterward.')
+    }
+  }
+
+  const testFlutterwaveV4Credentials = async () => {
+    setSavingGateway('flutterwave-v4-test')
+    setMessage('')
+    try {
+      const response = await fetch(
+        apiUrl('/api/platform/payment-gateways/flutterwave/test-v4'),
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+      const body = await response.json()
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error || 'Flutterwave v4 authentication failed')
+      }
+      setMessage(
+        `Flutterwave v4 credentials authenticated. OAuth token lifetime: ${body.data?.expiresIn || 600} seconds.`,
+      )
+    } catch (error) {
+      setMessage(friendlyError(error, 'Could not authenticate Flutterwave v4 credentials.'))
+    } finally {
+      setSavingGateway('')
     }
   }
 
@@ -1651,6 +1691,12 @@ export default function SubscriptionPlansPanel({ token }) {
 
                 {gateway.provider === 'flutterwave' && (
                   <div className="gateway-help">
+                    <strong>Dual API credentials:</strong> v3 Secret Key powers the current
+                    hosted recurring subscription checkout. v4 Client ID, Client Secret, and
+                    Encryption Key are stored separately for Flutterwave v4 direct APIs. Do not
+                    paste a v4 Client Secret into the v3 Secret Key field.
+                    <br />
+                    <br />
                     <strong>Webhook URL:</strong>{' '}
                     <code>{apiUrl('/api/subscription/flutterwave/webhook')}</code>
                     <br />
@@ -1699,6 +1745,16 @@ export default function SubscriptionPlansPanel({ token }) {
                       </button>
                     </div>
                     <div className="gateway-help-actions">
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        disabled={savingGateway === 'flutterwave-v4-test'}
+                        onClick={testFlutterwaveV4Credentials}
+                      >
+                        {savingGateway === 'flutterwave-v4-test'
+                          ? 'Testing v4...'
+                          : 'Test v4 Credentials'}
+                      </button>
                       <button
                         className="btn btn-secondary"
                         type="button"
