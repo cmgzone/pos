@@ -6,6 +6,7 @@ const {
   applySellingModeToEntitlements,
   isPriceAvailableForPublicCatalog,
   isPriceVisibleInPublicCatalog,
+  isProviderRuntimeReady,
   isSubscriptionPaymentProviderAllowed,
   normalizeSellingMode,
   normalizeGraceDays,
@@ -13,6 +14,29 @@ const {
   renewalBaseDate,
   validateSellingModeEntitlement,
 } = require('../src/subscriptionPlans');
+
+test('hosted subscription providers require a public HTTPS return origin', () => {
+  assert.equal(
+    isProviderRuntimeReady('flutterwave', { publicBaseUrl: '' }),
+    false,
+  );
+  assert.equal(
+    isProviderRuntimeReady('flutterwave', {
+      publicBaseUrl: 'http://localhost:3000',
+    }),
+    false,
+  );
+  assert.equal(
+    isProviderRuntimeReady('flutterwave', {
+      publicBaseUrl: 'https://pikipos.com',
+    }),
+    true,
+  );
+  assert.equal(
+    isProviderRuntimeReady('google_play', { publicBaseUrl: '' }),
+    true,
+  );
+});
 
 test('selling mode labels normalize to entitlement modes', () => {
   assert.equal(normalizeSellingMode('Service only'), 'services');

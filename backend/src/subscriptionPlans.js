@@ -825,16 +825,31 @@ async function listPublicMarkets(target = query) {
   );
 
   return result.rows
-    .map((row) => ({
-      countryCode: normalizeCountryCode(row.country_code),
-      label: countryLabel(row.country_code),
-      currency: normalizeCurrency(row.currency),
-      provider: normalizeProvider(row.provider),
-      providerLabel: row.display_name || providerLabel(row.provider),
-      paymentActive: Boolean(row.payment_active),
-      publicConfig: parseJsonValue(row.public_config_json, {}),
-    }))
+    .map((row) => {
+      const provider = normalizeProvider(row.provider);
+      return {
+        countryCode: normalizeCountryCode(row.country_code),
+        label: countryLabel(row.country_code),
+        currency: normalizeCurrency(row.currency),
+        provider,
+        providerLabel: row.display_name || providerLabel(row.provider),
+        paymentActive:
+          Boolean(row.payment_active) && isProviderRuntimeReady(provider),
+        publicConfig: parseJsonValue(row.public_config_json, {}),
+      };
+    })
     .filter((market) => isSubscriptionPaymentProviderAllowed(market.provider));
+}
+
+function isProviderRuntimeReady(
+  provider,
+  { publicBaseUrl = config.publicBaseUrl } = {},
+) {
+  const cleanProvider = normalizeProvider(provider);
+  if (cleanProvider === 'paypal' || cleanProvider === 'flutterwave') {
+    return isHttpsUrl(publicBaseUrl);
+  }
+  return true;
 }
 
 async function listPaymentGateways({ includeSecrets = false } = {}, target = query) {
@@ -1778,6 +1793,7 @@ module.exports = {
   loadPaymentGateway,
   isPriceAvailableForPublicCatalog,
   isPriceVisibleInPublicCatalog,
+  isProviderRuntimeReady,
   isSubscriptionPaymentProviderAllowed,
   isHttpsUrl,
   isPlausibleMpesaPasskey,
