@@ -18,6 +18,9 @@ function getSmtpTransporter() {
         user: config.smtpUser,
         pass: config.smtpPass,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
   }
   return smtpTransporter;
@@ -63,8 +66,22 @@ async function sendMail({ from, to, subject, text, html, replyTo, tags }) {
   }
 
   try {
-    await transporter.sendMail(message);
+    const info = await transporter.sendMail(message);
+    console.log(
+      `[mailer] SMTP delivered to=${message.to} from=${message.from} messageId=${info?.messageId || 'n/a'} response=${info?.response || ''}`,
+    );
+    return info;
   } catch (error) {
+    const detail = {
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+      responseCode: error?.responseCode,
+    };
+    console.error(
+      `[mailer] SMTP delivery failed: ${error?.message || 'unknown error'} (host=${config.smtpHost}:${config.smtpPort} user=${config.smtpUser})`,
+      detail,
+    );
     const wrapped = new Error(
       `SMTP delivery failed: ${error?.message || 'unknown error'}`,
     );
