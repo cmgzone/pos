@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 
+const { sendMail, resolveSenderEmail, isSmtpMailConfigured } = require('./mailer');
+
 const SEVERITY_RANK = Object.freeze({
   info: 0,
   medium: 1,
@@ -148,7 +150,7 @@ function createPikiCloudModule({ query, config }) {
     if (!settings.notificationEmail) {
       return { sent: 0, skipped: 'missing_recipient' };
     }
-    if (!config.resendApiKey) {
+    if (!isSmtpMailConfigured()) {
       return { sent: 0, skipped: 'email_not_configured' };
     }
 
@@ -269,37 +271,19 @@ function createPikiCloudModule({ query, config }) {
 }
 
 async function sendInsightEmail({ config, recipient, businessName, insight }) {
-  const from = String(
-    config.pikiCloudFromEmail || config.otpFromEmail || config.smtpFromEmail || '',
-  ).trim();
+  const from = resolveSenderEmail(
+    config.pikiCloudFromEmail || config.otpFromEmail,
+  );
   if (!from) throw new Error('Piki Cloud sender email is not configured.');
 
-  const fetch = (await import('node-fetch')).default;
-  const response = await fetch(`${config.resendApiBaseUrl}/emails`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [recipient],
-      subject: `Piki Cloud: ${limitText(insight.title, 120)}`,
-      text: `Piki Cloud alert for ${businessName}\n\n${insight.title}\n${insight.body}\n\nOpen Piki POS to review the recommendation.`,
-      html: buildInsightEmailHtml({ businessName, insight }),
-      tags: [{ name: 'kind', value: 'piki_cloud_alert' }],
-    }),
+  await sendMail({
+    from,
+    to: recipient,
+    subject: `Piki Cloud: ${limitText(insight.title, 120)}`,
+    text: `Piki Cloud alert for ${businessName}\n\n${insight.title}\n${insight.body}\n\nOpen Piki POS to review the recommendation.`,
+    html: buildInsightEmailHtml({ businessName, insight }),
+    tags: [{ name: 'kind', value: 'piki_cloud_alert' }],
   });
-  if (response.ok) return;
-
-  let message = `Email provider rejected the Piki Cloud alert (${response.status}).`;
-  try {
-    const body = await response.json();
-    message = body?.message || body?.error?.message || message;
-  } catch (_) {
-    // Preserve the HTTP status message.
-  }
-  throw new Error(message);
 }
 
 function buildInsightEmailHtml({ businessName, insight }) {
@@ -321,7 +305,7 @@ function normalizeSettingsRow(row, config) {
     notificationEmail,
     minimumSeverity: normalizeSeverity(row?.minimum_severity || 'high'),
     cooldownMinutes: normalizeCooldown(row?.cooldown_minutes || 360),
-    emailConfigured: Boolean(config.resendApiKey),
+    emailConfigured: isSmtpMailConfigured(),
     lastDeliveryAt: toIsoString(row?.last_delivery_at),
   };
 }

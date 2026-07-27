@@ -163,10 +163,6 @@ const config = {
     process.env.BUNNY_MAX_IMAGE_BYTES,
     5 * 1024 * 1024,
   ),
-  resendApiKey: process.env.RESEND_API_KEY?.trim() || '',
-  resendApiBaseUrl:
-    trimTrailingUrl(process.env.RESEND_API_BASE_URL) ||
-    'https://api.resend.com',
   otpFromEmail:
     process.env.OTP_FROM_EMAIL?.trim() ||
     process.env.EMAIL_OTP_FROM?.trim() ||

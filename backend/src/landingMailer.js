@@ -1,11 +1,8 @@
-const nodemailer = require('nodemailer');
-
 const { config } = require('./config');
-
-let smtpTransporter;
+const { getSmtpTransporter, isSmtpMailConfigured } = require('./mailer');
 
 function isLandingContactMailConfigured() {
-  return Boolean(config.smtpHost && config.smtpUser && config.smtpPass);
+  return isSmtpMailConfigured();
 }
 
 async function sendLandingDemoRequestEmail(request) {
@@ -17,21 +14,6 @@ async function sendLandingDemoRequestEmail(request) {
   const transporter = getSmtpTransporter();
   await transporter.sendMail(message);
   return { sent: true };
-}
-
-function getSmtpTransporter() {
-  if (!smtpTransporter) {
-    smtpTransporter = nodemailer.createTransport({
-      host: config.smtpHost,
-      port: config.smtpPort,
-      secure: config.smtpSecure,
-      auth: {
-        user: config.smtpUser,
-        pass: config.smtpPass,
-      },
-    });
-  }
-  return smtpTransporter;
 }
 
 function buildLandingDemoRequestEmail(request) {

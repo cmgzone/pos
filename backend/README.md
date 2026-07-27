@@ -58,7 +58,12 @@ FLUTTERWAVE_WEBHOOK_SECRET_HASH=replace-with-a-random-flutterwave-webhook-secret
 MPESA_CALLBACK_SECRET=replace-with-a-long-random-callback-secret
 PAYMENT_SECRETS_ENCRYPTION_KEY=replace-with-a-random-32-byte-base64-key
 SERPAPI_API_KEY=your-serpapi-key # optional, enables Piki web search
-RESEND_API_KEY=re_xxxxxxxxx # required only for opt-in Piki Cloud email alerts
+SMTP_HOST=mailcow.your-domain.example
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=otp@mailcow.your-domain.example
+SMTP_PASS=your-mailcow-app-password # powers OTP + Piki Cloud + landing contact emails
+OTP_FROM_EMAIL="Piki POS <otp@mailcow.your-domain.example>"
 PIKI_CLOUD_FROM_EMAIL="Piki POS <alerts@your-domain.example>"
 ```
 
@@ -252,7 +257,8 @@ monitoring continues while the Windows or mobile app is closed. Managers can
 enable opt-in alert emails from **Settings → Cloud Sync → Piki Cloud**. Alerts
 are based on synced cloud data, are severity-filtered, and are throttled by the
 configured cooldown; Piki Cloud never modifies business data. Configure
-`RESEND_API_KEY` and `PIKI_CLOUD_FROM_EMAIL` before enabling delivery.
+`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, and `PIKI_CLOUD_FROM_EMAIL` before
+enabling delivery.
 
 ## Conflict Rule
 

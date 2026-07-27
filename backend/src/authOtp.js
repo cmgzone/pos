@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { config } = require('./config');
 const { query } = require('./db');
 const { normalizePasswordForStorage } = require('./passwords');
+const { sendMail, resolveSenderEmail } = require('./mailer');
 
 const OTP_PURPOSES = new Set(['signup', 'password_reset']);
 
@@ -415,47 +416,30 @@ async function resetPasswordWithVerifiedOtp({
 }
 
 async function sendOtpEmail({ email, code, expiresAt }) {
-  if (!config.resendApiKey) {
-    throw createOtpError(503, 'Email verification is not configured. Add RESEND_API_KEY.');
-  }
-  if (!config.otpFromEmail) {
-    throw createOtpError(503, 'Email verification sender is not configured. Add OTP_FROM_EMAIL.');
+  const from = resolveSenderEmail(config.otpFromEmail);
+  if (!from) {
+    throw createOtpError(503, 'Email verification sender is not configured. Add OTP_FROM_EMAIL or SMTP_FROM_EMAIL.');
   }
 
-  const fetch = (await import('node-fetch')).default;
-  const response = await fetch(`${config.resendApiBaseUrl}/emails`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-      body: JSON.stringify({
-        from: config.otpFromEmail,
-        to: [email],
-        subject: 'Your Piki POS verification code',
-        html: buildOtpHtml(code, expiresAt),
-        text: `Your Piki POS verification code is ${code}. It expires in ${Math.max(
-        1,
-        Math.floor(config.emailOtpTtlMinutes || 10),
-      )} minutes.`,
-      tags: [
-        { name: 'kind', value: 'signup_otp' },
-      ],
-    }),
-  });
-
-  if (response.ok) {
-    return;
-  }
-
-  let message = `Resend rejected the OTP email (${response.status})`;
+  const minutes = Math.max(1, Math.floor(config.emailOtpTtlMinutes || 10));
   try {
-    const body = await response.json();
-    message = body?.message || body?.error?.message || message;
-  } catch (_) {
-    // Keep the generic message.
+    await sendMail({
+      from,
+      to: [email],
+      subject: 'Your Piki POS verification code',
+      html: buildOtpHtml(code, expiresAt),
+      text: `Your Piki POS verification code is ${code}. It expires in ${minutes} minutes.`,
+      tags: [{ name: 'kind', value: 'signup_otp' }],
+    });
+  } catch (error) {
+    if (error?.status === 503) {
+      throw createOtpError(
+        503,
+        'Email verification is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS to your Mailcow server.',
+      );
+    }
+    throw createOtpError(502, error?.message || 'Failed to send OTP email.');
   }
-  throw createOtpError(502, message);
 }
 
 function buildOtpHtml(code, expiresAt) {
