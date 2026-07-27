@@ -2989,7 +2989,7 @@ app.post('/api/online-orders', publicWriteRateLimit, async (req, res, next) => {
     const businessId = normalizeOptionalText(req.body?.businessId || req.body?.business_id);
     if (!businessId) throw createHttpError(400, 'businessId is required.');
     const storefrontCheck = await query(
-      `SELECT id FROM businesses WHERE id = $1 AND deleted_at IS NULL AND storefront_enabled = true LIMIT 1`,
+      `SELECT id FROM storefronts WHERE business_id = $1 AND deleted_at IS NULL AND status = 'active' LIMIT 1`,
       [businessId],
     );
     if (!storefrontCheck.rows.length) throw createHttpError(404, 'Catalog not found or storefront is not enabled.');
