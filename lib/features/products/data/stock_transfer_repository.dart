@@ -107,6 +107,69 @@ class StockTransferRepository {
     return id;
   }
 
+  /// Lets the current branch ask another branch for stock it does not have.
+  /// The source branch approves the request, then this branch receives it.
+  static Future<String> requestStockIn({
+    required String fromBranchId,
+    required String productId,
+    required double quantity,
+    String? note,
+  }) async {
+    await LicenseService.ensureWriteAccess(action: 'request stock transfers');
+    final cleanFromBranchId = fromBranchId.trim();
+    if (cleanFromBranchId.isEmpty) {
+      throw Exception('Choose the branch to request stock from');
+    }
+    if (cleanFromBranchId == DatabaseService.currentBranchId) {
+      throw Exception('Choose a different branch to request stock from');
+    }
+    if (quantity <= 0) {
+      throw Exception('Requested quantity must be greater than zero');
+    }
+
+    final productRows = await DatabaseService.rawQuery(
+      '''
+      SELECT *
+      FROM products
+      WHERE id = ?
+        AND deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+      LIMIT 1
+      ''',
+      [productId, DatabaseService.defaultBranchId, cleanFromBranchId],
+    );
+    if (productRows.isEmpty) {
+      throw Exception('Product not found in the selected branch');
+    }
+    final product = productRows.first;
+
+    final id = _uuid.v4();
+    final now = DateTime.now().toIso8601String();
+    await DatabaseService.insert(_table, {
+      'id': id,
+      'branch_id': DatabaseService.currentBranchId,
+      'from_branch_id': cleanFromBranchId,
+      'to_branch_id': DatabaseService.currentBranchId,
+      'product_id': productId,
+      'product_name': product['name'] as String? ?? 'Product',
+      'quantity': quantity,
+      'unit': UnitUtils.stockUnitForProduct(product),
+      'status': 'requested',
+      'requested_by': SessionService.currentUserId,
+      'note': note?.trim(),
+      'requested_at': now,
+      'created_at': now,
+      'updated_at': now,
+      'sync_status': 'pending',
+    });
+    await AuditLogService.log(
+      action: 'request',
+      entityTable: _table,
+      entityId: id,
+    );
+    return id;
+  }
+
   static Future<void> updateStatus(
     String id, {
     required String status,
@@ -147,6 +210,7 @@ class StockTransferRepository {
   static Future<void> _receiveTransfer(String id, {String? note}) async {
     final database = DatabaseService.db;
     final now = DateTime.now().toIso8601String();
+    String? autoCreatedProductId;
 
     await database.transaction((txn) async {
       final transferRows = await txn.query(
@@ -189,16 +253,19 @@ class StockTransferRepository {
         throw Exception('Source branch no longer has enough stock');
       }
 
-      final destinationProduct = await _findDestinationProduct(
+      var destinationProduct = await _findDestinationProduct(
         txn,
         sourceProduct: sourceProduct,
         branchId: toBranchId,
       );
       if (destinationProduct == null) {
-        final productName = sourceProduct['name'] as String? ?? 'this product';
-        throw Exception(
-          'Create or match "$productName" in this branch before receiving the transfer.',
+        destinationProduct = await _createDestinationProduct(
+          txn,
+          sourceProduct: sourceProduct,
+          branchId: toBranchId,
+          now: now,
         );
+        autoCreatedProductId = destinationProduct['id'] as String;
       }
 
       final sourceUnit = UnitUtils.stockUnitForProduct(sourceProduct);
@@ -291,6 +358,14 @@ class StockTransferRepository {
       entityId: id,
       branchId: DatabaseService.currentBranchId,
     );
+    if (autoCreatedProductId != null) {
+      await AuditLogService.log(
+        action: 'create',
+        entityTable: 'products',
+        entityId: autoCreatedProductId,
+        branchId: DatabaseService.currentBranchId,
+      );
+    }
     await AuditLogService.log(
       action: 'transfer_stock_out',
       entityTable: 'products',
@@ -376,6 +451,92 @@ class StockTransferRepository {
       [DatabaseService.defaultBranchId, branchId, name],
     );
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+
+  /// Copies the source product into the destination branch so a transfer can
+  /// be received even when the branch has never stocked the item before.
+  static Future<Map<String, dynamic>> _createDestinationProduct(
+    dynamic txn, {
+    required Map<String, dynamic> sourceProduct,
+    required String branchId,
+    required String now,
+  }) async {
+    final id = _uuid.v4();
+    final unit = (sourceProduct['unit'] as String? ?? '').trim().isEmpty
+        ? 'pcs'
+        : sourceProduct['unit'] as String;
+    final row = <String, dynamic>{
+      'id': id,
+      'branch_id': branchId,
+      'name': sourceProduct['name'] as String? ?? 'Product',
+      'price': sourceProduct['price'] ?? 0,
+      'cost': sourceProduct['cost'],
+      'stock': 0,
+      'low_stock': sourceProduct['low_stock'] ?? 0,
+      'unit': unit,
+      'stock_unit': sourceProduct['stock_unit'] ?? unit,
+      'sale_unit': sourceProduct['sale_unit'] ?? unit,
+      'sale_to_stock_factor': sourceProduct['sale_to_stock_factor'] ?? 1,
+      'purchase_unit': sourceProduct['purchase_unit'] ?? unit,
+      'purchase_to_stock_factor':
+          sourceProduct['purchase_to_stock_factor'] ?? 1,
+      'sku': sourceProduct['sku'],
+      'barcode': sourceProduct['barcode'],
+      'image_url': sourceProduct['image_url'],
+      'brand': sourceProduct['brand'],
+      'description': sourceProduct['description'],
+      'image_urls_json': sourceProduct['image_urls_json'],
+      'show_online': sourceProduct['show_online'] ?? 1,
+      'is_featured': sourceProduct['is_featured'] ?? 0,
+      'category_id': await _matchingCategoryId(
+        txn,
+        sourceProduct: sourceProduct,
+        branchId: branchId,
+      ),
+      'track_stock': sourceProduct['track_stock'] ?? 1,
+      'has_variants': 0,
+      'created_at': now,
+      'updated_at': now,
+      'sync_status': 'pending',
+    };
+    if (sourceProduct.containsKey('is_restaurant_menu')) {
+      row['is_restaurant_menu'] = sourceProduct['is_restaurant_menu'] ?? 0;
+    }
+    await txn.insert('products', row);
+    return row;
+  }
+
+  /// Categories are branch-scoped, so the source category is only carried
+  /// over when the destination branch has a category with the same name.
+  static Future<String?> _matchingCategoryId(
+    dynamic txn, {
+    required Map<String, dynamic> sourceProduct,
+    required String branchId,
+  }) async {
+    final sourceCategoryId =
+        (sourceProduct['category_id'] as String? ?? '').trim();
+    if (sourceCategoryId.isEmpty) return null;
+
+    final sourceCategories = await txn.rawQuery(
+      'SELECT name FROM categories WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [sourceCategoryId],
+    );
+    if (sourceCategories.isEmpty) return null;
+    final name = (sourceCategories.first['name'] as String? ?? '').trim();
+    if (name.isEmpty) return null;
+
+    final rows = await txn.rawQuery(
+      '''
+      SELECT id
+      FROM categories
+      WHERE deleted_at IS NULL
+        AND COALESCE(branch_id, ?) = ?
+        AND LOWER(TRIM(name)) = LOWER(?)
+      LIMIT 1
+      ''',
+      [DatabaseService.defaultBranchId, branchId, name],
+    );
+    return rows.isEmpty ? null : rows.first['id'] as String?;
   }
 
   static Future<double> _decrementSourceBatches(

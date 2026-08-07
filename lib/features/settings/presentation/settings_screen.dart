@@ -2149,37 +2149,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return DropdownMenuItem<ThemeMode>(value: mode, child: Text(label));
     }).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildCard([
-          Text(
-            'Theme',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+    return SizedBox(
+      width: double.infinity,
+      child: _buildCard([
+        Text(
+          'Theme',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
-          SizedBox(height: 8),
-          Text(
-            'Choose whether Piki POS follows your device setting or always uses light or dark mode.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Choose whether Piki POS follows your device setting or always uses light or dark mode.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-          SizedBox(height: 16),
-          _buildSelectField<ThemeMode>(
-            label: 'Appearance',
-            value: themeMode,
-            icon: Icons.brightness_6_outlined,
-            items: items,
-            onChanged: (mode) {
-              if (mode != null) {
-                ref.read(themeProvider.notifier).setMode(mode);
-              }
-            },
-          ),
-        ]),
-      ],
+        ),
+        SizedBox(height: 16),
+        _buildSelectField<ThemeMode>(
+          label: 'Appearance',
+          value: themeMode,
+          icon: Icons.brightness_6_outlined,
+          items: items,
+          onChanged: (mode) {
+            if (mode != null) {
+              ref.read(themeProvider.notifier).setMode(mode);
+            }
+          },
+        ),
+      ]),
     );
   }
 

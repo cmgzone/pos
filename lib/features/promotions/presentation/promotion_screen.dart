@@ -163,13 +163,6 @@ class _PromotionScreenState extends State<PromotionScreen> {
         final rules = _rules[promotion['id'] as String] ?? const [];
         final active = ((promotion['is_active'] as num?)?.toInt() ?? 0) != 0;
         return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,

@@ -175,6 +175,38 @@ export async function trackOrder(
   return json.data as Order;
 }
 
+export interface StorefrontSignupPayload {
+  name: string;
+  phone: string;
+  email?: string;
+  branchId?: string;
+  marketingOptIn?: boolean;
+}
+
+export async function signupCustomer(
+  businessId: string,
+  payload: StorefrontSignupPayload,
+): Promise<{ customerId: string; businessName: string; registered: boolean }> {
+  const res = await fetch(
+    buildUrl(`/public/catalog/${encodeURIComponent(businessId)}/signup`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000),
+    }
+  );
+  const json = await readApiJson(res);
+  if (!res.ok || !json.ok) {
+    throw new Error(json?.message || json?.error || "Unable to create your account.");
+  }
+  return json.data as {
+    customerId: string;
+    businessName: string;
+    registered: boolean;
+  };
+}
+
 export async function requestCustomerPortalCode(businessId: string, email: string) {
   const res = await fetch(buildUrl('/customer-portal/request-code'), {
     method: 'POST',

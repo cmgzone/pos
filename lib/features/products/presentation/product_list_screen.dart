@@ -91,13 +91,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        toolbarHeight: 50,
         automaticallyImplyLeading: false,
-        title: Text(
-          isMobile ? 'Products' : 'Product Management',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-        ),
+        title: Text(isMobile ? 'Products' : 'Product Management'),
         actions: [
           if (!isMobile)
             CompactHeaderButton(

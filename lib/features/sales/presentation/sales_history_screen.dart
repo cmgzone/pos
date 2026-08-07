@@ -211,12 +211,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         final isMobile = constraints.maxWidth < 720 || Platform.isWindows;
         return Scaffold(
           appBar: AppBar(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            toolbarHeight: 50,
-            title: Text(
-              'Sales',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
+            title: const Text('Sales'),
             actions: [
               CompactHeaderIconButton(
                 onPressed: _loadSales,
@@ -253,8 +248,6 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           floatingActionButton: !_isCashierView && isMobile
               ? FloatingActionButton.extended(
                   onPressed: _showRecordBookSaleDialog,
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
                   icon: Icon(Icons.post_add_outlined),
                   label: Text('Record'),
                 )

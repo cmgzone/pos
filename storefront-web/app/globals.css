@@ -151,6 +151,8 @@ body {
 .atelier-account-link { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; color: var(--atelier-muted); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-decoration: none; text-transform: uppercase; transition: color 160ms ease; }
 .atelier-account-link:hover { color: var(--atelier-ink); }
 .atelier-account-link svg { width: 16px; height: 16px; }
+.atelier-signup-button { display: inline-flex; min-height: 34px; align-items: center; padding: 0 12px; border: 1px solid var(--atelier-line); border-radius: 999px; background: var(--atelier-paper); color: var(--atelier-ink); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; cursor: pointer; transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease; }
+.atelier-signup-button:hover { border-color: var(--atelier-accent); color: var(--atelier-accent); transform: translateY(-2px); }
 .atelier-icon-button,
 .atelier-cart-button { min-height: 38px; border: 1px solid var(--atelier-line); transition: transform 160ms ease, background-color 160ms ease; }
 .atelier-icon-button:hover,
@@ -248,7 +250,15 @@ body {
 .atelier-tile-buy > span { font-size: 11px; font-weight: 700; white-space: nowrap; }
 .atelier-tile-buy button { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--atelier-line); border-radius: 50%; transition: background-color 160ms ease, color 160ms ease; }
 .atelier-tile-buy button:hover { background: var(--atelier-ink); color: var(--atelier-paper); }
+.atelier-tile-buy button:disabled { cursor: not-allowed; opacity: .4; }
 .atelier-tile-buy svg { width: 13px; height: 13px; }
+.atelier-tile-price { display: inline-flex; align-items: baseline; gap: 7px; }
+.atelier-tile-oldprice { color: var(--atelier-muted); font-weight: 500; text-decoration-thickness: 1px; }
+.atelier-tile-stock { margin: 6px 0 0; color: var(--atelier-accent); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.atelier-tile-badge { position: absolute; top: 13px; left: 13px; z-index: 1; padding: 4px 8px; background: var(--atelier-accent); color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.atelier-tile-badge--soldout { background: rgba(16, 32, 29, .78); }
+.atelier-tile-image[disabled] { cursor: not-allowed; }
+.atelier-tile--soldout .atelier-tile-image img { filter: grayscale(.6); opacity: .55; }
 .atelier-browse-controls { display: flex; align-items: center; justify-content: space-between; gap: 18px 28px; margin: -18px 0 clamp(34px, 5vw, 64px); padding: 16px 0; border-top: 1px solid var(--atelier-line); border-bottom: 1px solid var(--atelier-line); }
 .atelier-search-field { display: flex; align-items: center; width: min(100%, 390px); gap: 10px; color: var(--atelier-muted); }
 .atelier-search-field > svg { width: 16px; height: 16px; flex: 0 0 auto; }
@@ -262,6 +272,8 @@ body {
 .atelier-category-select select { max-width: 220px; border: 0; border-bottom: 1px solid var(--atelier-ink); border-radius: 0; outline: 0; background: transparent; color: var(--atelier-ink); padding: 5px 22px 5px 0; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .atelier-browse-all,
 .atelier-result-count { color: var(--atelier-muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+.atelier-sort { flex: 0 0 auto; }
+.atelier-sort select { border: 0; border-bottom: 1px solid var(--atelier-line); border-radius: 0; outline: 0; background: transparent; color: var(--atelier-ink); padding: 5px 22px 5px 0; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .atelier-result-count { color: var(--atelier-ink); }
 .atelier-category-rail { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
 .atelier-category-rail button { padding: 8px 0; border-bottom: 1px solid transparent; color: var(--atelier-muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
@@ -284,9 +296,16 @@ body {
 .atelier-story-actions button { border-bottom: 1px solid currentColor; padding-bottom: 5px; }
 .atelier-story-actions svg { width: 15px; height: 15px; }
 
-.atelier-footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; padding: 38px clamp(18px, 4vw, 64px); background: var(--atelier-ink); border-top: 1px solid rgba(255,255,255,.18); color: var(--atelier-paper); }
+.atelier-footer { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 32px; padding: 38px clamp(18px, 4vw, 64px); background: var(--atelier-ink); border-top: 1px solid rgba(255,255,255,.18); color: var(--atelier-paper); }
 .atelier-footer .atelier-kicker { color: color-mix(in srgb, var(--atelier-paper) 68%, transparent); }
 .atelier-footer-title { margin: 14px 0 0; font-family: var(--storefront-display-font, var(--font-display)), Georgia, serif; font-size: 34px; letter-spacing: -.05em; }
+.atelier-footer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.atelier-footer-actions .atelier-primary-button { background: var(--atelier-accent); color: #fff; }
+.atelier-footer-actions .atelier-text-button { color: var(--atelier-paper); text-decoration-color: color-mix(in srgb, var(--atelier-paper) 40%, transparent); }
+.atelier-footer-actions .atelier-text-button:hover { color: #fff; }
+.atelier-footer-whatsapp { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; color: color-mix(in srgb, var(--atelier-paper) 78%, transparent); font-size: 12px; font-weight: 700; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--atelier-paper) 34%, transparent); text-underline-offset: 5px; }
+.atelier-footer-whatsapp:hover { color: var(--atelier-paper); }
+.atelier-footer-whatsapp svg { width: 14px; height: 14px; }
 .atelier-footer-meta { flex-wrap: wrap; justify-content: flex-end; gap: 12px 22px; color: color-mix(in srgb, var(--atelier-paper) 67%, transparent); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 
 @media (max-width: 900px) {

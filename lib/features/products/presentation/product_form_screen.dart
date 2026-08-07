@@ -977,62 +977,56 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           return Expanded(
             child: Row(
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isComplete
-                              ? AppColors.success
-                              : isCurrent
-                              ? AppColors.primary
-                              : Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest,
-                          border: Border.all(
-                            color: isComplete
-                                ? AppColors.success
-                                : isCurrent
-                                ? AppColors.primary
-                                : Theme.of(context).colorScheme.outline,
-                            width: 2,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: isComplete
-                            ? Icon(Icons.check, size: 16, color: Colors.white)
-                            : Text(
-                                '${index + 1}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: isCurrent
-                                      ? Colors.white
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                      ),
-                      if (index < _wizardSteps.length - 1) ...[
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Container(
-                            height: 2,
-                            color: index < _currentStep
-                                ? AppColors.success
-                                : Theme.of(context).colorScheme.outline,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                    ],
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isComplete
+                        ? AppColors.success
+                        : isCurrent
+                        ? AppColors.primary
+                        : Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                    border: Border.all(
+                      color: isComplete
+                          ? AppColors.success
+                          : isCurrent
+                          ? AppColors.primary
+                          : Theme.of(context).colorScheme.outline,
+                      width: 2,
+                    ),
                   ),
+                  alignment: Alignment.center,
+                  child: isComplete
+                      ? Icon(Icons.check, size: 16, color: Colors.white)
+                      : Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isCurrent
+                                ? Colors.white
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                 ),
+                if (index < _wizardSteps.length - 1) ...[
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Container(
+                      height: 2,
+                      color: index < _currentStep
+                          ? AppColors.success
+                          : Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
               ],
             ),
           );

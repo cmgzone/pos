@@ -213,13 +213,6 @@ class _GiftCardScreenState extends State<GiftCardScreen> {
         final disabled = !isActive || expired;
 
         return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

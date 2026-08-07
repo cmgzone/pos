@@ -76,6 +76,22 @@ class ProductRepository {
       ''', args);
   }
 
+  /// Products that belong to a specific branch. Used when one branch wants to
+  /// request stock from another branch it does not own.
+  static Future<List<Map<String, dynamic>>> getAllForBranch(
+    String branchId,
+  ) async {
+    final cleanBranchId = branchId.trim();
+    if (cleanBranchId.isEmpty) return const [];
+    return DatabaseService.rawQuery('''
+      SELECT p.*
+      FROM $_table p
+      WHERE p.deleted_at IS NULL
+        AND COALESCE(p.branch_id, ?) = ?
+      ORDER BY p.name ASC
+      ''', [DatabaseService.defaultBranchId, cleanBranchId]);
+  }
+
   static Future<bool> hasRetailProducts() async {
     final rows = await DatabaseService.rawQuery('''
       SELECT 1

@@ -1555,17 +1555,14 @@ Preserve every unrelated website section, existing brand choice, checkout settin
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(color: colors.outlineVariant),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _websiteWorkspaceTab(
-                        colors: colors,
-                        value: _WebsiteWorkspaceView.themes,
-                        icon: Icons.tune_rounded,
-                        label: compact ? 'Manage' : 'Themes & checkout',
-                      ),
-                    ),
-                  ],
+                child: SizedBox(
+                  width: double.infinity,
+                  child: _websiteWorkspaceTab(
+                    colors: colors,
+                    value: _WebsiteWorkspaceView.themes,
+                    icon: Icons.tune_rounded,
+                    label: compact ? 'Manage' : 'Themes & checkout',
+                  ),
                 ),
               ),
             ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/services/branch_service.dart';
 import '../../../core/services/sync_controller.dart';
 import '../../../core/theme/app_colors.dart';
@@ -9,6 +10,8 @@ import '../../../widgets/overlay_notice.dart';
 import '../../training/widgets/training_anchor.dart';
 import '../data/product_repository.dart';
 import '../data/stock_transfer_repository.dart';
+
+enum _TransferAction { send, request }
 
 class StockTransferScreen extends ConsumerStatefulWidget {
   const StockTransferScreen({super.key});
@@ -74,7 +77,7 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: Text('Request Stock Transfer'),
+            title: Text('Send Stock to Another Branch'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -191,6 +194,234 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Icon(Icons.send_outlined),
+                label: Text('Send'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    quantityController.dispose();
+    noteController.dispose();
+    if (saved == true) {
+      await _load();
+    }
+  }
+
+  Future<void> _requestStockIn() async {
+    final branches = (await BranchService.getBranches(activeOnly: true))
+        .where((branch) => branch['id'] != BranchService.currentBranchId)
+        .toList();
+    if (!mounted) return;
+    if (branches.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add another branch before requesting stock.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    Map<String, dynamic> selectedBranch = branches.first;
+    List<Map<String, dynamic>> sourceProducts;
+    try {
+      sourceProducts = await ProductRepository.getAllForBranch(
+        selectedBranch['id'] as String,
+      );
+    } catch (_) {
+      sourceProducts = const [];
+    }
+    if (!mounted) return;
+    Map<String, dynamic>? selectedProduct = sourceProducts.isEmpty
+        ? null
+        : sourceProducts.first;
+    var loadingProducts = false;
+    var saving = false;
+    final quantityController = TextEditingController(text: '1');
+    final noteController = TextEditingController();
+
+    Future<void> loadProductsForBranch(
+      void Function(void Function()) setDialogState,
+      String branchId,
+    ) async {
+      setDialogState(() {
+        loadingProducts = true;
+        sourceProducts = const [];
+        selectedProduct = null;
+      });
+      try {
+        final products = await ProductRepository.getAllForBranch(branchId);
+        setDialogState(() {
+          sourceProducts = products;
+          selectedProduct = products.isEmpty ? null : products.first;
+          loadingProducts = false;
+        });
+      } catch (_) {
+        setDialogState(() {
+          sourceProducts = const [];
+          selectedProduct = null;
+          loadingProducts = false;
+        });
+      }
+    }
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text('Request Stock from Another Branch'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    initialValue: selectedBranch,
+                    decoration: InputDecoration(
+                      labelText: 'From branch',
+                      prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                    ),
+                    items: branches
+                        .map(
+                          (branch) => DropdownMenuItem(
+                            value: branch,
+                            child: Text(branch['name'] as String? ?? 'Branch'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: saving
+                        ? null
+                        : (value) {
+                            if (value == null) return;
+                            setDialogState(() => selectedBranch = value);
+                            loadProductsForBranch(
+                              setDialogState,
+                              value['id'] as String,
+                            );
+                          },
+                  ),
+                  SizedBox(height: 12),
+                  if (loadingProducts)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Text('Loading products from this branch...'),
+                        ],
+                      ),
+                    )
+                  else if (sourceProducts.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'This branch has no products to request.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  else
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      initialValue: selectedProduct,
+                      decoration: InputDecoration(
+                        labelText: 'Product',
+                        prefixIcon: Icon(Icons.inventory_2_outlined),
+                      ),
+                      items: sourceProducts
+                          .map(
+                            (product) => DropdownMenuItem(
+                              value: product,
+                              child: Text(
+                                '${product['name'] as String? ?? 'Product'} '
+                                '(${(product['stock'] as num? ?? 0).toDouble().toStringAsFixed(2)} '
+                                '${product['stock_unit'] ?? product['unit'] ?? ''})',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: saving
+                          ? null
+                          : (value) => setDialogState(
+                              () => selectedProduct = value ?? selectedProduct,
+                            ),
+                    ),
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: quantityController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Quantity',
+                      prefixIcon: Icon(Icons.numbers_outlined),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: 'Note',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(context, false),
+                child: Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: saving || selectedProduct == null
+                    ? null
+                    : () async {
+                        final quantity =
+                            double.tryParse(quantityController.text.trim()) ??
+                            0;
+                        setDialogState(() => saving = true);
+                        try {
+                          await StockTransferRepository.requestStockIn(
+                            fromBranchId: selectedBranch['id'] as String,
+                            productId: selectedProduct!['id'] as String,
+                            quantity: quantity,
+                            note: noteController.text,
+                          );
+                          if (context.mounted) Navigator.pop(context, true);
+                        } catch (error) {
+                          setDialogState(() => saving = false);
+                          if (context.mounted) {
+                            AppOverlayNotice.showSnackBar(
+                              context,
+                              SnackBar(
+                                content: Text(
+                                  AppErrorMessage.from(
+                                    error,
+                                    fallback: AppErrorMessage.saveFailed,
+                                  ),
+                                ),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                icon: saving
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(Icons.call_received_rounded),
                 label: Text('Request'),
               ),
             ],
@@ -290,6 +521,9 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
       },
     );
 
+    final isMobile =
+        MediaQuery.sizeOf(context).width < AppConstants.mobileBreakpoint;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Stock Transfers'),
@@ -299,14 +533,57 @@ class _StockTransferScreenState extends ConsumerState<StockTransferScreen> {
             icon: Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilledButton.icon(
-              onPressed: _requestTransfer,
-              icon: Icon(Icons.swap_horiz_rounded),
-              label: Text('Request'),
+          if (isMobile)
+            PopupMenuButton<_TransferAction>(
+              tooltip: 'New transfer',
+              onSelected: (action) {
+                switch (action) {
+                  case _TransferAction.send:
+                    _requestTransfer();
+                  case _TransferAction.request:
+                    _requestStockIn();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _TransferAction.request,
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.call_received_rounded),
+                    title: Text('Request stock'),
+                    subtitle: Text('Ask another branch for items'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _TransferAction.send,
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.call_made_rounded),
+                    title: Text('Send stock'),
+                    subtitle: Text('Move items to another branch'),
+                  ),
+                ),
+              ],
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: OutlinedButton.icon(
+                onPressed: _requestTransfer,
+                icon: Icon(Icons.call_made_rounded, size: 18),
+                label: Text('Send stock'),
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: FilledButton.icon(
+                onPressed: _requestStockIn,
+                icon: Icon(Icons.call_received_rounded, size: 18),
+                label: Text('Request stock'),
+              ),
+            ),
+          ],
+          if (isMobile) SizedBox(width: 8),
         ],
       ),
       body: TrainingAnchor(

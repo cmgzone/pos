@@ -13877,6 +13877,81 @@ app.post('/api/public/catalog/:businessId/orders', publicWriteRateLimit, async (
   }
 });
 
+app.post('/api/public/catalog/:businessId/signup', publicWriteRateLimit, async (req, res, next) => {
+  try {
+    const businessId = normalizeOptionalText(req.params.businessId);
+    if (!businessId) {
+      throw createHttpError(400, 'Business catalog link is invalid');
+    }
+
+    const businessResult = await query(
+      'SELECT id, name FROM businesses WHERE id = $1 AND deleted_at IS NULL LIMIT 1',
+      [businessId],
+    );
+    const business = businessResult.rows[0];
+    if (!business) {
+      throw createHttpError(404, 'Catalog not found');
+    }
+
+    const name = normalizeOptionalText(
+      req.body?.name || req.body?.customerName || req.body?.customer_name,
+    );
+    const phone = normalizeOptionalText(
+      req.body?.phone || req.body?.phoneNumber || req.body?.phone_number,
+    );
+    const rawEmail = normalizeOptionalText(
+      req.body?.email || req.body?.customerEmail || req.body?.customer_email,
+    );
+    const email = rawEmail ? normalizeCustomerPortalEmail(rawEmail) : null;
+    const requestedBranchId =
+      normalizeOptionalText(req.body?.branchId || req.body?.branch_id) ||
+      'main_branch';
+
+    if (name.length < 2) {
+      throw createHttpError(400, 'Enter the customer name');
+    }
+    if (!phone) {
+      throw createHttpError(400, 'Phone number is required');
+    }
+    if (rawEmail && !email) {
+      throw createHttpError(400, 'Use a valid email address');
+    }
+
+    const now = new Date().toISOString();
+    let customerId = null;
+
+    await withTransaction(async (client) => {
+      const customer = await registerPublicCatalogCustomer({
+        client,
+        businessId,
+        branchId: requestedBranchId,
+        name,
+        phone,
+        email,
+        now,
+      });
+      customerId = customer.id;
+    });
+
+    notifyBusinessRealtimeChange({
+      businessId,
+      reason: 'catalog_signup',
+      tables: ['customers'],
+    });
+
+    res.status(201).json({
+      ok: true,
+      data: {
+        customerId,
+        businessName: business.name,
+        registered: true,
+      },
+    });
+  } catch (error) {
+    next(normalizeRouteError(error));
+  }
+});
+
 app.get('/api/public/catalog/:businessId/orders/:orderNumber', async (req, res, next) => {
   try {
     const businessId = normalizeOptionalText(req.params.businessId);

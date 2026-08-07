@@ -603,28 +603,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           label: Text(canSell ? 'Start a sale' : 'View sales'),
         );
 
-        return _Panel(
-          padding: EdgeInsets.all(compact ? AppSpacing.xl : 28),
-          child: compact
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    summary,
-                    const SizedBox(height: AppSpacing.lg),
-                    stats,
-                    const SizedBox(height: AppSpacing.lg),
-                    SizedBox(width: double.infinity, child: action),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(flex: 5, child: summary),
-                    const SizedBox(width: AppSpacing.xl),
-                    Expanded(flex: 4, child: stats),
-                    const SizedBox(width: AppSpacing.lg),
-                    action,
-                  ],
-                ),
+        return SizedBox(
+          width: double.infinity,
+          child: StitchCard(
+            padding: EdgeInsets.all(compact ? AppSpacing.xl : 28),
+            child: compact
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      summary,
+                      const SizedBox(height: AppSpacing.lg),
+                      stats,
+                      const SizedBox(height: AppSpacing.lg),
+                      SizedBox(width: double.infinity, child: action),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(flex: 5, child: summary),
+                      const SizedBox(width: AppSpacing.xl),
+                      Expanded(flex: 4, child: stats),
+                      const SizedBox(width: AppSpacing.lg),
+                      action,
+                    ],
+                  ),
+          ),
         );
       },
     );
@@ -877,71 +880,79 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ? <double>[0, values.first]
         : values;
 
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Sales trend', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      'Recent completed sales',
-                      style: theme.textTheme.bodySmall,
+    return SizedBox(
+      width: double.infinity,
+      child: StitchCard(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sales trend', style: theme.textTheme.titleMedium),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        'Recent completed sales',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Text(
+                    'LIVE',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      letterSpacing: 0.6,
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                  vertical: AppSpacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                ),
-                child: Text(
-                  'LIVE',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                    letterSpacing: 0.6,
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Semantics(
+              image: true,
+              label:
+                  'Sales trend for ${values.length} recent completed ${values.length == 1 ? 'sale' : 'sales'}',
+              child: SizedBox(
+                height: 136,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: _SalesTrendPainter(
+                    values: chartValues,
+                    lineColor: theme.colorScheme.primary,
+                    gridColor: theme.colorScheme.outline.withValues(
+                      alpha: 0.55,
+                    ),
+                    fillColor: theme.colorScheme.primary.withValues(
+                      alpha: 0.08,
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Semantics(
-            image: true,
-            label:
-                'Sales trend for ${values.length} recent completed ${values.length == 1 ? 'sale' : 'sales'}',
-            child: SizedBox(
-              height: 136,
-              width: double.infinity,
-              child: CustomPaint(
-                painter: _SalesTrendPainter(
-                  values: chartValues,
-                  lineColor: theme.colorScheme.primary,
-                  gridColor: theme.colorScheme.outline.withValues(alpha: 0.55),
-                  fillColor: theme.colorScheme.primary.withValues(alpha: 0.08),
-                ),
-              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              Text('Oldest', style: theme.textTheme.labelSmall),
-              const Spacer(),
-              Text('Latest', style: theme.textTheme.labelSmall),
-            ],
-          ),
-        ],
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Text('Oldest', style: theme.textTheme.labelSmall),
+                const Spacer(),
+                Text('Latest', style: theme.textTheme.labelSmall),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -949,105 +960,109 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildReorderSuggestionsCard() {
     final theme = Theme.of(context);
     final suggestions = _reorderSuggestions;
-    return _Panel(
-      backgroundColor: context.warningPanelBackground(),
-      borderColor: AppColors.warning.withValues(alpha: 0.22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.11),
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
+    return SizedBox(
+      width: double.infinity,
+      child: StitchCard(
+        color: context.warningPanelBackground(),
+        borderColor: AppColors.warning.withValues(alpha: 0.22),
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.11),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: const Icon(
+                    Icons.assignment_returned_rounded,
+                    color: AppColors.warning,
+                    size: 22,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.assignment_returned_rounded,
-                  color: AppColors.warning,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Reorder suggestions',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    Text(
-                      suggestions.isEmpty
-                          ? 'Stock cover looks healthy right now'
-                          : '${suggestions.length} ${suggestions.length == 1 ? 'item needs' : 'items need'} attention',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Reorder suggestions',
+                        style: theme.textTheme.titleMedium,
                       ),
-                    ),
-                  ],
+                      Text(
+                        suggestions.isEmpty
+                            ? 'Stock cover looks healthy right now'
+                            : '${suggestions.length} ${suggestions.length == 1 ? 'item needs' : 'items need'} attention',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Open stock list',
-                onPressed: () => AppShell.selectIndex(12),
-                icon: const Icon(Icons.arrow_forward_rounded),
-              ),
-            ],
-          ),
-          if (suggestions.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.lg),
-            const Divider(height: 1),
-            const SizedBox(height: AppSpacing.sm),
-            ...suggestions.take(3).map((item) {
-              final unit = (item['stock_unit'] ?? '').toString();
-              final suggestedQty = (item['suggested_qty'] as num? ?? 0)
-                  .toDouble();
-              final cover = (item['days_of_cover'] as num?)?.toDouble();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            (item['item_name'] ?? 'Product').toString(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface,
-                              fontWeight: FontWeight.w700,
+                IconButton(
+                  tooltip: 'Open stock list',
+                  onPressed: () => AppShell.selectIndex(12),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+              ],
+            ),
+            if (suggestions.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.lg),
+              const Divider(height: 1),
+              const SizedBox(height: AppSpacing.sm),
+              ...suggestions.take(3).map((item) {
+                final unit = (item['stock_unit'] ?? '').toString();
+                final suggestedQty = (item['suggested_qty'] as num? ?? 0)
+                    .toDouble();
+                final cover = (item['days_of_cover'] as num?)?.toDouble();
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (item['item_name'] ?? 'Product').toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            cover == null
-                                ? 'Below reorder level'
-                                : '${cover.toStringAsFixed(cover % 1 == 0 ? 0 : 1)} days cover',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Text(
+                              cover == null
+                                  ? 'Below reorder level'
+                                  : '${cover.toStringAsFixed(cover % 1 == 0 ? 0 : 1)} days cover',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Text(
-                      'Order ${_quantityLabel(suggestedQty, unit)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w800,
+                      Text(
+                        'Order ${_quantityLabel(suggestedQty, unit)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                    ],
+                  ),
+                );
+              }),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1059,101 +1074,106 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _buildRecentActivity() {
     final theme = Theme.of(context);
-    return _Panel(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xl,
-              18,
-              AppSpacing.md,
-              AppSpacing.md,
-            ),
-            child: Row(
-              children: [
-                Expanded(child: StitchSectionHeader(title: 'Recent activity')),
-                TextButton(
-                  onPressed: () => AppShell.selectIndex(4),
-                  child: const Text('View all'),
-                ),
-              ],
-            ),
-          ),
-          if (_recentSales.isEmpty)
+    return SizedBox(
+      width: double.infinity,
+      child: StitchCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.xl,
-                AppSpacing.xs,
-                AppSpacing.xl,
-                AppSpacing.xl,
+                18,
+                AppSpacing.md,
+                AppSpacing.md,
               ),
               child: Row(
                 children: [
-                  _ActionIcon(icon: Icons.receipt_long_outlined),
-                  const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: Text(
-                      'Completed sales will appear here.',
-                      style: theme.textTheme.bodyMedium,
-                    ),
+                    child: StitchSectionHeader(title: 'Recent activity'),
+                  ),
+                  TextButton(
+                    onPressed: () => AppShell.selectIndex(4),
+                    child: const Text('View all'),
                   ),
                 ],
               ),
-            )
-          else
-            ..._recentSales.asMap().entries.map((entry) {
-              final sale = entry.value;
-              final isLast = entry.key == _recentSales.length - 1;
-              final payment = (sale['payment_type'] ?? 'Payment').toString();
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.xl,
-                      vertical: 11,
+            ),
+            if (_recentSales.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.xs,
+                  AppSpacing.xl,
+                  AppSpacing.xl,
+                ),
+                child: Row(
+                  children: [
+                    _ActionIcon(icon: Icons.receipt_long_outlined),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(
+                        'Completed sales will appear here.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        const _ActionIcon(icon: Icons.shopping_bag_outlined),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _saleReference(sale),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface,
-                                  fontWeight: FontWeight.w600,
+                  ],
+                ),
+              )
+            else
+              ..._recentSales.asMap().entries.map((entry) {
+                final sale = entry.value;
+                final isLast = entry.key == _recentSales.length - 1;
+                final payment = (sale['payment_type'] ?? 'Payment').toString();
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.xl,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        children: [
+                          const _ActionIcon(icon: Icons.shopping_bag_outlined),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _saleReference(sale),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${_money(sale['total_amount'] as num?)} - $payment',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ],
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${_money(sale['total_amount'] as num?)} - $payment',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _timeLabel(sale['created_at'] as String?),
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
+                          const SizedBox(width: 10),
+                          Text(
+                            _timeLabel(sale['created_at'] as String?),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (!isLast) const Divider(height: 1, indent: 72),
-                ],
-              );
-            }),
-        ],
+                    if (!isLast) const Divider(height: 1, indent: 72),
+                  ],
+                );
+              }),
+          ],
+        ),
       ),
     );
   }
@@ -1442,39 +1462,6 @@ class _ActionIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Icon(icon, size: 22, color: color),
-    );
-  }
-}
-
-class _Panel extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final Color? backgroundColor;
-  final Color? borderColor;
-
-  const _Panel({
-    required this.child,
-    this.padding = const EdgeInsets.all(AppSpacing.xl),
-    this.backgroundColor,
-    this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: backgroundColor ?? theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color:
-              borderColor ?? theme.colorScheme.outline.withValues(alpha: 0.72),
-        ),
-        boxShadow: const [],
-      ),
-      child: child,
     );
   }
 }

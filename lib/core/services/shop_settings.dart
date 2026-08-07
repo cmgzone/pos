@@ -19,6 +19,7 @@ class ShopSettings {
   static const _keySecondaryCurrencyRate = 'secondary_currency_rate';
   static const _keyDualCurrencyEnabled = 'dual_currency_enabled';
   static const _keyReceiptFooter = 'receipt_footer';
+  static const _keyShopLogoUrl = 'shop_logo_url';
   static const _keyCarwashBays = 'carwash_bays_count';
   static const _keyCashDrawerEnabled = 'cash_drawer_enabled';
   static const _keyCashDrawerPrinterPath = 'cash_drawer_printer_path';
@@ -68,6 +69,7 @@ class ShopSettings {
       _prefs?.getBool(_keyDualCurrencyEnabled) ?? false;
   static String get receiptFooter =>
       _prefs?.getString(_keyReceiptFooter) ?? 'Thank you for your purchase!';
+  static String get shopLogoUrl => _prefs?.getString(_keyShopLogoUrl) ?? '';
   static int get carwashBaysCount => _prefs?.getInt(_keyCarwashBays) ?? 4;
   static bool get cashDrawerEnabled =>
       _prefs?.getBool(_keyCashDrawerEnabled) ?? false;
@@ -109,6 +111,14 @@ class ShopSettings {
       _prefs!.setBool(_keyDualCurrencyEnabled, value);
   static Future<void> setReceiptFooter(String value) =>
       _prefs!.setString(_keyReceiptFooter, value);
+  static Future<void> setShopLogoUrl(String value) async {
+    final cleanValue = value.trim();
+    if (cleanValue.isEmpty) {
+      await _prefs!.remove(_keyShopLogoUrl);
+      return;
+    }
+    await _prefs!.setString(_keyShopLogoUrl, cleanValue);
+  }
   static Future<void> setCarwashBaysCount(int value) =>
       _prefs!.setInt(_keyCarwashBays, value);
   static Future<void> setCashDrawerEnabled(bool value) =>
@@ -158,6 +168,7 @@ class ShopSettings {
     await _prefs!.remove(_keySecondaryCurrencyRate);
     await _prefs!.remove(_keyDualCurrencyEnabled);
     await _prefs!.remove(_keyReceiptFooter);
+    await _prefs!.remove(_keyShopLogoUrl);
     await _prefs!.remove(_keyCashDrawerEnabled);
     await _prefs!.remove(_keyCashDrawerPrinterPath);
     await _prefs!.remove(_keyEtimsEnabled);

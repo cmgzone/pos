@@ -115,15 +115,8 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
           ),
         ),
         if (_topCustomers.isEmpty)
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-            ),
-            child: const Padding(
+          const Card(
+            child: Padding(
               padding: EdgeInsets.all(24),
               child: Center(
                 child: Text(
@@ -153,12 +146,7 @@ class _CustomerPointsTile extends StatelessWidget {
     final phone = customer['phone'] as String? ?? '';
     final points = (customer['loyalty_points'] as num?)?.toInt() ?? 0;
     return Card(
-      elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         leading: CircleAvatar(

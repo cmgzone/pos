@@ -860,8 +860,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
         label: Text(
           _tabController.index == 0 ? 'Add Customer' : 'Add Supplier',
         ),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
       ),
     );
   }

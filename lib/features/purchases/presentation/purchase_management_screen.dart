@@ -1074,11 +1074,7 @@ class _PurchaseManagementScreenState
 
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 50,
-        title: Text(
-          'Purchases & Suppliers',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-        ),
+        title: const Text('Purchases & Suppliers'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(42),
           child: TrainingAnchor(
@@ -1163,8 +1159,6 @@ class _PurchaseManagementScreenState
                   await _showAddSupplierDialog();
                 }
               },
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
               icon: Icon(
                 onPurchasesTab ? Icons.add_business : Icons.person_add_alt,
               ),

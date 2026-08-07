@@ -139,7 +139,9 @@ class _StorefrontBrandSettingsSectionState
     if (_saving) return;
     setState(() => _saving = true);
     try {
-      final saved = await StorefrontBrandService.saveSettings(_readForm());
+      final form = _readForm();
+      final saved = await StorefrontBrandService.saveSettings(form);
+      await ShopSettings.setShopLogoUrl(saved.logoUrl);
       if (!mounted) return;
       _applySettings(saved);
       ScaffoldMessenger.of(context).showSnackBar(

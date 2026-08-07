@@ -3638,14 +3638,9 @@ class _ModuleLauncherScreenState extends State<_ModuleLauncherScreen>
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(inset, 0, inset, 14),
                   sliver: SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        StitchSectionHeader(
-                          eyebrow: 'Choose your workspace',
-                          title: 'Start where today\'s work is happening.',
-                        ),
-                      ],
+                    child: StitchSectionHeader(
+                      eyebrow: 'Choose your workspace',
+                      title: 'Start where today\'s work is happening.',
                     ),
                   ),
                 ),
@@ -4713,19 +4708,14 @@ class _RetailShortcutHint extends StatelessWidget {
           color: theme.colorScheme.outline.withValues(alpha: 0.5),
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            isMac ? '⌘ K' : 'Ctrl + K',
-            style: TextStyle(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ],
+      child: Text(
+        isMac ? '⌘ K' : 'Ctrl + K',
+        style: TextStyle(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }

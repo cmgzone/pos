@@ -94,76 +94,71 @@ class _CustomerAccountScreenState extends State<CustomerAccountScreen> {
             constraints: const BoxConstraints(maxWidth: 560),
             child: Form(
               key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TrainingAnchor(
-                    id: 'customerAccount.form',
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSpacing.xl),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: Theme.of(context).colorScheme.outline),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Customer Details',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Create a customer account for Kopesha credit sales.',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.9,
-                              ),
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.xl),
-                          TextFormField(
-                            controller: _nameController,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Customer name is required';
-                              }
-                              return null;
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Customer Name *',
-                              prefixIcon: Icon(Icons.person_outline),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                          TextFormField(
-                            controller: _phoneController,
-                            keyboardType: TextInputType.phone,
-                            decoration: const InputDecoration(
-                              labelText: 'Phone Number',
-                              prefixIcon: Icon(Icons.phone_outlined),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                          TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: const InputDecoration(
-                              labelText: 'Email Address',
-                              prefixIcon: Icon(Icons.email_outlined),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+              child: TrainingAnchor(
+                id: 'customerAccount.form',
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.xl),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(color: Theme.of(context).colorScheme.outline),
                   ),
-                ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Customer Details',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Create a customer account for Kopesha credit sales.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.9,
+                          ),
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      TextFormField(
+                        controller: _nameController,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Customer name is required';
+                          }
+                          return null;
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Customer Name *',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Phone Number',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email Address',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

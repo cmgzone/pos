@@ -155,8 +155,6 @@ class _ServiceManagementScreenState
           ? null
           : FloatingActionButton.extended(
               onPressed: _handlePrimaryAction,
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
               icon: Icon(
                 _showsOrderCreationAction ? Icons.add_task : Icons.add_business,
               ),
@@ -389,7 +387,7 @@ class _ServicePosPanelState extends ConsumerState<ServicePosPanel> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Expanded(child: title)]),
+          SizedBox(width: double.infinity, child: title),
           SizedBox(height: AppSpacing.md),
           actions,
         ],

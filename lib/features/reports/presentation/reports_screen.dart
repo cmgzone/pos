@@ -85,15 +85,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        toolbarHeight: 50,
         automaticallyImplyLeading: false,
-        title: Text(
-          'Reports',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-        ),
+        title: const Text('Reports'),
         actions: [
           if (_isManagerOrAdmin)
             Padding(

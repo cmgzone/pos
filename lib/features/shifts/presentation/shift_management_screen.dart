@@ -31,7 +31,6 @@ class ShiftManagementScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
         automaticallyImplyLeading: false,
         title: Text('Shifts & Cash'),
         actions: [

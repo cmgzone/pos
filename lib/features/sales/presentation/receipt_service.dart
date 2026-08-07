@@ -1,3 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -7,12 +14,68 @@ import '../../../core/services/shop_settings.dart';
 import '../../../core/utils/unit_utils.dart';
 
 class ReceiptService {
+  static final Map<String, Uint8List> _logoBytesCache =
+      <String, Uint8List>{};
+
   static String _pdfSafe(String? value) {
     final text = value ?? '';
     return text
         .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  static bool _looksLikeRaster(Uint8List bytes) {
+    if (bytes.length < 12) return false;
+    final png =
+        bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
+    final jpeg = bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+    return png || jpeg;
+  }
+
+  static Future<Uint8List?> _loadShopLogoBytes() async {
+    final url = ShopSettings.shopLogoUrl.trim();
+    if (url.isEmpty) return null;
+    final cached = _logoBytesCache[url];
+    if (cached != null) return cached;
+
+    Uint8List? bytes;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final digest = sha256.convert(utf8.encode(url)).toString().substring(0, 24);
+      final file = File(
+        '${dir.path}${Platform.pathSeparator}receipt_logo_$digest.img',
+      );
+      if (await file.exists()) {
+        bytes = await file.readAsBytes();
+      }
+      if (bytes == null || bytes.isEmpty || !_looksLikeRaster(bytes)) {
+        final client = http.Client();
+        try {
+          final response = await client
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 12));
+          if (response.statusCode >= 200 &&
+              response.statusCode < 300 &&
+              response.bodyBytes.isNotEmpty) {
+            bytes = response.bodyBytes;
+            if (_looksLikeRaster(bytes)) {
+              await file.writeAsBytes(bytes, flush: true);
+            }
+          }
+        } finally {
+          client.close();
+        }
+      }
+    } catch (_) {
+      bytes = null;
+    }
+
+    if (bytes != null && bytes.isNotEmpty && _looksLikeRaster(bytes)) {
+      _logoBytesCache[url] = bytes;
+      return bytes;
+    }
+    return null;
   }
 
   static String _formatDocumentDate(String? raw) {
@@ -65,6 +128,7 @@ class ReceiptService {
     String? earnedGiftCardExpiresAt,
   }) async {
     final pdf = pw.Document();
+    final shopLogoBytes = await _loadShopLogoBytes();
     final dateStr = _formatDocumentDate(documentDate);
     final displayTotal = useAbsoluteAmounts ? total.abs() : total;
     final displaySubtotal = useAbsoluteAmounts ? subtotal.abs() : subtotal;
@@ -100,6 +164,15 @@ class ReceiptService {
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
               // Store header
+              if (shopLogoBytes != null) ...[
+                pw.Image(
+                  pw.MemoryImage(shopLogoBytes),
+                  width: 44,
+                  height: 44,
+                  fit: pw.BoxFit.contain,
+                ),
+                pw.SizedBox(height: 6),
+              ],
               pw.Text(
                 _pdfSafe(ShopSettings.shopName).toUpperCase(),
                 style: pw.TextStyle(

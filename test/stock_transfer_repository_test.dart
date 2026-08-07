@@ -114,6 +114,164 @@ void main() {
   });
 
   test(
+    'receiving auto-creates the product when the branch does not stock it',
+    () async {
+      final now = DateTime.now().toIso8601String();
+
+      await DatabaseService.db.insert('branches', {
+        'id': 'branch-b',
+        'name': 'Branch B',
+        'is_active': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+      await DatabaseService.db.insert('products', {
+        'id': 'source-product',
+        'branch_id': DatabaseService.defaultBranchId,
+        'name': 'Engine Oil 5L',
+        'price': 450,
+        'cost': 300,
+        'stock': 8,
+        'low_stock': 2,
+        'unit': 'pcs',
+        'stock_unit': 'pcs',
+        'sale_unit': 'pcs',
+        'sale_to_stock_factor': 1,
+        'purchase_unit': 'pcs',
+        'purchase_to_stock_factor': 1,
+        'barcode': 'ENG-OIL-5L',
+        'track_stock': 1,
+        'has_variants': 0,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+      await DatabaseService.db.insert('stock_batches', {
+        'id': 'source-batch',
+        'branch_id': DatabaseService.defaultBranchId,
+        'product_id': 'source-product',
+        'batch_number': 'SRC-1',
+        'quantity_received': 8,
+        'quantity_remaining': 8,
+        'unit_cost': 300,
+        'received_at': now,
+        'created_at': now,
+        'updated_at': now,
+        'sync_status': 'pending',
+      });
+
+      final transferId = await StockTransferRepository.requestTransfer(
+        toBranchId: 'branch-b',
+        productId: 'source-product',
+        quantity: 5,
+      );
+      await StockTransferRepository.updateStatus(transferId, status: 'approved');
+
+      DatabaseService.setCurrentBranchId('branch-b');
+      await StockTransferRepository.updateStatus(transferId, status: 'received');
+
+      final created = await DatabaseService.rawQuery(
+        '''
+        SELECT id, name, barcode, price, stock, sync_status
+        FROM products
+        WHERE COALESCE(branch_id, ?) = ? AND name = ?
+        ''',
+        [DatabaseService.defaultBranchId, 'branch-b', 'Engine Oil 5L'],
+      );
+      expect(created, hasLength(1));
+      expect(created.single['id'], isNot('source-product'));
+      expect(created.single['barcode'], 'ENG-OIL-5L');
+      expect((created.single['price'] as num).toDouble(), 450);
+      expect((created.single['stock'] as num).toDouble(), 5);
+      expect(created.single['sync_status'], 'pending');
+
+      final batches = await DatabaseService.rawQuery(
+        'SELECT quantity_remaining, unit_cost FROM stock_batches WHERE product_id = ?',
+        [created.single['id']],
+      );
+      expect(batches, hasLength(1));
+      expect((batches.single['quantity_remaining'] as num).toDouble(), 5);
+      expect((batches.single['unit_cost'] as num).toDouble(), 300);
+    },
+  );
+
+  test('a branch can request stock in from another branch', () async {
+    final now = DateTime.now().toIso8601String();
+
+    await DatabaseService.db.insert('branches', {
+      'id': 'branch-b',
+      'name': 'Branch B',
+      'is_active': 1,
+      'created_at': now,
+      'updated_at': now,
+      'sync_status': 'pending',
+    });
+    await _insertProduct(
+      id: 'source-product',
+      branchId: DatabaseService.defaultBranchId,
+      stock: 6,
+      cost: 25,
+      now: now,
+    );
+    await DatabaseService.db.insert('stock_batches', {
+      'id': 'source-batch',
+      'branch_id': DatabaseService.defaultBranchId,
+      'product_id': 'source-product',
+      'batch_number': 'SRC-1',
+      'quantity_received': 6,
+      'quantity_remaining': 6,
+      'unit_cost': 25,
+      'received_at': now,
+      'created_at': now,
+      'updated_at': now,
+      'sync_status': 'pending',
+    });
+
+    DatabaseService.setCurrentBranchId('branch-b');
+    final transferId = await StockTransferRepository.requestStockIn(
+      fromBranchId: DatabaseService.defaultBranchId,
+      productId: 'source-product',
+      quantity: 4,
+      note: 'Running low',
+    );
+
+    var transfer = await DatabaseService.queryById(
+      'stock_transfers',
+      transferId,
+    );
+    expect(transfer?['status'], 'requested');
+    expect(transfer?['from_branch_id'], DatabaseService.defaultBranchId);
+    expect(transfer?['to_branch_id'], 'branch-b');
+
+    DatabaseService.setCurrentBranchId(DatabaseService.defaultBranchId);
+    await StockTransferRepository.updateStatus(transferId, status: 'approved');
+
+    DatabaseService.setCurrentBranchId('branch-b');
+    await StockTransferRepository.updateStatus(transferId, status: 'received');
+
+    transfer = await DatabaseService.queryById('stock_transfers', transferId);
+    expect(transfer?['status'], 'received');
+
+    final source = await DatabaseService.queryById(
+      'products',
+      'source-product',
+    );
+    expect((source?['stock'] as num).toDouble(), 2);
+
+    final created = await DatabaseService.rawQuery(
+      '''
+      SELECT id, stock
+      FROM products
+      WHERE COALESCE(branch_id, ?) = ? AND name = ?
+      ''',
+      [DatabaseService.defaultBranchId, 'branch-b', 'Leather Cleaner'],
+    );
+    expect(created, hasLength(1));
+    expect((created.single['stock'] as num).toDouble(), 4);
+  });
+
+  test(
     'list for current branch joins branch names without ambiguous columns',
     () async {
       final now = DateTime.now().toIso8601String();

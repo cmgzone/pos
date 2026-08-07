@@ -24,6 +24,7 @@ import type {
 import { formatPrice, getCatalogItemImages, getInitials } from "@/lib/utils";
 import { useStore } from "./store-provider";
 import { QuickViewModal } from "./quick-view-modal";
+import { SignupModal } from "./signup-modal";
 
 type AtelierMode = "collection" | "single-product" | "portfolio" | "services";
 
@@ -57,11 +58,16 @@ export function AtelierStorefront({
   const { addToCart, cartCount, setIsCartOpen } = useStore();
   const [quickViewItem, setQuickViewItem] = useState<CatalogItem | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant>();
+  const [showSignup, setShowSignup] = useState(false);
+  const [sortBy, setSortBy] = useState("featured");
   const mode = resolveAtelierMode(catalog);
   // Keep the hero and grid in sync with the active category and search query.
   // Falling back to the full catalog here made an empty search look as though it
   // still had results.
-  const sourceItems = items;
+  const sourceItems = useMemo(
+    () => sortCatalogItems(items, sortBy),
+    [items, sortBy],
+  );
   const featuredItem = sourceItems.find((item) => item.isFeatured) || sourceItems[0];
   const media = useMemo(
     () => collectMedia(catalog, featuredItem, sourceItems),
@@ -149,6 +155,14 @@ export function AtelierStorefront({
             <CircleUserRound />
             <span>Account</span>
           </a>
+          <button
+            type="button"
+            onClick={() => setShowSignup(true)}
+            className="atelier-signup-button"
+            aria-label="Create a customer account"
+          >
+            Sign up
+          </button>
           <button
             type="button"
             onClick={() => onAppearanceChange(appearance === "light" ? "dark" : "light")}
@@ -245,6 +259,8 @@ export function AtelierStorefront({
             onCategoryChange={onCategoryChange}
             search={search}
             onSearchChange={onSearchChange}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
             onOpen={openItem}
           />
         ) : mode === "portfolio" ? (
@@ -255,6 +271,8 @@ export function AtelierStorefront({
             onCategoryChange={onCategoryChange}
             search={search}
             onSearchChange={onSearchChange}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
             onOpen={openItem}
           />
         ) : (
@@ -265,6 +283,8 @@ export function AtelierStorefront({
             onCategoryChange={onCategoryChange}
             search={search}
             onSearchChange={onSearchChange}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
             onOpen={openItem}
           />
         )}
@@ -298,6 +318,27 @@ export function AtelierStorefront({
         <div>
           <p className="atelier-kicker"><span /> Independent by design</p>
           <p className="atelier-footer-title">{catalog.business.name}</p>
+          {catalog.business.whatsappNumber && (
+            <a
+              className="atelier-footer-whatsapp"
+              href={`https://wa.me/${catalog.business.whatsappNumber.replace(/[^\d]/g, "")}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ArrowUpRight /> Talk to us on WhatsApp
+            </a>
+          )}
+        </div>
+        <div className="atelier-footer-actions">
+          <button type="button" className="atelier-primary-button" onClick={() => setShowSignup(true)}>
+            Sign up for updates <ArrowUpRight />
+          </button>
+          <a
+            className="atelier-text-button"
+            href={`/portal?businessId=${encodeURIComponent(catalog.business.id)}`}
+          >
+            My account <ArrowUpRight />
+          </a>
         </div>
         <div className="atelier-footer-meta">
           <span>© {new Date().getFullYear()}</span>
@@ -315,6 +356,13 @@ export function AtelierStorefront({
           onVariantChange={setSelectedVariant}
           onClose={() => setQuickViewItem(null)}
           onAdd={handleQuickViewAdd}
+        />
+      )}
+      {showSignup && (
+        <SignupModal
+          businessId={catalog.business.id}
+          businessName={catalog.business.name}
+          onClose={() => setShowSignup(false)}
         />
       )}
     </div>
@@ -370,6 +418,8 @@ function ServicePractice({
   search,
   onSearchChange,
   onOpen,
+  sortBy,
+  onSortChange,
 }: {
   catalog: Catalog;
   items: CatalogItem[];
@@ -378,6 +428,8 @@ function ServicePractice({
   search: string;
   onSearchChange: (search: string) => void;
   onOpen: (item: CatalogItem) => void;
+  sortBy: string;
+  onSortChange: (sortBy: string) => void;
 }) {
   const { visibleItems, hasMore, showMore } = useVisibleItems(items, category, search, 8);
   return (
@@ -392,6 +444,8 @@ function ServicePractice({
         onCategoryChange={onCategoryChange}
         search={search}
         onSearchChange={onSearchChange}
+        sortBy={sortBy}
+        onSortChange={onSortChange}
         itemCount={items.length}
         itemLabel="services"
       />
@@ -427,6 +481,8 @@ function PortfolioGrid({
   search,
   onSearchChange,
   onOpen,
+  sortBy,
+  onSortChange,
 }: {
   catalog: Catalog;
   items: CatalogItem[];
@@ -435,6 +491,8 @@ function PortfolioGrid({
   search: string;
   onSearchChange: (search: string) => void;
   onOpen: (item: CatalogItem) => void;
+  sortBy: string;
+  onSortChange: (sortBy: string) => void;
 }) {
   const { visibleItems, hasMore, showMore } = useVisibleItems(items, category, search, 9);
   return (
@@ -449,6 +507,8 @@ function PortfolioGrid({
         onCategoryChange={onCategoryChange}
         search={search}
         onSearchChange={onSearchChange}
+        sortBy={sortBy}
+        onSortChange={onSortChange}
         itemCount={items.length}
         itemLabel="pieces"
       />
@@ -477,6 +537,8 @@ function CollectionGrid({
   search,
   onSearchChange,
   onOpen,
+  sortBy,
+  onSortChange,
 }: {
   catalog: Catalog;
   items: CatalogItem[];
@@ -485,6 +547,8 @@ function CollectionGrid({
   search: string;
   onSearchChange: (search: string) => void;
   onOpen: (item: CatalogItem) => void;
+  sortBy: string;
+  onSortChange: (sortBy: string) => void;
 }) {
   const { visibleItems, hasMore, showMore } = useVisibleItems(items, category, search, 12);
   return (
@@ -501,6 +565,8 @@ function CollectionGrid({
         onCategoryChange={onCategoryChange}
         search={search}
         onSearchChange={onSearchChange}
+        sortBy={sortBy}
+        onSortChange={onSortChange}
         itemCount={items.length}
         itemLabel="items"
       />
@@ -527,6 +593,8 @@ function AtelierBrowseControls({
   onCategoryChange,
   search,
   onSearchChange,
+  sortBy,
+  onSortChange,
   itemCount,
   itemLabel,
 }: {
@@ -535,6 +603,8 @@ function AtelierBrowseControls({
   onCategoryChange: (category: string) => void;
   search: string;
   onSearchChange: (search: string) => void;
+  sortBy: string;
+  onSortChange: (sortBy: string) => void;
   itemCount: number;
   itemLabel: string;
 }) {
@@ -582,10 +652,47 @@ function AtelierBrowseControls({
         ) : (
           <span className="atelier-browse-all">All {itemLabel}</span>
         )}
+        <div className="atelier-sort" aria-label="Sort products">
+          <select value={sortBy} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort products">
+            <option value="featured">Featured</option>
+            <option value="newest">Newest</option>
+            <option value="price-asc">Price: Low to high</option>
+            <option value="price-desc">Price: High to low</option>
+            <option value="name">Name A–Z</option>
+          </select>
+        </div>
         <span className="atelier-result-count">{itemCount} {itemLabel}</span>
       </div>
     </div>
   );
+}
+
+function sortCatalogItems(items: CatalogItem[], sortBy: string): CatalogItem[] {
+  const sorted = [...items];
+  switch (sortBy) {
+    case "newest":
+      sorted.sort((first, second) =>
+        (second.updatedAt || "").localeCompare(first.updatedAt || ""),
+      );
+      break;
+    case "price-asc":
+      sorted.sort((a, b) => a.price - b.price);
+      break;
+    case "price-desc":
+      sorted.sort((a, b) => b.price - a.price);
+      break;
+    case "name":
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    default:
+      sorted.sort((first, second) => {
+        if (first.isFeatured && !second.isFeatured) return -1;
+        if (!first.isFeatured && second.isFeatured) return 1;
+        return (second.soldQty || 0) - (first.soldQty || 0);
+      });
+      break;
+  }
+  return sorted;
 }
 
 function useVisibleItems(items: CatalogItem[], category: string, search: string, initialCount: number) {
@@ -628,11 +735,24 @@ function AtelierTile({
   onOpen: () => void;
 }) {
   const image = getCatalogItemImages(item)[0];
+  const compareAt = item.compareAtPrice != null && item.compareAtPrice > item.price
+    ? item.compareAtPrice
+    : null;
+  const discount = item.discountPercent ||
+    (compareAt ? Math.round(((compareAt - item.price) / compareAt) * 100) : 0);
+  const soldOut = item.trackStock === true && item.stock <= 0;
+  const lowStock = !soldOut && item.trackStock === true && item.stock > 0 && item.stock <= 5;
   return (
-    <article className="atelier-tile" data-piki-component="product-card" data-product-id={item.id}>
+    <article
+      className={`atelier-tile${soldOut ? " atelier-tile--soldout" : ""}`}
+      data-piki-component="product-card"
+      data-product-id={item.id}
+    >
       <button type="button" className="atelier-tile-image" onClick={onOpen} aria-label={`View ${item.name}`}>
         {image ? <img src={image} alt={item.name} loading="lazy" /> : <Package aria-hidden="true" />}
         <span className="atelier-tile-index">{String(index + 1).padStart(2, "0")}</span>
+        {discount > 0 && <span className="atelier-tile-badge">-{discount}%</span>}
+        {soldOut && <span className="atelier-tile-badge atelier-tile-badge--soldout">Sold out</span>}
       </button>
       <div className="atelier-tile-copy">
         <div>
@@ -640,9 +760,22 @@ function AtelierTile({
           <h3>{item.name}</h3>
         </div>
         <div className="atelier-tile-buy">
-          <span>{formatPrice(item.price, catalog.currencySymbol, catalog.currencyCode)}</span>
-          <button type="button" onClick={onOpen} aria-label={`View ${item.name}`}><ArrowUpRight /></button>
+          <span className="atelier-tile-price">
+            {compareAt && (
+              <s className="atelier-tile-oldprice">{formatPrice(compareAt, catalog.currencySymbol, catalog.currencyCode)}</s>
+            )}
+            {formatPrice(item.price, catalog.currencySymbol, catalog.currencyCode)}
+          </span>
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={soldOut}
+            aria-label={`View ${item.name}`}
+          >
+            <ArrowUpRight />
+          </button>
         </div>
+        {lowStock && <p className="atelier-tile-stock">Only {item.stock} left</p>}
       </div>
     </article>
   );

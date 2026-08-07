@@ -91,9 +91,7 @@ class _CustomerInvoicesScreenState
 
     final isMobile = MediaQuery.sizeOf(context).width < 700;
     return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           title: Text('Invoices'),
         actions: [
           IconButton(
@@ -105,8 +103,6 @@ class _CustomerInvoicesScreenState
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createInvoice,
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
         icon: Icon(Icons.add_rounded),
         label: Text('New Invoice'),
       ),
